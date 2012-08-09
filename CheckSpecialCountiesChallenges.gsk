@@ -1,0 +1,542 @@
+# MacVersion = 1.0
+# MacDescription = Check Counties for US County Challenge
+# MacAuthor = Lignumaqua (Modified by byonke)
+# MacFileName = CheckSpecialCountiesChallenges.gsk
+# 12-3-2009
+#
+# Universal version for GSAK 7.2/7.5
+ 
+VERCHECK Version=7.2.3.35 (Note: this macro requires At least GSAK 7.2.3.35)
+GOSUB name=DeclareVariables
+
+IF $_Version < "7.5"
+	$GSAKField="User2"
+ELSE
+	$GSAKField="County"
+ENDIF
+
+# Define SQL database
+$datafilepath = Sysinfo("MacroPath")
+#$File = $datafilepath + "\USCountiesSQL.db3"
+
+$file = ":memory:"
+
+#Open the SQL database ready for use
+#$status = Sqlite("create",$file,"")
+$status = Sqlite("open",$file,"")
+
+$_sql = "drop table if exists USCounties"
+$status = Sqlite("sql",$_sql,"")
+$_sql = "drop table if exists USStates"
+$status = Sqlite("sql",$_sql,"")
+
+# Create states table
+$Data = "FullName text,Abbreviation text"
+$_sql = "CREATE TABLE USStates ($Data)"
+$status = Sqlite("sql",$_sql,"")
+
+# Import the master list of States and Abbreviations to the SQL table
+$status = sqlite("import",$StateList,"table=USStates")
+
+# Create counties table
+$Data = "State text,Abbreviation text,County text,xFill text,yFill text"
+$_sql = "CREATE TABLE USCounties ($Data)"
+$status = Sqlite("sql",$_sql,"")
+
+# Import the master list of Counties to the SQL table
+$status = sqlite("import",$CountiesSQlFile,"table=USCounties")
+
+
+#Save the State and County fields from the current GSAK database out to an SQL table in the SQL database
+$Status = DbToSQLite("caches","State,$GSAKField,UserData,CacheType",$file) 
+
+# Get a list of States to populate the combo box on the menu form
+$_sql = "SELECT DISTINCT State FROM USCounties ORDER BY State"
+$result = Sqlite("SQL",$_sql,"")
+$StateList = Replace("$_NewLine",";",$result,true)
+
+# $StateList = "Alabama;Alaska;Arizona;Arkansas;California;Colorado;Connecticut;Delaware;District of Columbia;Florida;Georgia;Hawaii;Idaho;Illinois;Indiana;Iowa;Kansas;Kentucky;Louisiana;Maine;Maryland;Massachusetts;Michigan;Minnesota;Mississippi;Missouri;Montana;Nebraska;Nevada;New Hampshire;New Jersey;New Mexico;New York;North Carolina;North Dakota;Ohio;Oklahoma;Oregon;Pennsylvania;Rhode Island;South Carolina;South Dakota;Tennessee;Texas;Utah;Vermont;Virginia;Washington;West Virginia;Wisconsin;Wyoming"
+
+$Form = EditForm($Form,"Label5","Caption","Will overwrite $GSAKField field!")
+
+# Show the main form in a loop
+WHILE TRUE
+		$result = Form($form,"")
+		# Reset the screen position of the menu form to where the user left it
+  	$Form = EditForm($Form,"Form1","Top",$_FormTop)
+  	$Form = EditForm($Form,"Form1","Left",$_FormLeft)
+  	
+  	BEGINCASE #Buttons
+  		CASE $Cancel
+    		CANCEL
+    	CASE $GetCounties
+    		IF $GSAKField = "County"
+    			$tmpN = GetCounty("yb")
+    		ELSE
+    			$tmpN = GetCounty("2b")
+    		ENDIF
+    		$Status = DbToSQLite("caches","State,$GSAKField,UserData,CacheType",$file) 
+			CASE $OK
+				GOSUB name=Main
+			OTHERWISE
+				CANCEL
+			ENDCASE	
+  	
+ENDWHILE # Form Loop
+
+BEGINSUB name=Main
+ # Exclude locationless?
+	IF $Excludelocationless
+		$Locationless = " AND Cachetype <> 'L'"
+	ELSE
+		$Locationless = ""
+	ENDIF
+ 
+ # Figure out if we are using full state names or abbreviations
+	$_sql = "SELECT AVG(LENGTH(state)) from caches"
+	$tmpN = Val(Sqlite("SQL",$_sql,""))
+	
+	IF $tmpN > 3
+		$SearchState = $StateChosen
+	ELSE
+		$_sql = "SELECT Abbreviation FROM USCounties WHERE State = '$StateChosen'"
+		$SearchState = Left(Sqlite("SQL",$_sql,""),2)
+	ENDIF
+
+
+                $_sql = "update caches set State = (select Abbreviation from USStates where USStates.FullName=caches.State)"
+		$result = Sqlite("SQL",$_sql,"")
+		
+		$_sql = "update caches set UserData = State || '_' || county"
+		$result = Sqlite("SQL",$_sql,"")
+		
+		$_sql = "UPDATE caches SET STATE='SLAGA' WHERE UserData in (select county from USCounties)"
+		$status = Sqlite("sql",$_sql,"")
+
+
+		$_sql = "UPDATE caches SET County=UserData WHERE State = 'SLAGA'"
+		$status = Sqlite("sql",$_sql,"")
+
+	
+	# Fill all the blank counties in with something more useful and descriptive
+	$_sql = "UPDATE caches SET $GSAKField='*No County assigned*' WHERE $GSAKField = ''"
+	$work = Sqlite("SQL",$_sql,"")
+
+	# Count the number of counties we have finds in the selected State		
+	$_sql = "SELECT Count(Distinct $GSAKField) FROM caches WHERE State = '$SearchState' $Locationless"
+	$CountFound = Val(Sqlite("SQL",$_sql,""))
+	
+	# Count the total number of finds we have in the selected State
+	$_sql = "SELECT Count($GSAKField) FROM  caches WHERE State = '$SearchState' $Locationless"
+	$FoundTotal = Val(Sqlite("SQL",$_sql,""))
+	
+	# Get a result table of county names and number of finds in that county
+	$_sql = "SELECT $GSAKField, Count($GSAKField) FROM caches WHERE State = '$SearchState' $Locationless GROUP BY $GSAKField ORDER BY $GSAKField"
+	$work = Sqlite("SQL",$_sql,"")
+			
+	
+	IF Left($work,7) <> "*ERROR*"
+		$Foundlist = $work
+		$FoundList = Replace(";",": ",$Foundlist,TRUE)
+	ELSE
+		$Foundlist = "No caches found in this State"
+	ENDIF
+	
+	# Get a list of counties we have finds in and massage it into a list suitable to use in a later statement
+	$_sql = "SELECT Distinct $GSAKField FROM caches WHERE State = '$SearchState' $Locationless ORDER BY $GSAKField"
+	$result = Sqlite("SQL",$_sql,"")
+	$result = Replace("'","''",$result,true)
+	$result = Replace("$_NewLine","','",$result,true)
+	
+	# Get a count of counties where we DON'T have finds	
+	$_sql = "SELECT Count(County) from USCounties WHERE (State = '$StateChosen') AND (NOT(County IN ('$result')))"
+	$CountUnfound = Val(Sqlite("SQL",$_sql,""))
+
+	# Get a list of the counties where we DON'T have finds	
+	$_sql = "SELECT County from USCounties WHERE (State = '$StateChosen') AND (NOT(County IN ('$result')))"
+	$work = Sqlite("SQL",$_sql,"")
+	$ResultList = $work
+	
+	# Massage it into a format suitable for the GSAK filter box and load it into the Windows clipboard ready to go
+	$work = Replace("$_NewLine","|",$ResultList,true)
+	CLIP Data=$work
+	
+	IF $CountFound = 1
+		$Countytext = "County"
+	ELSE
+		$Countytext = "Counties"
+	ENDIF
+	
+	IF $FoundTotal = 1
+		$Cachetext = "cache"
+	ELSE
+		$Cachetext = "caches"
+	ENDIF
+	
+	$Form = EditForm($Form,"FoundLabel","Caption","$FoundTotal $Cachetext found in $CountFound $Countytext in $StateChosen:")
+	
+	IF $CountUnfound = 1
+		$Countytext = "County"
+	ELSE
+		$Countytext = "Counties"
+	ENDIF	
+	$Form = EditForm($Form,"MemoLabel","Caption","$CountUnfound $Countytext without finds in $StateChosen:")
+
+	#MSGOK msg=Counties not found $_NewLine================== $_NewLine$work
+
+ENDSUB #Main
+
+BEGINSUB name=DeclareVariables
+#*******************************************************
+#   Variable declarations for
+#   C:\Program Files\GSAK\Macros\CheckCounties.gsk
+#
+#   Generated 4/27/2008 7:38:41 PM on GSAKVariables.gsk Rev V0.20 B15
+#
+#*******************************************************
+
+Option Explicit=Yes
+
+Declare Var=$Cachetext Type=String
+Declare Var=$CountFound Type=Numeric
+Declare Var=$CountyCount Type=Numeric
+Declare Var=$CountUnfound Type=Numeric
+Declare Var=$CountiesSQlFile Type=String
+Declare Var=$Countytext Type=String
+Declare Var=$DataFile Type=String
+Declare Var=$Data Type=String
+Declare Var=$datafilepath Type=String
+Declare Var=$file Type=String
+Declare Var=$Form Type=String
+Declare Var=$Foundlist Type=String
+Declare Var=$FoundTotal Type=Numeric
+Declare Var=$GSAKField Type=String
+Declare Var=$list Type=String
+Declare Var=$locationless Type=String
+Declare Var=$result Type=String
+Declare Var=$ResultList Type=String
+Declare Var=$SearchState Type=String
+Declare Var=$_sql Type=String
+Declare Var=$sql Type=String
+Declare Var=$StateList Type=String
+Declare Var=$status Type=String
+Declare Var=$tmpN Type=Numeric
+Declare Var=$work Type=String
+
+ENDSUB #DeclareVariables
+
+<data> VarName=$form
+Name = Form1
+  Type = Form
+  Caption = County Challenge Tester
+  Height = 537
+  Width = 532
+
+Name = Groupbox1
+  Type = Groupbox
+  Height = 110
+  Left = 40
+  Top = 50
+  Width = 185
+  Taborder = 4
+
+Name = Groupbox2
+  Type = Groupbox
+  Height = 110
+  Left = 300
+  Top = 50
+  Width = 185
+  Taborder = 5
+
+Name = Label1
+  Type = Label
+  Color = 16744448
+  Height = 20
+  Left = 143
+  Size = 13
+  Style = bold
+  Top = 5
+  Width = 238
+  Caption = US County Challenge Tester
+
+Name = Label2
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 56
+  Top = 18
+  Width = 73
+  Caption = State to check:
+
+Name = Statechosen
+  Type = Combobox
+  Container = Groupbox2
+  Height = 21
+  Left = 22
+  Top = 43
+  Values = $StateList
+  Width = 145
+  Taborder = 0
+
+Name = MemoLabel
+  Type = Label
+  Height = 13
+  Left = 294
+  Top = 181
+  Width = 109
+  Caption = Counties not yet found:
+
+Name = ok
+  Type = Button
+  Height = 25
+  Left = 134
+  Top = 450
+  Width = 75
+  Taborder = 0
+  Caption = Check
+
+Name = cancel
+  Type = Button
+  Height = 25
+  Left = 314
+  Top = 450
+  Width = 75
+  Taborder = 1
+  Caption = Cancel
+
+Name = ResultList
+  Type = Memo
+  Height = 231
+  Left = 292
+  Scrollbars = Vertical
+  Top = 200
+  Width = 209
+  Taborder = 2
+
+Name = FoundLabel
+  Type = Label
+  Height = 13
+  Left = 34
+  Top = 181
+  Width = 74
+  Caption = Counties found:
+
+Name = FoundList
+  Type = Memo
+  Height = 231
+  Left = 32
+  Scrollbars = Vertical
+  Top = 200
+  Width = 209
+  Taborder = 3
+
+Name = GetCounties
+  Type = Button
+  Container = Groupbox1
+  Height = 25
+  Left = 46
+  Top = 27
+  Width = 91
+  Taborder = 0
+  Caption = Update Counties
+
+Name = Label3
+  Type = Label
+  Color = 255
+  Container = Groupbox1
+  Height = 13
+  Left = 70
+  Style = bold
+  Top = 65
+  Width = 44
+  Caption = Warning
+
+Name = excludelocationless
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 17
+  Left = 149
+  Top = 79
+  Width = 15
+  Taborder = 1
+
+Name = Label4
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 26
+  Top = 82
+  Width = 99
+  Caption = Exclude locationless:
+
+Name = Label5
+  Type = Label
+  Color = 255
+  Container = Groupbox1
+  Height = 13
+  Left = 18
+  Style = bold
+  Top = 81
+  Width = 143
+  Caption = Will overwrite County field!
+
+<enddata>
+<data> VarName=$StateList
+Alabama;AL
+Alaska;AK
+Arizona;AZ
+Arkansas;AR
+California;CA
+Colorado;CO
+Connecticut;CT
+Delaware;DE
+DistrictOfColumbia;DC
+Florida;FL
+Georgia;GA
+Hawaii;HI
+Idaho;ID
+Illinois;il
+Indiana;IN
+Iowa;IA
+Kansas;KS
+Kentucky;KY
+Louisiana;LA
+Maine;ME
+Maryland;MD
+Massachusetts;MA
+Michigan;MI
+Minnesota;MN
+Mississippi;MS
+Missouri;mo
+Montana;MT
+Nebraska;NE
+Nevada;NV
+New Hampshire;NH
+New Jersey;NJ
+New Mexico;NM
+New York;NY
+North Carolina;NC
+North Dakota;ND
+Ohio;OH
+Oklahoma;OK
+Oregon;OR
+Pennsylvania;PA
+PuertoRico;PR
+Rhode Island;RI
+South Carolina;SC
+South Dakota;SD
+Tennessee;TN
+Texas;TX
+Utah;UT
+Vermont;VT
+Virginia;VA
+Washington;WA
+West Virginia;WV
+Wisconsin;WI
+Wyoming;WY
+SLAGA;SL	
+<enddata>
+
+
+<data> VarName=$CountiesSQlFile
+CSRA;GA;ga_Burke;1;1
+CSRA;GA;ga_Columbia;1;1
+CSRA;GA;ga_Glascock;1;1
+CSRA;GA;ga_Hancock;1;1
+CSRA;GA;ga_Jefferson;1;1
+CSRA;GA;ga_Jenkins;1;1
+CSRA;GA;ga_Lincoln;1;1
+CSRA;GA;ga_McDuffie;1;1
+CSRA;GA;ga_Richmond;1;1
+CSRA;GA;ga_Screven;1;1
+CSRA;GA;ga_Taliaferro;1;1
+CSRA;GA;ga_Warren;1;1
+CSRA;GA;ga_Washington;1;1
+CSRA;GA;ga_Wilkes;1;1
+CSRA;SC;sc_Aiken;1;1
+CSRA;SC;sc_Allendale;1;1
+CSRA;SC;sc_Bamberg;1;1
+CSRA;SC;sc_Barnwell;1;1
+CSRA;SC;sc_Edgefield;1;1
+CSRA;SC;sc_McCormick;1;1
+CSRA;SC;sc_Saluda;1;1
+SLAGA;IL;il_Adams;1;1
+SLAGA;IL;il_Alexander;1;1
+SLAGA;IL;il_Bond;1;1
+SLAGA;IL;il_Brown;1;1
+SLAGA;IL;il_Calhoun;1;1
+SLAGA;IL;il_Cass;1;1
+SLAGA;IL;il_Christian;1;1
+SLAGA;IL;il_Clay;1;1
+SLAGA;IL;il_Clinton;1;1
+SLAGA;IL;il_Cumberland;1;1
+SLAGA;IL;il_Effingham;1;1
+SLAGA;IL;il_Fayette;1;1
+SLAGA;IL;il_Franklin;1;1
+SLAGA;IL;il_Greene;1;1
+SLAGA;IL;il_Hamilton;1;1
+SLAGA;IL;il_Jackson;1;1
+SLAGA;IL;il_Jasper;1;1
+SLAGA;IL;il_Jefferson;1;1
+SLAGA;IL;il_Jersey;1;1
+SLAGA;IL;il_Johnson;1;1
+SLAGA;IL;il_Logan;1;1
+SLAGA;IL;il_Macon;1;1
+SLAGA;IL;il_Macoupin;1;1
+SLAGA;IL;il_Madison;1;1
+SLAGA;IL;il_Marion;1;1
+SLAGA;IL;il_Mason;1;1
+SLAGA;IL;il_Menard;1;1
+SLAGA;IL;il_Monroe;1;1
+SLAGA;IL;il_Montgomery;1;1
+SLAGA;IL;il_Morgan;1;1
+SLAGA;IL;il_Moultrie;1;1
+SLAGA;IL;il_Perry;1;1
+SLAGA;IL;il_Pike;1;1
+SLAGA;IL;il_Randolph;1;1
+SLAGA;IL;il_Saline;1;1
+SLAGA;IL;il_Sangamon;1;1
+SLAGA;IL;il_Schuyler;1;1
+SLAGA;IL;il_Scott;1;1
+SLAGA;IL;il_Shelby;1;1
+SLAGA;IL;il_St. Clair;1;1
+SLAGA;IL;il_Union;1;1
+SLAGA;IL;il_Washington;1;1
+SLAGA;IL;il_Wayne;1;1
+SLAGA;IL;il_Williamson;1;1
+SLAGA;MO;mo_Audrain;1;1
+SLAGA;MO;mo_Bollinger;1;1
+SLAGA;MO;mo_Callaway;1;1
+SLAGA;MO;mo_Cape Girardeau;1;1
+SLAGA;MO;mo_Cole;1;1
+SLAGA;MO;mo_Crawford;1;1
+SLAGA;MO;mo_Dent;1;1
+SLAGA;MO;mo_Franklin;1;1
+SLAGA;MO;mo_Gasconade;1;1
+SLAGA;MO;mo_Iron;1;1
+SLAGA;MO;mo_Jefferson;1;1
+SLAGA;MO;mo_Lincoln;1;1
+SLAGA;MO;mo_Madison;1;1
+SLAGA;MO;mo_Maries;1;1
+SLAGA;MO;mo_Marion;1;1
+SLAGA;MO;mo_Monroe;1;1
+SLAGA;MO;mo_Montgomery;1;1
+SLAGA;MO;mo_Osage;1;1
+SLAGA;MO;mo_Perry;1;1
+SLAGA;MO;mo_Phelps;1;1
+SLAGA;MO;mo_Pike;1;1
+SLAGA;MO;mo_Ralls;1;1
+SLAGA;MO;mo_Reynolds;1;1
+SLAGA;MO;mo_Shannon;1;1
+SLAGA;MO;mo_St. Charles;1;1
+SLAGA;MO;mo_St. Francois;1;1
+SLAGA;MO;mo_St. Louis;1;1
+SLAGA;MO;mo_St. Louis City;1;1
+SLAGA;MO;mo_Ste. Genevieve;1;1
+SLAGA;MO;mo_Warren;1;1
+SLAGA;MO;mo_Washington;1;1
+SLAGA;MO;mo_Wayne;1;1
+<enddata>
+
+# update caches set State = (select Abbreviation from USStates where USStates.FullName=caches.State)
+# update caches set UserData = State || '_' || county

@@ -1,0 +1,38 @@
+# ****************************************************************************************************
+# ****************************************************************************************************
+# US Postal Code Challenge GC3BRFE written by cookshome
+#                                                                                                    
+# MacVersion = 1.0.1
+# MacDescription = Query your found database to determine if you qualify for the US Postal Code Challenge
+# MacAuthor = Cookshome
+# MacFileName = USPostalCodeChallenge.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=21371
+#
+# ****************************************************************************************************
+# ****************************************************************************************************
+
+$Out="US Postal Code;Code;Cache Name;Date Found;" + $_CrLf
+$PostalCodes="AL,AK,AZ,AR,CA,CO,CT,DE,FL,GA,HI,ID,IL,IN,IA,KS,KY,LA,ME,MD,MA,MI,MN,MS,MO,MT,NE,NV,NH,NJ,NM,NY,NC,ND,OH,OK,OR,PA,RI,SC,SD,TN,TX,UT,VT,VA,WA,WV,WI,WY"
+$Codes="'GCAAAA'"
+
+$foundCount=0
+$x=1
+WHILE $x<=50
+    $PostalCode=Extract($PostalCodes,",",$x)
+    $_sql="SELECT Code,Name,(SELECT lDate FROM Logs WHERE lIsOwner AND g_foundlog(ltype) AND lParent=Code) as LogDate FROM Caches WHERE LogDate<>'' AND Code like '%$PostalCode%' AND Code NOT IN ($Codes) LIMIT 1"
+    $Result=Sqlite("sql",$_sql)
+    IF $Result=""
+        $Result="-;-;Not Found;" + $_CrLf
+    ELSE
+        $Codes=$Codes + "," + "'" + Extract($Result,";",1) + "'"
+        $foundCount = $foundCount + 1
+    ENDIF
+    $Out=$Out + $PostalCode + ";" + $Result + $_CrLf
+    $x=$x+1
+ENDWHILE
+
+$Out=$Out + "<b>Total US Postal Codes Found</b>;  <b>$foundCount</b>"
+
+$Display=SqlToHtml($Out, "US Postal Code Challenge Caches Found", "Y")
+
+

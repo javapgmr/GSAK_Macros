@@ -1,0 +1,44 @@
+# ##################################################################################
+# MacFileName	 = T.gsk
+# MacAuthor	 = Schuhhirsch, inspired by lignumaqua
+# MacDescription = Output of custom data
+# MacVersion     = 0.1
+# MacUrl         =
+# ##################################################################################
+
+# Use following shortcuts
+# e for $d_elevation
+# s for $d_state
+# c for $d_county
+# h for $d_hints
+# 4 for quadcode (Short: Type, Diff, Terrain, Size)
+# 4+ for quadcode incl. "corrected"-indicator
+
+BeginCase
+  CASE $_MacroParms="s"
+     $_special=$d_state
+
+  CASE $_MacroParms="4"
+     $_special="%typ1%dif1a%ter1a%con1"
+
+  CASE $_MacroParms="4+"
+     $_special="%typ1%dif1a%ter1a%con1%correct=! "
+
+  CASE $_MacroParms="h"
+     $_special=$d_Hints
+
+  CASE $_MacroParms="e"
+     if isempty($d_resolution)
+		$_special=""
+	else
+		$_special="$d_elevation"+"m"
+	endif
+
+  CASE $_MacroParms="c"
+	 $_special=$d_County
+
+
+
+  OtherWise
+    $_special="?"
+EndCase

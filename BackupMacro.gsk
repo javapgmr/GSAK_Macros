@@ -1,0 +1,72 @@
+###################################################################################
+# MacVersion     = 1.1.1
+# MacDescription = Two separate and different Backup routines in a macro.
+# MacAuthor      = Wayne (Team Red Roo)
+# MacFileName    = BackupMacro.gsk
+# MacUrl         = http://gsak.net/board/index.php?act=ST&f=15&t=6987
+###################################################################################
+# Notes:           Use this macro as it is or copy either subroutine into your own 
+#                  code and call it when you need to create a backup.
+#                  Both backup subroutines are self contained, however the 2nd 
+#                  backup (DateTimeBackup) is not self maintaining in that it does 
+#                  not delete any of its old backups.
+##
+# 22/12/07       : Changed the BkpDir definition after a suggestion from javapgmr
+##
+###################################################################################
+
+  VERCHECK Version=7.1.0.0 (Feel free to update your version of Gsak)
+
+  $Msg0="Choose a Macro Backup"
+  $Msg1="Macro Backup (Series)"
+  $Msg2="Macro Backup (Date/Time)"
+
+  CHOOSE Msg=$Msg0 Opt1=$Msg1 Opt2=$Msg2
+  IF $Result=1
+      GOSUB Name=MacroBackup
+  ENDIF 
+  IF $Result=2
+      GOSUB Name=DateTimeBackup
+  ENDIF 
+
+  RETURN 
+###################################################################################
+  BEGINSUB Name=MacroBackup
+      $NumBkps = 5
+      $BkpDir  = Sysinfo("gsakini;TfmConfig;edtBackupFolder.Text")+"\"
+      $BkpF    = "MacroBackup"
+      $Extn    = ".Zip"
+      $Comspec = GetEnvV("comspec")
+      $ThisBkp="$BkpDir$BkpF$NumBkps$Extn"
+      IF FileExists($ThisBkp)
+          FILEERASE File=$ThisBkp
+      ENDIF 
+      SHOWSTATUS Msg="Renaming old Backups..." Top=0
+      $Ver=$NumBkps
+      WHILE $Ver> 1
+          $Ver=$Ver-1
+          $ThisBkp="$BkpDir$BkpF$Ver$Extn"
+          IF FileExists($ThisBkp)
+              $OldVer=$Ver+1
+              $ThatBkp  ="$BkpF$OldVer$Extn"
+              $Parms="/c Ren $_Quote$ThisBkp$_Quote $ThatBkp"
+              $Command="$ComSpec Parms=$Parms"
+              RUNPGM Pgm=$Command Wait=yes
+          ENDIF 
+      ENDWHILE 
+      SHOWSTATUS Msg="Creating Backup..."
+      $ThisBkp="$BkpDir$BkpF"+"1"+"$Extn"
+      BACKUP File=$ThisBkp Database=All
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=DateTimeBackup
+#      $BkpDir  = $_Install+"\Backup\"
+      $BkpDir  = Sysinfo("gsakini;TfmConfig;edtBackupFolder.Text")+"\"
+      $Today=DateToString($_Today)
+      $Time=Time()
+      $Now = Replace(":","",$Time,True)
+      $Fname="MacroBackup "+$Today+" "+$Now+".Zip"
+      $ThisBkp="$BkpDir$Fname"
+      BACKUP File=$ThisBkp Database=All
+  ENDSUB 
+###################################################################################

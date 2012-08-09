@@ -1,0 +1,158 @@
+#*******************************************
+# MacVersion = 1.1
+# MacDescription = Display general database statistics
+# MacAuthor = clyde
+# MacFileName = stats.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=1448&view=findpost&p=32604
+#*******************************************
+
+#debug status=on
+$Total = 0
+$Found = 0
+$logs = 0
+$NotFound = 0
+$TravelBugs = 0
+$dnf = 0
+$dnfSinceFound = 0
+$archived = 0
+$TempDisabled = 0
+$Available = 0
+$FTF = 0
+$watch = 0
+$lock = 0
+$UserNote = 0
+$FBM = ""
+$FBany = ""
+$NoDate = [00000000]
+$FBMDate = $NoDate
+$FBAnyDate = $NoDate
+$temp = $_Install + "\temp"
+
+
+
+# generate the subroutine to the temp folder
+$Sub = $temp + "\StatsSub.txt"
+$Result = PutFile($sub, $SubRoutine)
+# now run the subroutine for each database you want counted
+#Database Name=clyde
+#Macro File=$sub
+#Database Name=clyde2
+#Macro File=$sub
+
+# make sure to delete the following line if using multiple databases as above
+Macro File=$sub
+
+$out = "<html>" + $_NewLine
+$out = $out + "<style type='text/css'>" + $_NewLine
+$out = $out + "<!--" + $_NewLine
+$out = $out + ".Body{font-family:'Arial'}" + $_NewLine
+$out = $out + ".TableHeader{background-color:#CCCCFF;text-align: center}" + $_NewLine
+$out = $out + ".Item{color:blue;font-weight:bold}" + $_NewLine
+$out = $out + ".row{background-color: #FEF4D8;vertical-align:top}" + $_NewLine
+$out = $out + "-->" + $_NewLine
+$out = $out + "</style>" + $_NewLine
+$out = $out + "<body class=body>" + $_NewLine
+$out = $out + "<table border='1' summary=''>"
+$out = $out + "<tr class=TableHeader><td align='center' colspan=2>Stats for Database: " + $_CurrentDatabase + "</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Total Waypoints:</td><td>" + "$Total</td></tr>" +  $_NewLine
+$out = $out + "<tr class=row><td>Available:</td><td>" +  "$Available</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Archived:</td><td>" +  "$archived</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Temp Disabled:</td><td>" +  "$TempDisabled</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Total Logs:</td><td>" + "$logs</td></tr>" +  $_NewLine
+$out = $out + "<tr class=row><td>With travel bugs:</td><td> " + "$TravelBugs" + "</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Found:</td><td>" +  "$Found</td></tr>" + $_NewLine
+# total DNF caches. Note You may have now found these but you at some time logged a DNF
+$out = $out + "<tr class=row><td>DNF Logged:</td><td>" +  "$DNF</td></tr>" + $_NewLine
+If $Found > 0
+  $pcnt = ($Dnf/$Found) * 100
+  $pcnta = left("$pcnt",4)
+  $out = $out + "<tr class=row><td>Found/DNF ratio</td><td>" + $pcnta +  "%</td></tr>" + $_NewLine
+EndIf
+$out = $out + "<tr class=row><td>DNF Since found:</td><td>" +  "$DnfSinceFound</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Not Found:</td><td> " + "$NotFound</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>First to Find:</td><td> " + "$FTF</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Watching:</td><td> " + "$watch</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Locked:</td><td> " + "$lock</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>User Notes:</td><td> " + "$UserNote</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Latest find (by anyone):</td><td>" + $FBany + "</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Latest find by me:</td><td>" + $fbm + "</td></tr>" +$_NewLine
+$out = $out + "</table></body></html>"
+$FileName = $temp + "\stats.htm"
+$Error = PutFile($FileName,$out)
+OpenFile file="$FileName"
+
+<data> VarName=$SubRoutine
+  $Total = $total + $_Count
+  $ThisRecord = 0
+  $x = 0
+  $Sort = $_SortBy
+  CancelFilter
+  ShowStatus msg="Get Found Count"  
+  Mfilter if=$d_found
+  $found = $found + $_FilterCount
+  cancelfilter
+  $NotFound = $Total - $found
+  ShowStatus msg="Get travel bugs"  
+  MFilter if=$d_HasTravelBug
+  $TravelBugs = $TravelBugs + $_FilterCount
+  ShowStatus msg="Get DNF"  
+  MFilter if=$d_dnfDate > $NoDate
+  $dnf = $dnf + $_FilterCount
+  ShowStatus msg="Get DNF since found"  
+  MFilter if=$d_dnfDate > $NoDate .and. $d_Found
+  $dnfSinceFound = $dnfSinceFound + $_FilterCount
+  ShowStatus msg="Get Archived"  
+  Mfilter if=$d_Archived
+  $archived = $archived + $_FilterCount
+  ShowStatus msg="Get temp disabled"  
+  MFilter if=$d_Tempdisabled
+  $tempdisabled = $tempdisabled + $_FilterCount
+  cancelfilter
+  $available = $total - $archived - $TempDisabled
+  ShowStatus msg="Get First to find"  
+  MFilter if=$d_FTF
+  $FTF = $FTF + $_FilterCount
+  ShowStatus msg="Get watched"  
+  MFilter if=$d_watch
+  $watch = $watch + $_FilterCount
+  ShowStatus msg="Get locked"  
+  MFilter if=$d_lock
+  $lock = $lock + $_FilterCount
+  ShowStatus msg="Get has user notes"  
+  MFilter if=$d_HasUserNote
+  $usernote = $usernote + $_FilterCount
+  CancelFilter
+  Sort By=FoundByMe
+  GoTo position=Bottom
+  If $d_FoundByMeDate > $fbmDate
+    $FBM = DateFormat($d_FoundByMeDate) + " - " + $d_Name 
+    $fbmDate = $d_FoundByMeDate
+  EndIf
+  Sort By=FoundDate
+  GoTo position=Bottom
+  If $d_LastFoundDate > $FBanyDate
+    $FBany = DateFormat($d_LastFoundDate) + " - " + $d_Name 
+    $FBanyDate = $d_LastFoundDate 
+  EndIf  
+  CancelFilter
+
+  Goto Position=Top
+  While .not. $_eol
+    $ThisRecord = $ThisRecord + 1
+    $x = $x + 1
+    if $x = 5
+      $status = "Counting logs: " + "$ThisRecord" + " of " + "$_Count"
+      ShowStatus msg="$status"
+      $x = 0
+    endif  
+    $logs = $logs + $d_NumberOfLogs 
+    Goto Position=Next
+  EndWhile
+
+  $SortData = Extract($Sort, "=",1)
+  $Sequence = Extract($Sort, "=",2)
+  SORT By=$SortData Sequence=$Sequence 
+  Goto Position=Top
+<enddata>
+	
+

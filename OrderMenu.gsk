@@ -1,0 +1,358 @@
+# FindStatGen Section Order GUI Interface
+# Experimental 10-11-08
+
+# MacDescription = Experimental FSG GUI
+# MacFileName = OrderMenu.gsk
+# MacAuthor = Lignumaqua
+# MacVersion= 1.01
+
+# Define SQL database
+$datafilepath = Sysinfo("MacroPath")
+$sqlfile = $datafilepath + "\OrderMenu.db3"
+#$file = ":memory:"
+
+IF NOT(FileExists($sqlfile))
+ 	$status = Sqlite("create",$sqlfile)
+ 	$status = Sqlite("open",$sqlfile)
+ 	# Create table
+	$Data = "Name text,ID integer,Position integer,Width integer, Enabled boolean"
+	$_sql = "CREATE TABLE OrderMenu ($Data)"
+	$status = Sqlite("sql",$_sql,"")
+	$status = sqlite("import",$DefaultMenuFile,"table=OrderMenu")
+ELSE
+	$status = Sqlite("open",$sqlfile)	
+ENDIF
+
+#$_sql = "drop table if exists OrderMenu"
+#$status = Sqlite("sql",$_sql,"")
+
+$_sql="SELECT Count(*) FROM OrderMenu"
+$Count = Val(Sqlite("sql",$_sql))
+
+
+
+GOSUB name=CreateForm
+
+$_sql = "BEGIN"
+$status = Sqlite("sql",$_sql,"")
+
+WHILE TRUE
+	$result = Form($MenuForm,"")
+	BEGINCASE #Buttons
+    CASE $Cancel
+    	$_sql = "ROLLBACK"
+			$status = Sqlite("sql",$_sql,"")
+      CANCEL
+    CASE $OK
+    	$_sql = "COMMIT"
+			$status = Sqlite("sql",$_sql,"")
+      #GOSUB name=
+      CANCEL
+    CASE $result = "SystemExit"
+    	$_sql = "ROLLBACK"
+			$status = Sqlite("sql",$_sql,"")
+			CANCEL
+    OTHERWISE
+    	GOSUB name=ParseButtons
+    	GOSUB name=CreateForm
+  ENDCASE
+	
+ENDWHILE
+
+BEGINSUB name=ParseButtons
+	$CurrentPosition = Val(RegExData("\d*",$result,1))
+	
+	# Was it an Enable button?
+	IF Left($result,1) = "E"
+		$_sql = "UPDATE OrderMenu SET Enabled = not(Enabled) WHERE Position = $CurrentPosition"
+		$status = Sqlite("sql",$_sql,"")
+	EXITSUB
+	ENDIF
+	
+	# Must have been a move button
+	IF Left($result,1) = "U"
+		$delta = -1
+	ELSE
+		$delta = 1
+	ENDIF
+	
+	# Ingnore if try to go up when already at the top or down when already at the bottom
+	IF ($delta = -1 AND $CurrentPosition = 1) OR ($delta = 1 AND $CurrentPosition = $Count)
+		EXITSUB
+	ENDIF
+	
+	$_sql="SELECT ID FROM OrderMenu WHERE Position=$CurrentPosition"
+	$ID = Sqlite("sql",$_sql)
+		
+	$_sql = "UPDATE OrderMenu SET Position = Position - $delta WHERE Position = $CurrentPosition + $delta"
+	$status = Sqlite("sql",$_sql,"")
+	$_sql = "UPDATE OrderMenu SET Position = Position + $delta WHERE ID = $ID"
+	$status = Sqlite("sql",$_sql,"")
+	
+ENDSUB
+
+# Display main form
+
+BEGINSUB name=CreateForm
+	$_sql="SELECT Count(*) FROM OrderMenu"
+	$Count = Val(Sqlite("sql",$_sql))
+	$i = 1
+	$MenuForm = $form
+	$rowcount = 0
+	$lasthalf = FALSE
+	
+	WHILE $i <= $Count
+		$_sql="SELECT NAME, ID, Width, Enabled FROM OrderMenu WHERE Position=$i"
+		$status = Sqlite("sql",$_sql)
+		$name = Extract($status,";",1)
+		$width = Val(Extract($status,";",3))
+		$enabled = Extract($status,";",4)
+		
+		IF $width = 1
+			IF $lasthalf
+				$lasthalf = FALSE
+				$offset = 130
+			ELSE
+				$lasthalf = TRUE
+				$rowcount = $rowcount + 1
+				$offset = 0
+			ENDIF
+		ELSE
+			$lasthalf = FALSE
+			$rowcount = $rowcount + 1
+			$offset = 0
+		ENDIF
+		
+		$column = Int(($rowcount-1)/10)
+		$row = $rowcount - 10*$column - 1
+		$top = 50 + (60 * $row)
+		$left = 20 + (280 * $column) + $offset
+		
+		
+		IF $enabled = "1"
+			$color2 = "65280"
+			$caption = "Enabled"
+			$color = "16766421"
+		ELSE
+			$color2 = "255"
+			$caption = "Disabled"
+			$color = "14869218"
+		ENDIF
+				
+		IF $width = 1
+			$tempitem = $halfformitem
+		ELSE
+			$tempitem = $formitem
+		ENDIF
+		
+		$tempitem = Replace("%%","$i",$tempitem,TRUE)
+		$tempitem = Replace("!!left!!","$left",$tempitem,TRUE)
+		$tempitem = Replace("!!top!!","$top",$tempitem,TRUE)
+		$tempitem = Replace("!!name!!","$name",$tempitem,TRUE)
+		$tempitem = Replace("!!color!!","$color",$tempitem,TRUE)
+		$tempitem = Replace("!!color2!!","$color2",$tempitem,TRUE)
+		$tempitem = Replace("!!enable!!","$caption",$tempitem,TRUE)
+		$MenuForm = $MenuForm + $tempitem
+		$i = $i + 1
+	ENDWHILE
+	# Set overall Form Width
+	$left = 320 + (280 * $column)
+	$MenuForm = Replace("!!formwidth!!","$left",$MenuForm,TRUE)
+	
+	$left = $left/2 - 130
+	$MenuForm = Replace("!!okleft!!","$left",$MenuForm,TRUE)
+	$MenuForm = Replace("!!titleleft!!","$left",$MenuForm,TRUE)
+	
+	$left = $left + 175
+	$MenuForm = Replace("!!cancelleft!!","$left",$MenuForm,TRUE)
+		
+ENDSUB #CreateForm
+
+<Data> VarName=$form
+
+Name = Form1
+  Type = Form
+  Height = 720
+  Width = !!formwidth!!
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = !!okleft!!
+  Top = 660
+  Width = 75
+  Taborder = 0
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = !!cancelleft!!
+  Top = 660
+  Width = 75
+  Taborder = 1
+  Caption = Cancel
+
+Name = Label1
+  Type = Label
+  Color = 16744448
+  Height = 20
+  Left = !!titleleft!!
+  Size = 12
+  Style = bold
+  Top = 11
+  Width = 272
+  Caption = FindStatGen Section Order Editor
+
+<enddata>
+
+<Data> VarName=$formitem
+
+Name = Groupbox%%
+  Type = Groupbox
+  Height = 51
+  Left = !!left!!
+  Top = !!top!!
+  Width = 250
+  Caption = %%
+  Color = !!color!!
+  
+
+Name = NameLabel%%
+  Type = Label
+  Container = Groupbox%%
+  Height = 13
+  Left = 10
+  Top = 14
+  Width = 32
+  Style = bold
+  Caption = !!name!!
+
+Name = M%%
+	Type = Memo
+  Color = !!color2!!
+  Container = Groupbox%%
+  Enabled = no
+  Height = 17
+  Left = 83
+  Top = 32
+  Width = 68
+  
+Name = E%%
+  Type = Button
+  Container = Groupbox%%
+  Height = 13
+  Left = 95
+  Top = 34
+  Width = 44
+  Caption = !!Enable!!
+  
+Name = U%%
+  Type = Button
+  Container = Groupbox%%
+  Height = 17
+  Left = 230
+  Top = 9
+  Width = 15
+  Caption = +
+
+Name = D%%
+  Type = Button
+  Container = Groupbox%%
+  Height = 17
+  Left = 230
+  Top = 30
+  Width = 15
+  Caption = -
+
+<enddata>
+
+<Data> VarName=$halfformitem
+
+Name = Groupbox%%
+  Type = Groupbox
+  Height = 51
+  Left = !!left!!
+  Top = !!top!!
+  Width = 120
+  Caption = %%
+  Color = !!color!!
+  
+
+Name = NameLabel%%
+  Type = Label
+  Container = Groupbox%%
+  Height = 13
+  Left = 2
+  Top = 14
+  Width = 32
+  Style = bold
+  Size = 7
+  Caption = !!name!!
+
+Name = M%%
+	Type = Memo
+  Color = !!color2!!
+  Container = Groupbox%%
+  Enabled = no
+  Height = 17
+  Left = 21
+  Top = 32
+  Width = 68
+  
+Name = E%%
+  Type = Button
+  Container = Groupbox%%
+  Height = 13
+  Left = 33
+  Top = 34
+  Width = 44
+  Caption = !!Enable!!
+  
+Name = U%%
+  Type = Button
+  Container = Groupbox%%
+  Height = 17
+  Left = 100
+  Top = 9
+  Width = 15
+  Caption = +
+
+Name = D%%
+  Type = Button
+  Container = Groupbox%%
+  Height = 17
+  Left = 100
+  Top = 30
+  Width = 15
+  Caption = -
+
+<enddata>
+
+
+<Data> VarName=$DefaultMenuFile
+Finds by Month;1;1;2;1
+Milestones;2;2;2;1
+Distance from Home;3;3;1;1
+Cache Type;4;4;1;1
+Diff/Terr;5;5;2;1
+Owner;6;6;2;1
+US State map;7;7;2;1
+Canadian Province map;8;8;2;1
+European map;9;9;2;1
+Australian map;10;10;2;1
+World map;11;11;2;1
+Days of the week;12;12;1;1
+Container type;13;13;1;1
+Other statistics;14;14;2;1
+FTFs;15;15;2;1
+Notes;17;16;2;1
+Placed;18;17;2;1
+Special;19;18;2;1
+Other Maps;20;19;2;1
+Bearing;21;20;1;1
+Best Month;22;21;1;1
+Year Cache Placed;23;22;1;1
+<enddata>
+
+# --Exclude--;16;16;2

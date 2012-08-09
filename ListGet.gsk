@@ -1,0 +1,41 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = List supported countries for GetState() and GetCounty
+# MacAuthor = clyde
+# MacFileName = ListGet.gsk
+# MacUrl =
+#*******************************************
+
+# file location to interrogate
+$file = $_install + "\locations\ctyabr.csv"
+
+# create our column header line
+$out = "Country;GetState();GetCounty()" + $_NewLine
+
+# Read our master file of supported countries
+FileRead File=$file
+  $Country = extract($line,",",1)
+  $GetState = extract($line,",",3)
+  $GetCounty = extract($line,",",4)
+
+  if StrToBool($GetState)
+    $GetState = "Yes"
+  else
+    $GetState = "No"
+  endif
+
+  if StrToBool($GetCounty)
+    $GetCounty = "Yes"
+  else
+    $GetCounty = "No"
+  endif
+
+  # Geerate each line
+  $out = $out + "$Country;$GetState;$GetCounty" + $_NewLine
+
+EndRead
+
+# finally, generate report and output to browser
+$status = SqlToHtml($out,"List suppoted countries for Get..() functions","y")
+
+

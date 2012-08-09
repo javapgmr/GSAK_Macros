@@ -1,0 +1,414 @@
+#*******************************************
+# MacDescription = Determine which caches have been found by a cacher in your database
+# MacFileName = CacherFinds.gsk
+# MacAuthor = Kai Team
+# MacVersion=2.36
+# MacUrl=http://gsak.net/board/index.php?showtopic=7672&view=findpost&p=46998
+#*******************************************
+
+$SavedFilter=SaveFilter()
+$Output=""
+$HTMLOutput=TRUE
+$OwnedCaches=TRUE
+$Spaces="                        "
+$CodePadding=Chr(46)+Chr(46)+Chr(46)+Chr(46)+Chr(46)+Chr(46)
+#$File = $_Install + "\macros\CacherFinds.txt"
+$work = ""
+$InputForm=EditForm($InputForm,"OName","Values","Enter Geocaching Name")
+$NumberFound=0
+
+$_sql="Select Count() from Logs where g_foundlog(ltype)"
+$FoundLogs=Sqlite("sql",$_sql)
+
+IF Val($Foundlogs)>25000
+    IF YesNo("There are $Foundlogs Found Logs in this database and it could take several minutes to run this macro. Continue?","Large DB Confirmation")
+        $Continue=TRUE
+    ELSE
+        RETURN Msg=Macro canceled
+    ENDIF
+ENDIF
+
+$status = "Gathering information for $FoundLogs found logs in this database.  Please wait..."
+SHOWSTATUS msg="$status" Width=420
+
+$_sql="Select lby,lOwnerID,lParent from LogsAll"
+$LogList=Sqlite("sql",$_sql)
+
+$CodeLength=Sqlite("Sql","Select max(length(lparent)) From LogsAll")
+$MaxCodeLength=Val($CodeLength)
+
+SHOWSTATUS msg="" Width=450 Display=Off
+
+WHILE TRUE
+    $FormExit = form($InputForm,"")
+    IF $FormExit = "OName"
+        IF Len($OName)=0
+            $work = ""
+            $oname = ""
+            $InputForm=EditForm($InputForm,"OName","Values",";")
+        ELSE
+            IF Len($oname) = 1
+                $work = $work + $oname
+                $_sql="select lby from LogsAll where lby like '$work%' Group By lby order by lby"
+                $data=Sqlite("sql",$_sql)
+                $Data=Replace($_NewLine,";",$Data,True)
+                $oname = extract($data,";",1)
+                $InputForm=EditForm($InputForm,"OName","Values",$data)
+            ENDIF
+        ENDIF
+    ENDIF
+
+    BEGINCASE
+        CASE $FormExit = "SystemExit"
+            CANCEL Msg="Macro Cancelled"
+        CASE $FormExit = "OK"
+            GOSUB Name=GetID
+            GOSUB Name=ListFinds
+            IF $TextOutput
+                GOSUB Name=TextReport
+            ENDIF
+            IF $HTMLOutput
+                GOSUB Name=HTMLReport
+            ENDIF
+            BREAK
+        CASE $FormExit = "Cancel"
+            CANCEL Msg="Macro Cancelled"
+    ENDCASE
+ENDWHILE
+
+BEGINSUB Name=GetID
+    $IDData=Replace($_NewLine,";",$LogList,True)
+
+    IF At($OName,$IDData)<>0
+	    $Position = At($OName,$IDData)
+        $Position = $Position + Len($OName)+1
+        $ONum = Val(SubStr($IDData,$Position,$Position + 8))
+    ELSE
+        IF $OName="Enter Geocaching Name" OR $Oname=""
+            CANCEL Msg="You must enter a geocaching name.  Macro cancelled."
+        ELSE
+            CANCEL Msg="Owner ID not found.  Macro cancelled"
+        ENDIF
+    ENDIF
+ENDSUB
+
+#Convert this section to SQLite: Select ldate,lparent,(Select lName from Caches WHERE code=lparent) From Logs WHERE g_foundlog(ltype) and lOwnerID=$ONum AND $_Where"
+BEGINSUB Name=ListFinds
+    IF $OwnedCaches=TRUE
+        CANCELFILTER
+        MFILTER Expression=IsOwner()
+        IF $_FilterCount=0
+            CANCEL Msg="No owned caches found. Macro cancelled"
+        ENDIF
+    ENDIF
+    GOTO position=top
+    $CacheCount=$_Count
+    $ThisCache=1
+    WHILE NOT($_EOL)
+        $CacheName=Replace("'","",$d_Name,TRUE)
+        $CacheName=Replace(Chr(34),"",$CacheName,TRUE)
+        TABLE Active=Logs Scope=Parent
+        IF $d_Archived=TRUE
+            $Archived=TRUE
+        ELSE
+            $Archived=FALSE
+        ENDIF
+        $ThisLog=0
+        WHILE NOT($_EOL)
+            $ThisLog=$ThisLog+1
+            # Show status of analysis
+            $status = "Analyzing: " + "  Cache: " + NumToStr($ThisCache) + " of " + NumToStr($CacheCount) + "  Log: " + NumToStr($ThisLog)
+            IF frac($ThisLog/20) = 0
+                ShowStatus msg="$status" Width=350
+            ENDIF
+            IF $d_lType="Found it" OR $d_lType="Attended" OR $d_lType="Webcam Photo Taken" AND $ONum=$d_lOwnerid
+                $DateFound=DateToString($d_lDate)
+                $DateFound=Left($DateFound,4) + "-" + SubStr($DateFound,5,2) + "-" + SubStr($DateFound,7,2)
+                IF $HTMLOutput
+                    $ParentCode= Right($CodePadding + $d_lParent,$MaxCodeLength)
+                    IF $Archived=TRUE
+                        $CacheName="<strike>" + $CacheName + "</strike>"
+                    ENDIF
+                ELSE
+                    $DateFound=$DateFound + "    "
+                    $ParentCode=Left($d_lParent + $Spaces,9)
+                ENDIF
+                $Output=$Output + $DateFound  + "  ;" + $ParentCode + ";" + $CacheName + $_NewLine
+                IF $TextOutput
+                    $Output=Replace(";","   ",$Output,FALSE)
+                ENDIF
+                $NumberFound=$NumberFound+1
+                BREAK
+            ENDIF
+            GOTO position=next
+        ENDWHILE
+        IF At($d_lParent,$Output)=0
+            IF $HTMLOutput
+                $CacheCode= Right($CodePadding + $d_Code,$MaxCodeLength)
+                IF $Archived=TRUE
+                    $CacheName="<strike>" + $CacheName + "</strike>"
+                ENDIF
+            ELSE
+                $CacheCode=$d_lParent
+            ENDIF
+            $Output=$Output + "NOT FOUND  " + ";" + $CacheCode + ";" + $CacheName + $_NewLine
+        ENDIF
+        TABLE Active=caches
+        $ThisCache=$ThisCache + 1
+        GOTO Position=Next
+    ENDWHILE
+ENDSUB
+
+BEGINSUB Name=TextReport
+    WHILE TRUE
+        $Memo1=$Output
+        $FormExit = form($ReportForm,"")
+        BEGINCASE
+            CASE $FormExit = "SystemExit"
+            CANCELFILTER
+            IF RestoreFilter($SavedFilter,True) = 0
+                PAUSE Msg="No records match your restored filter. Filter has been canceled"
+            ENDIF
+            CANCEL
+
+            CASE $FormExit = "OKReport"
+            CANCELFILTER
+            IF RestoreFilter($SavedFilter,True) = 0
+                PAUSE Msg="No records match your restored filter. Filter has been canceled"
+            ENDIF
+            CANCEL
+
+            CASE $Formexit= "ClipBoard"
+            CLIP Data=$Memo1
+            CANCELFILTER
+            IF RestoreFilter($SavedFilter,True) = 0
+                PAUSE Msg="No records match your restored filter. Filter has been canceled"
+            ENDIF
+            CANCEL
+        ENDCASE
+    ENDWHILE
+ENDSUB
+
+BEGINSUB Name=HTMLReport
+    $HTMLout="Found on; Code; Cache Name" + $_NewLine + $Output
+    $PercentFound=Round($NumberFound/$CacheCount * 100,0)
+    $PercentFoundStr=NumToStr($PercentFound)
+    $html = sqltohtml($HTMLOut,$Oname + " Found " + NumToStr($NumberFound) + " of " + NumToStr($CacheCount) + " caches (" + $PercentFoundStr + "%)","y")
+    CANCELFILTER
+    IF RestoreFilter($SavedFilter,True) = 0
+        PAUSE Msg="No records match your restored filter. Filter has been canceled"
+    ENDIF
+ENDSUB
+
+  <Data> VarName=$InputForm
+#********************************************************************
+# Form generated by GSAK form designer on Sat 01-Mar-2008 17:37:33
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Determine Which Caches Someone has Found*
+  Color = 16773862
+  Height = 258
+  Width = 500
+
+Name = Groupbox1
+  Type = Groupbox
+  Color = 13619151
+  Height = 43
+  Left = 18
+  Top = 53
+  Width = 463
+  Taborder = 3
+
+Name = Groupbox2
+  Type = Groupbox
+  Color = 13619151
+  Height = 43
+  Left = 18
+  Top = 107
+  Width = 463
+  Taborder = 4
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 136
+  Top = 169
+  Width = 75
+  Taborder = 1
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 280
+  Top = 169
+  Width = 75
+  Taborder = 2
+  Caption = Cancel
+
+Name = Label1
+  Type = Label
+  Height = 13
+  Left = 25
+  Style = bold
+  Top = 22
+  Width = 205
+  Caption = Enter the Finder's Geoaching Name:
+
+Name = Label2
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 8
+  Style = bold
+  Top = 17
+  Width = 80
+  Caption = Ouput Format:
+
+Name = TextOutput
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 17
+  Left = 97
+  Top = 15
+  Width = 15
+  Taborder = 0
+
+Name = Label3
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 115
+  Top = 17
+  Width = 189
+  Caption = Text Report (can be copied and pasted)
+
+Name = HTMLOutput
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 17
+  Left = 327
+  Top = 15
+  Width = 15
+  Taborder = 1
+
+Name = Label4
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 345
+  Top = 17
+  Width = 111
+  Caption = HMTL Report (sortable)
+
+Name = OName
+  Type = Combobox
+  Directinput = Yes
+  Exitonchange = Yes
+  Height = 21
+  Left = 234
+  Top = 18
+  Width = 241
+  Taborder = 0
+
+Name = OwnedCaches
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 118
+  Top = 15
+  Width = 15
+  Taborder = 0
+
+Name = Label5
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 137
+  Top = 17
+  Width = 106
+  Caption = Only the caches I own
+
+Name = AllCaches
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 257
+  Top = 15
+  Width = 15
+  Taborder = 1
+
+Name = Label6
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 274
+  Top = 17
+  Width = 169
+  Caption = All caches in the current DB or Filter
+
+Name = Label7
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 7
+  Style = Bold
+  Top = 17
+  Width = 105
+  Caption = Caches to Search:
+
+Name = Label8
+  Type = Label
+  Color = 16711680
+  Height = 12
+  Left = 15
+  Size = 7
+  Top = 208
+  Width = 416
+  Caption = *Note: You must have all logs from the selected geocacher in your GSAK database for accurate results
+
+<enddata>
+
+<Data> VarName=$ReportForm
+#********************************************************************
+# Form generated by GSAK form designer on Sun 24-Feb-2008 17:10:33
+#********************************************************************
+
+Name = Form2
+  Type = Form
+  Caption = Report of Caches Found or Not Found
+  Height = 526
+  Width = 372
+
+Name = Memo1
+  Type = Memo
+  Height = 427
+  Left = 13
+  Scrollbars = Vertical
+  Top = 12
+  Width = 337
+  Taborder = 8
+
+Name = OKReport
+  Type = Button
+  Height = 25
+  Left = 60
+  Top = 456
+  Width = 75
+  Taborder = 9
+  Caption = OK
+
+Name = ClipBoard
+  Type = Button
+  Height = 25
+  Left = 228
+  Top = 456
+  Width = 75
+  Taborder = 10
+  Caption = Clipboard
+
+<enddata>
+
+

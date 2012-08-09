@@ -1,0 +1,2805 @@
+################################################################################
+#                          GSAK Extract Logs from HTML                         #
+# AddLogs.gsk  written by Kai Team and Lignumaqua 2007, 2008, 2009, 2010       #
+#                                                                              #
+# This script downloads and parses a local copy of the GC.com cache page       #
+# showing FULL logs and extracts the individual logs                           #
+# The logs are checked for duplicates and then added to the cache database     #
+#
+# 1.46 For new version of GC.com after July 2008
+# 1.47 For new version of GC.com after October 9 2008
+# 1.48 Bug fix if <100 logs in checked database
+# 1.49 Delete dowloaded ID file after use to avoid any duplicated IDs
+# 1.50 Remove $d_Changed updates
+# 1.51 Update changed Logs
+# 2.00 Covert to SQLite, Use MACSETTINGS
+# 2.02 SQLite escaping for $by
+# 2.10 Changed DataFile to relative path; DB search selection made sticky;
+#      Attach rather than open DB's, form tweaks;
+#      Added loop & alert sound to prevent skipping scanning for Owner ID's.
+# 2.11 Update Mac Version.
+# 2.12 Fixed case where sysinfo path does not end in "\"
+# 2.13 Updated GetSecureHTML to match GC.com changes 6-25-09.
+# 2.14 Added HttpEncode to line 281 to address user names with "&"
+# 2.15 Fixed bug of not updating OwnerID=0 in existing logs;
+#      Allowed for Found It (capitalization) edge case in log count
+#      Added automatic updating of $Revision on macro form
+# 2.17 Parse smilies
+# 2.18 Parse links
+# 2.19 IsOwner check; Autoscan logs if newer logs exist in DB's
+# 2.20 Date check
+# 2.21 Updated to match GC.com changes 2-24-10
+# 2.22 IDCheck
+# 2.23 Removed MFilter, filter, save and restore filters, filter data statement
+# 2.24 Updated to match GC.com changes 6-2-2010
+# 2.25 Improve check for valid log dates
+# 2.26 Even further improve check for valid log dates, check for no log dates at all.
+# 2.27 New Premium Member page on GC.com
+# 2.28 Fix for logs from finder with zero finds. Add Unarchive, Retract Listing and Announcement log types
+# 2.29 Updated to match GC.com changes 11-9-10
+# 2.30 Further updates to match GC.com changes 11-9-10
+# 2.31 Further updates to match GC.com changes relating to UTF8 encoding and line breaks in logs
+# 2.32 Updated to match GC.com changes 12-21-10
+# 2.33 Use Pacific Time zone for current year, zero finders
+# 2.34 Updated to match GC.com changes 5-5-11
+#
+# MacDescription = Add missing logs to a waypoint
+# MacFileName = AddLogs.gsk
+# MacAuthor = Kai Team & Lignumaqua
+# MacVersion=2.34
+# MacUrl=http://gsak.net/board/index.php?showtopic=5009&view=findpost&p=30045
+################################################################################
+
+#Check status of Ctrl key
+PreProcess Ctrl=$CtrlKey
+
+# Version check
+VERCHECK Version=7.7.0.0 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+
+GOSUB Name=DeclareVariables
+$Revision = Alltrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath") + "\" + SysInfo("Macrofile")),1,1))
+$form = Editform($form,"VersionLabel","caption","$Revision")
+
+SPEEDMODE status=on
+
+# Set defaults & initialize variables
+
+# Set and validate file paths
+$Htmlfilepath = $_Install + "\html"
+IF NOT(FolderExists($htmlfilepath))
+    $BatFile = $_Install + "\babel.bat"
+  	$result = PutFile($BatFile, "MD " + quote($htmlfilepath))
+  	FILEOPEN File="$BatFile" Wait=yes
+ENDIF
+
+$HTMLFile= $Htmlfilepath + "\logs.html"
+$IDfile= $Htmlfilepath + "\id.html"
+$SoundFile=$_Install + "\Macros\CrticalStop.wav"
+$FindOwners=TRUE
+$Date=""
+$dblist = SysInfo("databases")
+$SelectDBBx=$_CurrentDatabase
+$Db=$_CurrentDatabase
+$FoundBx=TRUE
+$OwnerIDFile=$_Install + "\Macros\OwnerIDdata.db3"
+$DataFile=$_Install + "\Macros\AddLogs.xml"
+$dblist = "*Not Selected*" + ";" + SysInfo("databases")
+$OwnerSearch=""
+$Record=0
+$GUID = Extract($d_Url,"?guid=", 2)
+#$FullLogsURL="http://www.geocaching.com/seek/cache_details.aspx?ID=%gcid&log=y&decrypt="
+$FullLogsURL="http://www.geocaching.com/seek/cache_details.aspx?guid=$guid&log=y&decrypt="
+$tmp = PutFile($Htmlfilepath + "\GetHTML.vbs", MimeDecode($GetHTML))
+$tmp = PutFile($Htmlfilepath + "\GetSecureLogs.vbs", MimeDecode($GetSecureLogs))
+
+IF Not(FileExists($SoundFile))
+    $Sound=MimeDecode($CriticalStop)
+    $Data = PutFile($SoundFile,$Sound)
+    IF Left($Data,7) = "*Error*"
+        Pause Msg="$Data"
+        Cancel
+    ENDIF
+ENDIF
+
+# Check if the data-file exists?
+IF (FileExists($DataFile))
+	# If the file exists  read the saved values and assign them to variables
+	MACSETTINGS Type=R
+ELSE
+	# No saved file so set defaults for form
+	$UserName="$d_PlacedBy"
+	$UserPWD = ""
+	$FoundBx=TRUE
+	$DNFBx=TRUE
+	$NoteBx=TRUE
+	$OwnerMainBx=TRUE
+	$TempDisBx=TRUE
+	$EnableBx=TRUE
+	$ArchiveBx=TRUE
+	$RevNoteBx=TRUE
+	$PublishBx=TRUE
+	$AddManBx=TRUE
+	$WillAttendBx=TRUE
+	$NeedsMaintBx=TRUE
+	$NeedsArchBx=TRUE
+	$AnnouncementBx=TRUE
+	$RetractBx=TRUE
+	$UnarchiveBx=TRUE
+	$FrmDat2=StringToDate("20000101")
+	$FlagBx=TRUE
+	$NextBx=TRUE
+	$SelectDBBox1="*Not Selected*"
+	$SelectDBBox2="*Not Selected*"
+	$SelectDBBox3="*Not Selected*"
+	$SelectDBBox4="*Not Selected*"
+	$LastSearch=[20000101]
+
+	IF Showform($Logininfo)
+		IF $CancelBtn AND Not(IsEmpty($UserPWD))
+			MACSETTINGS Type=S Vars=$Variables
+			CANCEL msg="Macro cancelled"
+		ELSE
+			IF $CancelBtn AND IsEmpty($UserPWD)
+				CANCEL msg="Macro cancelled"
+			ENDIF
+		ENDIF
+	ENDIF
+ENDIF
+
+#Define owner ID database
+IF NOT(FileExists($OwnerIDFile))
+	$status = Sqlite("Create",$OwnerIDFile)
+
+	# Then open it ready for use
+	$status = Sqlite("Open",$OwnerIDFile)
+
+	# Set up the SQL table
+	$Data ="OwnerIDNumber text UNIQUE, OwnerName text UNIQUE"
+	$_sql = "CREATE TABLE IF NOT EXISTS OwnerIDs ($Data)"
+	$status = Sqlite("sql",$_sql)
+	GOSUB Name=DBSearch Form
+ELSE
+	#Open the existing Owner ID database
+	$status = Sqlite("Open",$OwnerIDFile)
+ENDIF
+
+# If we get to here then the user must have clicked on the OK button
+
+# Save the values into $datafile to be reused the next time the macro is run
+MACSETTINGS Type=S Vars=UserName,UserPWD,FoundBx,DNFBx,NoteBx,OwnerMainBx,TempDisBx,EnableBx,ArchiveBx,RevNoteBx,PublishBx,AddManBx,WillAttendBx,NeedsMaintBx,NeedsArchBx,FrmDat2,FlagBx,NextBx,SelectDBBox1,SelectDBBox2,SelectDBBox3,SelectDBBox4,LastSearch,AnnouncementBx,RetractBx,UnarchiveBx
+
+# ============= Form ==============
+
+IF $CtrlKey=FALSE
+    WHILE ShowForm($form)
+    	# Reset the screen position of the menu form to where the user left it
+      	$Form = EditForm($Form,"Form1","Top",$_FormTop)
+      	$Form = EditForm($Form,"Form1","Left",$_FormLeft)
+      	IF $cancelform
+            MACSETTINGS Type=S Vars=UserName,UserPWD,FoundBx,DNFBx,NoteBx,OwnerMainBx,TempDisBx,EnableBx,ArchiveBx,RevNoteBx,PublishBx,AddManBx,WillAttendBx,NeedsMaintBx,NeedsArchBx,FrmDat2,FlagBx,NextBx,SelectDBBox1,SelectDBBox2,SelectDBBox3,SelectDBBox4,LastSearch,AnnouncementBx,RetractBx,UnarchiveBx
+            CANCEL msg="Extraction cancelled"
+      	ENDIF
+
+        IF $OK
+            MACSETTINGS Type=S Vars=UserName,UserPWD,FoundBx,DNFBx,NoteBx,OwnerMainBx,TempDisBx,EnableBx,ArchiveBx,RevNoteBx,PublishBx,AddManBx,WillAttendBx,NeedsMaintBx,NeedsArchBx,FrmDat2,FlagBx,NextBx,SelectDBBox1,SelectDBBox2,SelectDBBox3,SelectDBBox4,LastSearch,AnnouncementBx,RetractBx,UnarchiveBx
+            GOSUB Name=AutoscanLogs
+            GOSUB Name=RunMACRO
+        ENDIF
+
+        IF $SelecAllBtn
+        	GOSUB Name=Setall
+        ENDIF
+
+        IF $ClearAllBtn
+        	GOSUB Name=Clearall
+        ENDIF
+
+        IF $FrmBtn1
+            GOSUB Name=DBSearch Form
+        ENDIF
+
+    ENDWHILE
+ENDIF
+
+IF $CtrlKey=TRUE
+    GOSUB Name=RunMACRO
+ENDIF
+
+CANCEL msg="Macro cancelled"
+
+# If we get to here then the user must have clicked on the OK button
+
+# ========== Form End ==============
+
+###############
+# Subroutines #
+###############
+
+BEGINSUB Name=AutoScanLogs
+	$Pass=1
+	IF $SelectDBBox1<>"*Not Selected*"
+		$DataBase=$_AppData + "\Data\" + $SelectDBBox1 + "\sqlite.db3"
+		GOSUB Name=CheckDB
+		$MaxDate=$ThisMaxDate
+	ENDIF
+	IF $SelectDBBox2<>"*Not Selected*"
+		$DataBase=$_AppData + "\Data\" + $SelectDBBox2 + "\sqlite.db3"
+		GOSUB Name=CheckDB
+	ENDIF
+	IF $ThisMaxDate>$MaxDate
+		$MaxDate=$ThisMaxDate
+	ENDIF
+	IF $SelectDBBox3<>"*Not Selected*"
+		$DataBase=$_AppData + "\Data\" + $SelectDBBox3 + "\sqlite.db3"
+		GOSUB Name=CheckDB
+	ENDIF
+	IF $ThisMaxDate>$MaxDate
+		$MaxDate=$ThisMaxDate
+	ENDIF
+	IF $SelectDBBox4<>"*Not Selected*"
+		$DataBase=$_AppData + "\Data\" + $SelectDBBox4 + "\sqlite.db3"
+		GOSUB Name=CheckDB
+	ENDIF
+	IF $ThisMaxDate>$MaxDate
+		$MaxDate=$ThisMaxDate
+	ENDIF
+
+	IF $MaxDate>$LastSearch
+		GOSUB Name=DBSearch
+	ENDIF
+ENDSUB
+
+BEGINSUB Name=CheckDB
+	IF FileExists($Database)
+		$Database = SqlQuote($Database)
+		$_sql = "ATTACH $Database AS ScanDB"
+		$status = Sqlite("sql",$_sql)
+		$status = Sqlite("sql","SELECT Max(lDate) from ScanDB.logs WHERE g_IsValidDate(lDate) AND date(ldate) NOTNULL")
+		IF IsEmpty($status)
+			$ThisMaxDate=[20000101]
+		ELSE
+			$ThisMaxDate=SqlToDate($status)
+		ENDIF			
+		$_sql = "DETACH ScanDB"
+		$status = Sqlite("sql",$_sql)
+	ENDIF
+ENDSUB
+
+BEGINSUB Name=DBSearch Form
+WHILE Showform($SDBform)
+    IF $SDBCancelMacro
+        CANCEL
+    ENDIF
+
+    IF $Search
+        GOSUB Name=DBSearch
+        MACSETTINGS Type=S Vars=UserName,UserPWD,FoundBx,DNFBx,NoteBx,OwnerMainBx,TempDisBx,EnableBx,ArchiveBx,RevNoteBx,PublishBx,AddManBx,WillAttendBx,NeedsMaintBx,NeedsArchBx,FrmDat2,FlagBx,NextBx,SelectDBBox1,SelectDBBox2,SelectDBBox3,SelectDBBox4,LastSearch,AnnouncementBx,RetractBx,UnarchiveBx
+        EXITSUB
+    ENDIF
+ENDWHILE
+ENDSUB
+#######################
+BEGINSUB Name=LoadSourceManually
+	WEB URL=$FullLogsURL
+	IF Showform($Form2)
+		IF $Frm2cancelform
+			CANCEL
+		ENDIF
+	ENDIF
+ENDSUB
+#######################
+BEGINSUB Name=AddManually
+    	IF $AddManBx=TRUE
+		$OwnerIDEditBx="0"
+		$OwnerNameFrm="$By"
+		DELAY MS=2000
+	          WEB URL=http://www.geocaching.com/profile/?guid=$GUID
+     	    IF Showform($AddManForm)
+       	        IF $CancelIDAdd
+                    GOSUB Name=Warning
+                ENDIF
+
+                IF $SkipAllBtn
+                    GOSUB Name=Warning
+    	            $AddManBx=FALSE
+    	            $OwnerID = 0
+    	            EXITSUB
+                ENDIF
+
+                IF $AddID=TRUE AND $OwnerIDEditBx<>"0"
+                    $OwnerID=Val($OwnerIDEditBx)
+                    $SQLBy = SqlQuote($by)
+                    $_sql = "REPLACE INTO OwnerIDs VALUES('$OwnerID',$SQLBy)"
+                    $status = Sqlite("sql",$_sql)
+                ENDIF
+            ENDIF
+        ENDIF
+ENDSUB
+
+#######################
+
+BEGINSUB Name=Warning
+    $Memo1="WARNING:  If you skip adding the log owner ID number, this log will be incomplete.  "
+    $Memo1=$Memo1 + "This will cause problems with the FindStatsGen macro and may cause problems with other GSAK macros or functions.  "
+    $Memo1=$Memo1 + "To manually add a log owner ID number, make sure you're connected to the Internet, then click 'Don't Skip' and, when the owner's profile page "
+    $Memo1=$Memo1 + "opens in your browser, hover your cursor over 'See the forum posts for this user' and type in the owner ID number shown at the end of the URL in your "
+    $Memo1=$Memo1 + "browser's status bar (at the bottom of the browser window)." + $_NewLine  + $_NewLine + "Skip adding owner ID number?"
+    WHILE TRUE
+        $FormExit = form($CancelManualForm,"")
+        BEGINCASE
+            CASE $FormExit = "SystemExit"
+                EXITSUB
+
+            CASE $FormExit = "NoSkip"
+                $CancelIDAdd=FALSE
+                $SkipAllBtn=FALSE
+                GOSUB Name=AddManually
+                BREAK
+
+            CASE $FormExit = "Skip"
+                EXITSUB
+        ENDCASE
+    ENDWHILE
+ENDSUB
+
+#######################
+
+BEGINSUB name=GetID
+    #$ShowName=UTF8($By,"d")
+    $ShowName = $By
+    # Overwrite any existing data to avoid accidental duplication
+    $result = PutFile($IDFile, "blank")
+
+	SHOWSTATUS msg="Getting online ID file for $ShowName, please wait..." Width=350
+	DELAY MS=5000
+	# Use external VBS file to get the HTML file
+	#check if log cutoff date has been reached skip add if it has
+    IF $LogDate>$FrmDat2-1
+        $IdURL="http://www.geocaching.com/profile/?guid=$GUID"
+	    $VBSFile = Quote($Htmlfilepath + "\GetSecureLogs.vbs")
+	    $Arguments = " " + Quote($IdURL) + " " + Quote($IDfile) + " " + Quote(HttpEncode($Username)) + " " + Quote($UserPWD)
+	    $result = $VBSFile + $Arguments
+	    RUNPGM pgm=$VBSFile parms=$Arguments wait=yes
+	    SHOWSTATUS Msg="Done" Display=off
+
+	    #Open the saved HTML source
+        $IdHTML = GetFile($IDFile)
+        IF Left($IdHTML,7) = "*Error*"
+            Pause Msg="$IdHTML"
+            CANCEL
+        ENDIF
+
+        # Check if data was good, if not the user is on their own!
+        $title = Extract($IdHTML,"</title>",1)
+        $title = Extract($title,"<title>",2)
+
+        IF NOT(At("Error Occurred",$title)=0) OR $IdHTML = "blank"
+    	    GOSUB Name=AddManually
+    	    EXITSUB
+        ENDIF
+        
+        $tmp = Extract($IdHTML,"do=user_activity&amp;mid=",2)
+        $tmp = Extract($tmp,"$_Quote>",1)
+        $OwnerID = Val(Trim($tmp))
+        $IDsSaved=$IDsSaved+1
+
+        IF $OwnerID <> 0
+            $SQLBy = SqlQuote($by)
+            $_sql = "REPLACE INTO OwnerIDs VALUES('$OwnerID',$SQLBy)"
+            $status = Sqlite("sql",$_sql)
+  	    ENDIF
+    ENDIF
+ENDSUB
+
+BEGINSUB Name=DBSearch
+    IF $SelectDBBox1="*Not Selected*"
+        PlayWav File=$SoundFile Wait=No
+        MSGOK Msg=Skipping this step is not allowed.  Please select at least one GSAK database to scan for Owner IDs.
+        WHILE Showform($SDBform)
+            IF $SDBCancelMacro
+                CANCEL
+            ENDIF
+
+            IF $Search
+                GOSUB Name=DBSearch
+                MACSETTINGS Type=S Vars=UserName,UserPWD,FoundBx,DNFBx,NoteBx,OwnerMainBx,TempDisBx,EnableBx,ArchiveBx,RevNoteBx,PublishBx,AddManBx,WillAttendBx,NeedsMaintBx,NeedsArchBx,FrmDat2,FlagBx,NextBx,SelectDBBox1,SelectDBBox2,SelectDBBox3,SelectDBBox4,LastSearch,AnnouncementBx,RetractBx,UnarchiveBx
+                EXITSUB
+            ENDIF
+        ENDWHILE
+    ENDIF
+
+
+    #Select each chosen database to harvest OwnerIDs
+    $Pass=1
+    WHILE $Pass < 5
+        BEGINCASE
+        CASE $Pass=1
+            $CurrentDatabase=$SelectDBBox1
+            IF Right(Sysinfo("gsakini;TfmConfig;edtDataStore.Text"),1)<>"\"
+                $DatabaseSelected=Sysinfo("gsakini;TfmConfig;edtDataStore.Text") + "\" + $SelectDBBox1 + "\sqlite.db3"
+            ELSE
+                $DatabaseSelected=Sysinfo("gsakini;TfmConfig;edtDataStore.Text") + $SelectDBBox1 + "\sqlite.db3"
+            ENDIF
+        CASE $Pass=2
+            $CurrentDatabase=$SelectDBBox2
+            IF Right(Sysinfo("gsakini;TfmConfig;edtDataStore.Text"),1)<>"\"
+                $DatabaseSelected=Sysinfo("gsakini;TfmConfig;edtDataStore.Text") + "\" + $SelectDBBox2 + "\sqlite.db3"
+            ELSE
+                $DatabaseSelected=Sysinfo("gsakini;TfmConfig;edtDataStore.Text") + $SelectDBBox2 + "\sqlite.db3"
+            ENDIF
+        CASE $Pass=3
+            $CurrentDatabase=$SelectDBBox3
+            IF Right(Sysinfo("gsakini;TfmConfig;edtDataStore.Text"),1)<>"\"
+                $DatabaseSelected=Sysinfo("gsakini;TfmConfig;edtDataStore.Text") + "\" + $SelectDBBox3 + "\sqlite.db3"
+            ELSE
+                $DatabaseSelected=Sysinfo("gsakini;TfmConfig;edtDataStore.Text") + $SelectDBBox3 + "\sqlite.db3"
+            ENDIF
+        CASE $Pass=4
+            $CurrentDatabase=$SelectDBBox4
+            IF Right(Sysinfo("gsakini;TfmConfig;edtDataStore.Text"),1)<>"\"
+                $DatabaseSelected=Sysinfo("gsakini;TfmConfig;edtDataStore.Text") + "\" + $SelectDBBox4 + "\sqlite.db3"
+            ELSE
+                $DatabaseSelected=Sysinfo("gsakini;TfmConfig;edtDataStore.Text") + $SelectDBBox4 + "\sqlite.db3"
+            ENDIF
+        ENDCASE
+		$Pass=$Pass +1
+
+		IF At("*Not Selected*",$DatabaseSelected)=0
+            $StatusMsg="Checking Logs for " + $CurrentDatabase + "...Please wait"
+            SHOWSTATUS Msg=$StatusMsg Width=350
+            #capture each Owner Name and OwnerID
+            $CurrentDB=SqlQuote($DatabaseSelected)
+            $_sql = "ATTACH $CurrentDB AS CurrentDB"
+            $status = Sqlite("sql",$_sql)
+            # Update/Insert new data
+            TRANSACTION Action=Begin
+            $_sql = "REPLACE INTO OwnerIDs SELECT lOwnerID, lBy FROM Logs WHERE lOwnerID <> 0 ORDER BY lBy ASC"
+            $status = Sqlite("sql",$_sql)
+            TRANSACTION Action=End
+            $Sql=Sqlite("Sql","DETACH DATABASE CurrentDB")
+        ENDIF
+        SHOWSTATUS Msg=Done Display=Off
+        $LastSearch=$_Today
+        MACSETTINGS Type=S Vars=UserName,UserPWD,FoundBx,DNFBx,NoteBx,OwnerMainBx,TempDisBx,EnableBx,ArchiveBx,RevNoteBx,PublishBx,AddManBx,WillAttendBx,NeedsMaintBx,NeedsArchBx,FrmDat2,FlagBx,NextBx,SelectDBBox1,SelectDBBox2,SelectDBBox3,SelectDBBox4,LastSearch,AnnouncementBx,RetractBx,UnarchiveBx
+    ENDWHILE
+ENDSUB
+
+BEGINSUB Name=RunMacro
+$GCcode = $d_Code
+#Check Ownership
+IF Not(IsOwner())
+    CANCEL Msg=AddLogs can only be run on caches you own.  Macro canceled.
+ENDIF
+
+GOSUB Name=GetHtml
+GOSUB Name=OpenHTML
+GOSUB Name=GrabCacheCode
+GOSUB Name=ExtractLogs
+
+# Grab each log (all text between class='logContainer or logcontainerAlt, clean it up and remove HTML tags
+# 1-16-10 Now between class='Nothing or AlternatingRow or <td class=
+
+$NumberLogs=0
+$UpdatedLogs=0
+TRANSACTION action=begin
+WHILE IsEmpty($Log)=FALSE
+
+  $Log = Extract($HTML, "<td class=" , 2)
+
+  IF NOT($log = "")
+
+    # Date
+    $HTML = Right($HTML, (Len($HTML) - Len($Log) - 10))
+
+    $LogType = Extract($Log, ">&nbsp;", 1)
+    $Date = Right($Log, (Len($Log) - Len($LogType) - 7))
+
+    $Log = $Date
+    $Date = Extract ($Date, " by", 1)
+    $Date = Alltrim($Date)
+
+    #Logs for the current year have no year shown - add it on
+    
+    $_sql = "select strftime('%Y','now','-8 hours')"
+    $YearNow = Sqlite("sql",$_sql)
+    #$YearNow = (Left(DateToString($_Today),4))
+
+
+    IF At(",",$Date) = 0
+    	$Date = $Date + ", " + $YearNow
+    ENDIF
+
+    GOSUB name=ParseDate
+    GOSUB name=LogType
+    GOSUB name=ParseLogs
+
+  ENDIF
+ENDWHILE
+TRANSACTION action=end
+
+	# Count the found logs
+	IF Seek($GCcode)
+		$NumberFound = 0
+		TABLE Active=Logs Scope=Parent
+		WHILE NOT($_EOL)
+  		IF $d_lType = "Found it" OR $d_ltype="Found It" OR $d_lType = "Webcam Photo Taken" OR $d_lType="Attended"
+	    	$NumberFound = $NumberFound + 1
+  	    ENDIF
+  	GOTO Position=Next
+  	ENDWHILE
+
+		TABLE Active=caches
+		#$d_UserSort = $NumberFound
+	ENDIF
+
+	$status = Sqlite("Close","")
+	RESYNCLOGS
+
+  SPEEDMODE status=off
+	$tmpB = Seek($GCcode)
+	SPEEDMODE status=on
+
+   #Update the changed date for older versions of GSAK
+  IF $_Version < "7.5"
+		IF $NumberLogs>0
+  		$d_Changed=$_Today
+  	ENDIF
+	ENDIF
+
+	MSGOK msg=" Logs added: $NumberLogs $_Newline Logs Updated: $UpdatedLogs $_Newline Total Found logs: $NumberFound $_Newline New Owner ID's Saved: $IDsSaved"
+
+    IF $FlagBx=TRUE
+        USERFLAG type=set range=1
+    ENDIF
+
+    IF $NextBx=TRUE
+        	GOTO Position=Next
+    ENDIF
+
+    RETURN
+
+ENDSUB
+
+#############################
+BEGINSUB Name=GetHTML
+	IDCHECK
+	SHOWSTATUS msg="Getting online HTML file, please wait..." Width=350
+	# Use external VBS file to get the HTML file
+	$VBSFile = Quote($Htmlfilepath + "\GetHTML.vbs")
+	$Arguments = " " + Quote($FullLogsURL) + " " + Quote($HTMLFile) + " " + Quote($d_Code)
+	$result = $VBSFile + $Arguments
+	RUNPGM pgm=$VBSFile parms=$Arguments wait=yes
+	SHOWSTATUS Msg="Done" Display=off
+ENDSUB
+
+#############################
+
+BEGINSUB Name=GetSecureHTML
+	SHOWSTATUS msg="Getting secure online HTML file, please wait..." Width=350
+	# Use external VBS file to get the HTML file
+	$VBSFile = Quote($Htmlfilepath + "\GetSecureLogs.vbs")
+	$Arguments = " " + Quote($FullLogsURL) + " " + Quote($HTMLFile) + " " + Quote(HttpEncode($Username)) + " " + Quote(HttpEncode($UserPWD))
+	$result = $VBSFile + $Arguments
+	RUNPGM pgm=$VBSFile parms=$Arguments wait=yes
+	SHOWSTATUS Msg="Done" Display=off
+ENDSUB
+
+#############################
+
+BEGINSUB Name=OpenHTML
+    #Open the saved HTML source
+    $HTML = GetFile($HTMLFile)
+    IF Left($HTML,7) = "*Error*" OR Left($HTML,7) = "AddLogs"
+     	MSGOK Msg=$HTML
+        CANCEL
+    ENDIF
+    # Check if data was good, if not try logging in
+    $title = Extract($HTML,"</title>",1)
+    $title = Extract($title,"<title>",2)
+    IF NOT(At("Error Occurred",$title)=0) OR NOT(At("Premium Member Only Cache",$title)=0)
+    	GOSUB  Name=GetSecureHTML
+    	#Open the saved HTML source
+    	$HTML = GetFile($HTMLFile)
+    	IF Left($HTML,7) = "*Error*"
+        Pause Msg="$HTML"
+        Cancel
+    	ENDIF
+    ENDIF
+
+    # Check if data was good, if not the user is on their own!
+    $title = Extract($HTML,"</title>",1)
+    $title = Extract($title,"<title>",2)
+    IF NOT(At("Error Occurred",$title)=0) OR NOT(At("Login",$title)=0)
+    	GOSUB  Name=LoadSourceManually
+    	#Open the saved HTML source
+    	$HTML = GetFile($HTMLFile)
+    	IF Left($HTML,7) = "*Error*"
+            Pause Msg="$HTML"
+            Cancel
+    	ENDIF
+    ENDIF
+
+ENDSUB
+
+###########################
+BEGINSUB Name=GrabCacheCode
+#Grab the GC Code for the Cache
+$GCCode = RegExSub("(GC.*?) ",$HTML,1,1)
+#$GCcode=$d_Code
+ENDSUB
+
+########################
+BEGINSUB Name=ExtractLogs
+ # Trim down to the logs only
+
+$SearchString = "<table class=" +$_Quote + "LogsTable" + $_Quote + ">"
+$HTML = Extract($HTML, $SearchString,2)
+$SearchString = "</small> </td></tr></table>"
+$HTML = Extract($HTML, $SearchString,1)
+$Log = $HTML
+ENDSUB
+
+##########################
+BEGINSUB name=ParseDate
+	$Month = Upper(Left(Extract($date," ",1),3))
+	$Day = Extract($date," ",2)
+	$Day = Extract($Day,",",1)
+	$Year = Extract($date," ",3)
+	$Months = "JAN,FEB,MAR,APR,MAY,JUN,JUL,AUG,SEP,OCT,NOV,DEC"
+	$MonthNum = At($Month,$Months)
+	$MonthNum = ($MonthNum - 1)/4 + 1
+	$Month = NumToStr($MonthNum)
+
+	IF Len($Month)<2
+		$Month = "0" + $Month
+	ENDIF
+
+	IF Len($Day)<2
+		$Day = "0" + $Day
+	ENDIF
+
+	$Date = $Year + $Month + $Day
+	$LogDate = StringToDate($Date)
+
+ENDSUB
+
+########################
+BEGINSUB Name=LogType
+      # Log Type
+
+    	# Trim to before the ".gif"
+    $LogType = Extract($LogType,".gif" , 1)
+    	# How many / are there?
+    $CountSlashes = RegExCount("/",$LogType)
+    	# Extract after the last /
+    $LogType = Extract($LogType, "/",($CountSlashes +1))
+
+    $LogType = Alltrim($LogType)
+
+    $FoundFlag=FALSE
+    $LogFlag=FALSE
+
+    IF $LogType = "icon_camera" AND $FoundBx=TRUE
+    	$LogType = "Webcam Photo Taken"
+    	$FoundFlag = TRUE
+    ENDIF
+
+    IF $LogType = "icon_attended" AND $FoundBx=TRUE
+    	$LogType = "Attended"
+    	$FoundFlag = TRUE
+    ENDIF
+
+    IF $LogType = "icon_smile" AND $FoundBx=TRUE
+    	$LogType = "Found it"
+    	$FoundFlag = TRUE
+    ENDIF
+
+    IF $LogType = "icon_sad" AND $DNFBx=TRUE
+    	$LogType = "Didn't find it"
+    	$LogFlag = TRUE
+    ENDIF
+
+    IF $LogType = "icon_note" AND $NoteBx=TRUE
+    	$LogType = "Write note"
+    	$LogFlag = TRUE
+    ENDIF
+
+    IF $LogType = "icon_maint" AND $OwnerMainBx=TRUE
+    	$LogType = "Owner Maintenance"
+    	$LogFlag = TRUE
+    ENDIF
+
+    IF $LogType = "coord_update" AND $OwnerMainBx=TRUE
+    	$LogType = "Update Coordinates"
+    	$LogFlag = TRUE
+    ENDIF
+
+    IF $LogType = "icon_disabled" AND $TempDisBx=TRUE
+    	$LogType = "Temporarily Disable Listing"
+    	$LogFlag = TRUE
+    ENDIF
+
+    IF $LogType = "icon_enabled" AND $EnableBx=TRUE
+    	$LogType = "Enable Listing"
+    	$LogFlag = TRUE
+    ENDIF
+
+    IF $LogType = "traffic_cone" AND $ArchiveBx=TRUE
+    	$LogType = "Archive"
+    	$LogFlag = TRUE
+    ENDIF
+
+    IF $LogType = "big_smile" AND $RevNoteBx=TRUE
+    	$LogType = "Post Reviewer Note"
+    	$LogFlag = TRUE
+    ENDIF
+
+    IF $LogType = "icon_greenlight" AND $PublishBx=TRUE
+    	$LogType = "Publish Listing"
+    	$LogFlag = TRUE
+    ENDIF
+
+		IF $LogType = "icon_rsvp" AND $WillAttendBx=TRUE
+    	$LogType = "Will Attend"
+    	$LogFlag = TRUE
+    ENDIF
+
+		IF $LogType = "icon_needsmaint" AND $NeedsMaintBx=TRUE
+    	$LogType = "Needs Maintenance"
+    	$LogFlag = TRUE
+    ENDIF
+
+		IF $LogType = "icon_remove" AND $NeedsArchBx=TRUE
+    	$LogType = "Needs Archived"
+    	$LogFlag = TRUE
+    ENDIF
+    
+    IF $LogType = "icon_announcement" AND $AnnouncementBx=TRUE
+    	$LogType = "Announcement"
+    	$LogFlag = TRUE
+    ENDIF
+    
+    IF $LogType = "icon_redlight" AND $RetractBx=TRUE
+    	$LogType = "Retract Listing"
+    	$LogFlag = TRUE
+    ENDIF
+    
+    IF $LogType = "traffic_cone" AND $UnarchiveBx=TRUE
+    	$LogType = "Unarchive"
+    	$LogFlag = TRUE
+    ENDIF
+#$WillAttendBx $NeedsMaintBx $NeedsArchBx
+#$AnnouncementBx	$RetractBx $UnarchiveBx
+
+ENDSUB
+
+############################
+BEGINSUB Name=ParseLogs
+
+	IF $FoundFlag=TRUE OR $LogFlag=TRUE
+		#GUID
+		$GUID = Extract($Log,"?guid=", 2)
+		#$GUID = Extract($GUID, $_Quote, 1)
+		$GUID = Extract($GUID, "'", 1)
+
+		# Log ID #
+		#$Log = Replace("name=","NAME=",$log,FALSE)
+		# $SearchString = "id=" + $_Quote
+		$SearchString = "id='"
+		$LogID = Extract($Log, $SearchString, 2)
+		$Log = $LogID
+		#	$LogID = Extract($LogID, $_Quote, 1)
+		$LogID = Extract($LogID, "'", 1)
+		$LogID = AllTrim($LogID)
+
+		# Strip off guid and parse remainder
+		# $Log = Substr($Log, At("?guid=",$Log) + 6, 0)
+
+		# Name
+		$By = Extract($Log,"</", 1)
+		# $Log = Right($Log, (Len($Log) - Len($By) - 1))
+		
+		$Log = Substr($log,At($Log,"</a>"),0)
+		
+		#   $By = Extract ($By, ">", 2) #modified in next line to allow for user name with ">" in Name
+		
+		$By = UTF8($By,"d")
+		$By = Substr($By, at(">",$By) + 1, 0)
+		$By = AllTrim($By)
+		$By = EntityDecode($By)
+
+		# Text
+		#    	$LogText = Extract($Log, "<br>", 1)
+		#    	$LogText = Right($Log, (Len($Log) - Len($LogText) - 4))
+		#    	$LogText = Extract($LogText,"<br>[<", 1)
+
+		# For new version of GC.com site Jan 2010
+		#$LogText = Extract($Log, "<br />", 3)
+
+		# For new version of GC.com site Feb 24 2010
+		#$LogText = RegExSub("found\)(<br />)*(.*?)(<br />)*<small>",$Log,1,2)
+		
+		# For new version of GC.com site Aug 2010 where Found count is omitted for finders with zero finds.
+		# $LogText = RegExSub("</strong>( \([0-9]+ found\))?(<br />)*(.*?)(<br />)*<small>",$Log,1,3)
+		
+		# For new version of GC.com site Nov 2010.
+		$LogText = RegExSub("(?s)</strong>(&nbsp;\([0-9]+ found\))?(<br />)*(.*?)(<br />)*<small>",$Log,1,3)
+		
+		# Replace line feeds
+		$LogText = Replace("<p>",$_NewLine + $_NewLine,$LogText,True)
+		$LogText = Replace("<br>",$_NewLine,$LogText,True)
+		$LogText = Replace("<br/>",$_NewLine,$LogText,True)
+		
+		# Replace links with BB version
+
+		WHILE Len(RegExData("<a[^>]*>(.*?)</a>",$LogText,1)) > 0
+			$Link=RegExData("<a[^>]*>(.*?)</a>",$LogText,1)
+			$NewLink = "[url=" + RegExSub("<a href=$_Quote(.*?)$_Quote",$Link,1,1) + "]" + RegExSub(">(.*)<",$Link,1,1) + "[/url]"
+			$LogText = Replace($Link,$Newlink,$Logtext)
+		ENDWHILE
+
+
+		# Replace smilies
+
+		#icon_smile.gif => [:)]
+		$LogText=RegExReplace("<img[^<>]+smile\.gif[^<>]+>",$LogText,"[:)]")
+
+		#icon_smile_big.gif => [:D]
+		$LogText=RegExReplace("<img[^<>]+smile_big[^<>]+>",$LogText,"[:D]")
+
+		#icon_smile_cool.gif => [8D]
+		$LogText=RegExReplace("<img[^<>]+smile_cool[^<>]+>",$LogText,"[8D]")
+
+		#icon_smile_blush.gif => [:I]
+		$LogText=RegExReplace("<img[^<>]+smile_blush[^<>]+>",$LogText,"[:I]")
+
+		#icon_smile_tongue.gif => [:P]
+		$LogText=RegExReplace("<img[^<>]+smile_tongue[^<>]+>",$LogText,"[:P]")
+
+		#icon_smile_evil.gif => [}:)]
+		$LogText=RegExReplace("<img[^<>]+smile_evil[^<>]+>",$LogText,"[}:)]")
+
+		#icon_smile_wink.gif => [;)]
+		$LogText=RegExReplace("<img[^<>]+smile_wink[^<>]+>",$LogText,"[;)]")
+
+		#icon_smile_clown.gif => [:o]
+		$LogText=RegExReplace("<img[^<>]+smile_clown[^<>]+>",$LogText,"[:o]")
+
+		#icon_smile_blackeye.gif => [B)]
+		$LogText=RegExReplace("<img[^<>]+smile_blackeye[^<>]+>",$LogText,"[B)]")
+
+		#icon_smile_8ball.gif => [8]
+		$LogText=RegExReplace("<img[^<>]+smile_8ball[^<>]+>",$LogText,"[8]")
+
+		#icon_smile_sad.gif => [:(]
+		$LogText=RegExReplace("<img[^<>]+smile_sad[^<>]+>",$LogText,"[:(]")
+
+		#icon_smile_shy.gif => [8)]
+		$LogText=RegExReplace("<img[^<>]+smile_shy[^<>]+>",$LogText,"[8)]")
+
+		#icon_smile_shock.gif => [:O]
+		$LogText=RegExReplace("<img[^<>]+smile_shock[^<>]+>",$LogText,"[:O]")
+
+		#icon_smile_angry.gif => [:(!]
+		$LogText=RegExReplace("<img[^<>]+smile_angry[^<>]+>",$LogText,"[:(!]")
+
+		#icon_smile_dead.gif => [xx(]
+		$LogText=RegExReplace("<img[^<>]+smile_dead[^<>]+>",$LogText,"[xx(]")
+
+		#icon_smile_sleepy.gif => [|)]
+		$LogText=RegExReplace("<img[^<>]+smile_sleepy[^<>]+>",$LogText,"[|)]")
+
+		#icon_smile_kisses.gif => [:X]
+		$LogText=RegExReplace("<img[^<>]+smile_kisses[^<>]+>",$LogText,"[:X]")
+
+		#icon_smile_approve.gif => [^]
+		$LogText=RegExReplace("<img[^<>]+smile_approve[^<>]+>",$LogText,"[^]")
+
+		#icon_smile_dissapprove.gif => [V]
+		$LogText=RegExReplace("<img[^<>]+smile_dissapprove[^<>]+>",$LogText,"[V]")
+
+		#icon_smile_question.gif => [?]
+		$LogText=RegExReplace("<img[^<>]+smile_question[^<>]+>",$LogText,"[?]")
+
+		# Strip out all other <> delimited tags.
+
+		$LogText = RegExReplace("<(.|\n)+?>", $LogText, "")
+
+		# Replace &nbsp; with spaces
+		$Logtext = Replace("&nbsp;"," ",$Logtext,TRUE)
+
+		$LogText = Alltrim($LogText)
+
+
+		#Use the GC Code to position the GSAK pointer to the correct cache
+		IF Seek($GCcode)
+
+			#############################################
+			# Add the log here Variables are as follows:
+			# Code = $GCcode
+			# Log Type = $LogType
+			# Log date = $LogDate
+			# Finders name = $By
+			# Log ID = $LogID
+			# Owner ID = $OwnerID
+			# Log text = $LogText
+			#############################################
+
+			#				MSGOK msg="$Logtype, $logdate, $by, $logid, $Ownerid, $logtext"
+			TABLE Active=Logs Scope=Parent
+			#$ShowName=UTF8($By,"d")
+			$ShowName=$By
+			SHOWSTATUS msg="Checking log for: $ShowName on $LogDate" Width=350
+
+			#Check to see if we have a log on this date from this Finder already
+			# and, if so, if the owner id is zero
+			$Duplicate = FALSE
+			$OwnerIDZero = FALSE
+			$ByChanged = FALSE
+			$TypeChanged = FALSE
+			$DateChanged = FALSE
+			$TextChanged = FALSE
+			IF Seek($logID)
+				$Duplicate = TRUE
+				IF $d_lOwnerId = 0
+					$OwnerIDZero = TRUE
+				ENDIF
+				IF $d_lby<>$By
+					$ByChanged = TRUE
+				ENDIF
+				IF $d_ltype<>$LogType
+					$TypeChanged= TRUE
+				ENDIF
+				IF $d_lDate <> $LogDate
+					$DateChanged=TRUE
+				ENDIF
+				IF $d_lText <> UTF8($LogText,"d")
+					$TextChanged=TRUE
+				ENDIF
+			ENDIF
+
+			$OwnerID=0
+
+			IF $LogDate>$FrmDat2-1
+				# Get the OwnerID if this is a new log or existing owner ID is zero
+				IF Not($Duplicate) OR $OwnerIDZero
+					# Try and find OwnerID
+					IF $FindOwners
+						GOSUB Name=LookupID
+						IF $OwnerID=0
+							TRANSACTION action=end
+							GOSUB Name=GetID
+							TRANSACTION action=begin
+						ENDIF
+						IF $OwnerID=0 AND $AddManBx=TRUE
+							TRANSACTION action=end
+							GOSUB Name=AddManually
+							TRANSACTION action=begin
+						ENDIF
+					ELSE
+						$OwnerID=0
+					ENDIF
+				ENDIF
+
+				IF Not($Duplicate)
+					ADDNEW
+					$NumberLogs=$NumberLogs+1
+					$d_lLogId=Val($LogID)
+					$d_lBy=$By
+					$d_ltype=$LogType
+					$d_lText=UTF8($LogText,"d")
+					$d_lDate=$LogDate
+					IF $OwnerID<>0
+						$d_lOwnerId=$OwnerID
+					ENDIF
+				ENDIF
+				IF $Duplicate AND ($OwnerIDZero=TRUE OR $ByChanged=TRUE OR $TypeChanged=TRUE OR $DateChanged=TRUE OR $TextChanged=TRUE)
+					$UpdatedLogs=$UpdatedLogs+1
+					IF $OwnerIDZero=TRUE AND $OwnerID<>0
+						$d_lOwnerId=$OwnerID
+					ENDIF
+					IF $ByChanged=TRUE
+						$d_lby=$By
+					ENDIF
+					IF $TypeChanged=TRUE
+						$d_ltype=$LogType
+					ENDIF
+					IF $DateChanged=TRUE
+						$d_lDate=$LogDate
+					ENDIF
+					IF $TextChanged=TRUE
+						$d_lText=UTF8($LogText,"d")
+					ENDIF
+				ENDIF
+			ENDIF
+			TABLE Active=caches
+		ENDIF
+	ENDIF
+ENDSUB
+
+#######################
+BEGINSUB Name=LookupID
+	IF $By=""
+		EXITSUB
+	ENDIF
+
+	# Search the local list of Owner ID Numbers & retrieve from list if found
+	$_sql="SELECT OwnerIDNumber FROM OwnerIDs where OwnerName= " + SqlQuote($By)
+	$TmpS=Sqlite("sql",$_sql)
+	$OwnerID=Val($TmpS)
+ENDSUB
+
+#######################
+
+BEGINSUB Name=Setall
+  $FoundBx = TRUE
+  $DNFBx  = TRUE
+  $NoteBx = TRUE
+  $OwnerMainBx = TRUE
+  $TempDisBx = TRUE
+  $EnableBx = TRUE
+  $ArchiveBx = TRUE
+  $RevNoteBx = TRUE
+  $PublishBx = TRUE
+  $WillAttendBx = TRUE
+  $NeedsMaintBx = TRUE
+  $NeedsArchBx = TRUE
+  $AnnouncementBx = TRUE
+	$RetractBx = TRUE
+	$UnarchiveBx = TRUE
+ ENDSUB
+
+#######################
+
+BEGINSUB Name=Clearall
+  $FoundBx = FALSE
+  $DNFBx  = FALSE
+  $NoteBx = FALSE
+  $OwnerMainBx = FALSE
+  $TempDisBx = FALSE
+  $EnableBx = FALSE
+  $ArchiveBx = FALSE
+  $RevNoteBx = FALSE
+  $PublishBx = FALSE
+  $WillAttendBx = FALSE
+  $NeedsMaintBx = FALSE
+  $NeedsArchBx = FALSE
+  $AnnouncementBx = FALSE
+	$RetractBx = FALSE
+	$UnarchiveBx = FALSE
+ENDSUB
+
+#######################
+
+BEGINSUB Name=DeclareVariables
+#*******************************************************
+#   Variable declarations for
+#   C:\Program Files\GSAK\Macros\AddLogs.gsk
+#
+#   Generated 05-07-07 11:05:28 PM on GSAKVariables.gsk Rev V0.20 B3
+#
+#*******************************************************
+
+Option Explicit=Yes
+
+Declare Var=$AddManBx Type=Boolean
+Declare Var=$AddManForm Type=String
+Declare Var=$ArchiveBx Type=Boolean
+Declare Var=$Arguments Type=String
+Declare Var=$BatFile Type=String
+Declare Var=$By Type=String
+DECLARE Var=$ByChanged Type=Boolean
+DECLARE Var=$CriticalStop Type=String
+DECLARE Var=$CtrlKey Type=Boolean
+Declare Var=$CountSlashes Type=Numeric
+DECLARE Var=$CurrentDB Type=String
+DECLARE Var=$CurrentDatabase Type=String
+DECLARE Var=$Data Type=String
+DECLARE Var=$Database Type=String
+DECLARE Var=$DatabaseSelected Type=String
+Declare Var=$DataFile Type=String
+Declare Var=$Date Type=String
+DECLARE Var=$DateChanged Type=Boolean
+Declare Var=$Day Type=String
+Declare Var=$Db Type=String
+Declare Var=$dblist Type=String
+DECLARE Var=$DNFBx Type=Boolean
+Declare Var=$Duplicate Type=Boolean
+Declare Var=$EnableBx Type=Boolean
+DECLARE Var=$FindOwners Type=Boolean
+DECLARE Var=$FlagBx Type=Boolean
+Declare Var=$Form Type=String
+Declare Var=$form2 Type=String
+DECLARE Var=$FrmDat2 Type=Date
+DECLARE Var=$FormExit Type=String
+Declare Var=$FoundBx Type=Boolean
+Declare Var=$FoundFlag Type=Boolean
+Declare Var=$FullLogsURL Type=String
+Declare Var=$GCcode Type=String
+Declare Var=$GetHTML Type=String
+Declare Var=$GetSecureLogs Type=String
+Declare Var=$GUID Type=String
+Declare Var=$HTML Type=String
+Declare Var=$HTMLFile Type=String
+Declare Var=$Htmlfilepath Type=String
+Declare Var=$IDfile Type=String
+Declare Var=$IdHTML Type=String
+Declare Var=$IDsSaved Type=Numeric
+DECLARE Var=$IdURL Type=String
+DECLARE Var=$LastSearch Type=Date
+Declare Var=$Link Type=String
+Declare Var=$Log Type=String
+Declare Var=$LogDate Type=Date
+Declare Var=$LogFlag Type=Boolean
+Declare Var=$LogID Type=String
+Declare Var=$LoginInfo Type=String
+DECLARE Var=$LogsScanned Type=Numeric
+Declare Var=$LogText Type=String
+Declare Var=$LogType Type=String
+DECLARE Var=$MaxDate Type=Date
+DECLARE Var=$Memo1 Type=String
+Declare Var=$Month Type=String
+Declare Var=$MonthNum Type=Numeric
+Declare Var=$Months Type=String
+Declare Var=$NewLink Type=String
+DECLARE Var=$NextBx Type=Boolean
+Declare Var=$NoteBx Type=Boolean
+Declare Var=$NumberFound Type=Numeric
+Declare Var=$NumberLogs Type=Numeric
+Declare Var=$OName Type=String
+Declare Var=$ONum Type=Numeric
+Declare Var=$OwnerID Type=Numeric
+Declare Var=$OwnerIDData Type=String
+Declare Var=$OwnerIDEditBx Type=String
+Declare Var=$OwnerIDFile Type=String
+DECLARE Var=$OwnerIDString Type=String
+Declare Var=$OwnerMainBx Type=Boolean
+Declare Var=$OwnerIDZero Type=Boolean
+DECLARE Var=$OwnerNameFrm Type=String
+Declare Var=$OwnerSearch Type=String
+Declare Var=$Pass Type=Numeric
+Declare Var=$Position Type=Numeric
+Declare Var=$PublishBx Type=Boolean
+DECLARE Var=$WillAttendBx Type=Boolean
+DECLARE Var=$NeedsMaintBx Type=Boolean
+DECLARE Var=$NeedsArchBx Type=Boolean
+DECLARE Var=$AnnouncementBx Type=Boolean
+DECLARE Var=$RetractBx Type=Boolean
+DECLARE Var=$UnarchiveBx Type=Boolean
+DECLARE Var=$Record Type=Numeric
+DECLARE Var=$result Type=String
+Declare Var=$Revision Type=String
+Declare Var=$RevNoteBx Type=Boolean
+DECLARE Var=$SDBform Type=String
+DECLARE Var=$SearchString Type=String
+DECLARE Var=$SelectDBBx Type=String
+Declare Var=$SelectDBBox1 Type=String
+Declare Var=$SelectDBBox2 Type=String
+Declare Var=$SelectDBBox3 Type=String
+Declare Var=$SelectDBBox4 Type=String
+DECLARE Var=$ShowName Type=String
+DECLARE Var=$Sound Type=String
+DECLARE Var=$SoundFile Type=String
+DECLARE Var=$Sql Type=String
+DECLARE Var=$SQLBy Type=String
+Declare Var=$status Type=String
+DECLARE Var=$StatusMsg Type=String
+Declare Var=$TempDisBx Type=Boolean
+DECLARE Var=$TextChanged Type=Boolean
+DECLARE Var=$ThisMaxDate Type=Date
+Declare Var=$tmpB Type=Boolean
+DECLARE Var=$tmpN Type=Numeric
+DECLARE Var=$tmpS Type=String
+Declare Var=$title Type=String
+Declare Var=$tmp Type=String
+DECLARE Var=$TypeChanged Type=Boolean
+DECLARE Var=$UpdatedLogs Type=Numeric
+DECLARE Var=$UserName Type=String
+Declare Var=$UserPWD Type=String
+Declare Var=$variables Type=String
+Declare Var=$VBSFile Type=String
+Declare Var=$Year Type=String
+Declare Var=$YearNow Type=String
+
+ENDSUB
+
+##############################
+##############################
+
+<data> VarName=$GetHTML
+JyBWQlMgZmlsZSB0byBnZXQgdGhlIHNvdXJjZSBodG1sIG9mIGEgd2ViIHBhZ2UNCicgDQonIFRha2Vz
+IHRocmVlIGNvbW1hbmQgbGluZSBwYXJhbWV0ZXJzOg0KJyBGaXJzdCBpcyB0aGUgZnVsbCBVUkwgb2Yg
+dGhlIHBhZ2UgdG8gZ2V0DQonIFNlY29uZCBpcyB0aGUgZnVsbCBwYXRoIHRvIHRoZSBmaWxlIHRvIHN0
+b3JlIGl0IGluDQonIFRoaXJkIGlzIGNhY2hlIGNvZGUNCicgVGhhdCdzIGl0IC0gbm8gZnJpbGxzLg0K
+JyBGcmVlIGZvciB1c2UgdW5kZXIgR05VIEdQTA0KJyBMaWdudW1hcXVhDQonIDQtMjktMDcgVjAuMSBC
+DQonIDMtMTMtMTAgVjAuMiBCDQoNCg0KU2V0IG9iakFyZ3MgPSBXU2NyaXB0LkFyZ3VtZW50cw0KcmVx
+dWlyZWRVUkwgPSBvYmpBcmdzKDApDQpyZXF1aXJlZEZpbGUgPSBvYmpBcmdzKDEpDQpyZXF1aXJlZENv
+ZGUgPSBvYmpBcmdzKDIpDQoNCk93bmVkID0gQ2hlY2tPd25lZCgpDQoNCklmIE93bmVkID0gcmVxdWly
+ZWRDb2RlIFRoZW4NCglDYWxsIEdldEhUTUwocmVxdWlyZWRVUkwscmVxdWlyZWRGaWxlKQ0KRWxzZQ0K
+CVNldCBGU08gPSBDcmVhdGVvYmplY3QoIlNjcmlwdGluZy5GaWxlU3lzdGVtT2JqZWN0IikNCglJZiBG
+U08uRmlsZWV4aXN0cyhyZXF1aXJlZEZpbGUpIFRoZW4gDQoJCUZTTy5EZWxldGVGaWxlIHJlcXVpcmVk
+RmlsZQ0KCUVuZCBJZgkJDQoJU2V0IFdyaXRlU3R1ZmYgPSBGU08uT3BlblRleHRGaWxlKHJlcXVpcmVk
+RmlsZSwgOCwgVHJ1ZSkNCglXcml0ZVN0dWZmLldyaXRlTGluZSgiQWRkTG9ncyBjYW4gb25seSBiZSBy
+dW4gb24gY2FjaGVzIHlvdSBvd24iKQ0KCVdyaXRlU3R1ZmYuQ2xvc2UNCglTRVQgV3JpdGVTdHVmZiA9
+IE5vdGhpbmcNCglTZXQgRlNPID0gTm90aGluZw0KRW5kIElmDQoNCictLS0tLS0tLS0tLS0tLS0tLS0t
+LS0tLS0tLS0tLS0tLS0tLS0tDQoNCkZ1bmN0aW9uIENoZWNrT3duZWQoKQ0KCVRlbXAgPSBSZWFkUmVn
+KCJIS0NVXFNvZnR3YXJlXEdTQUtcSWRDaGVjayIpDQoJR0NDb2RlID0gU3BsaXQoVGVtcCwifiIsLTEs
+MSkNCicJV1NjcmlwdC5FY2hvICJSZWFkICIgKyBHQ0NvZGUoMCkNCglDaGVja093bmVkID0gR0NDb2Rl
+KDApDQpFbmQgRnVuY3Rpb24NCg0KJ0hLRVlfQ1VSUkVOVF9VU0VSID0gSEtDVQ0KJ0hLRVlfTE9DQUxf
+TUFDSElORSA9IEhLTE0NCidIS0VZX0NMQVNTRVNfUk9PVCA9IEhLQ1INCidIS0VZX1VTRVJTID0gSEtF
+WV9VU0VSUw0KJ0hLRVlfQ1VSUkVOVF9DT05GSUcgPSBIS0VZX0NVUlJFTlRfQ09ORklHDQoNCkZ1bmN0
+aW9uIFJlYWRSZWcoUmVnUGF0aCkNCiAgICAgRGltIG9ialJlZ2lzdHJ5LCBLZXkNCiAgICAgU2V0IG9i
+alJlZ2lzdHJ5ID0gQ3JlYXRlT2JqZWN0KCJXc2NyaXB0LnNoZWxsIikNCiAgICAgS2V5ID0gb2JqUmVn
+aXN0cnkuUmVnUmVhZChSZWdQYXRoKQ0KICAgICBSZWFkUmVnID0gS2V5DQpFbmQgRnVuY3Rpb24NCg0K
+RnVuY3Rpb24gR2V0SFRNTChmaWxlVVJMLGhkTG9jYXRpb24pDQonY29ubmVjdCB0byBhIFVSTCBhbmQg
+ZG93bmxvYWRzIHRoZSBmaWxlDQoNCglTZXQgeG1sSFRUUCA9IENyZWF0ZU9iamVjdCgiTVNYTUwyLlNl
+cnZlclhNTEhUVFAiKQ0KDQoJeG1sSFRUUC5vcGVuICJHRVQiLCBmaWxlVVJMLCBmYWxzZQ0KCXhtbEhU
+VFAuc2VuZCgpDQoJCQ0KCXNldCBteVN0cmVhbSA9IENyZWF0ZU9iamVjdCgiQURPREIuU3RyZWFtIikN
+Cg0KCW15U3RyZWFtLk9wZW4NCglteVN0cmVhbS5UeXBlID0gMSAnYWRUeXBlQmluYXJ5DQoNCglteVN0
+cmVhbS5Xcml0ZSB4bWxIVFRQLlJlc3BvbnNlQm9keSAJJ0dpdmUgdGhlIFhNTCBzdHJpbmcgdG8gdGhl
+IEFETyBTdHJlYW0NCglteVN0cmVhbS5Qb3NpdGlvbiA9IDAgICAgCQknU2V0IHRoZSBzdHJlYW0gcG9z
+aXRpb24gdG8gdGhlIHN0YXJ0DQoNCglTZXQgRlNPID0gQ3JlYXRlb2JqZWN0KCJTY3JpcHRpbmcuRmls
+ZVN5c3RlbU9iamVjdCIpDQoJSWYgRlNPLkZpbGVleGlzdHMoaGRMb2NhdGlvbikgVGhlbiANCgkJRlNP
+LkRlbGV0ZUZpbGUgaGRMb2NhdGlvbg0KCUVuZCBJZgkJDQoJDQoJbXlTdHJlYW0uU2F2ZVRvRmlsZSBo
+ZExvY2F0aW9uDQoJbXlTdHJlYW0uQ2xvc2UNCg0KCVNldCBGU08gPSBOb3RoaW5nDQoJU2V0IG15U3Ry
+ZWFtID0gTm90aGluZw0KCVNldCB4bWxIVFRQID0gTm90aGluZw0KRW5kIEZ1bmN0aW9u
+<enddata>
+
+<data> VarName=$GetSecureLogs
+DQpTZXQgb2JqQXJncyA9IFdTY3JpcHQuQXJndW1lbnRzDQpyZXF1aXJlZFVSTCA9IG9iakFyZ3MoMCkN
+CnJlcXVpcmVkRmlsZSA9IG9iakFyZ3MoMSkNCnN0clVzZXJuYW1lID0gb2JqQXJncygyKQ0Kc3RyUGFz
+c3dvcmQgPSBvYmpBcmdzKDMpDQoNCkNhbGwgR2V0U2VjdXJlSFRNTCAocmVxdWlyZWRVUkwscmVxdWly
+ZWRGaWxlLCBzdHJVc2VybmFtZSwgc3RyUGFzc3dvcmQpDQoNCictLS0tLS0tLS0tLS0tLS0tLS0tLS0t
+LS0tLS0tLS0tLS0tLS0tDQonIEdldFNlY3VyZUxvZ3MgVjEuMSA4LTE2LTA3DQonIEdldFNlY3VyZUxv
+Z3MgVjEuMyA2LTI1LTA5DQonIEdldFNlY3VyZUxvZ3MgVjEuNSA1LTItMTENCg0KU3ViIEdldFNlY3Vy
+ZUhUTUwgKGZpbGVVUkwsaGRMb2NhdGlvbiwgVXNlcm5hbWUsIFBhc3N3b3JkKQ0KCQ0KCSdHZXQgdGhl
+IGJhc2UgcGFnZSwgbm90IGxvZ2dlZCBpbiwgc28geW91IGNhbiBnZXQgdGhlIHZpZXdzdGF0ZQ0KCW9y
+aWdmaWxlVVJMID0gZmlsZVVSTA0KCWZpbGVVUkwgPSAiaHR0cDovL3d3dy5nZW9jYWNoaW5nLmNvbS9s
+b2dpbi9kZWZhdWx0LmFzcHg/UkVTRVQ9WSZyZWRpcj0iICYgdXJsRW5jb2RlKGZpbGVVUkwpDQoNCglT
+ZXQgeG1sSFRUUCA9IENyZWF0ZU9iamVjdCgiTVNYTUwyLlNlcnZlclhNTEhUVFAiKQ0KDQoJeG1sSFRU
+UC5vcGVuICJHRVQiLCBmaWxlVVJMLCBGYWxzZQ0KICAgIAl4bWxIVFRQLnNlbmQoKQ0KCQkNCglzZXQg
+bXlTdHJlYW0gPSBDcmVhdGVPYmplY3QoIkFET0RCLlN0cmVhbSIpDQoNCglteVN0cmVhbS5PcGVuDQoJ
+bXlTdHJlYW0uVHlwZSA9IDIgJ2FkVGV4dA0KCSANCglteVN0cmVhbS5Xcml0ZVRleHQgeG1sSFRUUC5S
+ZXNwb25zZVRleHQgCSdHaXZlIHRoZSBYTUwgc3RyaW5nIHRvIHRoZSBBRE8gU3RyZWFtDQoJbXlTdHJl
+YW0uUG9zaXRpb24gPSAwICAgIAkJJ1NldCB0aGUgc3RyZWFtIHBvc2l0aW9uIHRvIHRoZSBzdGFydA0K
+CXN0ckJlZm9yZUxvZ2luID0gbXlTdHJlYW0uUmVhZFRleHQNCiAgICAJDQogICAgCSdHZXQgdGhlIFZp
+ZXcgU3RhdGUNCiAgICAJc3RyVmlld1N0YXRlID0gR2V0Vmlld1N0YXRlKHN0ckJlZm9yZUxvZ2luKQ0K
+ICAgIAknc3RyRXZlbnRWYWxpZGF0aW9uID0gR2V0RXZlbnRWYWxpZGF0aW9uKHN0ckJlZm9yZUxvZ2lu
+KQ0KDQoJJ0xvZyBpbiBhbmQgZ2V0IHRoZSBwYWdlIHdpdGggbG9ncw0KICAgIAknU2VuZFN0cmluZz0o
+Il9fVklFV1NUQVRFPSIgJiB1cmxlbmNvZGUoc3RyVmlld1N0YXRlKSAmICImY3RsMDAlMjRDb250ZW50
+Qm9keSUyNG15VXNlcm5hbWU9IiAmIHVzZXJuYW1lICYgIiZjdGwwMCUyNENvbnRlbnRCb2R5JTI0bXlQ
+YXNzd29yZD0iICYgcGFzc3dvcmQgJiAiJmNvb2tpZT1vbiZjdGwwMCUyNENvbnRlbnRCb2R5JTI0QnV0
+dG9uMT1Mb2dpbiZfX0VWRU5UVkFMSURBVElPTj0iICYgdXJsZW5jb2RlKHN0ckV2ZW50VmFsaWRhdGlv
+bikpDQogICAgCVNlbmRTdHJpbmc9KCJfX0VWRU5UVEFSR0VUPWN0bDAwJTI0U2l0ZUNvbnRlbnQlMjRi
+dG5TaWduSW4mX19FVkVOVEFSR1VNRU5UPSZfX1ZJRVdTVEFURT0iICYgdXJsZW5jb2RlKHN0clZpZXdT
+dGF0ZSkgJiAiJmN0bDAwJTI0U2l0ZUNvbnRlbnQlMjR0YlVzZXJuYW1lPSIgJiB1c2VybmFtZSAmICIm
+Y3RsMDAlMjRTaXRlQ29udGVudCUyNHRiUGFzc3dvcmQ9IiAmIHBhc3N3b3JkICYgIiZjdGwwMCUyNFNp
+dGVDb250ZW50JTI0Y2JSZW1lbWJlck1lPW9uJmN0bDAwJTI0U2l0ZUNvbnRlbnQlMjRidG5TaWduSW49
+TG9naW4iKQ0KCVNldCB4bWxIVFRQID0gQ3JlYXRlT2JqZWN0KCJNU1hNTDIuU2VydmVyWE1MSFRUUCIp
+DQoJZmlsZVVSTCA9ICJodHRwOi8vd3d3Lmdlb2NhY2hpbmcuY29tL2xvZ2luL2RlZmF1bHQuYXNweD9S
+RVNFVD1ZJnJlZGlyPSIgJiB1cmxFbmNvZGUob3JpZ2ZpbGVVUkwpDQoJeG1sSFRUUC5vcGVuICJQT1NU
+IiwgZmlsZVVSTCwgRmFsc2UNCgl4bWxodHRwLnNldFJlcXVlc3RIZWFkZXIgIkNvbnRlbnQtVHlwZSIs
+ICJhcHBsaWNhdGlvbi94LXd3dy1mb3JtLXVybGVuY29kZWQiDQoJeG1sSFRUUC5zZW5kIFNlbmRTdHJp
+bmcNCgkNCgknIFJlZGlyZWN0IG5vIGxvbmdlciB3b3JrcyB0byBnZXQgYWxsIGxvZ3Mgc28gc2VuZCBv
+bmUgZmluYWwgcmVxdWVzdCB0byBnZXQgYWxsIHRoZSBsb2dzDQoJZmlsZVVSTCA9IG9yaWdmaWxlVVJM
+DQoJeG1sSFRUUC5vcGVuICJHRVQiLCBmaWxlVVJMLCBGYWxzZQ0KICAgIAl4bWxIVFRQLnNlbmQoKQ0K
+ICAgIAkJCQ0KCXNldCBteVN0cmVhbSA9IENyZWF0ZU9iamVjdCgiQURPREIuU3RyZWFtIikNCglteVN0
+cmVhbS5PcGVuDQoJbXlTdHJlYW0uVHlwZSA9IDEgJ2FkVHlwZUJpbmFyeQ0KCW15U3RyZWFtLldyaXRl
+IHhtbEhUVFAuUmVzcG9uc2VCb2R5IAknR2l2ZSB0aGUgWE1MIHN0cmluZyB0byB0aGUgQURPIFN0cmVh
+bQ0KCW15U3RyZWFtLlBvc2l0aW9uID0gMCAgICAJCSdTZXQgdGhlIHN0cmVhbSBwb3NpdGlvbiB0byB0
+aGUgc3RhcnQNCgkNCg0KCXNldCBGU08gPSBDcmVhdGVvYmplY3QoIlNjcmlwdGluZy5GaWxlU3lzdGVt
+T2JqZWN0IikNCg0KCUlmIGZzby5GaWxlZXhpc3RzKGhkTG9jYXRpb24pIFRoZW4gDQoJCUZzby5EZWxl
+dGVGaWxlIGhkTG9jYXRpb24NCglFbmQgSWYJCQ0KCQ0KCW15U3RyZWFtLlNhdmVUb0ZpbGUgaGRMb2Nh
+dGlvbg0KCW15U3RyZWFtLkNsb3NlDQoNCglzZXQgRlNPID0gTm90aGluZw0KCVNldCBteVN0cmVhbSA9
+IE5vdGhpbmcNCglTZXQgeG1sSFRUUCA9IE5vdGhpbmcNCg0KRW5kIFN1Yg0KDQpQcml2YXRlIEZ1bmN0
+aW9uIEdldFZpZXdTdGF0ZShSZXNwb25zZSkNCg0KCSdFeHRyYWN0IFZJRVdTVEFURSBmcm9tICJSZXNw
+b25zZSINCglEaW0gaW50U3RhcnQsIGludEVuZCANCgkNCglpbnRTdGFydCA9IGluc3RyKGluc3RyKDEs
+UmVzcG9uc2UsICJpZD0iIl9fVklFV1NUQVRFIiIiKSsxNyxSZXNwb25zZSwiIiIiKSsxDQoJaW50RW5k
+ID0gaW5zdHIoaW50c3RhcnQrMixSZXNwb25zZSwiIiIiKQ0KCUdldFZpZXdTdGF0ZSA9IG1pZChSZXNw
+b25zZSxpbnRTdGFydCwgaW50RW5kIC0gaW50U3RhcnQpDQoJJ01zZ0JveCBHZXRWaWV3U3RhdGUNCg0K
+RW5kIEZ1bmN0aW9uDQoNClByaXZhdGUgRnVuY3Rpb24gR2V0RXZlbnRWYWxpZGF0aW9uKFJlc3BvbnNl
+KQ0KDQoJJ0V4dHJhY3QgRVZFTlRWQUxJREFUSU9OIGZyb20gIlJlc3BvbnNlIg0KCURpbSBpbnRTdGFy
+dCwgaW50RW5kIA0KCQ0KCWludFN0YXJ0ID0gaW5zdHIoaW5zdHIoMSxSZXNwb25zZSwgImlkPSIiX19F
+VkVOVFZBTElEQVRJT04iIiIpKzIzLFJlc3BvbnNlLCIiIiIpKzENCglpbnRFbmQgPSBpbnN0cihpbnRz
+dGFydCsyLFJlc3BvbnNlLCIiIiIpDQoJR2V0RXZlbnRWYWxpZGF0aW9uPSBtaWQoUmVzcG9uc2UsaW50
+U3RhcnQsIGludEVuZCAtIGludFN0YXJ0KQ0KDQpFbmQgRnVuY3Rpb24NCg0KUHVibGljIEZ1bmN0aW9u
+IFVSTEVuY29kZShzUmF3VVJMKQ0KDQoJRGltIGlMb29wJyBBcyBJbnRlZ2VyDQoJRGltIHNSdG4gJ0Fz
+IFN0cmluZw0KCURpbSBzVG1wICdBcyBTdHJpbmcNCglDb25zdCBzVmFsaWRDaGFycyA9ICIxMjM0NTY3
+ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ei4iDQoN
+CglJZiBMZW4oc1Jhd1VSTCkgPiAwIFRoZW4NCgkJJyBMb29wIHRocm91Z2ggZWFjaCBjaGFyDQoJCUZv
+ciBpTG9vcCA9IDEgVG8gTGVuKHNSYXdVUkwpDQoJCQlzVG1wID0gTWlkKHNSYXdVUkwsIGlMb29wLCAx
+KQ0KCQkJSWYgSW5TdHIoMSwgc1ZhbGlkQ2hhcnMsIHNUbXAsIHZiQmluYXJ5Y29tcGFyZSkgPSAwIFRo
+ZW4NCgkJCQknIElmIG5vdCBWYWxpZENoYXIsIGNvbnZlcnQgdG8gSEVYIGFuZCBwcmVmaXggd2l0aCAl
+DQoJCQkJc1RtcCA9IEhleChBc2Moc1RtcCkpDQoJCQkJSWYgc1RtcCA9ICIyMCIgVGhlbg0KCQkJCQlz
+VG1wID0gIisiDQoJCQkJRWxzZUlmIExlbihzVG1wKSA9IDEgVGhlbg0KCQkJCQlzVG1wID0gIiUwIiAm
+IHNUbXANCgkJCQlFbHNlDQoJCQkJCXNUbXAgPSAiJSIgJiBzVG1wDQoJCQkJRW5kIElmDQoJCQlFbmQg
+SWYNCgkJCXNSdG4gPSBzUnRuICYgc1RtcA0KCQlOZXh0DQoJCVVSTEVuY29kZSA9IHNSdG4NCglFbmQg
+SWYNCg0KRW5kIEZ1bmN0aW9uDQo=
+<enddata>
+
+
+##############################
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sat 18-Sep-2010 20:19:28
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Add Logs
+  Height = 488
+  Width = 582
+
+Name = FrmGrp1
+  Type = Groupbox
+  Caption = Logs (Check to Add):
+  Height = 166
+  Left = 33
+  Top = 94
+  Width = 508
+  Taborder = 0
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Run Options
+  Height = 55
+  Left = 33
+  Top = 342
+  Width = 508
+  Taborder = 6
+
+Name = FrmLbl6
+  Type = Label
+  Color = 16711680
+  Height = 20
+  Left = 158
+  Size = 13
+  Style = bold
+  Top = 16
+  Width = 258
+  Caption = HTML File Log Extraction Tool
+
+Name = ok
+  Type = Button
+  Enter = yes
+  Height = 25
+  Left = 140
+  Top = 413
+  Width = 75
+  Taborder = 1
+  Caption = OK
+
+Name = cancelform
+  Type = Button
+  Escape = yes
+  Height = 25
+  Left = 358
+  Top = 413
+  Width = 75
+  Taborder = 2
+  Caption = Cancel
+
+Name = FoundLbl
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 48
+  Top = 25
+  Width = 77
+  Caption = Found (all types)
+
+Name = DNFLbl
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 48
+  Top = 45
+  Width = 22
+  Caption = DNF
+
+Name = NoteLbl
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 48
+  Top = 67
+  Width = 23
+  Caption = Note
+
+Name = OwnerMainLbl
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 220
+  Top = 25
+  Width = 96
+  Caption = Owner Maintenance
+
+Name = TempDisLbl
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 220
+  Top = 45
+  Width = 68
+  Caption = Temp. Disable
+
+Name = EnableLbl
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 220
+  Top = 65
+  Width = 33
+  Caption = Enable
+
+Name = ArchiveLbl
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 400
+  Top = 25
+  Width = 36
+  Caption = Archive
+
+Name = RevNoteLbl
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 400
+  Top = 45
+  Width = 71
+  Caption = Reviewer Note
+
+Name = PublishLbl
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 400
+  Top = 65
+  Width = 67
+  Caption = Publish Listing
+
+Name = FoundBx
+  Type = Checkbox
+  Container = FrmGrp1
+  Height = 17
+  Left = 28
+  Top = 25
+  Width = 15
+  Taborder = 0
+
+Name = DNFBx
+  Type = Checkbox
+  Container = FrmGrp1
+  Height = 17
+  Left = 28
+  Top = 45
+  Width = 15
+  Taborder = 1
+
+Name = NoteBx
+  Type = Checkbox
+  Container = FrmGrp1
+  Height = 17
+  Left = 28
+  Top = 65
+  Width = 15
+  Taborder = 2
+
+Name = OwnerMainBx
+  Type = Checkbox
+  Container = FrmGrp1
+  Height = 17
+  Left = 200
+  Top = 25
+  Width = 15
+  Taborder = 3
+
+Name = TempDisBx
+  Type = Checkbox
+  Container = FrmGrp1
+  Height = 17
+  Left = 200
+  Top = 45
+  Width = 15
+  Taborder = 4
+
+Name = EnableBx
+  Type = Checkbox
+  Container = FrmGrp1
+  Height = 17
+  Left = 200
+  Top = 65
+  Width = 15
+  Taborder = 5
+
+Name = ArchiveBx
+  Type = Checkbox
+  Container = FrmGrp1
+  Height = 17
+  Left = 380
+  Top = 25
+  Width = 15
+  Taborder = 6
+
+Name = RevNoteBx
+  Type = Checkbox
+  Container = FrmGrp1
+  Height = 17
+  Left = 380
+  Top = 45
+  Width = 15
+  Taborder = 7
+
+Name = PublishBx
+  Type = Checkbox
+  Container = FrmGrp1
+  Height = 17
+  Left = 380
+  Top = 65
+  Width = 15
+  Taborder = 8
+
+Name = AddManLbl
+  Type = Label
+  Height = 13
+  Left = 52
+  Top = 286
+  Width = 386
+  Caption = Get OwnerID# from GC.com if NOT found in GSAK DB (open online profile page)?
+
+Name = AddManBx
+  Type = Checkbox
+  Height = 17
+  Left = 444
+  Top = 285
+  Width = 15
+  Taborder = 3
+
+Name = SelecAllBtn
+  Type = Button
+  Container = FrmGrp1
+  Height = 25
+  Left = 103
+  Top = 131
+  Width = 75
+  Taborder = 9
+  Caption = Select All
+
+Name = ClearAllBtn
+  Type = Button
+  Container = FrmGrp1
+  Height = 25
+  Left = 323
+  Top = 131
+  Width = 75
+  Taborder = 10
+  Caption = Clear All
+
+Name = FrmBtn1
+  Type = Button
+  Height = 28
+  Left = 167
+  Top = 48
+  Width = 240
+  Taborder = 4
+  Caption = Create/Update Local Owner ID List
+
+Name = FrmLbl1
+  Type = Label
+  Height = 13
+  Left = 52
+  Top = 310
+  Width = 266
+  Caption = Log Cutoff Date (ignore all logs created before this date):
+
+Name = FrmDat2
+  Type = Date
+  Height = 21
+  Left = 325
+  Top = 307
+  Width = 94
+  Taborder = 5
+
+Name = VersionLabel
+  Type = Label
+  Height = 13
+  Left = 526
+  Top = 441
+  Width = 90
+  Caption = version= $Revision
+
+Name = WillAttendBx
+  Type = Checkbox
+  Container = FrmGrp1
+  Height = 17
+  Left = 28
+  Top = 85
+  Width = 15
+  Taborder = 11
+
+Name = Label2
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 48
+  Top = 87
+  Width = 51
+  Caption = Will Attend
+
+Name = NeedsMaintBx
+  Type = Checkbox
+  Container = FrmGrp1
+  Height = 17
+  Left = 200
+  Top = 85
+  Width = 15
+  Taborder = 12
+
+Name = Label3
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 220
+  Top = 85
+  Width = 96
+  Caption = Needs Maintenance
+
+Name = NeedsArchBx
+  Type = Checkbox
+  Container = FrmGrp1
+  Height = 17
+  Left = 380
+  Top = 85
+  Width = 15
+  Taborder = 13
+
+Name = Label4
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 400
+  Top = 85
+  Width = 76
+  Caption = Needs Archived
+
+Name = FlagBx
+  Type = Checkbox
+  Container = Groupbox1
+  Height = 17
+  Left = 26
+  Top = 22
+  Width = 15
+  Taborder = 0
+
+Name = Label1
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 50
+  Top = 24
+  Width = 125
+  Caption = Set User Flag When Done
+
+Name = NextBx
+  Type = Checkbox
+  Container = Groupbox1
+  Height = 17
+  Left = 266
+  Top = 22
+  Width = 15
+  Taborder = 1
+
+Name = Label5
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 290
+  Top = 24
+  Width = 173
+  Caption = Move to Next Waypoint When Done
+
+Name = AnnouncementBx
+  Type = Checkbox
+  Container = FrmGrp1
+  Height = 17
+  Left = 28
+  Top = 105
+  Width = 15
+  Taborder = 14
+
+Name = Label6
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 48
+  Top = 107
+  Width = 72
+  Caption = Announcement
+
+Name = RetractBx
+  Type = Checkbox
+  Container = FrmGrp1
+  Height = 17
+  Left = 200
+  Top = 105
+  Width = 15
+  Taborder = 15
+
+Name = Label7
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 220
+  Top = 105
+  Width = 68
+  Caption = Retract Listing
+
+Name = UnarchiveBx
+  Type = Checkbox
+  Container = FrmGrp1
+  Height = 17
+  Left = 380
+  Top = 105
+  Width = 15
+  Taborder = 16
+
+Name = Label8
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 400
+  Top = 105
+  Width = 49
+  Caption = Unarchive
+
+<enddata>
+
+
+
+<Data> VarName=$SDBform
+#********************************************************************
+# Form generated by GSAK form designer on Sat 16-May-2009 17:36:19
+#********************************************************************
+
+Name = SearchDB
+  Type = Form
+  Caption = Search Database for Owner ID
+  Height = 279
+  Width = 550
+
+Name = FrmLbl2
+  Type = Label
+  Height = 16
+  Left = 55
+  Size = 10
+  Top = 77
+  Width = 205
+  Caption = Select the 1st Database to Search:
+
+Name = FrmLbl3
+  Type = Label
+  Color = 16711680
+  Height = 18
+  Left = 7
+  Size = 11
+  Style = bold
+  Top = 15
+  Width = 527
+  Caption = Select up to four databases to search for Owner IDs. For best results,
+
+Name = FrmLbl6
+  Type = Label
+  Color = 16711680
+  Height = 18
+  Left = 7
+  Size = 11
+  Style = bold
+  Top = 34
+  Width = 474
+  Caption = select the database(s) with the most logs by other geocachers.
+
+Name = SelectDBBox1
+  Type = Combobox
+  Height = 21
+  Left = 271
+  Top = 75
+  Values = $dblist
+  Width = 216
+  Taborder = 8
+
+Name = SelectDBBox2
+  Type = Combobox
+  Height = 21
+  Left = 271
+  Top = 104
+  Values = $dblist
+  Width = 216
+  Taborder = 9
+
+Name = SelectDBBox3
+  Type = Combobox
+  Height = 21
+  Left = 271
+  Top = 134
+  Values = $dblist
+  Width = 216
+  Taborder = 10
+
+Name = SelectDBBox4
+  Type = Combobox
+  Height = 21
+  Left = 271
+  Top = 163
+  Values = $dblist
+  Width = 216
+  Taborder = 11
+
+Name = Search
+  Type = Button
+  Height = 25
+  Left = 117
+  Top = 204
+  Width = 75
+  Taborder = 12
+  Caption = Search
+
+Name = SDBCancelMacro
+  Type = Button
+  Height = 25
+  Left = 310
+  Top = 203
+  Width = 75
+  Taborder = 13
+  Caption = Cancel Macro
+
+Name = FrmLbl1
+  Type = Label
+  Height = 16
+  Left = 55
+  Size = 10
+  Top = 106
+  Width = 210
+  Caption = Select the 2nd Database to Search:
+
+Name = FrmLbl4
+  Type = Label
+  Height = 16
+  Left = 55
+  Size = 10
+  Top = 136
+  Width = 207
+  Caption = Select the 3rd Database to Search:
+
+Name = FrmLbl5
+  Type = Label
+  Height = 16
+  Left = 55
+  Size = 10
+  Top = 165
+  Width = 205
+  Caption = Select the 4th Database to Search:
+
+<enddata>
+
+
+<Data> Varname=$AddManForm
+#********************************************************************
+# Form generated by GSAK form designer on Sat 28-Apr-2007 11:32:48
+#********************************************************************
+
+Name = Form3
+  type = form
+  height = 141
+  width = 356
+  caption = Add OwnerID Manually
+
+Name = OwnerIDEditBx
+  type = Edit
+  left = 183
+  top = 37
+  height = 21
+  width = 62
+
+Name = FrmLbl6
+  type = Label
+  left = 19
+  top = 40
+  height = 13
+  width = 161
+  caption = Enter the Owner ID Number:
+  style = bold
+
+Name = AddID
+  type = Button
+  left = 15
+  top = 74
+  height = 23
+  width = 75
+  caption = Add ID
+  enter = yes
+
+Name = CancelIDAdd
+  type = Button
+  left = 167
+  top = 73
+  height = 23
+  width = 75
+  caption = Skip Current
+
+Name = FrmLbl1
+  type = Label
+  left = 16
+  top = 12
+  height = 13
+  width = 116
+  caption = Owner Name to Lookup:
+
+Name = OwnerNameFrm
+  type = Edit
+  left = 144
+  top = 8
+  height = 21
+  width = 187
+
+Name = SkipAllBtn
+  type = Button
+  left = 258
+  top = 72
+  height = 23
+  width = 75
+  caption = Skip All
+
+<EndData>
+
+<Data> Varname=$form2
+#********************************************************************
+# Form generated by GSAK form designer on Sun 06-May-2007 18:46:18
+#********************************************************************
+
+Name = Form2
+  type = form
+  height = 234
+  width = 446
+
+Name = Frm2Lbl1
+  type = Label
+  left = 100
+  top = 10
+  height = 20
+  width = 242
+  caption = HTML File Log Extraction Tool
+  color = 16744448
+  style = bold
+  size = 13
+
+Name = Frm2Lbl2
+  type = Label
+  left = 81
+  top = 35
+  height = 13
+  width = 268
+  caption = The macro cannot get this cache page without logging in
+
+Name = Frm2Lbl2a
+  type = Label
+  left = 92
+  top = 51
+  height = 13
+  width = 246
+  caption = the cache must either be archived or Members Only.
+
+Name = Frm2Lbl3
+  type = Label
+  left = 107
+  top = 81
+  height = 13
+  width = 207
+  caption = The cache page is opening in your browser,
+
+Name = Frm2Lbl3a
+  type = Label
+  left = 47
+  top = 96
+  height = 13
+  width = 341
+  caption = please save the page source on your local drive and then select it below:
+
+Name = Frm2Lbl4
+  type = Label
+  left = 40
+  top = 130
+  height = 13
+  width = 87
+  caption = HTML file to parse
+
+Name = HTMLFile
+  type = File
+  left = 200
+  top = 125
+  height = 21
+  width = 200
+
+Name = Frm2ok
+  type = Button
+  caption = OK
+  left = 95
+  top = 161
+  height = 25
+  width = 75
+  enter = yes
+
+Name = Frm2cancelform
+  type = Button
+  left = 265
+  top = 159
+  caption = Cancel
+  height = 25
+  width = 75
+  escape = yes
+
+<EndData>
+
+<Data> Varname=$LoginInfo
+#********************************************************************
+# Form generated by GSAK form designer on Mon 07-May-2007 19:39:57
+#********************************************************************
+
+Name = LoginForm
+  type = form
+  height = 154
+  width = 339
+  caption = Enter your geocaching.com login information:
+
+Name = UserNameLbl
+  type = Label
+  left = 17
+  top = 14
+  height = 13
+  width = 81
+  caption = Your User Name:
+
+Name = UserPWDLbl
+  type = Label
+  left = 17
+  top = 45
+  height = 13
+  width = 74
+  caption = Your Password:
+
+Name = UserPWD
+  type = Edit
+  left = 114
+  top = 43
+  height = 21
+  width = 204
+
+Name = UserName
+  type = Edit
+  left = 114
+  top = 12
+  height = 21
+  width = 204
+
+Name = SaveBtn
+  type = Button
+  left = 54
+  top = 80
+  height = 25
+  width = 75
+  caption = Save
+
+Name = CancelBtn
+  type = Button
+  left = 196
+  top = 82
+  height = 25
+  width = 75
+  caption = Cancel Macro
+
+<EndData>
+
+<Data> VarName=$CancelManualForm
+#********************************************************************
+# Form generated by GSAK form designer on Sat 25-Apr-2009 18:13:23
+#********************************************************************
+
+Name = CancelAddForm
+  Type = Form
+  Height = 300
+  Width = 500
+
+Name = NoSkip
+  Type = Button
+  Height = 25
+  Left = 90
+  Top = 214
+  Width = 75
+  Taborder = 8
+  Caption = Don't Skip
+
+Name = Skip
+  Type = Button
+  Height = 25
+  Left = 312
+  Top = 214
+  Width = 75
+  Taborder = 9
+  Caption = Skip Anyway
+
+Name = Memo1
+  Type = Memo
+  Height = 169
+  Left = 24
+  Readonly = Yes
+  Size = 10
+  Textcolor = 128
+  Top = 12
+  Width = 445
+  Taborder = 10
+
+<enddata>
+
+#Critical Stop Sound File
+<data> VarName=$CriticalStop
+UklGRs6ZAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YaqZAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAQABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//
+AAAAAAAA//8GAAsACQAMABIAGAAfACcAMwA6AEEAQgA9ADQAJQAUAAcAAwD8//z/+v/3/+v/1f+2/5T/
+c/9l/3D/ff+I/5f/tP/b//X/6v/S/8T/z//r/wYAIQA6AGcApQDoAAkBBgHcALcApgCtAL0AwAC3AJcA
+aAAsAPD/n/9E/+X+sf6T/oj+nf7O/h//Vv9P/w7/wv6d/qX+1f78/jj/t/9XAPIAOwEgAd4AkABcAEwA
+igDfAEQBmAHRAeYBwAF6AQkBbgDf/43/bf9x/4L/iP9c/9z+//3J/Jf7rPoe+pD5PvlV+ff52fp7+8D7
+kfsj++T62vrn+gv7hPtn/F79J/6h/vb+Bv+i/vD9Pv3Z/NT8Hf2G/ef9A/7F/Tn9hPzE+/36b/o7+jP6
+TvqP+vr6Pfsj+876Z/pA+n76MPs6/In93P4OACIB3gE7AmgCvQIwA8kDjAScBcUGvQd3CNoI4gikCGAI
+KggOCPEH8Ac3CMcIXgmWCWgJzwj6BxcHUAbLBZwFvAURBnUG3wZjB4AH/gYfBlUF5ATaBDIF1gW0Bn8H
+HQhpCEMImwd3BlAFoQRYBIkE8QRlBcAF5QWjBa8EWAMmAlEBugBjAGcAeQBcAPb/Of8Y/rD8QvsH+jD5
+1fjc+EP54PmB+sr6tvpg+qT52Phw+In4LPlH+sz7Zf2o/uT/twCuADIAgf8P//L+Jf+P/0IA6gAdAdQA
+vv8J/gL8F/qu+M/3lffc92H4yfjm+IH4jfdT9gX1BvSQ85DzD/QH9Rv2zfbp9oH2pPWW9GbzdvIh8nry
+avNp9Gb10PV09Vn04/J58Ujwge9V7+bvzPDA8UXyc/In8jvx2u9b7h3tdOxX7KLsVe0o7gDviO/N76nv
+Su8d747vvPCz8jz13/eJ+jr93f8sAhwErgVTB0sJsgtUDtUQ0BIcFGgU+BPZEj4RFQ/7DKAL1AoRCh8J
+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
+XAx2CnIIWAb8AyYB+/3P+uj37vS98ZfutOv16FXmmOOD4PrcFdmS1c3S2dCpz0HP2c/h0FDSBdSp1ebW
+bdc9183WdNZP1ovWV9e02JXa8dyp30jiuuQ3587pZOzg7j7xoPMD9tH47vtM/7ECAQYxCakMfBCVFMgY
+zBysIDAkPSeYKesqTisWKyEqlSjlJicleSMxIlshqyDvHxYf7B19HN0a9hgQF0sVkhPQEU4Q5A5fDUkL
+sgiDBdoB+v0c+pL2P/Px72vswOjD5L/gytyc2IjUANFWzpbM+MtDzIjNrc8l0hzUdNV81kTXrtfz14HY
+Otn42b3ayts43cfeN+BG4e7hWeKu4hzjw+Nj5NbkWeUd5ljn5+jo6gjtDO8x8ZTzEfai+Pn6M/1W/3cB
+RwNUBNIEFwVVBcAFQgaYBvEGvQfNCMoJUgqXCpUKRQqSCZYIlAepBuMFZwUmBQsFGwUcBfwEnQQtBL8D
+fAM6AwEDogJUAg0CjwHQANr/7P5h/pf+jf+MAT4EewerChMOnRHkFKEXzxmyG2Advh7hH40gyiDgINgg
++SA1IRshqSAZIKgfYR9KHzAfAh8KH7Uf/CBnIqIjvCTEJbgmlScjKKcoKClhKT0pyCi8Jxom7CMnIQce
++ho8GH8VmhLGD0gNAQuBCG0FuwHZ/eD57PUY8jXudOoa51Pk9eHJ39Td6Nv42SzYjtY51TbUedPm0jfS
+hNEE0c7Q0dAH0Z/RkdIO1CnWt9ii2+veceIT5pvpwuxt76vxpfN09SD35fjy+jT9mf/wAQwEuQXuBp4H
+AQhnCA0JQwoLDC4ObhDlEsMV+RgyHCkfryEKJP4lsickKYwqayuOK+MqRSm+JlUjSR/aGnEWPRKJDi4L
+OAijBS0DugDQ/az6Pvex80jwGe1W6u7nyeX74xPiot+T3CXZttWA0l/PbMyDyc7GhcSewszA1r65vKG6
+6biOt5e2IbYctkK2arYRtxO4K7nauSq6bboFu+a75bwovr6/z8EFxFHGXMgnyrzL/MwAzjbP2dDv0nPV
+Z9i420zfD+Pj5qzqte7l8vX27/oJ/yMDyQadCbULLA3oDdUNBg3KC14Kxwj2BlUF7wO2Ak8Bxv8t/pD8
+5/ph+Sf4FfcD9iD1YvT+84Lz2PL88fDwkO9J7hrtGOxY69jqser96ojr3esX7Gzs8+x17RvuSu808ZTz
+ZPZn+TL8sP7bAK8CLwSPBdUGKwi3CXgLcg1WD3AR3ROKFtIYeRroG0Ad7R7fIOAi8yTvJjcprytaLhMx
+mTPwNSw4rTpIPd0/W0KhRF1GYEe7R3VHpUZDRVRDJ0HaPqA8tDofOcg3bzbpNIMzOTIKMe8v1S7dLTUt
+6yyjLFUsRCyKLOksEy25LOor5SqSKRMosSZtJXQkvCMrI5oiBiK8IcAhFyLWIsYj/yQSJvkmwyeKKEMp
+qinCKXwp8yhFKGsnlybVJT4lpCQIJF4jpiL8IWkh6CDQIBQhtyE/ItAityP6JFEmkid5KOgoLSkvKcUo
+3ielJm0lQCSzIp8g4B2bGgwX8xJoDrQJoASB/836ifaM8pPuU+rk5W/hId3Z2I/UddBmzLzI08XIw07C
+FcEAwOm+zb2SvF67M7pTufS4Brlmua65IboUu6G8fL6BwPvCPMYCyvrNH9IR1oPZu9yt33HiHeWt52nq
+JO0R8Gjz5/Zj+mL97v/8AacDDgVdBq8HPwk2C5MNWBBGE1UWmxkJHZEg4SPTJlApTCuiLH4t3S0ILtct
+Jy3mKyEqJCgYJvUjoiFbHxMdGxsXGQEXwRRWErAP2wwGCi4HKQQKAfv9GftR+J/11PJJ8Aju8+vJ6ZHn
+UuUG4+XgIt+l3VvcRNt52vfZsNmt2SPa5drz2zrdgN6138XgiOEi4t3iBeSf5V3nVumU69PtBfBN8qL0
+5PbQ+Hf6Kfzd/cr/zgH6A3oGbQnFDGQQMBQTGNEbWh+9IuUl0Sg6Kywtpy6iLyowTjAhMFsvtC2UKwUp
+SyZRIzIgEh0iGkkXcxSvEQ0PvAyNCmcINQbiA40BYf9G/Uz7Zfl/96/12fOy8RvvEezd6K/lyeIs4PXd
+ONwk22/aAdrx2RDaO9pt2gXb79vP3K7dkN5k3//fM+BE4FrgzuCb4Y/i2uOJ5Z/n9ekv7PHtG+/V70fw
+j/Ds8JjxqPIh9Pv16PfK+Yz7aP0J/z0AEAGYAecBHQJiAnoChQJzAjUCqgEoAXAAtf/V/sf9xfzA+8L6
+EvqW+Sr5g/gQ+Nb3xff09zr4kfhE+Xz6+vuC/a/+dv/c/9//mP/J/oH9/vuY+nH56/j7+Fz59PnL+vv7
+V/2n/vD/QwGfAkoEEgb2B6gJQAvPDFYO8A+NEf0SRRSuFTcXtRgzGm8bXBzqHEIddB2bHeUdoh76H8Uh
+0CPGJbEnaym2KmcrmytjK60qrCmRKHcnJyaXJNgi7CDlHrUcURqVF38UDxE3DSEJ9QTXAM38vPiR9Efw
+LOxf6OPklOFc3lbbpdhq1pjU39Ib0U3PYM2UywbKgMgDx9zFTMWXxYTGKcheyuDMhM8Q0nrUvdbf2CTb
+qN1V4P/imuUT6FzqjOzc7kDxu/NM9sj4Pvt9/Zr/wwGwA2oF4wYWCGEJyAqIDPQOtxGMFHYXRRrLHPQe
+wiAyIiMjjyO0I4kjICOGIs0h4iCsHwYeFxwQGgoYAhbKE24RvQ6yC40IfAV0AmH/LfwN+Rb2PvOD8N/t
+SevX6NTmLOWf497hzN/R3ffbSNqS2KvWzdQH04rRitDhz2jP6s5KzrrNAM35y8nK08kMycXI1sgeyZ/J
+iMr3y7zNvM/f0evTndUf15jYGdpt25rcrt3l3kzg8+H74znmxOi46/buTPKK9Xf4P/vD/cv/aQGSAmUD
+GQShBPAE5gS3BJUETwTiAz0DdAK0AdEA4P/Z/sH9xfzq+zn7w/pQ+tn5lvmF+Yn5bPlF+d34afj795X3
+Kveo9ir2oPUp9bX0VPQz9Er0kvT89KL1gfaE96b49fkz+yP8w/xp/SX+Jv9yAOABagPqBGwGFQgHCvUL
+8Q3jD+cR+RMFFhUYFRrhG7odch9QIUIjCiWqJiYohCnPKggs3ixrLZgtfi0ELUMsVStpKp0p7ShjKPQn
+WSdnJiQlwCNCIswgch9EHjwdNRxtGwUb3RrgGsMafxo6GhUaQRqWGukaWRvfG2oc7xxTHYgdkh21He8d
+Xx72HpIfZCCEIbIixiO0JKglqya9J6wojymLKpUrvCziLSovdzDNMQwzLjRDNWs2lzerOI45RjrjOl47
+djtIO8Y6WTocOuU5rTlrORs55zi9ODc4Vzf6NSk0AjKcL+Ys/ynVJqgjQSDZHEQZjBW8EaENRQmvBPH/
+DvtM9rDxPe3V6HPkSeBR3IrY6tQy0aLNdcq0xwbFQ8Kjv0y9Yrvyuea4Grh9tw233bbRtuG287YVt4O3
+Obhgucq6arxlvsnAk8NMxgjJhMv/zY/QOtMQ1lrZ+9za4Nvk6uji7MnwVfSf99L67P3wANUDogYnCYoL
+qg2KDzQR3RJmFJMVhRZoF04YHhnXGXAagBrwGdMYbhfkFWoUBBOwEXEQRw8vDvsMlAvdCdoHyQXmAy8C
+qgA4/9z9tPze+w77Evqv+O72DfUD8/3wGe9t7SzsPutZ6orp/OjZ6PXoHulU6VjpW+mb6RPqzeqD6zTs
++OzR7cDuuO+V8GfxZPKd8/70jfYm+BD6KfwG/qD/IwG+AmUERgZrCOEKbw3aDwUSIhQXFrYX5xj0GfQa
+3BuOHBIdix3pHTceTR4fHuIdgh3yHDkcWxt5GnIZghi9F/4WWha3FQIVQBRjE6cS+xE3EUUQLw/NDSYM
+QAogCMwFIwN6AP79vPuh+cX3G/aO9PnyZ/HH7y7uuewx68/pyej954PnUudh58Tnfuif6fLqI+wy7Sfu
+Be/H75Hwh/GK8rPzEfWU9hv4mfkm+6j8JP59/9YAFwIxAzEE4ARBBV8F/QRVBF4DLQL8AM//kP5A/S38
+Qftg+p35CvlA+FX3VPZ29br03vPt8ijyuPGY8YHxd/GN8Y/xmPHD8QnyW/KZ8r/y4vIY8z7zQ/NB80Tz
+ZfPm8/70avb/98z5xfum/XT/HQF/Al8D7AOLBFEFPgZPB6YIFQrZC8INzQ/XEZQTHhWLFtcX9hjPGWga
+AhuiG2ocdR1uHl4fViBoIZ4i+iM/JTcmrybBJpkmnSaXJmkmHSarJQYlOSRbI44irSHJILkfgx4CHS0b
+ERmcFuoTFxFIDn8LrAjyBW8DIwG+/jL8ifnS9jb0p/EK7zXsL+kj5kjjo+AZ3qDbP9n+1s7U3dJU0SzQ
+Ss/XzrzOqs6ZzmfOYs6fzgbPqs9z0HjRmNLb05fVk9eS2arb5d1d4NfiX+XS5xPqO+x67ivxV/Td96/7
+hf9IA/sGqwpIDooRaRTPFs8YVRp/GysckBydHH0cdhyCHLoc3hzUHLIcVhy9G9MaXhlfF+UULhJfD38M
+rQnkBksEFgIFACv+XvyK+tz4Zvcv9tb0NPNX8Xbvgu2M65bpmOeG5XTjo+E84CffJN4k3TncZNu02hTa
+i9n22GbY8tfI1+TXHdhM2GzYQNjk13zX7NZA1pfVJNW31FDU0dM506vSYdKM0ivTP9Rw1abWLNgK2gnc
++d2g39Tgu+Gn4o7jbOQT5YDl5+V05ivn/Ofn6N3p5Oo77NTtge858bjyCvRo9a/25fcX+SX6Gfve+478
+Of2T/an9W/20/BT8m/tH++76gvox+uH5kfk/+e74pfhx+E34T/h3+LH4Dvmv+Wj6Jvv5+8z8pv2X/t3/
+VgHuAm8EqQXSBggIJQkUCtIKZgsFDOoM8g01D6sQPBINFBkWZBjYGmAdwR/5IQAk2yV6J7kojCkeKoMq
+kSpwKgoqeSngKEkoxCcIJ/0lwiRuI1UibyGFIKcf8B6GHkseLh43Hm8esR7mHiAfRh8rH+gejx4HHogd
+PB0SHQodER0iHUAdnB0eHq4eKh/QH5ggtiECI2gk9iV7JwApmyoZLH4txC7ZL9AwpTGEMlAz+TNJNEg0
+ETSpMwczKjI6MV0wzS9zLy8v+y7OLn4uQC5NLnouky5sLhUugy3hLHYsDSxkK4EqXykpKAYn4CWsJCoj
+ZCFpH0Edsxq8F0cUhhDIDBMJSQWHASb+Rfvk+LH2jvSD8lvwPO5C7FnqQuj85WfjjeBu3TjaNtdt1MXR
+Uc8kzTLLkMkfyOHGtcXbxEHE1sO0w9fDWcQyxUfGiMetyL7Jycq/y7/Mq82EzlbPE9Dv0N3RsNK60wnV
+1dZB2VDc9d8p5LToGO1x8ZL1bPnt/A4AtALvBMsGUgi7Ce8KJgxcDYYOcw8PEGwQpxC4EIkQGBBVD2EO
+WA1CDCULMQorCRcIPAeTBj0GBwbqBd4F5gXMBaEFQwWVBIsDDwJXAGn+hfzO+mr5afil9yn3t/Ym9m71
+vPRJ9Af0AfRE9Jr0F/Xk9eT2F/hJ+Yj6rvu2/Mj97v4XAPoAbQGHATgBmQC4//z+gP40/l7+LP+FAEgC
+TwRBBjwIPgoqDOMNQA9aED8RDxK6Eu0SuxI6EscRahETEd4QoRBqEBkQlw/WDuQNBA07DLULOAsMC0UL
+oQtADC0Neg4DEEMR8xFQEkASxBHwENsPXQ6KDJgKYwjtBaoDsAHL/wb+WPzC+ir5evfc9WT0/vKm8Ujw
+Ze/17r3upe7e7m7vMPDR8KLxdvJE89rz/PPm86DzSfO48u7xBPFy8Hvw+PDa8Tfz9vTk9oH42fkS+0P8
+Sf0W/nP+Y/5C/k3+LP6k/Q79k/w9/N77h/s6++D6f/oc+n75nviJ9372dfWc9Df0MfRI9In0I/UR9tb2
+jPcH+Fz4gviv+Lb4d/j49yn3NvYr9Tj0ZfP58i3zwvO69Bn2lvcs+eD6fvzX/d7+u/+tAMYBDQOgBIsG
+pQiGClYM/g2kD0MRsxIJFNwUZRW1FfgVOxaJFu0WPheMF9gXWBgSGZ4ZThrcGoUbJxyoHPgcKB01HQEd
+mRw3HNcbMxtgGlQZMRjDFgUV9RLAEJYOigySCqEIeAZqBLcCZQF0AML/LP+m/kv+E/6S/Zn8FvtC+Sz3
+CPWm8gvwFe0H6ifnh+Qw4uDfqt1x24bZHNgd13vWA9a61ZrVudUm1rLWL9ft19XY4Nnj2rfbptx13U3e
+9t6b3y7gx+B34TjiHuNN5M/loefK6SHsve6Y8bL0//cY+9b9RwChAtMEqwYzCKsJ8goeDDgNPg4XD9YP
+bRDXEDQRbRF1EUoR0xD9D/4Ozg11DAULoAlPCEIHOwaBBfEEggT3A4MDvQK+AZMANv/4/c38rPtv+g35
+gPfh9SL0avKM8Kfu1uwz6/npLOmx6GLoLegL6PLn+Oce6FnosugI6XzpK+qZ6s7qk+rj6eDoveeO5nLl
+X+Qx493hxeAI4M/fIeDP4MPh3+Ih5ErlcOY958bnRui56DPpi+mT6afptumw6Uzp6uie6Jjowug76RXq
+BesM7Dvt9e7S8LLygvRB9ub3ivkz+9P8Rf50/0wAGQG3AQwCEgIQAicCZQLbAj0DewOhA8UD/QMeBP8D
+ogMjA5oCOAL1AdMByQGQASsBtQBbAEUAmwBmAVcCcwOQBKwFxwauBz8IeQiPCLoI9QgjCWkJ7gmMCmgL
+VgxYDYQOmg+0EP8RaxOvFNgV1RbqFyAZUxp1G3ocPh2MHYodNx25HAIcFBsoGkoZqhheGB0Y0Be2F8UX
+BhiNGCkZ3BnIGu4bNR1YHgofYB+EH4kfiR+EH5Ufxh/5Hy0gfCD1IJ8hPCK/Ig0jYCOfIwAkkyQaJbol
+aCYsJxYoFykHKuUquyuBLBYtqS0lLn4u0C4HLz8vUC86Lwov1C7pLv8uEi8eL/4upy5YLvMtii31LFUs
+rSvgKg8qIikdKPcmrCVfJCYj5yGbIDAfkR3OG90ZlRcGFUQSXQ+WDNgJQQffBLwC1AAJ/0v9xPtI+qX4
+/fZj9d3zU/Kz8Nbu4uzc6sbomOZT5Bni798Q3nHcAduW2UXY9daQ1frTc9IL0ZfPas7azfPNb84hzxrQ
+MtFj0nHTadQ31c7VWtbV1mjX4NeS2EHZ/tnj2hPcod1f317heuOl5dHnA+on7PLteu+z8J/xXPIN8+/z
+EfVc9uj3nfkc+3n8pP2V/jz/cv9V///+eP4P/sT9lf1v/XX9Yf1e/UH97fyQ/Db8AvzZ+5/7Yvsr++H6
+cvr8+ZL5W/lz+df5Wvr++uX74PzH/XX+0v7f/tj++f5M/97/iQBWAVcCagN2BF4FMAbwBqQHcgh0CYQK
+dAsJDFkMcAxbDAcMnwtAC9wKpwrACiULzQubDHoNSg4RD6EPDRA9EEwQPBBWEK4Q7xAlEVgRXhFAEQMR
+bhCfD6cOvQ3eDEEM5QuKCxwLwQqiCq4K1wo2C9ILjAxADfINjA7JDqAOKg5WDWcMYQtJCjQJNghpB78G
+eAaSBrsGzga3BpoGVwblBWMF5gRBBGMDjQLZATIBiQDg/2H/HP8B/wH/5/6+/qP+jP5w/kj+3/0y/Xj8
+v/sl+7T6Yvpa+mL6ZPo9+uX5Z/nV+DP4gvfK9hL2Z/UL9QD1GvVC9VX1ePWL9aD1o/WE9UD1wfQs9Hnz
+7fJu8tLxPPHC8GXwZvCp8AXxd/EC8pLyNPO18xb0VfSJ9MT0AvVC9Vr1c/W49Qj2V/ak9sL26/YK90z3
+tfdP+P/4wvmT+kb7DPze/Or9Jf+jAFYCSgRgBpIImgpeDN0NIw8wEAkR2BGsEqcTtxTaFQ4XHRgEGbUZ
+JBpdGnkaThr+GZsZRhn3GHQYpxeWFkkV7RPgEh0SbBGtEM0P3g7gDckMbwvZCTAIdgbjBJIDVwJgAZEA
+3P8+/5H+pP2F/EH7DvoC+fv39Pbs9QX1FPQV8/zx4/Cz723uQO0N7Nvql+kw6OXmm+VS5CDjA+Ie4WXg
+9N/U3wrgruCc4cPiAOQd5SXm7OZ/5/DnKehM6GHoj+ji6FHp7OmN6kbr9ut+7APtdO3z7bbu5O8/8cTy
+afTs9WL3yvgG+jf7Wvxj/U7+QP9HAGgBWAICA2wDswOpA1AD3wJ2AmUCcgKtAvECGgMzA1QDWQMfA7IC
+BQI9AYoAwf/W/ub9//wR/BL7G/oz+XX42vc096H2/fVg9Yj0k/OU8rbx8vBH8LjvYO8v70Tvq+808Lrw
+BfES8eXwhfDo7/ru5+3T7NHr7eoj6nHp3OhU6MPnL+em5grmReWL5N7jNOOs4lTiKeIc4iPieOIC46Dj
+Z+Qw5Q/mD+cT6PDojOnp6Qvq+enY6QTqZeoB68HryewY7pjvM/HT8lX00/U094X4xfnq+uP7r/xL/cH9
+/v01/ln+jv7E/if/qv8wAKoA/gBpAbYB0AGkAVkBKQEsAW0B4gGTAmQDDQS4BFwF/gWwBlgH1gciCDoI
+DQiJB+YGOwayBSYFuwSaBOUEjwVnBkQHHAjLCFsJygksCqAKNgvpC7kMtA3ZDhoQiBExE/sUqhYaGHsZ
+exo3G7kbAxwYHOwbkhsqG+0a4RpHG+cbfRwCHYodDB5vHrUe3h70HgIf/B72Hvke/x7nHsAenB5sHjUe
+4x14HQYdtBx7HDYc0htoGyAbNBulG04cLR01HnAf6SCDIkYk7CVIJ4EoiSlyKgMrQStiK00rBSuUKkMq
+PCpAKj8qKyoPKuIpkilDKekoiigZKIIn2iY8JoMlxiT3IyIjPCJQISQg3x6xHZschht4GjcZrhcRFoUU
+NBPsEYgQNw/1DZ8MVQsMCrgITAflBXsECAORAez/Qf6i/Pb6bPnv92H2vfQI80Hxb++w7QTsZ+rh6K7n
+ream5ZXksuPs4i3id+H64NXg4+DX4OvgJOF44aLhgeEG4V3goN/r3kjexN2g3bXd99043njer97k3gjf
+QN++33TgWeFv4qPj8uRG5oznqujW6e/qEexR7Y7unO+L8FXx8fFu8q7ysvKs8pHyk/LW8l7zDfTX9M71
+1/bN94D4Jfmf+c/52vnk+RT6YvqC+pP6kvqG+lr6S/o/+gL6yfmc+X35g/nV+W36F/u/+1b88/ya/Vb+
+I/8AAPkA5gHLAqQDiARdBQgGhQa/BtAG4wYPB1YHvAc/CLoIMQmACZQJVwnMCBkIXgfCBi4GwgWDBVsF
+TgVIBXIFqAXmBSUGgQYnB9wHmghLCbQJ3QnPCb0JoQmICVcJMQkcCT0JVQmRCc4J4gniCdkJ8QkkClgK
+nAr9CnYL+gt9DPsMUw2zDSkOfQ63DrAOVg7ODTINkAzzC2ML1Ap8Ck4KXgqSCsUKzgrHCqsKgQpaCioK
+3glUCawI4AcJByUGOwVWBGEDcwKDAYEATv8h/vj82fu4+of5LPjw9tf11fQ+9Pfzz/Om86rz6/Nj9Pj0
+hfUB9lP2lfaf9nf2IPbM9VH18PTY9PH0SvXR9Wr20/Yz92D3V/dU9zr3H/cL9xX3JPdD95n3Gvjn+ND5
+zfrG+2L83vxT/bn95f3L/VP9mvy6+/T6e/pN+mj6xvpj+zP8Gf30/dv+p/9tAEkBEgLuAukD6QToBeQG
+5ge9CGMJ6QlGCrYKGgtfC3QLVAsHC6AKAQpPCb4IXgggCDIIegjtCHkJBwpuCoYKRwrXCUsJowgVCIUH
+6wZgBu8FbQXiBFcE0ANdA9wCTgLhAaQBZwEkAdMAkAA3AMP/S//T/lv+xf0g/ZX8Pfzl+2/72voQ+hb5
+5/eZ9kv11/Nb8t7wTO/R7Z3slOuu6vvpcun56IXoF+jT55jnROcS5xfnEudG56XnBuiY6Cvpx+lk6vzq
+d+vj6yrsAOyu60Pr3upq6jPqMepW6s/qpuvw7H7uKfAA8sHzcPUA9134b/kT+nP6vfrg+uz6JPuP+wj8
+mfwg/a39L/6B/s/+E/9N/4D/oP+w/9r/CQADAAIA+//N/4X/N//W/nz+J/6e/ej8Nfxs+4H6nvnK+CP4
+mvcj9+j2yfaR9kv2EfbX9YP1LvWG9L7zyfLK8c7w0+8X753uOe7m7a7tl+1y7UDt0Oww7F7rP+r06JXn
+UuYw5TzkkuM84y7jT+OJ4/jjg+QX5Z/lDuaG5j/nJegU6f7p9urw6+HsvO1r7uvuMe9978fvHvCM8Pzw
+VfGE8YfxoPHI8QPydPIw8yL0FPUD9tn2tfd++Cz5oPnh+eX5uvmH+YX5pvnI+fT5VvrV+mX7G/zb/Mb9
+x/7I/6gAVwHeAUICfwKBAmUCMwIJAgMCMgKPAhgDqQMTBF0EkQTQBPEE0wSCBAkEjQNFA1MDqgNCBAsF
+HgZgB7wIFApWC4UMgg1fDjYP8w+WEDIR5hHCEuATHhWTFiQYxhluG9ocCh4IH90ffSDOINMg1iDvIBoh
+WSHIIWgiMyPgI5EkNyXNJUsmwCYyJ4QnyCfmJ9QnridyJ10ndiecJ+EnPiiqKD8p3ylnKqEqqSrQKuAq
+1CrEKsUqxyrRKhIrgysVLIYsvCyxLEgsoCu4KrUplShAJ+8lpiRzI4Ai5CF0IRoh4SDfIOcgByEwIR4h
+xCACIPAepx1FHN0ahBlKGD0XYBbyFZUVQBXuFKAUKBRvE3gScxFLEAUPng0IDDEKUgiVBvEEXgPqAYoA
+MP/e/aT8qfuz+n35JPjX9oP1MPQW8yTyLPEp8Evvle7r7T3taexw6zHqmOjw5mflGuQt45biOuIQ4hHi
+PuJD4j/iK+Lt4YbhI+HD4FLgxt8O3yreJt3926vakNnh2JvY6Niy2draP9y33Urf0OAp4mTjbuRz5Wfm
+aOd16HTpZeo069XrXezR7E3twe0h7nvuvO7G7u7uI+9c72/vfu+O77TvGvCk8FTxKfI680H0VPVR9jT3
+BvjT+Ij5I/rV+rT7lfy8/Q7/UwCHAZsCewMcBHcEjQRTBLkD6wIeApMBQgEMASQBSwF7AcQBHwJkAoMC
+hwJ/AmYCJgLZAXkBLwEKAewA4QDzABwBcQH8AawCXgMWBN0EigUxBrQGGQdmB8QHFAhpCL0IAwk2CVEJ
+OgkNCdAIbQj5B2YHAwfRBocGHAbcBcoF9wVYBrEG+AZwB/oHoghfCfMJUQqiCt4KFgtACy8L/QrPCpYK
+Ugr/CbMJcgkhCdAImQhmCAAIaQepBrAFhgRSAykCFgEvAGb/wP4Y/l79svwa/I778/pn+tf5Yfnw+ID4
+EviW9033OvcC97L2XPY59nX23/Zc9+b3TfiN+K747PhE+aH5H/qi+iX7sfs6/K/8DP1Z/Zz9w/3c/dX9
+uv2a/W79QP0y/Uj9f/3W/WX+G//w/88AoAF+AlUDSgQzBQgGwAZkBwMIbgirCMoIyQjKCKgIjAiBCHkI
+ngjTCA4JWgmRCdUJIQpqCswKUgvXC0gMrgwCDWUNjg2XDWsNLQ3rDLcMoQyjDL8M6AwSDVcNpw34DUYO
+WQ5UDkAOFQ7iDbgNew0dDZ0MGQyHCw8LwApqCgIKrAlrCR0JrQgrCK0HNweFBqEFsQTEA8oCxgHdAC0A
+Wf9//sP9EP1F/Fj7WvpQ+U74c/e19iT2qPU/9dr0dvQE9Gvz6fJd8tTxb/Eg8aXwKfDI72Dv1+467qnt
+He2F7PXrhOs16wPr8eof61DrcOul69Dr4OvY68nrvOuk647rjOuo68/rBexX7MLsKu2i7TzuvO5H79fv
+afDz8F3xsfER8n7y0PID8yrzQvNf833zkPN+81HzE/Pk8rfydvI78v7x1vHG8cLxxfG58abxmPF08UTx
+LfEB8cXwmvCM8K/w3PAq8bTxTPLg8nPzIfS69D71j/W19Zv1MvWS9LvzoPJg8SnwFO8y7nHt0OxB7Lzr
+Kuur6hDqcens6HvoMujz59XnxueX53PnV+c35ybnOOdt57rnLui36D3po+nn6QzqFeoS6h3qP+pm6qbq
+Det66+vrWuzO7CntVe1a7VTtNO0g7SvtY+2l7RPupO5W7xPwzvC48bbynfNZ9AT1rvVS9sr2MPep9zD4
+lPgh+eb5xvrR++38Jf5P/4MAoAGmAo4DUATlBEEFZwV0BZIFvwXyBScGXQZ7BoUGmAaZBowGbwaFBsoG
+Mwe6B0sI7giRCR0KvwpfC+ULWgysDOQMAA0PDR4NGg0nDSoNVA20DU0OEw/yD+AQ5BHoEswTkhQbFYoV
++BVVFrMWEhdhF5gXzRcHGGIY5BhtGRMayhqXG2McEh20HTMesh4sH8UfdCAkIaEhMyLvIssjjyQyJd8l
+iSY4J8AnFChOKGkofyiHKHwohCiKKKcowyj9KFsprynmKfUpAioBKtUpkykrKeYotyiJKHIoXyhGKCko
+HSg6KEwoMyjnJ3EnoyalJZkkaCMeIswgkR9wHnodyBwuHJsbHxvRGrUajxpnGgwamhnrGBoYFBcgFikV
+LRQkEzwSVxF4EHwPYQ5TDT0MLQsICqwIJgemBUsEEgPvAf0AFQBH/4X+2f01/Yv8vfvb+ub57Pjr9+j2
+3fXX9MLzufKv8Z7wgu9T7hPt/usI6yTqRel76Ljn7eY65mLljuT545njW+Nn46/jGuSb5BflnuUL5lfm
+iOaE5lvmJeb55ebl3OXW5f3lOOZ85ubmaOcG6IzoCemO6QTqS+py6mzqSuob6unpsemJ6XDpXul36aPp
+yuny6SXqS+qA6pfqm+qr6rLqwer86mHr8uuU7Djt8+3C7qjvm/By8TPy0/JS86jz6/MF9B70L/RU9IH0
+uvQQ9Yr18fVp9tb2QPdz94L3kPeT94j3cPde92D3fff599r43/kX+2f8r/3f/vb/2AB+AdgBFgI8Am4C
+zAJUA+kDkwRQBUoGWQdQCFUJWwojC7wLTwzaDDUNVg2GDcgN7g0aDmcOsQ7bDgcPLw9JDzwPEg/fDp4O
+Yw4iDtoNjQ1MDRYNFg1DDW0Nfg2lDdMN8w0JDvsNow0BDTcMWwttCo8JrAi7B8cGDgZ3BckEGwR2A9cC
+PQKoAUEBxgBYAPr/n/81/83+o/65/vr+Z/8GALYAXgHyAXICxwLhAtgCpwJeAhwC+QHEAY0BPQHpALIA
+nAB6AE8AJwAJAAUADQDz/6z/Wv8A/8v+qv7G/uP+Ef9H/27/kv+p/9H/7v8dADUAOQAfAA8A7v/F/6D/
+rP/h/0IAyQBnAR0C3gKYA0cE2QQpBV4FcwV5BWoFPQUTBeoE2ATwBCEFWQWOBagFtAWpBa0FxAXaBdsF
+7gUMBjQGaAaYBtwGJweJB+0HYAjlCFIJnQnWCdgJuAluCQcJhQgQCL8HjgdsB2YHQgcbB/QG4gbUBrgG
+fAYRBp4FNwXTBGwE+QOAA9wCPQKbAQoBlwAlAL3/K/92/sn9H/1m/KX77fo8+nv5nvjo9133AvfI9qn2
+lvaF9oX2gPZ59lv2HPau9Sz1i/QD9G/z1fJW8ujxkfFN8R7x+/DW8LXwh/BO8BrwC/Af8E7wkfD08GXx
+3vFr8gvzrPM29Jb02PTk9Ab1GfVA9X/1yvUI9kH2fPaz9gD3NfeG9+33W/i0+AX5V/mU+aj5j/l6+Wf5
+MvnG+GX4D/ip9z732faH9j/2B/bK9XD1CPWs9F/0RPQo9Cj0LvQl9Bf0HfQR9Ab0C/Qj9DX0IfQH9Ozz
+w/N28xDzoPIo8sfxXvH88KLwTPD+77HvRe+27hHuWe2F7NnrSuvc6pHqZup76qzq3uoQ623rxev76zTs
+iOy/7PzsW+237fbtKu5g7pfusu7d7jbvee+w7//vi/A38eLxlPJi8yL05/SZ9WH2Mvf197b4TPm/+en5
++/n5+dL5lvlu+Vr5Nvkl+UL5YvmY+ej5S/qi+un6JPtc+5T70fv/+yv8MPz9+6b7Jvub+vb5P/mi+Db4
+4/ey94L3WvdI9073bPea99D3AvhL+IP4wvg2+db5lvp++4T8iP18/m7/cgB3AXICbwN0BF0FVQZIBy0I
+7wikCUYKzQpWC8oLMgyhDAwNkA1MDg4P2Q/HELURmRJaEwQUmBQGFYUVHBa4FikXXxd9F4sXhRd7F3sX
+pRfXFxMYkRgeGbYZTxoNG8AbSByuHPwcLB02HT8dZR11HW8dbh2FHX4dYB1GHSYd8By4HJ0cjxx7HEAc
+/RvJG4cbOhvaGooaOxoVGhMaGRo3GmYamBrAGsoamBpVGuwZZhm/GBAYexcaF94WphZaFikW5RWPFT8V
+7hSZFDAU0hOhE4ETehN9E4oTrxPdE/wTEBQSFA0UBRTfE3sT2BLsEbcQSw/MDUIMtgovCdEHiQZoBV8E
+RQMlAggB5v+5/pH9afw7++75qvh090T2F/Xk88HyrvGk8I3vkO7K7Rjtduzy63vr+Opx6gbqmelP6RDp
+/Oj76A/pTOmk6Qrqfer06lHrnevP6/Hr++v06/frBuwH7C7seuzk7Ejtre0W7ljuku7d7lDvz+888Krw
+HfGN8fTxafLt8l7zyPMv9I701fQG9T31f/Wv9dT1wfWL9Ub1BvXv9OT08fQz9aP1Kvau9jf3nvfp9xH4
+Nfgo+Az44vfF9733sfe49+H3D/gw+E34X/hb+Eb4PfgO+Oj3zve595H3RPcS9/r2Afcl92b30fdd+Ar5
+5vng+uz76fzI/YD+IP+4/0UAzQBhAfoBowJVAxsE3QShBU4G7gaABxcIwAhsCRcKzgqnC3QMQw36DaoO
+WQ/zD3cQ8BBJEXoRmhGZEVwR4xBNEKsP5Q4PDlINoQwEDGwL8AqOCjQK8wmwCVMJ2AhACJAHzAa8BbIE
+vQPcAvMBFgFdALP/+/4y/mT9i/y7+/H6Tvrg+Xr5I/nd+J34cvh2+I/4ufgh+bT5Wfrt+oH7KfzC/DL9
+hv3Q/e39IP5j/q7+/v5c/6P/BQBnANIAIAFQAX4BrgHjARICUQKYAvwCeAP0A2MEuwQZBX4F6gVVBqYG
+2Qb2BiYHSgdiB4AHswfjBxUITgh5CLII7ggkCVcJlQnXCTcKmAroCjULcgujC6ILgwtvC24LYQs8C/4K
+pQoyCqoJBQlhCK0H6QYqBokFJQXoBKwEggR4BGUEYARxBJQEzQQDBTYFUgWCBakF1QUKBkgGhAa3BtwG
+CAdAB4IHpAe1B7oHrAeEB0wHGAfPBosGQQb2BbsFlQV5BVAFLAXwBKwEPwTDA0IDnwLBAboAxv/m/i/+
+ff3N/CL8cvvV+kT6qfkA+Vj4wPc+98b2QvbN9T31tfRB9LvzIfOl8iXypfFE8enwjvAg8LDvMu+T7tvt
+KO2O7BHszeu268fr9etS7NTsge097gjv0e+O8Efx8fGT8hfzbfPF8xX0JvQ49Eb0hPTp9Fv13/V99h73
+zPeK+Cz5xPlB+qT6Dvt9++L7NPyC/N78Z/3m/Vb+pf7d/gH/Ff8v/zn/Rv9n/5n/1P8IACUAIwAeAPX/
+v/98/zX/+P6+/qn+if5o/kH+BP61/Vv9+/yd/Dv83fua+1T78Ppq+rz52PjP97/2mPVn9E3zTvKH8Qzx
+tvCD8FXwR/BO8Ivw+PBu8ebxY/LX8i7zg/PK8xn0ZvSx9Pv0WfXW9WP27/aC9xr4pPgx+cj5Wvrn+n77
+H/zc/LX9gP5X/zUACwHeAYsC+wIoAxoD3wKNAhMCdwHZACwAmv8v/+r+u/52/jD+8/2s/Uv97Px6/Ov7
+I/tO+nz5r/jh9yD3dPbr9Xj1L/Xk9J70XPQK9LHzNfO08iXyjfEH8ZvwO/AG8NHvue/H7+XvBfA48Ifw
+5PBh8ffxoPJN897zZPTv9G71DPbD9nn3NPj1+L/5o/qN+1z8D/2g/f79OP5p/qH+6v5P/87/bgA/AS4C
+JAMrBEIFRgY/BwAImwgiCZwJCwpyCrUK9AouC2kLyQs/DLgMOA29DT8OxQ4oD30PtQ/mDwcQDRABEOwP
+yw/BD8cPyA+3D6YPiA9tD0YPFw/cDpkOVg4LDsQNkg1wDVENWQ1/DcQNIw6mDiAPiA/jDx0QQxA/EDYQ
+IxAaECEQNRBVEGkQoRC5ELkQrBCqEKcQpBCiELYQyRDHEKMQaxBAEC4QKBA/EFEQXBBhEF4QTxAwEPsP
+lw8CD0cOfw2zDOALHQtSCqEJDAl2CPUHkgcgB5MG3wUGBR8ERQN6AsMB/wA/AIL/4P5C/rz9OP3X/Ir8
+K/y0+zT7ovoR+nP5xPgt+JL3Afei9m72aPZ79pH2pvav9rn2wfa79p72cfY+9gT22fWy9Zr1nvWv9cn1
+6fUW9kz2mfb29l73xfcw+Ij4zfj++An5CPkE+Qn5IPlG+YD50/lH+rv6I/uE+8v7Bfwe/Cr8M/xN/Fv8
+a/yM/Kv8v/y+/Lv8sPyc/Ib8Z/wQ/KT7NPup+gP6cfkD+a34ZvhO+Ez4T/hO+EX4Kvjt95v3QPfn9nv2
+//WM9TT15PSt9KT0uvTu9DD1kfUP9pf2MvfJ91z40fgo+Yz5EPp/+un6Xvve+2n86Pxj/cj9L/6X/v/+
+X//S/10A+QCeAU8CBgPJA14E9wTKBZAGRwfvB3gIzwjxCOgI0giwCHkIIgi9B3IHOQcdBy0HPgdmB6wH
+8Qc7CHsIpQi9CJwINQiJB8MG7QUMBVUEvQMyA8ECbwIzAvcBpgFLAekAaADx/6H/cP9A/xP/8/7B/oP+
+Of4K/uv9yv2n/Yf9a/1V/VD9Pf0Q/dz8ovxj/Cz8Bfwe/E38gvzQ/Dr9pP3x/Sb+VP5w/nv+ov7N/hH/
+eP/2/4QAOAHxAaUCTgP3A6kETgXZBVAGsQb6BkgHeQemB7kHtAenB58Hvwf1Bz8IfwjDCAwJPQlECTAJ
+9AimCEUIvQc+B/AGrQZ8Bl8GSAYzBiUGBAbLBYYFSQX4BMEEowSnBM4EEAVyBckFDgZPBoUGwwbzBisH
+VgdwB3wHXgcvB+QGjAY3Bu4FqgWGBW4FXgVkBWkFcgVpBVYFQAUMBdUEmgR1BGUEXgRhBGIEZQRpBGME
+TQQnBAIEyQN3AxoDsAI4As8BcwEiAcwAaAAaAMn/kv+K/3T/U/8p/+f+nf5I/vH9hv38/F78y/s5+7L6
+Rvrl+Yz5PPn6+LP4W/gJ+Kr3Q/fe9mD27fWO9Un1EfXw9Oj02/Tr9Bj1UvWf9eT1GvY79kz2VPZv9pH2
+tvbj9hn3TPeJ9833NPiu+Dv54Pmi+m37TPwa/dz9pf5v/zUA/gDKAZMCYAMpBNoEdAXdBTMGZAaGBpoG
+oQaZBosGgAZ2BnEGcAZzBmQGSgYqBgAGxwV8BRUFmwQcBJ0DFAOSAg8CfwHyAIAAFQC0/2b/Hv/X/nj+
+B/6D/ev8SPyW+7z62/kS+XX48Pd/9zv3JPcn9yj3GvcB9+/28vYT91D3rvcE+FH4o/gA+Ur5f/mX+an5
+vPnk+Q/6X/rC+if7j/v5+138yPwm/Yr9/v2F/h7/sP9DAL4ANQGJAasBrgGhAYUBWQEmAfgAxgCXAHsA
+WwA9ABIA7P/I/6v/h/9U/wn/oP4i/nf9ovy2+8z68Pkd+UT4bfeg9t/1L/WB9OHzQ/Ok8gvygfEP8bfw
+WPD374vvIu/G7nvuTe427jXuMu4u7jHuLu4d7gju/O3z7fTt/e0e7m7u0u5I77vvFPBn8MPwK/Gi8Qvy
+b/LQ8j/zvvNS9Af18PX09hP4TfmV+sv78PwI/hv/DwDhAJgBRAL0AqgDUgTQBDMFhAW8BeAF/wUQBhgG
+JgYkBgsG9gXbBb0FmgWGBYMFfgV6BY4FrgW/BboFtgWiBYYFZgVOBUUFRgVZBXkFpQXwBTYGgQbZBj0H
+sAciCKcIMQm6CTUKkwrECucKEAs4C18LjguxC9wLCQw8DHUMtAztDCMNZg2vDfANGA4mDjQOQg5TDnIO
+oA7cDh8PdQ/AD/oPKRA+EEUQKRD2D7cPYA8AD6UOXg4lDvENwA2bDYkNcw1XDRkNpgwPDFgLhAqsCdAI
+BwhGB2oGigXFBBMEcAPUAkgCzQE5AaoAJgCW/wL/Wv6t/ev8GPxO+4364flV+eb4jvhb+EL4Ufhb+Gb4
+bvhz+H34g/iG+H74ZfhP+FD4avii+N74IPlj+az58Pk6+oX64/pP+9L7TPzL/Ej9w/1B/r3+T//t/30A
+/ABlAcIBFQJrAsMCCQMhAysDMQM5A0oDPAMYA+MCnQJaAhMCuAE+Ab0AOAC//17/+/6I/hz+t/1H/dT8
+aPzz+377AfuG+g36kvkY+aD4Ifiq90339fal9mP2JvYF9vT18fXx9e/11vW19br13fUp9oD21vY796L3
+Evh8+PP4cfn++ZT6MvvY+4X8If2f/RP+ev7X/iH/V/+M/8z/DQBeAMwAWgEKAr4CYAMABKEELwWlBQoG
+WAaXBsEG6gYjB18HpwftByYITQhVCEMIIgj9B7oHbwcnB9oGiwYgBqwFMgW1BDoEuQMtA7QCXAIUAuEB
+oQFfARYBvwBaANv/Zv/5/pf+QP79/br9gv0//e38nfxT/Bb86PvW++D77/sG/CL8S/x9/Kz81vwB/SL9
+TP2S/eT9P/6d/vP+Qf+V//D/QwCgAAABXAHEATMCuQJVA/sDtgSEBVgGIAfiB50IVAn4CX8K6wo+C3gL
+igudC58Ldws/C/gKqwpLCvUJqAlWCQ4JzAiGCDoI7wetB28HMwf0BrgGeAY+Bg8G4gWqBWkFKgX0BL8E
+lgSABHoEcwRbBEMEGAT7A+MDywOoA4MDbANzA5EDwwP1AyEEMwRBBE4EaQSMBKYEygQUBVgFkQXFBecF
++AX0BdoFsAV/BT4F9ASrBGYEJgTZA3wDJAO+AmoCKgL2AbcBfwFOASsBCgHpAK4AeABRACsABQDO/4v/
+NP+9/jn+nP0I/Wr8yPst+6j6LPqy+UT55PiE+C347Pe19333UPck9/X2vvaE9l72Lvb59an1TvXs9JX0
+U/Qe9AP08/P78wr0J/RF9HH0r/T49Fb1xfVN9uj2j/dM+AL5ufl7+jf74/uH/Cb9uv1I/tb+W//n/2YA
+5gB2AQICjAIZA6kDRgTlBIEFHwarBiEHewfDB/8HMwhpCIMIiQiBCHMIWAg2CAMIxAdrB/QGewYDBo8F
+CAWABO4DTgOfAuUBLAFnAKb/7f5A/pv9Gf24/GH8Hfza+5P7P/va+mr6+PmF+Qn5iPgQ+JL3HPe+9m72
+J/bz9dv14vUL9lv2xPZI99v3Y/jn+Fn5xfkk+nr62Po2+5X76/s7/G38mPyz/LT8ufyz/Ln80fz+/Cf9
+U/18/Z79yf30/Sn+Xv6K/q3+2P7+/iL/Qf9D/yH/5/6l/mT+Kv70/bn9a/0O/aL8NfzG+0r7wfo7+qv5
+GvmK+Af4iPcJ96X2UfYE9sH1gfVJ9R/1/fTT9J70XfQn9N7zi/M3893ygvIm8tXxlvFb8TXxGvH+8N7w
+wfC38MLw5PAY8WHxyPE98sHyTvPb8270+vSE9QT2gvbp9kf3pvcJ+HX49fiN+S766Pqx+5L8fv1t/l3/
+QwAhAfcBqwI+A7UDFARoBKcE5AQeBVQFigW0BdkF+wUPBhIGCQb1BdkFtwWTBWsFOAUABcMEiARJBBEE
+1AOeA3gDVgNEAzYDIAMBA9wCsgKGAmQCUQJJAlMCZwKGAqsC5AIyA38DyAMNBFAEkATkBD8FmAX0BVQG
+uwYiB5oHGwihCDAJswkxCqoKFQtrC6kLxwvGC7ILjAttC0ULIQsBC+AKwgqpCpEKgwp1CmIKTQo6ChwK
++AnLCZ4JZgkcCboIVAjgB18H4AZiBt0FVgXKBEEEtQMnA5kCBwJ1AewAbAAMAMT/j/9s/1T/QP8m/wH/
+1P6f/mL+Ev7D/Xj9Jf3T/In8WPw5/Cb8Efz/++f70/vF+8L70fvn+wr8JvxL/HL8jvy2/Of8I/1j/bf9
+Ev5o/r/+I/9//9H/HgBkAJ0A0gANAVkBtAESAn8C8gJrA9kDNgSHBMcE+wQuBVUFcwWPBaAFmAV+BVYF
+GAXNBHgEGQS8A3QDJQPGAkQCogHrAB4ARf9x/pr91vwv/KP7LPvL+nL6Kfre+ZH5Rfnw+J/4Rvjj94P3
+K/fO9oj2T/Yc9gL2+PX09QT2KvZs9sj2PPe+9z34rfgX+X/56vlh+uv6i/s8/Pj8vP10/h//rv8oAIYA
+zQAJAUEBeQGsAdsBFgJjArcCFwNzA74D9QMeBEsEbwSLBKcExgThBOwE5QTNBK8ElAR3BFwESQQ/BDQE
+MwQ/BE0EVQRGBCAE/APCA3gDLwPpAqoCcQIuAuoBrQF4AUsBHAH0AM4AogBuADIA/P+0/1////6W/iT+
+o/0j/af8OfzI+177A/u7+nH6Jvrk+br5qvnA+e75Ovqd+hn7ofsr/Lz8TP3R/Uz+xv5B/7//NgCsACIB
+mQEWApsCJwO6A1ME7wSNBSsGxwZWB9EHOQiPCOQILQljCYIJmAmfCZUJcwlICREJzwiJCDoI5wePBzkH
+9Aa3Bm4GGQa1BUoF4wSSBFgEMgQQBO0DtwN6AzID4AKcAmECHwLuAdUBzQHOAdEB1QHMAb4BoQGEAWkB
+VAE/ATsBSgF3AakB5AEZAk0CjALUAh0DZAOpA+4DQQSVBNoEAQUNBQUF8QTKBJMEVgQTBMgDgAM6A/oC
+vwJ9AjYC5gGIATEB5ACbAFsAHgDj/5X/K/+v/iT+kf3q/DT8jPv1+mn69fmV+Tz56viV+Ej4AvjC95z3
+jfeT96j3x/fz9y/4bPiY+K74qviZ+H34XvhF+Df4K/gX+Pf31fe095b3gPeA95D3qvfM9wX4RPh++Lj4
+6fgd+Vb5nPn2+W76Bvuh+zP8xvxi/Qj+q/5W//7/qgBaAQ4CwQJ1AzYE6gSXBTIGuAYwB5oH6gcsCFwI
+cghpCEsINQgoCC0IMgghCPwHwgeDB0cH/QakBj0GzAVSBc8EQgSpAxYDiwIGAocBAQF6APT/e/8Y/7/+
+d/40/ur9l/1H/Qf91fyc/GL8IPzX+4b7O/sD+9z6xfrK+vL6O/ub+wj8efz6/ID9CP6V/ib/t/9HAM0A
+OAGNAdwBDwItAjgCPAI6Ai0CHAISAgAC6AHPAbUBnwGIAWsBSgEkAQAB2wCvAG0AEwCu/y7/nP4I/n79
+/vyE/Af8jPse+8b6fvo/+hH66PnJ+b35u/nC+cD5t/mk+Yj5WPkK+aP4KPil9yT3sPZO9gP2w/WD9UP1
+BfXI9Ij0SfQD9MDzb/MX87/yYfID8rLxa/E58RTx9/Dp8PnwKPFw8c3xQvK98jXzpPMK9HT05PRU9cX1
+Nvaf9g/3hPf/93/49vho+d75WPrk+nT7Bvyn/FL9Av6q/kv/2v9dAM4AKQFxAaQBwAHPAdoB3QHcAc8B
+uQGkAYwBdwFqAWcBdQGIAZwBrQG9AckByQG8AZwBYQEbAdMAkABkAFEAWQB1AJ4A1AAWAVQBhwG9AfEB
+KAJiAqUC9wJMA6QDCAR2BOMERgWlBQoGcQbbBj8Howf+B0gIgAitCNYIAAkfCTsJUglzCZgJuQnNCcsJ
+tAmCCUsJGwn3CNoIugilCJkIngilCLAIyQjmCP4IBQn6CNMIoAhMCOsHfAf9BnEG3gVJBbIEGwSEA/4C
+jAIsAuEBnAFbASIB4ACIACgAuP9F/9b+bv4P/rn9d/1B/RL96/zH/KH8c/w//Av81vuh+2z7Q/sY+/36
+5PrZ+tb66voN+zn7XPuB+6j7xPva++r79vvv++n76fsC/Cv8WvyV/N78OP2g/Rz+pf46/83/WgDeAFcB
+ugESAmACpQLhAhIDRAN5A6QD0gP5AwwECwT1A8gDjQNGA/8CugJvAisC6QGqAXQBNAHxAKoAagAyAPf/
+vv9+/zb/6v6a/lD+A/68/X/9Vf1C/TX9M/01/T79S/1M/Tj9Dv3L/Hv8LPzz+9L7v/u9+877+PtA/KX8
+I/2s/Uf+5f54//n/cgDYACwBawGZAbgBwwG9AbkBuAHGAeoBHwJXApsC6gJAA5ID6AMyBHsEwgQcBX8F
+6AVHBpkG3wYXBz8HUQdKBzAHCQfcBrEGkAZyBlQGRgZGBlAGXgZqBmwGXAY+BgkGtwVOBc0EMwSVA+wC
+SAKjAQABYgDW/2r/C/+6/nD+Jv7c/Yr9N/3e/IL8HPyp+zz75Pqm+oL6fPqR+sD6Bftb+777KfyX/AD9
+Zv3J/R7+cP65/vf+Nf9u/6T/zv/6/yYAWwCfAOsARAGmARECeQLhAkwDtQMZBHQE2AQ4BaAFBwZeBqsG
+3wb9BgcH/wbfBqYGWwYMBsIFfwVEBRMF9gTuBO0E2gS3BIYEQwT3A6MDRAPmAoACIALJAXoBLgHjAJQA
+SgAJAM3/mP9y/1//XP9h/2L/WP9A/yX/D//1/tf+v/6n/on+cP5d/lP+Rf44/iT+Ev4F/gH+Cf4U/h7+
+Jv45/k3+WP5f/mX+Xv5R/kL+S/5r/pP+vP7n/hD/P/9v/5v/yf/5/ycAUwB9AJoAqACfAIQAUAD//4//
++v5e/sD9M/2n/CX8t/tO+/T6q/ph+hT6zvmS+Vr5Ifny+NP4uvid+H/4WPgt+P/3xveD9zz3APfO9qf2
+jfZ19mH2XfZm9oL2s/b89ln3w/c3+LH4Jfma+Qv6fPrs+lj7tPsF/FH8pfwB/WP9zf0u/o3+9P5g/9X/
+SwC/AC0BkwH1AVwCwgIpA5AD/ANiBMMEFQVbBZcFvwXXBdwF1gXVBdgF3AXfBegF9AUBBg0GDgYLBgwG
+DAYDBu0FvwV/BS0F1gR3BBAErQNkAywDEQMKAxEDIAMuAz0DTwNgA2gDUwMoA+ICkAI7Au4BpQFcAQ4B
+zwCoAJYAlQCaALEAzQDxABEBMgFNAWgBgAGVAaMBsAGzAbcBuAGyAaYBlgF1AUAB/wC6AG4AJADr/8f/
+sP+o/6v/wv/l/wYALQBPAGoAaABIAAkAqv86/8j+Vf7q/Yf9NP3b/Ir8S/wW/Oj7vfuL+077//qd+iz6
+rvkk+Zn4D/iK9xP3pPZD9vP1q/Vt9TP1BvXo9Mf0nPRl9Cn08/PL87LztfPN8+7zG/RR9Jj05PQy9Xz1
+vfXu9RT2LfZH9mv2nvbi9jH3g/fb9zP4g/jS+BD5Rflk+W75aPlZ+Uj5Pfky+Sj5Kvk9+Wj5svka+pr6
+LPvJ+2/8GP24/UD+sP4W/3X/x/8WAFgAlADLAAEBKgFPAXYBoQHHAd4B6QHvAfEB6wHnAe4B/QEXAjwC
+ZQKOArcC5AIQAzEDVANvA4QDkwOWA40DdQNiA1EDUgNvA6cD/wNrBOcEWgXFBSQGegbCBvkGFAceBx4H
+JQcxB1oHkQfWByoIjQjvCE4JpAn3CUUKegqYCp4KlAqACmgKTwpGCloKjQrPChYLWwudC9IL9AsKDA0M
+/QvRC4gLMQvIClcK3glsCfsIhAgECHUH2wY2BoIFwgT1AxwDOgJZAYEAuf8H/3n+Ef7E/Yf9Vf0u/QL9
+1/yo/HP8RPwP/NT7nPtt+0D7Evvs+s76v/q7+rv6xvre+gL7K/tS+2n7dft2+3H7aPta+1D7SvtN+2P7
+g/us+9j78/sE/An8DPwM/BP8IfxE/Hf8tvwE/Vv9vv0i/oD+1P4b/1P/iP/M/xcAXQCbAMsA8gAZATgB
+WgF5AZwBwgHqAQ4CIwIkAggCywFtAfMAYgDR/07/2/5//j3+FP4J/g3+HP4w/kH+UP5g/nH+iP6b/q3+
+tf6v/pX+cP5O/jL+HP4S/hb+IP4u/kP+Vv5k/mH+TP4p/gz+Cf4i/lf+n/7z/lD/sv8KAFEAjAC3ANkA
+7QD9AA4BMAFkAa0BBwJ2AvMChAMhBM0EdQULBogG5gYcBywHFQfaBo0GNAbfBY8FRwUPBd0EsgSMBGQE
+NATmA4IDDwOSAhYCnQEnAbYAUAD5/63/bP86/xL/9v7l/tn+xf6k/nz+VP4p/gD+2/25/aP9ov20/dH9
++v0c/jn+U/5b/lT+Rf42/iX+GP4U/if+Sf54/rf+/P5E/4//2/8qAHcAugDqAAUBBwH3AOMAxQCgAHIA
+TAAqABgAGAAuAFoAjADQAB8BagGrAeYBFgI/AmMCiwLFAg4DYgO1AwMERwRxBIIEgQRlBDEE8QOqA2AD
+DwPIAoQCRAILAt0BuQGdAZQBnQGvAbUBpwGGAVQBFQHFAHEAJADp/8L/rv+y/9H/AgA3AGsAkQCpAKwA
+pACOAHwAYQBFACoAEgAFAAgAFgA2AGEAlwDMAAIBNwFoAYsBqAG7AcEBwQG4AaoBlgGKAZEBogG0AcsB
+2gHgAd0B0gG8AZcBZQEuAfgAwgCSAG0AUwBGAEcASwBNAEAAHADb/3f/8/5U/qH96fwu/Hr72fpK+tv5
+iPlU+Tz5NPkw+Tb5PvlH+U/5TvlG+Tb5IvkR+Q35Fvks+Un5cPmb+c35APo5+mr6l/q0+tD67/oT+z/7
+dPu0+wf8afzU/D39ov0A/lr+pP7b/vj+B/8T/x7/Kv86/1v/i//F/xAAbADQADUBmAHyAT4CfAKwAt8C
+AQMQAxQDFwMkAzwDZQOjA/IDQwSYBN8EFAUrBScFAgXDBGgE8ANqA+oCdwIVAsMBjwF7AXkBiwGjAcYB
+6AECAhQCIAIyAkMCTgJZAmECbwKFAqICvALRAtcCywKtAnwCPQL0Aa0BbAEnAeoAugCcAI0AlwCyAN4A
+EwFAAWMBeAFvAUgBCQG/AHIAMgACAOT/1v/S/9b/5P/5/w8AIAAsADoAOQAyABoA+P/A/3j/HP/B/l/+
+Af6o/Vn9Gv3o/MP8o/yD/Fv8J/zp+5n7OvvR+mX6A/qu+V/5Hvnh+Kb4a/gu+On3p/dm9yn3+/bZ9sn2
+wvbC9sf20Pbh9vn2GvdD9233jvej96v3qvek95P3d/da90P3P/dH92L3hPez9+33MPh6+Mf4Fflh+an5
+7/ko+lD6bvqJ+qD6qfqm+pz6lfqQ+o/6ivqJ+oX6f/p++on6ofrJ+gL7Q/uN+9n7Kfx0/L38B/1M/ZH9
+0v0F/i3+Q/5J/kT+QP4+/kT+VP5x/pf+x/4A/0X/i//E//X/GgA2AEYAUgBkAHsAmQDCAAEBUwG1ARoC
+iQL+AnYD5ANABIcEwATuBBYFNwVXBXgFnwXFBe4FGQZBBmoGlgbJBvkGIgdBB2MHigewB9MH9AcaCEwI
+igjMCA4JTAmDCbIJ1AnkCdsJtQl5CS4J2Ah6CBwIzgeQB2EHPQccB/8G5wbXBscGrgaKBlwGIAbRBW0F
+9gRzBPADbwP1AoMCHQLEAXQBKQHnAKgAbQAtAPT/vf+U/3b/Yv9b/13/a/+C/57/t//I/8n/v/+n/4r/
+aP9F/yH/Af/s/uX+5v7x/gH/E/8k/y7/Lv8k/xD//P7g/sj+vP6z/qr+n/6g/rf+5v4t/4D/0P8TAE4A
+dACBAHUAVQAuAPf/u/9//1L/Pf81/z7/Tf9f/2L/Yf9b/1n/U/9J/zj/J/8U//v+1/6u/ob+Yv5I/jb+
+NP44/j7+N/4h/vj9xf2M/VX9LP0R/QT9FP05/XL9tP38/UX+jP7C/uT+9P73/uX+wv6W/mL+Kf70/cH9
+mP2E/YX9lf2z/dv9Df5D/nT+mv6z/sT+0/7f/vD+CP8r/1//n//q/zwAlQDqADYBcQGhAcYB3wHrAegB
+1wG9AZ8BfQFXATEBGAEJAQgBDgEVARMBDAEEAfsA7gDXALwApACTAIsAiACTAKQAvQDSAOIA4gDRALcA
+iwBdADEADgDv/93/0f/Z//P/JQBqAL0AFQF3AdwBOwKEAr8C4wL4AgEDAQP8AvIC5ALZAtMC0wLeAu4C
+/gIBA/kC7gLdAtECxgLIAtEC4gL2AgMDDwMTAxcDFwMbAxsDDQPuAsIClAJiAjYCDALrAdIBzgHbAfkB
+FwIyAk4CbQKJApcCjQJvAjoC+AGrAVYBBgHAAIIAUgAwAB8AEgAGAAEACAARABQACwDw/8b/l/9k/zH/
+Bv/f/sn+w/7O/ur+Gv9P/4L/sP/X//H/AQAGAAgAAADv/9P/rf+F/1r/M/8O//D+0f6w/oz+Zv48/hP+
+7P3G/Zz9ff1v/Xr9nv3T/Q/+Sv6G/r3+5/76/vT+1/6n/nL+Nf79/cn9oP2F/XH9aP1k/Wv9cf12/XP9
+bv1b/UD9FP3f/KL8Y/wi/OD7ovtg+yT76/q8+pX6dfpa+kT6Mfoa+gH65fnJ+av5k/mB+XX5cvl1+Xz5
+hvmY+a/5yvnt+Q76M/pb+ob6u/r1+jP7dvvA+wr8TvyQ/NL8EP1M/YD9p/3C/dD92v3l/ff9E/5E/o/+
+8f5o/+r/dQABAYoBBgJzAtACIgNrA5oDvQPUA90D3APSA8MDqQOYA48DlAOdA6gDrgO5A8gD1gPkA/ED
+AwQdBD0EYQR/BJUEoQShBJkEjAR+BGoEVQRGBD4EOgQ2BDQEMgQuBC0EMQQ7BEgEWQRqBHMEcwRlBEgE
+GwTcA5UDUQMNA9ICnwJzAk4CMgIZAgEC4wHEAZ4BdQFHARIB2wClAHEAQgAhAAwAEAAgAD0AXQB4AI8A
+lgCTAIIAYwA/ABUA5/+3/4v/X/8w//r+uv51/i/+6/2m/VT9Av2w/F38D/zG+4/7a/tY+1j7Z/t8+4/7
+oPum+6j7nPuD+2H7OfsO++P6vfqf+oT6Z/pL+jT6H/oX+hT6Hvoo+jX6PPpJ+lr6cPqH+pj6nfqc+pn6
+oPqn+rD6tfq1+qn6lvqA+l76NvoP+uz51fnH+cL5yfne+fn5Ffou+kr6ZfqA+pP6ovqs+qr6pfql+rX6
+y/ro+gn7L/tb+477vfvo+w38Kvw6/Ev8VfxX/Ez8PPwo/Bn8E/wc/Dn8aPyn/O/8O/2G/db9H/5n/qz+
+8v41/3b/tP/z/zMAcwC3APwARwGQAdkBIAJlAqkC6gItA2sDrQP3A04EswQcBYUF6wVGBpgG1wYIBykH
+OgdCB0MHOAcjBwsH7wbTBroGqgaiBqMGtQbRBvoGJAdHB2IHbgdoB08HJAfyBroGiwZjBkAGJQYQBv0F
+8AXhBc8FswWLBVYFFQXTBI0ERAT4A64DbAMxA/4C0gKpAoICVgIoAvQBwwGPAVkBGQHZAJkAXwA2ACEA
+GgAcACUALQAvACwAHAD9/9H/lv9S/wn/w/6C/k3+Kv4W/hT+Iv49/mX+jv6x/sr+1f7P/r3+nv57/k3+
+Gf7i/bz9p/2l/az9vP3U/fX9Hv5K/nf+nP6//tz+8/4C/wP/+/7u/uL+3f7X/tP+0P7R/tH+zf66/pv+
+c/5L/if+Cf7x/eT95P30/RL+P/5x/qb+2v4R/0f/dv+W/6z/tf+1/6//qf+p/7H/xv/n/xUARgB3AJ0A
+twDEAMcAvgCpAIgAXwAvAAMA2P+5/6P/mP+X/6P/tf/M/9//5//k/9f/x/+0/6P/lv+N/4n/kv+k/8D/
+4P8AABkALAA4AEMASgBLAEkATABUAGEAdwCOAKoAxQDdAPMAAAEDAfsA5wDHAJQAVAALAMb/gf9C/w//
+5f7J/rz+v/7U/vL+F/89/2b/kv+///H/JgBZAIgAsADSAPIAFQFBAXYBqwHbAQACHAIrAi0CKAIgAhoC
+FQITAhYCHgInAjICPAJKAlUCZAJxAnYCeQJuAlMCLQL7AcEBhgFTASQBAgHrAOEA3wDhAOEA2wDTAMIA
+qgCRAHYAXgBMAEEAQABJAGAAggCyAOoAKAFjAZQBugHUAeMB5gHkAdsBzQG8AakBlQGDAXQBbgFwAXoB
+iQGaAa4BxwHdAe0B9gH3AfIB6AHiAeMB7AH6AQ4CIgIvAjMCJgISAvUB0wGvAZMBfwFyAW4BcgF6AYcB
+mAGuAcAB0wHjAfUBAAICAvABzAGWAVIBEAHVAKEAeQBZAEIAOQAtAB0AAwDi/7v/l/90/0//K/8I/+z+
+2f7M/sD+sf6a/nv+Wv4v/v39xf2H/Uv9DP3L/In8UPwe/PP7y/uq+4T7a/tX+0X7M/si+w/7+frY+rD6
+ivpr+lP6TPpT+mb6gfqc+rv63foB+xz7Kfsj+wz77frP+rH6mPqC+m/6YPpZ+l36cvqN+rL63/oR+0P7
+cvul+9n7Cvw4/GH8iPyz/OL8Ff1R/ZD90f0R/kr+fP6q/tT+9f4W/z7/av+h/+D/LQCBANcAKgF0AbgB
++AEvAl4CggKSApsClQKNAn8CcAJnAmcCdQKMAqkCywLqAgsDJwM8A0gDTQNNA1QDZAOAA6cD0AP+AygE
+UQR4BJYEpASlBKAEkQR8BF4EOAQNBOEDuAOPA2YDQAMeA/oC1QKxAokCYgI5Ag8C5gG/AaABkgGOAZwB
+uwHoARcCQQJiAnACbQJZAjwCGQLnAa4BcwE+AQgB1gCmAH0AXQA+ACUAFwANAP//4/+9/43/XP8k/+L+
+nP5P/gT+w/2I/VT9K/0N/ff85/ze/Nf82fzf/PH8AP0N/RH9Fv0d/Sj9M/08/UL9SP1M/Uz9Q/0u/RH9
+7fzE/Jb8Zvwz/AH81vu0+5r7j/uI+4H7dvtl+0b7GPvh+qX6avow+v751fm1+aP5ovmu+b750/nm+fL5
+9vny+eX50/m4+Z35f/lk+U75Ovkx+TT5QflT+XL5mPnH+fP5Hfo7+lT6aPp++pn6s/rL+t368PoK+yv7
+Tvtu+5H7tPvf+wr8Ovxs/KH82PwK/Tr9af2Z/dD9FP5n/sT+Iv97/8//FwBWAIwAugDbAPUADQErAVEB
+dwGiAdMBBwJEAosC2QInA20DqgPgAw8EOQRiBIgErQTUBP0EJgVRBXkFoAW+BdkF5gXmBdcFugWXBXIF
+SwUlBQUF8ATsBPUEAwUSBR0FIAUbBRIF/wTkBLsEhQRJBAYEyAOLA1IDIAP4AtsCyQK9ArYCrwKgApEC
+ggJ1AmkCWAJHAjUCJwIcAhMCFQIiAkECbwKjAtEC9AICA/wC5QK9AokCUwIgAvMB0AG5AaYBmgGUAY0B
+gAFxAV8BSAEnAf8A1ACuAIYAYwBJADkANwBAAFEAZQB5AIkAlACdAJwAlgCFAGsAUAA9ADUAOwBLAGwA
+mwDRAAUBNgFgAYABlgGfAZMBdwFPASMB+gDUALkAnwCNAIAAcgBnAFwATQA9ACcACwDp/8z/sf+U/3n/
+ZP9V/0j/P/87/0D/R/9P/1j/Xf9Y/0j/Lf8H/9n+pf52/lL+Of4o/iT+K/45/kv+Yf53/o3+o/61/sL+
+x/7B/rr+sv6x/rv+yv7r/hT/Rv9//7T/4/8CABIAFgANAP3/5v/L/7X/ov+O/33/cf9r/2//bP9m/1b/
+QP8i//z+zv6T/lL+Dv7S/aL9g/12/X/9lv22/dn9+P0T/iv+Rf5d/n/+ov7R/gX/RP+H/8n/CQBEAHsA
+qwDXAP0AGwEtATYBNwEwASIBBgHmAMQApACLAHkAcQBwAHkAigCfAK4AtgC4ALQArwCsAKsAqgCqALIA
+vgDSAOQA+gARASUBOgFIAVABVQFcAWQBdAGJAZ4BtQHQAe4BDAItAlACbwKPAqMCrQKtAp8ChgJcAi4C
+/QHLAZ8BgQFyAXIBdQF1AXEBZQFUATgBEAHpAMEAnwCEAHUAdAB5AIQAkgCeALAAxADeAPoAFgEzAUQB
+TgFSAUsBQAEtARwBDwEKAQ4BIQFBAW0BoAHWAQcCMAJMAmgCfgKRAp0CpwKlApwCjAJ8Am4CWAI6AhcC
+7AHAAYwBWAEXAdMAiQBFAAgAz/+h/3f/V/8+/yb/E//8/t/+vv6Q/lj+Gv7X/Y79Q/3+/Lz8g/xZ/EL8
+QfxL/Fn8ZPxp/GP8WPxG/C78F/z9++b7z/u2+537i/t5+2f7Uvs8+yX7D/v7+uz64frR+sT6uPqy+rD6
+rvqv+rr6yfrj+gT7LPtY+4b7tPvk+wz8MvxR/HL8k/y5/OH8Cv03/WL9i/22/d/9Bf4j/j/+Xf53/o3+
+pP6//t7+Bf8w/2H/mf/X/xcAVQCVANAABQExAVMBZAFqAWUBWwFJATEBFwH9AOIAzgDDALgAsgCrAKQA
+nACUAJEAlgCiALYA0gD3AB0BTQF9AbMB5QESAj4CaQKMAqgCuQLCArwCrgKZAoICbwJeAlECTwJTAmIC
+eAKUArICywLdAuQC3gLXAscCtQKmApgCjAKAAnUCawJiAlECOgIfAvwB1gG0AY4BagFHASkBDAHzANwA
+yACxAJ0AhwB1AGIATwA2ABgA7f/A/5L/af9G/yj/Ef8C//n+9v7t/uT+3P7W/s7+xf68/rX+tP63/sH+
+0P7k/vP+BP8Q/x3/JP8o/yX/H/8R///+4f66/or+UP4R/s39j/1Z/Sn9Av3j/Mv8ufyr/KH8nPya/Jj8
+lPyJ/Hb8YfxQ/Dz8Lvwg/BX8CPz9+/D74vvO+7n7o/uN+3T7X/tN+0H7PPs8+0f7V/tv+4f7oPu5+9D7
+5fvx++774fvH+6j7hftk+0T7JvsQ+//68Prk+tz62frh+u76Cfsm+0j7bvuY+8X79vsw/G38tvwF/VX9
+p/32/UD+hf7D/vn+Jv9L/2X/ff+T/6//0P/8/ywAZQCcANkAFwFYAZkB1wEUAk8CgQKnAsgC4wL8AhMD
+JgM5A0kDWgNpA3UDeQN7A3YDawNdA08DQgMzAycDIgMlAzUDSgNnA4cDqQPMA+wDDAQkBDkERQRKBEYE
+QAQ3BCkEHwQYBBsEHwQhBB8EGQQKBPYD4wPTA8EDsQOeA40DegNlA00DNgMhAwoD9wLpAuEC2gLPAr0C
+pQKDAlcCIwLqAa8BeAFFAR0B+wDdAMUAsgClAKMAowCoAK0AtQC5ALwAwQDEAMoA0wDfAPIABQEYASUB
+KQEnASUBIQEWAQgB8wDjANUAyADBAMMA0gDnAAUBJQFJAWkBjAGpAcgB4wH2AQAC/gHxAd0BwAGiAYMB
+awFcAU0BRAE9AToBNwE3ATcBOAE9AUYBTAFQAVIBUgFUAVMBUgFPAUcBNwEfAQYB5gDFAKMAfgBaADYA
+FQD0/9P/t/+e/4f/dP9f/0j/Mf8Z/wD/6v7N/rX+nP6J/nb+aP5f/lr+W/5h/mj+bP5w/m7+av5c/kr+
+MP4V/vv93/3E/av9mP2L/Yj9i/2d/bX91f33/Rn+OP5P/l/+Zf5i/lT+OP4c/gH+7/3k/eX96/34/QL+
+Cf4Q/hn+JP4x/kL+WP50/pD+r/7M/uj+Av8T/yH/Jf8m/yP/Hv8T/wX/8f7g/sz+tf6k/pP+kv6Z/q7+
+zf7y/hj/PP9e/3n/kf+m/7z/1//y/xAALABJAGwAjwCxAM8A6AD6AAMBBAEGAQIB/QDwAOUA1gDGALUA
+qQCjAKIArQDCAN0A/AAaATsBVgFqAXQBdQFvAWYBVwFLAUEBOgEyASwBKAEmASIBHAEUAQ0BBAECAQEB
+CAEUASQBOgFRAWoBgwGdAboB2AHwAQUCFQIgAisCMQI1AjYCMwIvAikCJgIkAiYCJwImAiICGwISAgkC
+/AHvAeQB3QHUAcwBxAG2AaQBlQF/AWwBTgEvAQ4B8ADOAK0AigBoAEUAJAAEAOf/0//F/7z/t/+0/7L/
+sP+r/6X/n/+Y/5L/if+F/33/cv9g/0r/Kv8F/9v+rv6F/mL+P/4c/vT9yv2b/Wz9Qf0a/fj83fzH/LT8
+o/yV/If8fPxt/F/8Tvw7/Cz8HPwT/BH8E/wT/BP8E/wP/Av8Avz2+/D76/vw+/z7Ffwz/Fr8hvy9/Pf8
+Nf1z/a393/0N/jP+UP5l/nH+d/53/nL+a/5i/lz+XP5h/mv+eP6L/qT+wv7i/gP/H/82/0j/Vf9e/2j/
+c/97/4H/jf+d/7D/xf/f//z/FwAxAEsAbQCSALkA3wAFASsBVAF9AakB1wEFAjICWAJ1AowCnAKkAqEC
+lQKIAnYCZAJSAkACLQIbAg4CAALxAeMB1AHEAbABnAGHAXUBZAFXAU0BRgFBAT0BQAFGAU0BVwFbAVsB
+VgFLATkBIgEHAeYAwwCfAHwAWwA+ACUADwD///L/5v/e/9j/2f/W/9L/zf/C/7v/uP+2/7n/t/+7/8P/
+1f/j/+7/6//g/87/wP+r/5j/hv91/2H/Uf9A/zP/J/8f/x3/H/8h/x3/F/8L//7+6v7R/rT+mP56/l/+
+Sv48/jb+Mv4u/iv+Kv4l/hv+Cf7w/dD9sP2V/YH9ev13/X39g/2I/Yv9jP2J/YH9dP1j/Uv9Lf0L/eD8
+tfyJ/GH8PPwZ/Pn74vvN+8L7uPuz+6f7lvt9+2L7Qvsi+wb78/rp+ur69/oM+yn7S/tt+477qfvB+9H7
+2fva+9b70/vU+9376Pv4+wr8I/xA/F/8g/yw/N/8Ef1D/Xj9pv3Q/fb9Gf49/mL+jP69/vb+M/9w/6f/
+3P8KAC4ASgBbAGYAbQB7AJIArwDSAPkAHwFJAXQBnwHHAe0BFAIzAk4CZQJ4AoYCjwKUApYCmAKXApcC
+lwKdAqcCtwLIAtsC6wL6AgYDDQMPAwwDBgMBAwIDAwMFAwoDDAMNAwoDAAP1AuMC0QK8AqUCigJ0AmYC
+XAJQAkMCNwIrAh8CFgITAg4CDwISAhcCGwIeAh0CGwIUAg4CBwIBAv0B/AH8AfgB8wHsAeQB3QHVAcwB
+wQG2Aa0BqgGzAccB3gH3ARECKQI+AlECXgJoAnQCfwKIAoYCfgJuAl4CSgI3AiACCwL4AegB2QHLAbwB
+pwGTAXgBYQFJATIBHwETAQ8BFAEiATEBSAFkAYIBogG+AdoB6wH3AfgB8wHmAdgByAG6AbABrQGpAaYB
+pwGkAZ8BlAGGAXYBZQFTAUABKQETAfkA3gDDAKoAkwB6AGcAUwA8ACMACwD2/+H/xv+n/4X/ZP9I/zj/
+MP80/z//Uf9m/3z/lf+l/7b/wf/J/8z/zv/K/8L/uP+w/6T/kv97/2H/Rv8r/xH/9/7c/sP+sf6j/pf+
+kf6M/on+g/6F/oj+jP6R/pT+k/6Q/on+gf52/mr+Wf5L/kL+PP43/jj+Ov4+/kP+R/5J/kv+UP5Y/mb+
+d/6I/p3+tP7L/uX++/4R/yP/NP9I/17/df+M/5v/qP+t/67/sf+w/63/pv+m/6r/sv/E/9X/6P/6/wkA
+FAAWABUAFwAeACgAMQA6AEIAQwBCADwAOAAuAB8AEgADAPn/8//t/+v/4//d/9P/0P/P/9f/4P/q//f/
+BQATABsAIAAiAB8AHQAcABkAEgAOAAcAAQD4/+3/4P/U/8b/wf/A/8P/yf/S/93/6P/0/wIAFgAkADQA
+QgBSAGIAcQCCAJEAnwCoAKsAqgCjAJoAjACCAHgAcgBsAGsAbQBvAHUAfwCLAJ4ArwDIANwA8wALASMB
+OgFLAVcBXgFhAVoBUQFAAS0BFgH9AN8AvACdAHoAWQA1AA4A7//X/8H/qf+R/3j/Y/9K/zP/G/8B/+b+
+zf60/qT+kv5//mz+Vv4+/if+DP7v/dP9vP2r/Z39k/2J/YP9f/18/Xr9eP15/X79h/2T/aT9t/3E/cv9
+z/3N/cv9y/3L/c79z/3W/d/96f3y/fr9Av4M/hf+J/46/lD+Z/5+/pP+qP64/s3+4v77/hX/Mv9N/2b/
+ev+K/5b/mP+U/4v/eP9h/0n/Ov8v/yr/Kv8y/zz/Tf9i/3r/lf+z/9P/8f8WADcAXAB+AKIAwgDgAPcA
+DQEaASYBLAEtASoBJwEjAR4BGgERAQsBAgH/APwA/wAGAREBHgEpATQBOwE8ATwBNgEqARoBBQH0AOIA
+1QDIALoAsQCqAKYApgCqALIAwwDWAO0ABQEaAS0BOgFGAUwBUQFSAVUBWgFhAWcBaAFhAVQBQgEtARcB
+AgHrANcAxwC9ALwAvQDEAMkAzgDQANAAzwDMAMsAyADHAMMAvgC5ALYAtACvAKwApQCeAJMAigB7AGYA
+TQAwABIA7f/Q/7X/ov+X/5T/mv+o/7j/y//b/+T/5//o/+X/3v/X/8v/u/+l/4z/bf9N/yr/B//l/sb+
+qv6P/nX+X/5I/jH+Gv4C/u391/3H/bn9sf2v/bL9s/23/bj9tP2s/Zv9h/1r/VD9Mf0S/fL81vy8/Kn8
+lvyK/IH8f/yC/In8kvyc/Kf8r/y1/Lr8u/y7/Lz8vfy+/MH8y/zZ/On8+vwK/Rn9If0h/Rz9Ff0S/RL9
+Gf0p/Tz9Vv10/Zz9yP35/Sj+V/6H/rb+4v4L/zD/UP9n/3v/h/+R/53/qv+6/8z/4f/3/wkAHgA2AE4A
+aACCAJ8AvADeAAABJgFNAXMBmAG3AdMB6wH/AQwCEwISAgsC/QHsAd8B0AHBAbIBpwGgAZ8BoQGlAaoB
+rgGtAawBqwGlAZ4BlAGHAX0BdgFwAWoBZAFkAWYBagFvAXEBcAFuAWcBXAFQAUQBOwE1ATQBOQFCAU4B
+XgFtAXkBgQGDAYABewFwAWcBWAFJATkBKAEYAQkB/gD0AOwA6ADmAOUA6ADqAO4A8wD2APoA/wACAQsB
+FgElATcBSQFcAW4BggGSAZ4BpQGiAZoBhwFzAVYBOwEdAQUB8ADlAOIA5QDvAP8ADgEfATABQQFRAV8B
+ZgFqAWsBaAFkAVsBUQFFATsBNAEsASYBJQEgARsBEgEEAfMA4QDOAMEAtwC0ALcAvADBAMUAxwDDALYA
+ogCKAG4AVQA+ACgAEgD//+7/3//R/8v/xP/A/7z/u/+7/77/wf/C/8P/wP+4/6//pf+e/5n/lv+a/57/
+pf+o/6z/rv+w/6n/nf+P/3r/ZP9L/zj/Jf8Z/wr///7y/uf+4f7d/tz+3P7d/t/+4v7m/uf+6f7o/uj+
+5/7t/vH++/4B/wv/E/8a/x//Iv8h/x//Hf8c/x//Kf83/0v/Zf+D/5//vP/T/+T/8f/4//7//f/+//j/
+8v/q/+b/3f/U/87/xv/D/7//vv+8/7z/uP+1/7H/sP+t/6v/q/+w/7z/y//c//D///8LABMAGQAaABYA
+EQALAAkABwAHAAUABgAKABAAGgAjADAAOgBFAEwATwBOAEgAQgA5AC4AJAAVAAgA+P/u/+X/4P/g/97/
+2v/W/9H/zP/E/8D/vP+7/77/xP/Q/9v/5//z/wIADAAaACcAMwA9AEQARgBDAD8ANwAwACkAJQAlACYA
+LQA3AEEATwBYAF8AZABmAGQAYwBjAGYAawBwAHgAfgCKAJQAnACgAKAAmwCYAI0AhAB2AGYAVABCAC8A
+HgAOAP//8//r/+X/4P/b/9P/yv+//63/mv+D/3H/Xv9O/z7/M/8p/x//Fv8I//v+6f7W/sT+tP6n/p/+
+l/6S/o/+jP6K/on+h/6G/ob+h/6J/ov+i/6K/ob+fv50/mv+Yv5b/lX+Vf5X/lv+Yv5r/nP+ef59/n3+
+ev58/nz+hf6O/pz+rv6//tP+6f4C/xv/Nf9N/2H/c/9//4n/jP+O/4//jv+O/5L/mf+i/7D/w//W/+r/
+/v8UACYANABDAE8AWgBjAGsAcwCAAIoAmQCnALcAxQDTANwA5QDqAO4A7QDrAOkA5QDkAOIA4gDjAOcA
+6gDwAPEA8gDvAOoA4QDWAMgAuACpAJwAkgCKAIcAhQCGAIsAkgCaAKEApgCpAK0ArQCqAKgApgCkAKQA
+pgCpAK8AuwDHANQA4ADsAPMA9wDyAOkA1gDFAK8AnQCNAIIAegBzAHQAdgB6AIAAhACIAIgAhQCAAHoA
+cgBpAGAAVQBMAEEAOQAxACsAJQAeABcADgAAAPD/3P/K/7j/qv+d/5r/l/+d/6T/rP+w/7P/sf+s/6b/
+nf+N/33/bf9d/07/Qf81/yn/If8Z/xf/E/8Q/w7/D/8N/w7/D/8K/wb///72/vD+6/7r/uv+7v7x/vb+
++v79/v7++/7z/ur+1v7F/rT+o/6V/or+gP55/nP+b/5u/nH+ef5//of+iv6M/ov+iP6B/nv+cf5p/mX+
+Y/5j/mX+aP5t/nT+eP57/n3+e/55/nn+e/6E/pD+of62/s3+5P76/g//IP8x/0D/T/9Y/2L/Z/9q/3L/
+d/+B/4v/mf+t/77/1//u/wcAGgAtADwASQBUAGEAbAB2AIUAlgCoAL4A0gDoAPsADAEbASsBNwFGAVIB
+WQFfAWIBZQFjAWQBYwFkAWQBZwFoAWwBbAFtAWkBYwFbAU0BPwExASMBGAEOAQYBAQH6APMA6wDbAMkA
+tQCgAIsAdABhAE0APwAxACoAJgAlACcALQA3AEAASwBUAFsAYQBhAF0AVQBJAD4ANwAyADIAMwA2ADsA
+QABHAE8AVQBeAGIAagBxAHgAgQCHAI8AlQCbAKMAqQCwALEAswCxAK4AqgClAKAAmgCRAIoAgAB7AHcA
+dgB6AIEAiQCRAJkAoACmAKsArACsAKkApgCjAKMAowCnAKkArgCzALYAugC8ALwAuwC4ALUAtACwAKwA
+pwChAJwAlwCTAJIAkwCWAJoAnQCeAJsAlACJAH0AbgBgAFMASgBEAEIAQgBFAEUARABDADwANgAvACYA
+IQAdAB8AIgAnACwANQA9AEcATwBYAGAAaQBsAG4AaQBgAFQARQA0ACEAEQABAPT/6P/g/9j/1P/Q/8r/
+w/+9/7L/qv+d/5P/iP9+/3b/b/9p/2T/YP9d/1r/VP9O/0j/RP8//zv/N/83/zX/Nv84/zz/Qv9M/1b/
+Yv9v/3z/hv+P/5T/mf+Y/5r/l/+X/5n/oP+o/7T/vv/O/9f/4f/m/+r/7P/q/+j/6f/l/+f/6P/q//D/
+8f/2//z/AwAJABIAFwAbAB0AGgAUAAwABAD6//P/7//t/+3/7//0//X/+v/8//3//P/9//z/+f/3//P/
+8v/s/+j/4//i/+D/3f/a/9f/1P/P/8r/xf+//7f/r/+m/6H/nv+b/5z/oP+k/6v/s/+7/8H/xv/H/8b/
+wP+5/7D/p/+d/5b/kf+S/5H/l/+a/6L/qP+u/7P/uP+7/7//wf/C/8T/xP/F/8b/zf/X/+L/8P8AAA0A
+GgAkACsALAAuACkAJgAkACMAJAAnACkAKwAtAC4AKwApACQAHwAZABMADAAEAPz/9P/s/+T/4P/Z/9X/
+0f/P/8v/xP+8/7D/nv+M/3f/Yf9N/zv/K/8f/xn/GP8W/xr/Hf8h/yT/Kf8s/zD/M/83/zn/N/83/zX/
+NP81/zX/Ov9B/0j/Uf9a/2L/Z/9q/2j/Zv9j/2L/X/9h/2P/aP9w/3j/gv+J/5D/lf+a/57/oP+j/6T/
+pP+l/6f/qP+r/7D/tv/A/8n/1P/d/+T/6v/v//H/9v/2//r//v8CAAkAEgAgACsAOgBIAFYAYwBwAHkA
+fQCBAIMAggB/AHsAdgBvAG0AaQBlAGAAXQBbAFoAWQBYAFYAVQBQAEsARwBBADoANAAyAC4ALQAsAC8A
+LgAyADQANAA0ADQANAA2ADcAOwA+AEMASABMAFIAWwBfAGcAbAByAHQAdABzAHEAbgBqAGUAXwBbAFoA
+VgBZAFsAXwBjAGYAZgBhAF0AVwBRAE4ASQBFAEIAQQBCAEQARwBHAEkASgBKAEoASQBHAEIAPwA6ADQA
+MQAqACQAIAAcABwAGgAZABYAFAAPAAYA/P/w/+f/3P/W/83/yv/H/8n/yf/J/8z/y//M/8v/y//K/8n/
+x//E/8H/uv+4/7L/q/+n/6L/n/+b/5v/l/+X/5X/lf+U/5D/jf+I/4f/hP+B/4L/gv+D/4T/hf+F/4P/
+gf+B/3r/dv9y/3D/bv9t/3D/df96/3z/gv+E/4n/i/+N/47/kv+Q/5H/jf+K/4f/gv9+/3f/df90/3L/
+c/9y/3P/cP9t/2j/Zv9j/2D/X/9i/2T/av9u/3b/ef+C/4j/kP+X/5//pf+v/7j/v//G/83/0f/W/9z/
+3v/k/+X/7P/y//3/BAAMABYAIAAkACsAMgA5AD8ARwBPAFkAYABoAG4AcwB4AHkAfQB8AH4AfgB+AH0A
+fAB7AHsAfAB9AH4AfwCBAIIAggCDAIAAfQB6AHYAcwBsAGcAYQBbAFYAUwBQAEsASgBGAEQAQgA7ADcA
+MwArACcAIQAcABwAHgAdAB4AHQAdABsAGwAaABgAFgAVABMAEgATABEAEQAPAA4ADwAOAA4ADwAPAA8A
+DgALAAkACQAIAAoACwAQABYAHwAnADAAOABAAEUASQBOAFEAVABUAFYAVgBVAFMAUgBRAFAAUwBVAFgA
+XABgAGQAZQBpAGoAawBpAGgAZgBkAGEAYABfAF0AWgBYAFYAUwBPAEkARgA+ADgANAAsACYAHwAaABQA
+EQAQABAADwAPAA4ADQALAAcABQACAP7//P/5//b/9//2//f/+P/5//z//P////3/+//4//L/7f/n/+H/
+2//W/9L/z//N/8z/y//K/8r/xv/F/8P/vv+7/7X/sf+t/6f/pf+j/6L/pP+m/6r/r/+z/7j/vv/B/8b/
+yv/N/9H/1v/a/+H/5f/s/+//8v/3//r/+//8//r/+f/0//D/6v/l/+P/4f/h/+D/4//p/+//9v/9/wYA
+CAAOABAAFAATABYAFwAYABkAHQAdACIAJQApACsALwAyADQANwA3ADkANwA2ADQAMwAzADIAMgA0ADUA
+OQA8AEAAQwBEAEUAQgBCAD8AOgA0AC4AKwAjABwAGAATABAADAALAAsACQAJAAYABQADAAMAAQD+//7/
++//5//n/+f/5//v//P/+//v/+v/1//D/6//l/9//2v/V/9P/0//V/9b/3P/h/+b/7f/x//T/9//4//3/
+/P/+//7//v/+//7//v////3////9//3/+v/5//f/9P/w/+7/6//p/+f/5v/q/+r/8f/y//b/9//5//b/
+9v/y//D/7P/q/+T/4f/e/93/2f/X/9T/0v/P/83/y//H/8P/wP+5/7T/rv+o/6H/m/+Y/5T/kf+O/4z/
+i/+I/4j/gf98/3b/cv9s/2n/Z/9k/2L/Zf9m/2r/av9w/3T/ev9//4b/iv+P/5P/l/+a/5z/n/+i/6X/
+qv+u/7T/uv+9/8D/xP/E/8X/xv/F/8f/yf/L/83/0f/T/9f/3v/j/+n/8P/3//z/AwAHAAoADAAMAAwA
+CgAKAAoADAAOAA8AEQAVABcAHAAfACMAIwAmACcAKQApACsALQAwADIANAA3ADcAOAA4ADgAOAA3ADcA
+NgA2ADUANQAyADIAMAAuAC4ALgAxADIAOAA4ADsAPQBAAEEAQQBAAD8APgA9AD0APAA6ADoANwA2ADEA
+LQApACQAHgAaABUAEAANAAsACAAGAAMAAwACAAQABQAFAAkACgANAAwADAAJAAgABQABAAAA/f/8//v/
++//7//3//v//////AgACAAYACAALAAwADwAPABIAEgARABEAEAAOAA0ACwAIAAcAAwAAAPz/+//2//X/
+8//w//D/7v/v/+//8f/x//L/8//z//P/8//z//T/9P/0//b/9//5//j/+v/5//n/9//2//P/8v/t/+z/
+5//l/+H/3//b/9n/1f/T/9H/z//P/8//zP/L/8j/xP/B/73/uv+2/7P/sP+t/6z/q/+r/6r/qv+q/6z/
+r/+w/7P/tP+4/7v/vP/A/8P/yP/L/9D/1P/X/9z/3v/g/+L/5f/m/+n/6v/t//L/9P/2//j/+////wEA
+BAAGAAgACQAJAAwADwAQABEAEwAVABUAFgAYABoAGwAbAB0AHgAeACAAHAAcABsAGwAaABsAGwAdAB0A
+IAAiACMAJgAoACoALQAvADAAMQA0ADYANwA6ADwAOwA8ADsAPAA6ADoAOQA3ADcANAA0ADEALwAtAC0A
+KwArACkAJwAmACUAIgAeAB0AGAAUABIADgAKAAgABQAGAAQAAwAEAAMAAgAAAP///f/9//z//v/+//z/
+/v/9////AAADAAQABwAHAAkACwAMAAwADAANAAwADAAMAAsADAAJAAkACQAHAAcACQAIAAgACgAKAAsA
+CwANAA4ADwAQABEAEgAUABUAFQAUABIAFAATABIAEgASABIAEgASABEADwAQAA8ADwAOABEAEQARABMA
+FQAVABYAFwAWABUAFQAUABQAEwATAA8AEAANAA0ACwAIAAcABQAEAAMAAgABAAIAAgACAAAAAgABAAEA
+/////////f/7//r/+P/1//P/8v/t/+7/6f/o/+T/4//e/97/2//b/9r/2f/a/9n/2f/Y/9n/2f/a/9v/
+3f/f/+H/4f/j/+P/5f/m/+b/6P/p/+r/7P/s/+3/7P/w/+7/7//v//D/7v/v/+7/8P/w/+//7//u//H/
+7//w//D/8P/u/+7/7v/t//D/8P/z//L/9P/0//b/9//6//r//f///wAAAwAFAAcACwAOABEAEwAWABYA
+FwAaABoAGwAcABwAGwAbABsAGAAXABgAFQAVABQAEgASABAADgALAAsACQAGAAYAAwADAAIAAQAAAAAA
+AgABAAIAAQABAAIAAQACAAEAAgACAAEAAgACAAAAAQABAAEAAAABAAAAAgABAAIAAwAEAAEAAgABAAAA
+AQABAAAA//8AAP///v/8//3//P/9//7//P/+//3//v///wEAAwACAAEABQAEAAQAAwAEAAQABAAFAAYA
+BQAEAAUAAwADAAEAAQABAP/////+//7//v/9//z//f/8//3//P/9//z//f/8//v/+//6//n/+P/3//b/
+9f/y//P/8P/t/+r/6v/l/+T/4v/e/93/2//a/9r/2f/Y/9f/2P/Y/9r/2f/b/9v/3P/c/9z/3v/e/9//
+4v/g/+L/4P/j/+P/4v/k/+T/5v/m/+n/6P/q/+r/7P/t/+7/7v/x//H/8//z//X/9f/0//X/9v/1//b/
+9v/0//T/9P/z//T/9P/0//X/9//3//j/+P/4//n/+P/5//r/+P/6//j/+v/6//v/+//6//3//f/8//7/
+///+/////////wAA//8BAAAAAAADAAIABQAFAAYABgAHAAgACgALAAsACwANAA0ADgAQAA8ADwAPAA8A
+DwAPAA4ACwANAAsADAAIAAkACAAJAAkACQAMAAoACwALAAsADAALAAoACwALAAoACgAKAAoACQAIAAcA
+BQAEAAQAAwADAAIAAQAAAAEAAAAAAAAAAQD//wEA//8AAP//AQABAAEAAQABAAEAAQADAAIAAgACAAMA
+AgABAAIAAAAAAP///v/+//7//v///////////wAAAAABAAEAAQAAAAEAAQABAAEAAgABAAEAAQABAAIA
+AgABAAQAAwAEAAQABQAEAAYABgAFAAcABgAIAAcACAAFAAYABAAEAAAAAQAAAP7//P/7//r/9//2//T/
+9P/0//P/8f/y//H/8f/v//H/8P/x//H/8v/x//H/8//y//L/9P/y//P/8v/y//L/8v/z//L/8v/x//L/
+8//y//P/9P/z//T/9P/2//b/9v/3//j/+P/4//v/+//7//v//P/9//v//f/9//z//v/8//7//f/+/wAA
+AgABAAQABAAEAAYABgAGAAgACAAKAAoACwAMAA0ADQANAA0ADQANAA0ADwAOAA4ADgAOAA4ADwAQABAA
+DwAPAA8ADwAOAA4ADQANAA0ADAALAAoACgAJAAgABwAHAAYABgAGAAQABQACAAQAAwACAAIAAQABAAEA
+AAABAAAAAgABAAMAAgADAAIAAwABAAMAAgACAAMAAAACAAEAAQABAAAAAgACAAIAAQAAAAEAAgAEAAIA
+AwADAAMABAADAAQAAwADAAUABAADAAQABAAFAAMAAgADAAEAAQACAAEAAAAAAP//AAAAAP////////7/
+AAD///////8AAAAAAAAAAAAA//////7//v/+/////f/+//3//f/+//3//f/+//7//f////3//v/+//7/
+/f/+/////v/+//7//v/9//7//P/8//z//f/8//3//P/8//3//P/9//z//P/7//z/+//8//v/+//7//z/
+/P/7//v/+v/7//r/+v/6//r/+P/4//j/+P/4//f/9//2//j/9v/3//b/9v/2//f/9//5//f/+f/5//j/
++f/5//r/+f/5//r/+v/5//n/+v/6//r/+//7//r/+//7//z/+//9/////v/+////AAAAAAEAAQACAAMA
+BAADAAUABAAEAAUABQAFAAUABQAGAA==
+<enddata>
+

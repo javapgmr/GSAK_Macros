@@ -1,0 +1,335 @@
+#*******************************************
+# MacVersion = 2.51
+# MacDescription = Generate PQ placed by dates
+# MacAuthor = Clyde, lignumaqua, Kai Team
+# MacFileName = PlacedPQ.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=2777&view=findpost&p=32581
+#*******************************************
+# Modified to use SQLGet()
+VERCHECK Version=7.7.0.0 (Note: this macro requires the latest GSAK 7.7 update)
+
+#Center Options Form
+$Resolution=SysInfo("ScreenResolution")
+$LeftPos=NumToStr(Val(Extract($Resolution,",",1))/2-200)
+$TopPos=NumToStr(Val(Extract($Resolution,",",2))/2-138)
+$Form = editform($Form,"Form1","Top",$TopPos)
+$Form = editform($Form,"Form1","Left",$LeftPos)
+
+#Initialize Variables
+$RB500= TRUE
+$RB1000=FALSE
+$GCMonthCB=FALSE
+$SettingsFile=Extract(SysInfo("MacroPath") + "\" + MacHeader("MacFileName"),".",1) + ".xml"
+$BufferValues="0;1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;18;19;20"
+$Form = editform($Form,"BufferCBx","values",$BufferValues)
+$BufferCBx="10"
+$FilterName=""
+$CurrentSort = $_OrderBy
+$FilterFlag=FALSE
+
+IF $_FilterActive
+    $SavedFilter = SaveFilter()
+    $FilterName=Extract(RegExData("SavedFilter.*", SaveFilter(), 1),"=",2)
+    $FilterFlag=TRUE
+ENDIF
+
+#Retrieve Saved Settings
+MACSETTINGS Type=R FileCheck=N
+$500Caption=NumToStr(500-Val($BufferCBx)) + " or fewer caches (PQ will be emailed)"
+$1000Caption=NumToStr(1000-Val($BufferCBx)) + " or fewer caches (PQ must be downloaded)"
+$Form = editform($Form,"RB500","caption",$500Caption)
+$Form = editform($Form,"RB1000","caption",$1000Caption)
+
+IF FileExists($SettingsFile)=FALSE OR $_ShiftKey=TRUE
+    WHILE TRUE
+        $FormExit = form($Form,"")
+        BEGINCASE
+            CASE $FormExit = "SystemExit"
+            RETURN Msg="Macro Canceled"
+
+            CASE $FormExit = "BufferCBx"
+                $500Caption=NumToStr(500-Val($BufferCBx)) + " or fewer caches (PQ will be emailed)"
+                $1000Caption=NumToStr(1000-Val($BufferCBx)) + " or fewer caches (PQ must be downloaded)"
+                $Form = editform($Form,"RB500","caption",$500Caption)
+                $Form = editform($Form,"RB1000","caption",$1000Caption)
+                $MaxcachesS=NumToStr(500-Val($BufferCBx))
+                MACSETTINGS Type=S Vars=RB500,RB1000,MaxCachesS,BufferCBx,GCMonthCB
+
+            CASE $FormExit = "OK"
+            IF $RB500
+                $MaxcachesS=NumToStr(500-Val($BufferCBx))
+                $MaxCaches= 500-Val($BufferCBx)
+            ELSE
+                $MaxcachesS=NumToStr(1000-Val($BufferCBx))
+                $MaxCaches= 1000-Val($BufferCBx)
+            ENDIF
+            MACSETTINGS Type=S Vars=RB500,RB1000,MaxCachesS,BufferCBx,GCMonthCB
+            BREAK
+
+            CASE $FormExit = "Cancel"
+            RETURN Msg="Macro Canceled"
+        ENDCASE
+    ENDWHILE
+ELSE
+    $MaxCaches=Val($MaxCachesS)
+ENDIF
+
+# save current sort sequence
+$SORT = $_SortBy
+
+# temp folder to generate HTML file
+$temp = $_Install + "\temp"
+
+# check box data to help see where we are up to
+$tick = "<input type=checkbox value=Yes name=""CHECK_BOX_1"">"
+
+# generate the HTML header info
+GOSUB Name=Header
+
+# Fitler out archived
+IF $_FilterActive
+   MFILTER where=status <> 'X' Join=AND
+ELSE
+   MFILTER where=status <> 'X'
+ENDIF
+
+SQLSORT OrderBy=PlacedDate
+
+$count = 0
+$dateCount = 1
+$From = $d_PlacedDate
+$savedate = $d_PlacedDate
+$ThisPQ = 0
+$ThisRecord = 0
+$lastcount = 0
+
+
+$status = sqlite("sql",$_SqlGrid, "sqlget=yes")
+
+WHILE NOT($_SQLEol)
+  $ThisRecord = $ThisRecord + 1
+  $count = $count + 1
+
+  # only show status every 100 records
+  IF frac($ThisRecord/100) = 0
+    $status = "Record: " + "$ThisRecord" + " of " + "$_Count"
+    ShowStatus msg="$status"
+  ENDIF
+
+
+  IF SqlToDate(SqlGet("placedDate")) <> $savedate
+    $gdate = $savedate
+    $gtotal = $count - 1
+    $savedate = SqlToDate(SqlGet("placedDate"))
+  ENDIF
+
+
+  # if too many caches, use the previous date
+  IF $count > $MaxCaches
+    $ThisPQ = $ThisPQ + 1
+    $ThisPQStr = Right("00000" + NumToStr($ThisPQ), 3)
+    IF Not($GCMonthCB)
+        $out = $out + "<tr class=row><td>&nbsp;" + $ThisPQStr + "&nbsp;</td><td>&nbsp;" + DateFormat($from) + "&nbsp;</td><td>&nbsp;" + DateFormat($gdate) + "&nbsp;</td><td>&nbsp; $gtotal</td>" + "<td>$tick</td></tr>" +  $_NewLine
+    ELSE
+        GOSUB Name=Convert Month
+        $out = $out + "<tr class=row><td>&nbsp;" + $ThisPQStr + "&nbsp;</td><td>&nbsp;" + $StringFrom + "&nbsp;</td><td>&nbsp;" + $StringgDate + "&nbsp;</td><td>&nbsp; $gtotal</td>" + "<td>$tick</td></tr>" +  $_NewLine
+    ENDIF
+    $from = $gdate + 1
+    $count = $count - $gtotal
+  ENDIF
+
+  SQLNEXT
+ENDWHILE
+
+# generate last from and to if total recs not a multiple of $maxCaches
+IF $count > 0
+    $ThisPQ = $ThisPQ + 1
+    $ThisPQStr = Right("00000" + NumToStr($ThisPQ), 3)
+    IF Not($GCMonthCB)
+        $out = $out + "<tr class=row><td>&nbsp;" + $ThisPQStr + "&nbsp;</td><td>&nbsp;" + DateFormat($from) + "&nbsp;</td><td>&nbsp;Maximum date&nbsp;</td><td>&nbsp; $count</td>" + "<td>$tick</td></tr>" +  $_NewLine
+    ELSE
+        GOSUB Name=Convert Month
+        $out = $out + "<tr class=row><td>&nbsp;" + $ThisPQStr + "&nbsp;</td><td>&nbsp;" + $StringFrom + "&nbsp;</td><td>&nbsp;Maximum date&nbsp;</td><td>&nbsp; $count</td>" + "<td>$tick</td></tr>" +  $_NewLine
+    ENDIF
+ENDIF
+
+CANCELFILTER
+
+# restore previous sort sequnce
+$SortData = Extract($Sort, "=",1)
+$Sequence = Extract($Sort, "=",2)
+
+IF $Sequence="A"
+    SQLSORT OrderBy=$SortData Asc
+ELSE
+    SQLSORT OrderBy=$SortData Desc
+ENDIF
+
+#retore user's  settings
+
+IF $FilterFlag=TRUE
+    IF RestoreFilter($SavedFilter,True) = 0
+      PAUSE Msg="No records match your restored filter. Filter has been cancelled"
+    ENDIF
+ENDIF
+
+SQLSORT OrderBy=$CurrentSort
+GOTO position=Top
+
+#close out HTML
+$out = $out + "</table></body></html>"
+
+# generate file and display
+$FileName = $temp + "\placedpq.htm"
+$Error = PutFile($FileName,$out)
+OPENFILE file="$FileName"
+
+
+
+BEGINSUB Name=Header
+  $out = "<html>" + $_NewLine
+  $out = $out + "<style type='text/css'>" + $_NewLine
+  $out = $out + "<!--" + $_NewLine
+  $out = $out + ".Body{font-family:'Arial'}" + $_NewLine
+  $out = $out + ".TableHeader{background-color:#CCCCFF;text-align: center}" + $_NewLine
+  $out = $out + ".Item{color:blue;font-weight:bold}" + $_NewLine
+  $out = $out + ".row{background-color: #FEF4D8;vertical-align:top}" + $_NewLine
+  $out = $out + "-->" + $_NewLine
+  $out = $out + "</style>" + $_NewLine
+  $out = $out + "<body class=body>" + $_NewLine
+  $out = $out + "<table border='1' summary=''>"
+  IF $FilterName<>""
+    $out = $out + "<tr class=TableHeader><td align='center' colspan=5>Placed by date PQ Generation - $FilterName </td></tr>" + $_NewLine
+  ELSE
+    $out = $out + "<tr class=TableHeader><td align='center' colspan=5>Placed by date PQ Generation </td></tr>" + $_NewLine
+  ENDIF
+  $out=$out + "<tr class=TableHeader><td align='center' colspan=3>Database: $_CurrentDatabase</td><td align='center' colspan=2>Generated: $_Today</td></tr>" +  $_NewLine
+  $out = $out + "<tr class=TableHeader><td>PQ</td><td>From</td><td>To</td><td>Count</td><td>Done </td></tr>" +  $_NewLine
+ENDSUB
+
+#Convert the month to text
+BEGINSUB Name=Convert Month
+    $NumMonths="01,02,03,04,05,06,07,08,09,10,11,12,"
+    $StrMonths="January,,,February,,,March,,,April,,,May,,,June,,,July,,,August,,,September,,,October,,,November,,,December"
+    $Expression=Extract(DateToSql($from),"-",2) + ","
+    $PosFrom=RegExPos($Expression, $NumMonths, 1)
+    $StringFrom=Extract($StrMonths,",",$PosFrom) + " " + Extract(DateToSql($from),"-",3) + ", " + Extract(DateToSql($from),"-",1)
+    $Expression=Extract(DateToSql($gDate),"-",2) + ","
+    $PosFrom=RegExPos($Expression, $NumMonths, 1)
+    $StringgDate=Extract($StrMonths,",",$PosFrom) + " " + Extract(DateToSql($gDate),"-",3) + ", " + Extract(DateToSql($gDate),"-",1)
+ENDSUB
+
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sat 11-Jun-2011 09:32:05
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Placed PQ for GSAK 7.7
+  Height = 275
+  Left = 800
+  Top = 384
+  Width = 399
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 68
+  Top = 174
+  Width = 75
+  Taborder = 8
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 240
+  Top = 174
+  Width = 75
+  Taborder = 9
+  Caption = Cancel
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 12
+  Size = 10
+  Top = 60
+  Width = 347
+  Caption = Choose the maximum number of caches per Pocket Query:
+
+Name = RB500
+  Type = Radiobutton
+  Fontsize = 10
+  Height = 17
+  Left = 46
+  Top = 84
+  Width = 265
+  Taborder = 10
+  Caption = 490 or fewer caches (PQ will be emailed)
+
+Name = RB1000
+  Type = Radiobutton
+  Font = Microsoft Sans Serif
+  Fontsize = 10
+  Height = 17
+  Left = 46
+  Top = 108
+  Width = 325
+  Taborder = 11
+  Caption = 990 or fewer caches (PQ must be downloaded)
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 14
+  Top = 213
+  Width = 355
+  Caption = To change these settings, hold down the shift key when you run the macro.
+
+Name = Label3
+  Type = Label
+  Height = 16
+  Left = 12
+  Size = 10
+  Top = 12
+  Width = 342
+  Caption = Select the number of caches to subtract from the maximum
+
+Name = Label4
+  Type = Label
+  Height = 16
+  Left = 11
+  Size = 10
+  Top = 32
+  Width = 284
+  Caption = to create a buffer for caches that are reactivated:
+
+Name = BufferCBx
+  Type = Combobox
+  Directinput = No
+  Exitonchange = Yes
+  Height = 21
+  Left = 300
+  Top = 30
+  Width = 55
+  Taborder = 12
+
+Name = GCMonthCB
+  Type = Checkbox
+  Fontsize = 10
+  Height = 17
+  Left = 20
+  Top = 138
+  Width = 343
+  Taborder = 13
+  Caption = Show dates in geocaching.com format (Month dd yyyy)
+
+<enddata>
+
+
+
+
+

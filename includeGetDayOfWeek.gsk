@@ -1,0 +1,73 @@
+#################################################################
+#        IT'S EASY TO SEE WHAT IS BEING DONE - THE WHY IS FOUND ON:
+#        http://www.gregmiller.net/astro/dow.html
+# Strings used:
+# $MagicString  $temp $day  $month  $year $magicYear  $newYear
+# $Leap $MagicNumber $Formula
+#  AND the output   $TheDay
+#
+# Modified 28 Apr 2006 to work with GSAL ver 6.6.1
+#################################### by Tom Miller Oct 2, 2005
+BEGINSUB Name=GetDay
+#*******************************************************
+#   Variable declarations for
+#   includeGetDayOfWeek.gsk
+#
+#   Generated 07/05/2007 9:59:30 PM on GSAKVariables.gsk Rev V0.20 B10
+#
+#*******************************************************
+
+
+
+Option Explicit=Yes
+
+Declare Var=$__day Type=Numeric
+Declare Var=$__Formula Type=Numeric
+Declare Var=$__magic__year Type=Numeric
+Declare Var=$__MagicString Type=String
+Declare Var=$__month Type=Numeric
+Declare Var=$__new__year Type=Numeric
+Declare Var=$__temp Type=String
+Declare Var=$__year Type=Numeric
+Declare Var=$__i Type=Numeric
+Declare Var=$__Leap Type=String
+Declare Var=$__MagicNumber Type=Numeric
+Declare Var=$The__day Type=String
+Declare Var=$y Type=Numeric
+
+
+SET $__MagicString="6,2,2,5,0,3,5,1,4,6,2,4"
+SET $__temp = DateToString($_Today)
+
+SET $__day = VAL(SUBSTR($__temp, 7,2))
+SET $__month = VAL(SUBSTR($__temp, 5,2))
+SET $__year = VAL(SUBSTR($__temp,3,2))
+SET $__magic__year=$__year
+SET $__new__year=$__year
+
+SET $i=0
+WHILE $__new__year>=4
+   $__new__year=$__new__year-4
+   $__i=$__i+1
+ENDWHILE
+SET $__magic__year=$__year+$i
+
+SET $__y= 4*$__i                                      # This line has been added
+IF $__y=$__year                                       # This line has been changed
+   $Leap="TRUE"
+   ELSE
+   $Leap="FALSE"
+ENDIF
+
+SET $__MagicNumber= VAL(Extract($__MagicString,",",$__month))
+SET $__Formula=$__magic__year+$MagicNumber+$__day
+IF $__Leap="TRUE" AND $__month < 3                    # Removed dots from around AND
+   SET $__Formula=$__Formula-1
+ENDIF
+
+WHILE $__Formula>7
+   $__Formula=$__Formula-7
+ENDWHILE
+SET $The__day=Extract("Mon,Tue,Wed,Thu,Fri,Sat,Sun",",",$__Formula)
+ENDSUB
+

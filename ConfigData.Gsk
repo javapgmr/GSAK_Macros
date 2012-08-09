@@ -1,0 +1,318 @@
+###################################################################################
+# MacVersion     = 1.0 - Beta
+# MacDescription = Use a common file for configuration data - Programmers only.
+# MacAuthor      = Wayne (Team Red Roo)
+# MacFileName    = ConfigData.Gsk
+# MacUrl         = http://gsak.net/board/index.php?act=ST&f=15&t=7399
+#...
+# User Notes   * GetCfgData has no input requirements. If the $MacroPath\Data
+#                directory does not exists, it will be created. $MacroPath\Data
+#                was used to allow for testing of the same macro in another folder
+#                without affecting any 'Production' configuration settings.
+#              * GetCfgData will return the current Cfg Line for that macro if
+#                available.
+#              * GetCfgData tests stored Cfg lines to ensure that it picks up the
+#                correct line if it is there.
+#              * If $CfgFile does not exist, $OldCfgLine is set to null.
+#  >>>>>>>>>>  * It is the programmers responsibility to read the configuration
+#                line in the correct manner.
+#...
+#              * WriteCfgData tests $OldCfgLine against $CfgLine to see if the
+#                configuration has changed and writes the new configuration if
+#                it is different.
+#              *
+#  >>>>>>>>>>  * While there are no requirements for entry to this routine, it is
+#                the programmers responsibility to create the new configuration
+#                line in the correct order before calling this routine.
+#                A configuration line cannot include $_NewLine.
+#...
+#  Strengths   * A common configuration file ($CfgFile) for multiple macros.
+#              * The running macro is recognised by its full name, and the $CfgFile
+#                is checked for the correct $CfgLine.
+#              * A separate 'Data' folder and $CfgFile for each macro folder ensures
+#                that if you write and test macros in another folder
+#                (e.g. '$_Install\Macros\Testing'), you don't overwrite the
+#                configuration file in the main macro folder ('$_Install\Macros\Data').
+#...
+#  Weaknesses  * If you previously had a macro stored in that folder using the same
+#                name, this routine will pick up it's configuration if it is in the
+#                configuration file. This may cause your macro to fail when it tries
+#                to read the old configuration data.
+#              * Cannot be used in 'Included' macros.
+#...
+# File Format  * The Configuration file format is fined as follows...
+#                Multiple lines - 1 line per macro, terminated by $_NewLine
+#                Each line - multiple fields teminated by a semicolon (";").
+#                Field 1: Sysinfo("Macrofile")
+#                Other fields: Cfg variables
+#
+###################################################################################
+
+  VERCHECK Version=7.2.0.0 (Please update to the current version from http://gsak.net)
+
+  GOSUB Name=GetCfgData
+  GOSUB Name=SetCfg			# This can alternately be placed as the last instruction in the 'GetCfgData Routine
+
+  WHILE TRUE
+      $FormExit = form($form,"")
+
+      BEGINCASE 
+          CASE $FormExit="Continue"
+              BREAK 
+      ENDCASE 
+  ENDWHILE 
+
+  GOSUB Name=PutCfg			# This can alternately be placed as the first instruction in the 'WriteCfgData Routine
+  GOSUB Name=WriteCfgData
+
+  $Msg1=      "When you re-run this macro, you will notice"+$_NewLine
+  $Msg1=$Msg1+"that the options are configured the way they"+$_NewLine
+  $Msg1=$Msg1+"were when you pressed the Continue button."
+  MSGOK Msg=$Msg1
+
+  RETURN 
+###################################################################################
+###################################################################################
+###################################################################################
+# These two subroutines must be modified to suit the required variables in each
+# macro. In this macro, there are only 6 variables that require saving.
+# Note: Variables must be retrieved in the same order as they are saved.
+# Note: If there may be a better way of doing this - this is an example only.
+  BEGINSUB Name=SetCfg
+      IF 	$CfgLine <> ""
+          $RB1=Extract($CfgLine,";",2)="True"
+          $RB2=Extract($CfgLine,";",3)="True"
+          $RB3=Extract($CfgLine,";",4)="True"
+          $CB1=Extract($CfgLine,";",5)="True"
+          $CB2=Extract($CfgLine,";",6)="True"
+          $CB3=Extract($CfgLine,";",7)="True"
+      ELSE 
+      ENDIF 
+  ENDSUB 
+  BEGINSUB Name=PutCfg
+      $CfgLine="$MacName;$RB1;$RB2;$RB3;$CB1;$CB2;$CB3;"
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=GetCfgData
+      $CfgFolder=Sysinfo("MacroPath")+"\Data"				# No need to change this
+      IF Not (FolderExists($CfgFolder))
+          $Result=PutFile("$_Install\Temp\Temp.Bat","MD "+ Quote("$CfgFolder"))
+          FILEOPEN File="$_Install\Temp\Temp.Bat" Wait=yes
+          IF NOT(RegEx("OK",$Result))
+              MSGOK Msg="Error creating the Configuration folder"
+              RETURN 
+          ENDIF 
+      ENDIF 
+      $CfgFile="$CfgFolder\MacroCfg.Txt"						# No need to change this
+      $CfgLst = List("Cf","create","$_NewLine")
+      $MacName=Sysinfo("Macrofile")
+      IF FileExists($CfgFile)
+          $CfgData=GetFile($CfgFile)
+      ELSE 
+          $CfgData=""
+      ENDIF 
+      $CfgLst=List("Cf","replace","$CfgData")
+      $CfgLoc=Val(List("Cf","RegEx","$MacName"))
+      $CfgLine=""
+      IF $CfgLoc <> 0
+          $CfgLine=Extract($CfgLst,"$_NewLine",$CfgLoc)
+          IF Extract($CfgLine,";",1)<> $MacName
+              $CfgMax=RegExCount($_NewLine,$CfgLst)
+              WHILE $CfgLoc < $CfgMax
+                  $CfgLoc=$CfgLoc+1
+                  IF Extract(Extract($CfgLst,"$_NewLine",$CfgLoc),";",1)=$MacName
+                      $CfgLine=Extract($CfgLst,"$_NewLine",$CfgLoc)
+                      BREAK 
+                  ENDIF 
+              ENDWHILE 
+          ENDIF 
+      ENDIF 
+      $OldCfgLine=$CfgLine
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=WriteCfgData
+# Note: $OldCfgLine and $CfgLine cannot be compared since $OldCfgLine is String
+#       and $CfgLine contains Boolean values. $CfgLine will always be written.
+      IF $CfgLoc > 0 AND $OldCfgLine <> ""
+          IF ($OldCfgLine <> $CfgLine)
+              $CfgLst=List("Cf","Edit:$CfgLoc",$CfgLine)
+              $X=PutFile($CfgFile,$CfgLst)
+          ENDIF 
+      ELSE 
+          $CfgLst=$CfgLst+$CfgLine+$_NewLine
+          $X=PutFile($CfgFile,$CfgLst)
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  <DATA> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Fri 25-Jan-2008 08:04:09
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 275
+  Width = 481
+  Color=16575439
+
+Name = Groupbox1
+  Type = Groupbox
+  Height = 76
+  Left = 15
+  Top = 96
+  Width = 216
+  Taborder = 0
+
+Name = Groupbox2
+  Type = Groupbox
+  Height = 76
+  Left = 239
+  Top = 95
+  Width = 199
+  Taborder = 2
+
+Name = Label1
+  Type = Label
+  Color = 255
+  Font = Comic Sans MS
+  Height = 26
+  Left = 166
+  Size = 14
+  Top = 12
+  Width = 133
+  Caption = ConfigData.Gsk
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 70
+  Top = 51
+  Width = 324
+  Caption = This macro is designed to allow you to test the configuration routines.
+
+Name = Label3
+  Type = Label
+  Height = 13
+  Left = 113
+  Top = 70
+  Width = 238
+  Caption = Alter any of the options below then press continue.
+
+Name = Continue
+  Type = Button
+  Height = 25
+  Left = 167
+  Top = 191
+  Width = 131
+  Taborder = 1
+  Caption = Continue
+
+Name = RB1
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 19
+  Top = 13
+  Width = 15
+  Taborder = 0
+
+Name = RB2
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 19
+  Top = 30
+  Width = 15
+  Taborder = 1
+
+Name = RB3
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 19
+  Top = 47
+  Width = 15
+  Taborder = 2
+
+Name = Label4
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 43
+  Top = 15
+  Width = 133
+  Caption = Ring in for a sickie tomorrow
+
+Name = Label5
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 42
+  Top = 32
+  Width = 124
+  Caption = Call friends over for a BBQ
+
+Name = Label6
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 41
+  Top = 50
+  Width = 168
+  Caption = Start World War III (Thermonuclear)
+
+Name = CB1
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 17
+  Left = 18
+  Top = 13
+  Width = 15
+  Taborder = 0
+
+Name = CB2
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 17
+  Left = 18
+  Top = 31
+  Width = 15
+  Taborder = 1
+
+Name = CB3
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 17
+  Left = 18
+  Top = 50
+  Width = 15
+  Taborder = 2
+
+Name = Label7
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 38
+  Top = 16
+  Width = 123
+  Caption = Go fishing now
+
+Name = Label8
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 40
+  Top = 34
+  Width = 149
+  Caption = Drink a few beers
+
+Name = Label9
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 40
+  Top = 52
+  Width = 83
+  Caption = Drink a few more beers
+
+  <ENDDATA> 

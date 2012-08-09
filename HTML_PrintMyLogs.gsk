@@ -1,0 +1,96 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Condensed print with cache on left and my logs on right
+# MacAuthor = Barry Davies
+# MacFileName = HTML_PrintMyLogs.gsk
+# MacUrl =
+#*******************************************
+#***************************************
+
+# HTMLName=PrintMyLogs
+
+# SplitScreen=No
+
+# Export=No
+
+# Offline=No
+
+# Condensed=Yes
+
+#***************************************
+
+
+$ImagePreamble = "<img src='file://" + $_Install + "/images/"
+$ImageSuffix = "' border='0' width='15'  height='15'"
+
+$List = List("TypeList","Create",";")
+$TypeList = "Archive;Attended;Didn't find it;Enable Listing;Found it;Needs Archived;Needs Maintenance;Note;Owner Maintenance;Post Reviewer Note;Temporarily Disable Listing;Update Coordinates;Webcam Photo Taken;Will Attend;Write note;Publish Listing"
+$List = List("TypeList","Replace","$TypeList")
+
+$List = List("ImageList","Create",";")
+$ImageList = "logArchived;logAttended;logNotFound;logEnable;LogFound;logNeedsArchived;logNeedsMaintenance;logNote;logOwnerMaintenance;logReview;logDisable;logUpdateCoordinates;logWebcam;logWillAttend;logNote;logPublished"
+$List = List("ImageList","Replace","$ImageList")
+
+
+$_htmlHeader = HTML("Header","")
+
+# if variable does not exist, then this is the first cache
+
+If varexists("$p_" + "Condensedtot")
+
+  $p_Condensedtot = $p_CondensedTot + 1
+
+Else
+
+  $p_CondensedTot = 1
+
+EndIf
+
+ 
+
+$h = "<table align=center bgcolor='white' border=0 width=100%><tr><td valign='top' width='30%'>"
+
+$h = $h + $ImagePreamble + "cache" + $d_CacheType + ".gif' ' border='0' width='32'  height='32'>"
+$h = $h + "<b>" + HTML("Clean",$d_Name) + "</b><br>"
+$h = $h + HTML("Clean",$d_Code) + " <i>by " + HTML("Clean",$d_PlacedBy) + "</i><br>"
+$data = $d_Latitude + " " + $d_Longitude
+$coords = GCalc($data,"FormatMinutes")
+$coords = Replace(";","  ",$coords,false)
+$h = $h + $coords
+$h = $h + HTML("DifTer","")
+$h = $h + "<br>Cache: " + NumToStr($p_CondensedTot) + " of " + NumToStr($_count) + "<br>"
+$h = $h + "</td><td valign='top' width='70%'><br>"
+ 
+TABLE Active=Logs Scope=Parent
+WHILE NOT($_EOL)
+	IF IsOwner()
+		$date = DateFormat($d_lDate)
+		$List = List("TypeList","Find","$d_lType")
+		$Image = List("ImageList","Item","$List")
+		$Image = $ImagePreamble + "$Image.gif" + $ImageSuffix + " alt='$d_lType'>"
+		$LogText = Replace("[b]","<b>",$d_lText,TRUE)
+		$LogText = Replace("[/b]","</b>",$LogText,TRUE)
+		$LogText = Replace("[i]","<i>",$LogText,TRUE)
+		$LogText = Replace("[/i]","</i>",$LogText,TRUE)
+		$LogText = Replace(Chr(13),"<br>",$LogText,TRUE)
+		$h = $h + "<p>$Image <b>$date by $d_lBy</b> <br> $LogText"
+	ENDIF
+	GOTO position=next
+ENDWHILE
+TABLE Active=Caches
+
+$h = $h + "</td></tr></table>"
+
+$h = $h + "<hr>"
+
+# last cache calcs here
+
+If $p_CondensedTot = $_count
+
+$p_CondensedTot = 0
+
+EndIf
+
+$_HtmlFooter= HTML("Footer","")
+
+$_htmlbody = $h

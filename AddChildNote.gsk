@@ -1,0 +1,38 @@
+#*******************************************
+# MacDescription = Add Child Information to First Note in Export
+# MacFileName = AddChildNote.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.2
+#*******************************************
+#MacUrl=http://gsak.net/board/index.php?showtopic=5615&view=findpost&p=32481
+
+#Use %Macro tag for "Extra information to show as first log" on GPX or Cachemate export dialog:  %macro="c:\program files\gsak\macros\AddChildNote.GSK"
+GOSUB name=Declare
+
+$_Special=""
+TABLE Active=Waypoints Scope=Parent 
+While NOT ($_EOL)
+    $Data = $d_cLat + " " + $d_cLon
+    $Coordinates=GCalc($Data, "FormatMinutes")
+    $Coordinates=Replace(";"," ", $Coordinates, TRUE)
+    $_Special=$_Special + $d_cPrefix + "; " + $d_cType + "; " +  $d_cName + "; " +  $d_cComment + "; " + $Coordinates + $_NewLine + $_NewLine
+    GOTO Position=Next
+ENDWHILE
+TABLE Active=caches
+
+#*******************************************************
+#   Variable declarations for
+#   AddChildNote.gsk
+#
+#   Generated 07/13/2007 9:49:20 PM on GSAKVariables.gsk Rev V0.20 B11
+#
+#*******************************************************
+
+
+BEGINSUB Name=Declare
+Option Explicit=Yes
+
+Declare Var=$Coordinates Type=String
+Declare Var=$Data Type=String
+Declare Var=$_Special Type=String
+ENDSUB

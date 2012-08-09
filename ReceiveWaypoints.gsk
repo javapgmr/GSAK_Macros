@@ -1,0 +1,1660 @@
+#*******************************************
+# MacVersion=20100303
+# MacDescription = Receive Waypoints Selected By Symbol Name From GPSr
+# MacAuthor = pdops
+# MacFileName =ReceiveWaypoints.gsk
+# MacUrl =http://gsak.net/board/index.php?showtopic=7749&view=getlastpost
+#*******************************************
+
+# In this macro waypoints are received from a GPSr and then are filtered by symbol name(s)
+# in SQLite tables before being added to a database in GSAK.  A custom import with GPSBabel
+# is used for all interfaces except Garmin Mass Storage Mode where the Current.gpx file
+# is interrogated. ReceiveWaypoints_43.gsk
+
+# All files created by the macro are deleted at exit.
+#  
+# ********************************************************************************************** #
+
+VERCHECK Version=7.7.0.99 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+
+# Show version number in Form caption
+
+$MacroVersion=MacHeader("MacVersion")
+
+$Form = EditForm($Form,"Form1","Caption","Receive Waypoints By Symbol Name(s) v$MacroVersion")
+
+# Default help text size
+
+$cbFont="10"
+
+# Default Radio Button for initial run of macro
+
+$RadiobuttonGUSB = True
+
+# restore saved settings from xml file
+
+MacSettings Type=R FileCheck=N
+
+
+# Baud rate list values for dropdown list
+
+$BaudRateList="1200;2400;4800;9600;19200;57600;115200"
+
+# Com Port list values for dropdown list
+
+$ComPorts="1;2;3;4;5;6"
+
+# Initialize symbols to match checkbox list
+
+$SymbolsToMatch=""
+
+# Initialize poll status flag
+
+$PollFlag="NO"
+
+# Set File Path for GPSr download file created by GPSBabel
+
+$FilePath=$_Install + "\macros\GPS2CUSTOM.txt"
+
+# Define dropdown list of databases to match users
+
+$dblist = SysInfo("databases")
+
+# Set dropdown list of databases to Current database
+
+$DLdatabases=$_CurrentDatabase
+
+# Create lists used in macro 20100227 note to self to eliminate list code in the future
+
+$Work=list("symbols","create",";")
+$Compare=list("Duplicates","Create",";")
+$Compare2=list("Duplicates2","Create","$_NewLine")
+$Mcount=list("Matches","Create","$_NewLine")
+$uSymbol=list("UniqueSymbols","Create",";")
+
+
+# Timer Turned On
+
+Timer Status=On
+
+# Open SQLite database in memory
+
+$status = sqlite("open",":memory:")
+
+# End of setup code - everything else is in subroutines
+#
+#
+#
+
+# Display main form
+
+GoSub Name=MainForm
+
+# ******************************************************************************************* #
+#	SubRoutines									      #
+# ******************************************************************************************* #
+
+BeginSub name=MainForm
+
+While True # Infinite loop to redisplay form as required
+
+	$FormExit = form($form,"")
+
+	# Save the screen position of the form for redisplay
+	$Form = EditForm($Form,"Form1","Top",$_FormTop)
+	$Form = EditForm($Form,"Form1","Left",$_FormLeft)
+
+
+	BeginCase
+
+		Case $FormExit = "SystemExit"
+
+			GoSub name=Exit
+
+		Case $FormExit = "BtnEXIT"
+
+			GoSub name=Exit
+
+		Case $FormExit = "PollGPSr"
+
+			GoSub name=PollSub
+
+		Case $FormExit = "btnHelp"
+
+			GOSUB Name=DisplayHelpScreen
+
+		Case $FormExit = "BtnRUN"
+
+			GoSub name=RunSub
+			# Update Screen with Results
+			Speedmode Status=Off
+#			Speedmode Status=On
+		
+	EndCase
+
+
+	# Change database if dropdown list selection is changed
+
+	If $_CurrentDatabase <> $DLdatabases
+
+		DATABASE Name=$DLdatabases
+
+	EndIf
+
+
+EndWhile  #Form
+
+EndSub	#MainForm
+
+#
+#*******************************************************************************************
+## Poll GPSr (Download waypoints, build SQLite table and populate checkbox list of symbol names)
+
+BeginSub name=PollSub
+
+	$PollStartTime=0
+
+	Timer Status=Off Msg=No
+
+	$PollStartTime=$_Timer
+
+	# Delete any GPSBabel output file created by previous polling
+	FILEERASE File=$FilePath OnError=Continue
+
+
+	GoSub Name=PopulateSQLtable
+
+	Timer Status=Off Msg=No
+
+	$PollEndtime=$_Timer
+
+	$nPollTotalTime=$PollEndTime - $PollStartTime
+
+	$PollTotalTime=Str($nPollTotalTime,4,1)
+
+	$PollMessage="Polling Completed in $PollTotalTime Sec. : $WPcount Waypoint"
+
+	If $WPcount>1
+
+		$PollMessage=$PollMessage + "s"
+
+	EndIf
+
+	$PollMessage=$PollMessage +  " , $SymbolCount Unique Symbol Name"
+
+	If val($SymbolCount) >1
+
+		$PollMessage=$PollMessage + "s"
+
+	EndIf
+
+	$Form = EditForm($Form,"SQLcount","Caption","$PollMessage")
+	$Form = EditForm($Form,"SQLcount","Visible","Yes")
+	$Form = EditForm($Form,"btnRUN","Enabled","Yes")
+	$Form = EditForm($Form,"TotalTimeLab","Visible","Yes")
+	$Form = EditForm($Form,"SymbolsToMatch","Enabled","Yes")
+
+
+EndSub
+
+#
+#*******************************************************************************************
+#
+
+BeginSub name=PopulateSQLtable
+
+	GoSub name=RECEIVE
+
+	ShowStatus Msg="Preparing SQLite Table. Please Wait" Title="Preparing SQLite Table. Please Wait"
+
+	Timer Status=OFF msg=no
+
+	$SymbolsToMatch=""
+
+	If NOT($RadiobuttonGMSM)
+
+		# Create SQLite table from file created by GPSBabel's Custom CSV format
+		GoSub name=CreateSQLtable
+
+	EndIf
+
+
+	$Poll=SQLite("SQL","SELECT DISTINCT Symbol FROM Receive","")
+	$SymbolCount = "$_SqlRows"
+
+
+	$SymbolsList=replace($_Newline,";",$Poll,true)
+
+
+	$Work=list("symbols","replace","$SymbolsList")
+	$SymbolsList=list("symbols","sort","")
+
+	# Symbols list without "All Symbols" entry
+	$SymbolsListOrg=$SymbolsList
+
+	# Symbols list with "All Symbols" entry
+	$SymbolsList="All Symbols;" + $SymbolsList
+
+	$PollFlag="YES"
+
+	ShowStatus Msg="Preparing SQLite Table. Please Wait" Title="Preparing SQLite Table. Please Wait" Display=Off
+
+	$Form = EditForm($Form,"SymbolsToMatch","Enabled","Yes")
+
+	$Form = EditForm($Form,"SymbolsToMatch","Values","$SymbolsList")
+
+
+
+EndSub
+
+#*******************************************************************************************
+#
+
+BeginSub name=RECEIVE
+
+IF $RadiobuttonGMSM
+
+	GoSub name=GarminMassStorageMode
+
+ELSE
+
+# Receive waypoints from GPSr using Batch files to call GPSBabel
+
+BeginCase
+
+	Case $RadiobuttonGUSB
+		$NewSetting="edtBabelOut.Text=" + $_Quote + $_ExePath + "\gpsbabel" + $_Quote + "-w -i garmin -f usb: -o custom -F " + $_Quote + $_Install + "\Macros\GPS2CUSTOM.txt" + $_Quote
+
+	Case $RadiobuttonGSerial
+		$NewSetting="edtBabelOut.Text=" + $_Quote + $_ExePath + "\gpsbabel" + $_Quote +" -i garmin -f COM$DDLComPort -o custom -F " + $_Quote + $_Install + "\Macros\GPS2CUSTOM.txt" + $_Quote
+
+	Case $RadiobuttonMSerial
+		$NewSetting="edtBabelOut.Text=" + $_Quote + $_ExePath + "\gpsbabel" + $_Quote +" -i magellan,baud=$BaudRate -f COM$DDLComPort -o custom -F " + $_Quote + $_Install + "\Macros\GPS2CUSTOM.txt" + $_Quote
+
+EndCase
+
+Timer Status=Off Msg=No
+
+$StartTime=$_Timer
+
+$OrgSetting="edtBabelOut.Text="
+
+$Receive=replace($OrgSetting,$NewSetting,$Receive,true)
+
+ShowStatus Msg="GPSBabel Downloading. Please Wait" Title="GPSBabel Downloading.Please Wait"
+
+	If $_Count=0
+
+		AddNew
+
+		MacroSet Dialog=Custom VarName=$Receive
+
+		Export Type=CUS  settings="<macro>"
+
+		MacroDelete Action=DelCurrent
+		MacroDelete Action=Commit
+
+	Else
+
+		MacroSet Dialog=Custom VarName=$Receive
+
+		Export Type=CUS  settings="<macro>"
+
+	EndIf
+
+# Data statement for macroset Custom Export which is used to call GPSBabel to download waypoints
+# DO NOT INDENT data statement
+
+<data> VarName=$Receive
+[TfmBabel2]
+edtBabelOut.Text=
+chkDebug.Checked=False
+chkYes.Checked=False
+cbxGPX.Text=<macro>
+<enddata>
+
+# Reset $Receive back to original in case initial connection settings were incorrect
+
+$Receive=replace($NewSetting,$OrgSetting,$Receive,true)
+
+ShowStatus Msg="GPSBabel Downloading. Please Wait" Title="GPSBabel Downloading.Please Wait" Display=Off
+
+	#Check if GPSBabel download failed (polling failed) and if no waypoints in file
+
+	If FileExists($FilePath) = False
+
+		MsgOK msg= Could Not Download Waypoints.$_NewLine $_NewLine Check that your GPS is On and Connected Properly
+
+		GoSub name=ResetFormDefaults
+
+	Else
+
+		$NN=1
+
+		FileRead File=$FilePath
+
+		If $NN=3 AND $line="Epilogue Line 1"
+
+			MsgOK msg= No Waypoints Found.$_NewLine $_NewLine Check that your GPSr Contains Waypoints 
+			StopRead
+			GoSub name=ResetFormDefaults
+
+		EndIf
+
+		$NN=$NN+1
+
+		EndRead
+
+	EndIf
+
+ENDIF
+
+EndSub   # RECEIVE
+
+#
+########################################################################################
+# Import data from GPSBabel file into SQLite database in memory
+
+BeginSub name=CreateSQLtable
+
+	$GPSrWaypoints=""
+
+	$NN=0
+
+	$WPcount=0
+
+	# Reads GPSBabel output file line by line (skipping the first 2 and last 2 lines)
+
+	FileRead File=$FilePath
+
+		If $line="Epilogue Line 1"
+			STOPREAD
+		EndIf
+
+		$NN=$NN+1
+
+		If $NN>2
+
+			# EXAMPLE "A;B;LAT;D;LON;F;SYMBOL;CODE;NAME;J;K;L;ELEV;N;O;P;Q;R;S;T;U;V"
+
+			$latF = extract($line,",",3)
+			$lonF = extract($line,",",5)
+			$symbolF = extract($line,",",7)
+			$codeF = extract($line,",",8)
+			$nameF = extract($line,",",9)
+			$elevF = extract($line,",",13)
+
+			$lineF = "$nameF,$codeF,$latF,$lonF,$symbolF,$elevF"
+
+			If $GPSrWaypoints = ""
+
+				$GPSrWaypoints = $lineF
+
+			Else
+
+				$GPSrWaypoints=$GPSrWaypoints + $_NewLine + $lineF
+
+			EndIf
+
+			$WPcount=$WPcount+1
+		EndIf
+
+	EndRead
+
+	# put data into SQLite table
+	$status = sqlite("sql","DROP TABLE IF EXISTS Receive","")
+	$status = sqlite("sql","create table if not exists Receive (name text,code text,lat text,lon text,symbol text,elev text)")
+	$status = sqlite("import",$GPSrWaypoints,"table=Receive delim=,")
+
+
+EndSub
+
+
+
+#
+#  ********************************************************************************************
+#  Receive waypoints in Mass Storage Mode and import into SQLite database in memory
+
+BeginSub name=GarminMassStorageMode
+
+	# Searching for the Oregon
+	# Use the new GPSInfo("GarminPath") function which returns path to GarminDevice.xml
+
+	$TestMSM=GPSInfo("GarminPath")
+
+	If $TestMSM <> ""
+
+		$GPXPath = Extract($TestMSM,":",1) + ":\Garmin\GPX\Current\Current.gpx"
+                
+	ELSE
+		MsgOK msg= Could Not Download Waypoints.$_NewLine $_NewLine Check that your GPS is On and Connected Properly
+		GoSub name=ResetFormDefaults
+		ExitSub
+		
+	ENDIF
+
+	$data=GetFile($GPXPath)
+
+	$GPSrWaypoints = ""
+
+	#EXAMPLE <wpt lat="53.421788" lon="-117.543436"><ele>1002.53</ele><time>2010-02-26T20:13:54Z</time><name>001</name><desc>26-FEB-10 13:13:54</desc><sym>Pin, Blue</sym></wpt>
+
+	$regex="(?s)<wpt.*?</wpt>"
+
+	$WPcount = RegExCount($regex,$data)
+
+	$WPnum = 1
+
+
+	While $WPnum <= $WPcount
+
+		$WayPoint = RegExData($regex,$data,$WPnum)
+
+		$codeF = Remove(RegExData("<name>.*?</name>",$WayPoint,1),"<(.|\n)+?>","R")
+		$nameF = Remove(RegExData("<desc>.*?</desc>",$WayPoint,1),"<(.|\n)+?>","R")
+		$latF = Remove(RegExData("lat.*?lon",$WayPoint,1),"(lat=$_quote|$_quote\slon)","R")
+		$lonF = Remove(RegExData("lon.*?$_quote>",$WayPoint,1),"(lon=$_quote|$_quote>)","R")
+		$symbolF = Replace(",","",Remove(RegExData("<sym>.*?</sym>",$WayPoint,1),"<(.|\n)+?>","R"))
+		$elevF = Remove(RegExData("<ele>.*?</ele>",$WayPoint,1),"<(.|\n)+?>","R")
+
+		$lineF = "$nameF,$codeF,$latF,$lonF,$symbolF,$elevF"
+
+
+		If $GPSrWaypoints = ""
+
+			$GPSrWaypoints = $lineF
+
+		Else
+
+			$GPSrWaypoints=$GPSrWaypoints + $_NewLine + $lineF
+
+		EndIf
+
+		$WPnum = $WPnum + 1
+
+	EndWhile
+
+	# put data into SQLite table
+	$status = sqlite("sql","DROP TABLE IF EXISTS Receive","")
+	$status = sqlite("sql","create table if not exists Receive (name text,code text,lat text,lon text,symbol text,elev text)")
+	$status = sqlite("import",$GPSrWaypoints,"table=Receive delim=,")
+
+
+EndSub name=GarminMassStorageMode
+
+
+#
+#  ********************************************************************************************
+#  Import waypoints with selected symbols into GSAK database
+
+BeginSub name=RunSub
+
+  If $SymbolsToMatch <> ""
+
+	Timer Status=Off Msg=No
+
+	$StartTime=$_Timer
+
+	$SymbolsToMatch=Replace("Selected Symbol Names: ","",$SymbolsToMatch,true)
+
+	# Eliminate any duplicate entries
+	$SymbolsToMatch= Replace(";",$_CrLf,$SymbolsToMatch)
+
+	$status = sqlite("sql","DROP TABLE IF EXISTS Symbols","")
+	$status = sqlite("sql","create table if not exists Symbols (SelectedSymbols text)")
+	$status = sqlite("import",$SymbolsToMatch,"table=Symbols delim=,")
+
+	$SymbolsToMatch = replace($_Newline,";",sqlite("sql","SELECT DISTINCT SelectedSymbols from Symbols",""))
+
+	$Caption1="Receive Waypoints"
+	$Caption2="Receive Into Database The Following"
+	$YNdisplay="Waypoints With Symbol Names : " + replace(";",", ",$SymbolsToMatch,true)
+	$Caption3="Yes to Continue or No to Return To Main Screen"
+	GOSUB Name=YesNoForm
+			
+	# Populate list with symbols to match then use list() functions to iterate through list
+
+	If $SymbolsToMatch="All Symbols"
+
+		$SymbolsToMatch=$SymbolsListOrg
+
+		ShowStatus Msg="Receiving All Waypoints. Please Wait" Title="Receiving All Waypoints. Please Wait" top=100
+
+	Else
+
+		ShowStatus Msg="Receiving Waypoints. Please Wait" Title="Receiving Waypoints. Please Wait" top=100
+
+	EndIf
+
+	# Populate list with symbols to match then use list() functions to iterate through list
+
+	$uSymbol=list("UniqueSymbols","Replace","$SymbolsToMatch")
+	$ULcount=val(list("UniqueSymbols","Count",";"))
+
+	$TotalReceived=0
+
+	# If at least one matching waypoint exists
+	# Processes each symbol against SQL table and create a new Database (if option selected)
+	
+
+	$Matched=0
+
+	$UU=1
+
+	While True
+
+		If $ULcount >= $UU
+
+			$uSymbol=list("UniqueSymbols","Item","$UU")
+			$uSymbol=replace(",","",$uSymbol,true)
+			If left($uSymbol,6) = "Custom"
+				$uSymbol=extract($uSymbol,"=",1)
+				$uSymbol=AllTrim($uSymbol)
+			EndIf
+
+				If SQLite("sql","SELECT Name,Code,Lat,Lon,Symbol FROM Receive WHERE Symbol='$uSymbol'","")<>""
+					$Matched=$Matched+1
+
+						If $Matched=1
+
+							If $cbxNewDatabase=True
+
+								# Create New Database
+
+								GoSub name=CreateDB
+
+							EndIf
+
+						EndIf
+
+					GoSub name=ProcessSymbol
+
+				EndIf
+		Else
+
+			Break 
+
+		EndIf
+
+		$UU=$UU+1
+
+	EndWhile
+
+
+	If $SymbolsToMatch=$SymbolsListOrg
+
+		ShowStatus Msg="Receiving All Waypoints from GPSr. Please Wait" Display=Off
+
+		$SymbolsToMatch="All Symbols"
+
+	EndIf
+
+	ShowStatus Msg="Receiving Waypoints. Please Wait" Display=Off
+
+	Timer Status=Off Msg=No
+
+	$endtime=$_Timer
+
+	$nTotalTime=$EndTime - $StartTime
+
+	$TotalTime=Str($nTotalTime,4,1)
+
+	$Form = EditForm($Form,"TotalTimeLab","Caption","+++++++  $TotalReceived  Waypoint(s) Received in $TotalTime Seconds +++++++")
+
+	$SymbolsToMatch="Selected Symbol Names: " + $SymbolsToMatch
+
+  Else
+
+	MsgOK msg=Please select at least one symbol name
+
+  EndIf
+
+
+EndSub
+
+
+#
+#*******************************************************************************************
+#  Create new database in GSAK
+
+BeginSub name=CreateDB
+
+	# Create GSAK database named for YYYYMMDD GPSr nn where nn is incremented as required	
+
+	$NN=1
+
+	If $NN<10
+
+		$Result=NumToStr($NN)
+
+		$SS="0" + $Result		
+	Else
+
+	$SS=NumToStr($NN)
+
+	EndIf
+
+	$NewDB=DateToString($_Today) + "GPSr $SS"
+
+	While True
+
+	If DataBaseExists($NewDB)
+
+		$NN=$NN+1
+
+			If $NN<10
+	
+				$Result=NumToStr($NN)
+
+				$SS="0" + $Result		
+			Else
+
+				$SS=NumToStr($NN)
+
+			EndIf
+
+		$NewDB=DateToString($_Today) + "GPSr $SS"
+	Else
+		BREAK
+	EndIf
+
+	EndWhile 
+
+	DATABASE Name="$NewDB" Action=create
+
+	# reDefine dropdown list of databases to include new database
+
+	$dblist = SysInfo("databases")
+
+	# Set dropdown list of databases to Current database
+
+	$DLdatabases=$_CurrentDatabase
+
+EndSub
+
+#
+#  ********************************************************************************************
+#
+
+BeginSub name=ProcessSymbol
+
+# Extract Name,Code,Lat,Lon,and Symbol for waypoints that have the selected symbol
+
+$Status=SQLite("sql","SELECT Name,Code,Lat,Lon,Symbol,Elev FROM Receive WHERE Symbol='$uSymbol'","")
+
+$List1=list("Matches","Replace","$Status")
+$List1=list("Matches","Get","")
+$Mcount=list("Matches","Count","")
+
+# Loop through waypoints received from GPS with the selected symbol creating a matching waypoint
+# for each in the database. Each waypoint will have only the Name,Code,Lat,Lon,and Symbol with the
+# Cache Type set as Other. The Name has " GPSr" appended to identify it as downloaded from GPSr
+
+$LL=1
+
+$Rcvd=0
+
+While True
+
+	If val($Mcount) >= $LL
+
+		$ListLine=list("Matches","Item","$LL")
+
+		$ExistsFlag="NO"
+
+		# If adding to a new database no need to check for pre-existing waypoint codes
+
+		If $cbxNewDatabase=False
+
+			$Xcode=extract($ListLine,";",2)
+	
+			IF Seek($Xcode)=True
+
+				MsgOK Msg= A Waypoint With Code $Xcode Already Exists $_NewLine A New Waypoint Will Not Be Created
+
+				$ExistsFlag="YES"
+
+			
+			EndIf
+
+		EndIf
+
+		If $ExistsFlag="NO"
+
+			$Qname=extract($ListLine,";",1)
+			$Qcode=extract($ListLine,";",2)
+			$Qlat=extract($ListLine,";",3)
+			$Qlon=extract($ListLine,";",4)
+			$Qsymbol=extract($ListLine,";",5)
+			$Qelev=extract($ListLine,";",6)
+
+				AddNew	# Add New Waypoint To Database
+
+				$d_Code = $Qcode
+				$d_Name = $Qname + " GPSr"
+				$d_CacheType = "O"	# cache type set to Other
+				$d_Latitude = $Qlat
+				$d_Longitude = $Qlon
+				$d_Symbol = $Qsymbol
+
+				# Add elevation to database waypoint if present in waypoint from GPSr
+
+				If $ElevUserData=True AND val($Qelev)>0
+
+					If sysinfo("distance") = "K"
+						$d_UserData = Extract($Qelev,".",1) + "." + Left(Extract($Qelev,".",2),1) + " metres"
+					Else
+						$ElevFeet=val($Qelev)*3.2808
+						$d_UserData =Extract("$ElevFeet",".",1) + " feet"
+					EndIf
+				Else
+					If $ElevUserData=True
+						$d_UserData ="No Elevation"
+					EndIf					    
+				EndIf
+
+				If $ElevUserData2=True AND val($Qelev)>0
+
+					If sysinfo("distance") = "K"
+						$d_User2 = Extract($Qelev,".",1) + "." + Left(Extract($Qelev,".",2),1) + " metres"
+					Else
+						$ElevFeet=val($Qelev)*3.2808
+						$d_User2 =Extract("$ElevFeet",".",1) + " feet"
+					EndIf
+				Else
+					If $ElevUserData2=True
+						$d_User2 ="No Elevation"
+					EndIf					    
+				EndIf
+
+			$Rcvd=$Rcvd+1
+
+		EndIf
+
+	Else
+
+		Break 
+
+	EndIf
+
+	$LL=$LL+1
+
+EndWhile
+
+$TotalReceived=$TotalReceived + $Rcvd
+
+
+EndSub 
+
+#
+# *******************************************************************************************
+#
+
+BEGINSUB Name=YesNoForm
+
+# Verify GPS connected and proceed or return to main form or exit macro
+
+    $YesNoForm = EditForm($YesNoForm,"FormYesNo","Caption","$Caption1")
+    $YesNoForm = EditForm($YesNoForm,"YesNoFormLbl1","Caption","$Caption2")
+    $YesNoForm = EditForm($YesNoForm,"YesNoFormLbl2","Caption","$Caption3")
+
+While true
+
+	$FormExit = form($YesNoForm,"")
+
+	# Save the screen position of the form for later
+	$YesNoForm = EditForm($YesNoForm,"FormYesNo","Top",$_FormTop)
+	$YesNoForm = EditForm($YesNoForm,"FormYesNo","Left",$_FormLeft)
+
+	If $FormExit = "SystemExit"
+	   break
+	EndIf
+
+	BeginCase
+
+	Case $BtnYes
+	   Break
+
+	Case $BtnNo
+	   $SymbolsToMatch="Selected Symbol Names: " + $SymbolsToMatch
+	   GoSub name=MainForm
+
+	Case $BtnCancel
+	    	If $PollFlag="YES"
+
+		#Clean Up deleting files created by macro
+
+		FILEERASE File=$FilePath OnError=Continue
+
+		EndIf
+
+		Cancel
+
+	EndCase
+
+EndWhile
+
+ENDSUB 
+
+#
+#  ***************************************************************************************
+#
+
+BEGINSUB Name=DisplayHelpScreen
+
+While true
+
+	# set font size from dropdown list selection
+	$help = EditForm($help,"HelpText","Size","$cbFont")
+
+	$FormExit = form($help,"")
+
+	# Save the form's current position for redisplay
+	$help = EditForm($help,"help1","Top",$_FormTop)
+	$help = EditForm($help,"help1","Left",$_FormLeft)
+
+	BeginCase
+
+		Case $FormExit = "SystemExit"
+			Break
+
+		Case $FormExit = "btnCopy"
+			Clip data=$HelpText
+
+		Case $FormExit = "btnClose"
+			ExitSub	
+
+	EndCase
+
+
+EndWhile
+
+ENDSUB
+
+#
+#
+# ****************************************************************************************
+
+BeginSub name=ResetFormDefaults   # Reset form to defaults 
+
+		$SymbolsList=""
+		$SymbolsToMatch=""
+		$PollFlag="NO"
+		$Form = EditForm($Form,"btnRUN","Enabled","No")
+		$Form = EditForm($Form,"TotalTimeLab","Enabled","No")	
+		$Form = EditForm($Form,"SQLcount","Visible","No")
+
+		Timer Status=Off Msg=No
+
+		GoSub Name=MainForm
+
+EndSub
+
+
+#
+#*******************************************************************************************
+#
+
+BeginSub name=Exit
+
+	If $PollFlag="YES"
+
+		#Clean Up deleting files created by macro
+
+		FILEERASE File=$FilePath OnError=Continue
+		
+	EndIf
+
+	MacSettings Type=S Vars=RadiobuttonGUSB,RadiobuttonGMSM,RadiobuttonGSerial,RadiobuttonMSerial,BaudRate,DDLComPort,ElevUserData,ElevUserData2,ElevUserData3,ElevUserData4,cbxNewDatabase,cbFont
+
+	Cancel
+
+EndSub
+
+
+#
+#*******************************************************************************************
+#
+
+#    End Of Subroutines
+
+# *****************************************************************************************
+# *****************************************************************************************
+
+## <data> statements for Help Text and Forms
+
+# *** Help Text  +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+<data> VarName=$HelpText
+Receive Waypoints Selected By Icon Symbol Name(s) From a GPSr
+
+In this macro waypoints are received from a GPSr and then are filtered by symbol name(s) in SQLite tables before being added to a database in GSAK.  A custom import with GPSBabel is used for all interfaces except Garmin Mass Storage Mode where the Current.gpx file is interrogated.
+
+Instructions:
+
+Select the required connection settings under "GPSr Connection Setup". Select the type of connection (USB, MSM - Mass Storage Mode or Serial) using the radio buttons. The default is for Garmin USB. The Com Port for Serial connections can be selected from the dropdown list and defaults to 1.  For the Magellan Serial connection select the Baud from  the dropdown list. The options are 1200, 4800, 9600, 19200, 57600, and 115200.  Be sure to set your GPS receiver to the same speed that you choose here, otherwise the transfer will fail.  The default transfer rate for Magellan is 4800 baud.
+
+The baud setting is not required/used if Garmin Serial is selected as Garmin only supports 9600 baud transfers which is preset.
+
+To save the waypoints elevation use the check boxes for UserData, UserData2, UserData3 and or UserData4. Elevation data will be saved in metric or imperial units dependent on your settings in GSAK under Tools > Options > General > Distance Calculation.
+
+Check that  your GPSr is connected and turned on.
+
+Select "Poll GPSr For Symbol Names" to populate the "Symbol Names To Receive From GPSr" checkbox list with symbols that are presently in your GPSr. A short summary of the contents of the table is shown on the form. If the connection / download is unsuccessful an error message is shown and you are returned to the main form. Check that the correct connection is selected, the cable connections are good and that the GPSr  is On then try again.
+
+Custom waypoints polled from the GPSr will display as "Custom 0", "Custom 1" etc.  An "All Symbols" entry is added as the first checkbox list entry which will receive all waypoints from your GPSr.  Adding a large number of waypoints to a database with this macro is very slow compared to the GSAK GUI function Receive Waypoints  (GPS=>Receive Waypoints) which is by far the better choice for this purpose.
+
+Symbol names of waypoints you want added to the database are selected in the "Symbol Names To Receive From GPSr" checkbox list.
+
+Select the destination database from the dropdown list or select the checkbox to create a new database to receive the waypoints. The new database will be named for today's date in the format YYMMDDnn where nn is a two digit number which increments as required to provide a unique name.
+
+The "RUN" button will start the process. If no names were selected in the "Symbol Names to Receive From GPSr" checkbox list an error message is shown and you are returned to the main form. Note that the "RUN" button is disabled ( shown in a "gray ghost" outline ) until the GPSr has been polled..
+
+The macro will display a dialog with a two line list of the symbols names selected. Use the "Yes" button to proceed, the "No" button to return to main form or the "Cancel" button to exit the macro and return to the GSAK GUI.
+
+The macro creates a waypoint in the database for each waypoint with the matching symbol(s) in your GPSr. If no matching waypoints are found an error message is shown and you are returned to the main form. If there is an existing waypoint in the database with the same Code an error message is shown and the new waypoint is not created.
+
+Each new waypoint will have the Code, Name, Latitude, Longitude and Symbol Name with the Cache Type set as Other. The waypoint  will have " GPSr" appended to it's name to identify it as having been received from a GPSr.
+
+This help screen (with adjustable text size) can be copied to the clipboard. (handy if you want to display it in NotePad while running the macro).
+
+Settings on the macro form are saved and restored.
+
+Alt- hot keys available on the main screen
+
+Alt-P   Poll GPSr (also Enter key)
+Alt-R   Run
+Alt-H   Help Page
+Alt-X   Exit
+
+<enddata>
+
+# *** Forms  ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Wed 03-Mar-2010 10:30:15
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = set by EditForm()
+  Height = 550
+  Width = 488
+
+Name = ConnectionGroupbox
+  Type = Groupbox
+  Caption = GPSr Connection Setup
+  Height = 127
+  Left = 8
+  Top = 85
+  Width = 247
+  Taborder = 5
+
+Name = RadiobuttonGUSB
+  Type = Radiobutton
+  Container = ConnectionGroupbox
+  Fontstyle = bold
+  Height = 17
+  Left = 27
+  Top = 40
+  Width = 50
+  Taborder = 0
+  Caption = USB
+
+Name = RadiobuttonGMSM
+  Type = Radiobutton
+  Container = ConnectionGroupbox
+  Fontstyle = bold
+  Height = 17
+  Left = 27
+  Top = 60
+  Width = 50
+  Taborder = 5
+  Caption = MSM
+
+Name = RadiobuttonGSerial
+  Type = Radiobutton
+  Container = ConnectionGroupbox
+  Fontstyle = bold
+  Height = 17
+  Left = 27
+  Top = 79
+  Width = 65
+  Taborder = 2
+  Caption = SERIAL
+
+Name = RadiobuttonMSerial
+  Type = Radiobutton
+  Container = ConnectionGroupbox
+  Height = 17
+  Left = 151
+  Top = 72
+  Width = 15
+  Taborder = 1
+
+Name = BaudRate
+  Type = Combobox
+  Color = 16777215
+  Container = ConnectionGroupbox
+  Height = 21
+  Left = 133
+  Top = 40
+  Values = $BaudRateList
+  Width = 64
+  Taborder = 3
+
+Name = Label3
+  Type = Label
+  Color = 32768
+  Container = ConnectionGroupbox
+  Height = 18
+  Left = 28
+  Size = 11
+  Style = bold;underline
+  Top = 16
+  Width = 65
+  Caption = GARMIN
+
+Name = Label6
+  Type = Label
+  Color = 16711680
+  Height = 25
+  Left = 14
+  Size = 16
+  Style = bold;underline
+  Top = 9
+  Width = 452
+  Caption = Receive Selected Waypoints From A  GPSr
+
+Name = BtnRUN
+  Type = Button
+  Enabled = No
+  Height = 25
+  Left = 10
+  Top = 489
+  Width = 67
+  Taborder = 1
+  Caption = &RUN
+
+Name = BtnEXIT
+  Type = Button
+  Escape = Yes
+  Height = 25
+  Left = 403
+  Top = 489
+  Width = 67
+  Taborder = 2
+  Caption = E&XIT
+
+Name = Label7
+  Type = Label
+  Height = 20
+  Left = 77
+  Size = 13
+  Style = bold;underline
+  Top = 290
+  Width = 325
+  Caption = Symbol Names To Receive From GPSr
+
+Name = DLdatabases
+  Type = Combobox
+  Color = 16777215
+  Display = 12
+  Exitonchange = Yes
+  Height = 21
+  Left = 94
+  Top = 49
+  Values = $dblist
+  Width = 161
+  Taborder = 6
+
+Name = Label10
+  Type = Label
+  Height = 18
+  Left = 13
+  Size = 11
+  Style = bold
+  Top = 50
+  Width = 76
+  Caption = Database:
+
+Name = btnHelp
+  Type = Button
+  Height = 21
+  Left = 424
+  Top = 49
+  Width = 46
+  Taborder = 3
+  Caption = &Help
+
+Name = TotalTimeLab
+  Type = Label
+  Height = 13
+  Left = 83
+  Top = 495
+  Visible = No
+  Width = 314
+  Caption = <-- Press to Receive Waypoints With The Selected Symbol Names
+
+Name = cbxNewDatabase
+  Type = Checkbox
+  Height = 17
+  Left = 267
+  Top = 52
+  Width = 15
+  Taborder = 4
+
+Name = Label9
+  Type = Label
+  Height = 13
+  Left = 287
+  Top = 46
+  Width = 105
+  Caption = Create New Database
+
+Name = Label11
+  Type = Label
+  Color = 255
+  Container = ConnectionGroupbox
+  Height = 18
+  Left = 138
+  Size = 11
+  Style = bold;underline
+  Top = 16
+  Width = 88
+  Caption = MAGELLAN
+
+Name = Label12
+  Type = Label
+  Height = 13
+  Left = 287
+  Top = 61
+  Width = 109
+  Caption = To Receive Waypoints
+
+Name = PollGPSr
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 155
+  Top = 216
+  Width = 169
+  Taborder = 0
+  Caption = &Poll GPSr For Symbol Names
+
+Name = DDLComPort
+  Type = Combobox
+  Color = 16777215
+  Container = ConnectionGroupbox
+  Height = 21
+  Left = 188
+  Top = 97
+  Values = $ComPorts
+  Width = 49
+  Taborder = 4
+
+Name = Label17
+  Type = Label
+  Container = ConnectionGroupbox
+  Height = 13
+  Left = 28
+  Size = 8
+  Style = bold
+  Top = 101
+  Width = 154
+  Caption = Serial Communications Port
+
+Name = Label4
+  Type = Label
+  Color = 0
+  Container = ConnectionGroupbox
+  Height = 13
+  Left = 173
+  Style = bold
+  Top = 75
+  Width = 44
+  Caption = SERIAL
+
+Name = Label13
+  Type = Label
+  Color = 0
+  Container = ConnectionGroupbox
+  Height = 13
+  Left = 202
+  Style = bold
+  Top = 46
+  Width = 34
+  Caption = BAUD
+
+Name = Instructions04
+  Type = Label
+  Height = 13
+  Left = 262
+  Style = bold
+  Top = 178
+  Width = 175
+  Caption = - Select The Symbol Names To
+
+Name = Instructions02
+  Type = Label
+  Height = 13
+  Left = 262
+  Style = bold
+  Top = 110
+  Width = 200
+  Caption = - Configure GPSr Connection Setup
+
+Name = Instructions03
+  Type = Label
+  Height = 13
+  Left = 262
+  Style = bold
+  Top = 127
+  Width = 211
+  Caption = - Press 'Poll GPSr For Symbol Names'
+
+Name = Instructions05
+  Type = Label
+  Height = 13
+  Left = 269
+  Style = bold
+  Top = 195
+  Width = 202
+  Caption = Receive From GPSr and Press RUN
+
+Name = Instructions01
+  Type = Label
+  Height = 18
+  Left = 262
+  Size = 11
+  Style = bold;underline
+  Top = 84
+  Width = 93
+  Caption = Instructions:
+
+Name = SQLcount
+  Type = Label
+  Color = 16711680
+  Height = 13
+  Left = 15
+  Style = bold
+  Top = 251
+  Visible = No
+  Width = 70
+  Caption = 0 Waypoints
+
+Name = Label5
+  Type = Label
+  Color = 32768
+  Container = ConnectionGroupbox
+  Height = 24
+  Left = 9
+  Size = 14
+  Style = bold
+  Top = 98
+  Width = 8
+  Caption = *
+
+Name = Label8
+  Type = Label
+  Color = 255
+  Height = 20
+  Left = 18
+  Size = 12
+  Style = bold
+  Top = 100
+  Width = 7
+  Caption = *
+
+Name = Label14
+  Type = Label
+  Color = 255
+  Container = ConnectionGroupbox
+  Height = 24
+  Left = 18
+  Size = 14
+  Style = bold
+  Top = 97
+  Width = 8
+  Caption = *
+
+Name = Label15
+  Type = Label
+  Color = 32768
+  Height = 24
+  Left = 19
+  Size = 14
+  Style = bold
+  Top = 94
+  Width = 8
+  Caption = *
+
+Name = Label16
+  Type = Label
+  Color = 32768
+  Height = 24
+  Left = 19
+  Size = 14
+  Style = bold
+  Top = 94
+  Width = 8
+  Caption = *
+
+Name = Label18
+  Type = Label
+  Color = 32768
+  Container = ConnectionGroupbox
+  Height = 24
+  Left = 14
+  Size = 14
+  Style = bold
+  Top = 75
+  Width = 8
+  Caption = *
+
+Name = Label20
+  Type = Label
+  Color = 255
+  Container = ConnectionGroupbox
+  Height = 24
+  Left = 119
+  Size = 14
+  Style = bold
+  Top = 37
+  Width = 8
+  Caption = *
+
+Name = Label22
+  Type = Label
+  Color = 255
+  Container = ConnectionGroupbox
+  Height = 24
+  Left = 139
+  Size = 14
+  Style = bold
+  Top = 67
+  Width = 8
+  Caption = *
+
+Name = ElevUserData
+  Type = Checkbox
+  Height = 17
+  Left = 132
+  Top = 270
+  Width = 15
+  Taborder = 7
+
+Name = Label23
+  Type = Label
+  Height = 15
+  Left = 10
+  Size = 9
+  Style = bold
+  Top = 270
+  Width = 120
+  Caption = Record Elevations:
+
+Name = Label24
+  Type = Label
+  Height = 15
+  Left = 147
+  Size = 9
+  Style = bold
+  Top = 270
+  Width = 60
+  Caption = UserData
+
+Name = ElevUserData2
+  Type = Checkbox
+  Height = 17
+  Left = 213
+  Top = 270
+  Width = 15
+  Taborder = 8
+
+Name = Label25
+  Type = Label
+  Height = 15
+  Left = 228
+  Size = 9
+  Style = bold
+  Top = 270
+  Width = 68
+  Caption = UserData2
+
+Name = Label26
+  Type = Label
+  Height = 13
+  Left = 262
+  Style = bold
+  Top = 144
+  Width = 173
+  Caption = - Select Elevation Data Option
+
+Name = Label27
+  Type = Label
+  Height = 13
+  Left = 262
+  Style = bold
+  Top = 161
+  Width = 211
+  Caption = - Select Destination Database Option
+
+Name = Memo1
+  Type = Memo
+  Color = 16711680
+  Height = 8
+  Left = 14
+  Top = 225
+  Width = 129
+  Taborder = 9
+
+Name = Memo2
+  Type = Memo
+  Color = 16711680
+  Height = 8
+  Left = 337
+  Top = 227
+  Width = 129
+  Taborder = 10
+
+Name = ElevUserData3
+  Type = Checkbox
+  Height = 17
+  Left = 300
+  Top = 270
+  Width = 15
+  Taborder = 11
+
+Name = Label28
+  Type = Label
+  Height = 15
+  Left = 315
+  Size = 9
+  Style = bold
+  Top = 270
+  Width = 68
+  Caption = UserData3
+
+Name = ElevUserData4
+  Type = Checkbox
+  Height = 17
+  Left = 386
+  Top = 270
+  Width = 15
+  Taborder = 12
+
+Name = Label29
+  Type = Label
+  Height = 15
+  Left = 400
+  Size = 9
+  Style = bold
+  Top = 270
+  Width = 68
+  Caption = UserData4
+
+Name = SymbolsToMatch
+  Type = Checklistbox
+  Color = 16777088
+  Columns = 3
+  Enabled = No
+  Height = 165
+  Left = 10
+  Size = 10
+  Style = bold
+  Top = 315
+  Width = 460
+  Taborder = 21
+
+<enddata>
+
+
+
+
+<Data> VarName=$YesNoForm
+#********************************************************************
+# Form generated by GSAK form designer on Mon 19-May-2008 16:25:57
+#********************************************************************
+
+Name = FormYesNo
+  Type = Form
+  Caption = Will be assigned by EditForm()
+  Color = 14024191
+  Height = 180
+  Width = 322
+
+Name = YesNoFormLbl1
+  Type = Label
+  Height = 16
+  Left = 15
+  Size = 10
+  Style = bold
+  Top = 6
+  Width = 213
+  Caption = Will be assigned by EditForm()
+
+Name = YesNoFormLbl2
+  Type = Label
+  Height = 13
+  Left = 15
+  Style = bold
+  Top = 92
+  Width = 171
+  Caption = Will be assigned by EditForm()
+
+Name = BtnYes
+  Type = Button
+  Height = 25
+  Left = 15
+  Top = 115
+  Width = 50
+  Taborder = 8
+  Caption = YES
+
+Name = BtnNo
+  Type = Button
+  Height = 25
+  Left = 107
+  Top = 115
+  Width = 50
+  Taborder = 9
+  Caption = NO
+
+Name = BtnCancel
+  Type = Button
+  Height = 25
+  Left = 208
+  Top = 115
+  Width = 87
+  Taborder = 10
+  Caption = EXIT MACRO
+
+Name = YNdisplay
+  Type = Memo
+  Height = 54
+  Left = 16
+  Readonly = Yes
+  Style = Bold
+  Top = 31
+  Width = 281
+  Wrap = Yes
+  Taborder = 11
+
+<enddata>
+
+###################################################################################
+######### Define Help Form Layout #################################################
+###################################################################################
+
+<Data> VarName=$help
+#********************************************************************
+# Form generated by GSAK form designer on Wed 21-Jan-2009 13:04:04
+#********************************************************************
+
+Name = help1
+  Type = Form
+  Caption = Help
+  Color = 65535
+  Height = 564
+  Left = 202
+  Top = 17
+  Width = 542
+
+Name = btnClose
+  Type = Button
+  Escape = Yes
+  Height = 20
+  Left = 446
+  Top = 2
+  Width = 75
+  Taborder = 8
+  Caption = Close
+
+Name = HelpText
+  Type = Memo
+  Color = 16777215
+  Height = 503
+  Left = 9
+  Readonly = Yes
+  Scrollbars = Vertical
+  Style = Bold
+  Top = 26
+  Width = 515
+  Wrap = Yes
+  Taborder = 9
+
+Name = cbFont
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 10
+  Top = 2
+  Values = 8;9;10;11;12;14
+  Width = 64
+  Taborder = 10
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 88
+  Size = 10
+  Style = bold
+  Top = 4
+  Width = 64
+  Caption = Text Size
+
+Name = btnCopy
+  Type = Button
+  Escape = Yes
+  Height = 20
+  Left = 206
+  Top = 3
+  Width = 155
+  Taborder = 11
+  Caption = Copy Help Text To Clipboard
+
+<enddata>
+
+

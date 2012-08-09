@@ -1,0 +1,456 @@
+#========================================================================================
+# Semi useful macro that does coordinate conversion, projection, and distance calculation
+# but also as a sample macro to showcase Version 7 form support
+#*******************************************
+# MacVersion = 1.1
+# MacDescription = Geocalc - Geocaching calculations
+# MacAuthor = Clyde
+# MacFileName = GeoCalc.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=3885&view=findpost&p=32561
+#*******************************************
+#========================================================================================
+
+VerCheck version=7.0.0.84
+
+# set off speed mode so we can see screen contents changing when we click on next button
+SpeedMode Status=Off
+
+# default kms/miles same as user settings
+If sysinfo("distance") = "K"
+  $rbtKms = true
+  $rbtProjKms = true
+else
+  $rbtMiles = true
+  $rbtProjMiles = true
+Endif
+
+$form = EditForm($form,"Form1","Caption", "Current Waypoint: " + $d_name)
+
+while ShowForm($form) 
+  # exit if exit button clicked
+  if $btnExit
+    Break
+  EndIf
+
+  If $btnNext
+    GoTo Position=Next
+  Endif
+
+  If $btnPrevious
+    Goto Position=-1
+  EndIf
+
+  if $btnGrabFrom 
+    $DistanceFrom = $d_Latitude + " " + $d_Longitude
+  endif
+  if $btnGrabTo
+    $DistanceTo = $d_Latitude + " " + $d_Longitude
+  endif
+
+  if $btnDistanceCalc
+    if $rbtMiles
+      $units = "M"
+    else
+      $units = "K"
+    endif
+
+    $DistanceString = GCalc($DistanceFrom + ";" + $DistanceTo + ";"  + $units, "CalcDistance")
+    $DistanceNum = val($DistanceString)
+    $DistanceString = alltrim(str($DistanceNum,12,2))
+    if $units = "M"
+      $DistanceString = $DistanceString + " miles."
+    else
+      $DistanceString = $DistanceString + " kms."
+    endif 
+    $Temp = Gcalc($DistanceFrom + ";" + $DistanceTo, "CalcBearing2")
+    $DistanceString = $DistanceString + " (Bearing " + $temp
+    $Temp = Gcalc($DistanceFrom + ";" + $DistanceTo, "CalcBearing1") 
+    $temp = alltrim(str(val($temp),6,1))
+    $DistanceString = $DistanceString + " at " + $temp + " Degrees)"
+    $Results = "        ** Distance Calculation **" + $_Newline + "Distance: " + $DistanceString
+  EndIf
+
+  if $btnProjGrab 
+    $ProjFrom = $d_Latitude + " " + $d_Longitude
+  endif
+
+  if $btnProjCalc
+    if $rbtProjMiles
+      $units = "M"
+    else
+      $units = "K"
+    endif
+   
+    $pjCoords = GCalc($ProjFrom + ";" + $ProjBearing + ";" + $ProjDistance + ";" + $units, "Project")
+    $pjCoords = replace(";","   ",$pjCoords,true)
+    $work = replace(";"," ",$pjCoords,True)
+    $work = "Decimal Degrees: " + $work
+    $results = "        ** Projections **" + $_Newline + $work + $_Newline
+    $work = GCalc($pjCoords,"FormatMinutes")
+    $work = replace(";","   ",$work,True)
+    $work = "Decimal Minutes: " + $work
+    $results = $results + $work + $_Newline
+    $work = GCalc($pjCoords,"FormatSeconds")
+    $work = replace(";","   ",$work,True)
+    $work = "Decimal Seconds: " + $work
+    $results = $results + $work + $_Newline
+    $work = GCalc($pjCoords,"FormatUTM")
+    $work = replace(";","   ",$work,True)
+    $work = "UTM: " + $work
+    $results = $results + $work + $_Newline
+  endif
+
+  if $btnConvGrab 
+    $ConvFrom = $d_Latitude + " " + $d_Longitude
+  endif
+
+  if $btnConvCalc
+    #debug status=on
+    $work = GCalc($ConvFrom,"FormatDegrees")
+    $work = replace(";","   ",$Work,True)
+    $work = "Decimal Degrees: " + $work
+    $results = "        ** Format conversions **" + $_Newline + $work + $_Newline
+    $work = GCalc($ConvFrom,"FormatMinutes")
+    $work = replace(";","   ",$work,True)
+    $work = "Decimal Minutes: " + $work
+    $results = $results + $work + $_Newline
+    $work = GCalc($ConvFrom,"FormatSeconds")
+    $work = replace(";","   ",$work,True)
+    $work = "Decimal Seconds: " + $work
+    $results = $results + $work + $_Newline
+    $work = GCalc($ConvFrom,"FormatUTM")
+    $work = replace(";","   ",$work,True)
+    $work = "UTM: " + $work
+    $results = $results + $work + $_Newline
+  endif
+
+  $form = EditForm($form,"Form1","Caption", "Current Waypoint: " + $d_name)
+    
+EndWhile
+
+
+
+<data> Varname=$form
+
+Name=Form1
+  Type=Form
+  Caption=Geocalc
+  Height=570
+  Width=470
+  Error=$error
+ 
+name=grp1
+  Type=groupbox
+  left=5
+  top=10
+  height=130
+  width=450
+  caption=Distance calculation
+
+Name=labDistance
+  Type=Label
+  Left=90
+  Top=15
+  Caption= Degrees Decmimal, Minutes, Seconds and UTM supported
+  container=grp1
+
+Name=labP1
+  Type=Label
+  Left=6
+  Top=40
+  Caption=From coordinate
+  container=grp1
+
+name=DistanceFrom
+  type=edit
+  top=40
+  left=90
+  width=260
+  container=grp1
+
+
+Name=btnGrabFrom
+  type=button
+  caption=Grab current
+  container=grp1
+  left=365
+  top=40
+  height=20
+
+Name=labP2
+  Type=Label
+  Left=6
+  Top=70
+  Caption=To coordinate
+  container=grp1
+
+name=DistanceTo
+  type=edit
+  top=70
+  left=90
+  width=260
+  container=grp1
+
+
+Name=btnGrabTo
+  type=button
+  caption=Grab current
+  container=grp1
+  left=365
+  top=70
+  height=20
+
+name=rbtkms
+  type=radiobutton
+  top=105
+  left=200
+  
+  container=grp1
+
+Name=labkms
+  Type=Label
+  Left=220
+  Top=105
+  Caption=Kms
+  
+  container=grp1
+
+name=rbtmiles
+  type=radiobutton
+  top=105
+  left=250
+  container=grp1
+
+Name=labmiles
+  Type=Label
+  Left=270
+  Top=105
+  Caption=Miles
+  container=grp1
+
+Name=btnDistanceCalc
+  type=button
+  caption=Calculate
+  container=grp1
+  left=90
+  top=100
+  height=20
+
+
+###############################
+# projection
+
+name=grp2
+  Type=groupbox
+  left=5
+  top=150
+  height=130
+  width=450
+  caption=Coordinate projection
+
+Name=labProjection
+  Type=Label
+  Left=90
+  Top=15
+  Caption= Degrees Decmimal, Minutes, Seconds and UTM supported
+  container=grp2
+
+
+Name=labProjFrom
+  Type=Label
+  Left=6
+  Top=30
+  Caption=From coordinate
+  container=grp2
+
+name=ProjFrom
+  type=edit
+  top=30
+  left=90
+  width=260
+  container=grp2
+
+Name=btnProjGrab
+  type=button
+  caption=Grab current
+  container=grp2
+  left=365
+  top=30
+  height=20
+
+Name=labProjBearing
+  Type=Label
+  Left=90
+  Top=53
+  Caption=Bearing
+  container=grp2
+
+Name=labProjDistance
+  Type=Label
+  Left=150
+  Top=53
+  Caption=Distance
+  container=grp2
+
+
+Name=labProjP2
+  Type=Label
+  Left=6
+  Top=70
+  Caption=Projection
+  container=grp2
+
+name=ProjBearing
+  type=edit
+  top=70
+  left=90
+  width=40
+  container=grp2
+
+name=ProjDistance
+  type=edit
+  top=70
+  left=150
+  width=40
+  container=grp2
+
+
+name=rbtProjkms
+  type=radiobutton
+  top=70
+  left=200
+  
+  container=grp2
+
+Name=labProjkms
+  Type=Label
+  Left=220
+  Top=70
+  Caption=Kms
+  
+  container=grp2
+
+name=rbtProjmiles
+  type=radiobutton
+  top=70
+  left=250
+  container=grp2
+
+Name=labProjmiles
+  Type=Label
+  Left=270
+  Top=70
+  Caption=Miles
+  container=grp2
+
+Name=btnProjCalc
+  type=button
+  caption=Calculate
+  container=grp2
+  left=90
+  top=100
+  height=20
+
+Name=labPcalc
+  Type=Label
+  Left=150
+  Top=125
+  Visible=No
+  Caption=Distance:
+  container=grp2
+
+###############################
+# format conversion
+
+name=grp3
+  Type=groupbox
+  left=5
+  top=290
+  height=90
+  width=450
+  caption=Format conversion
+
+Name=labConv
+  Type=Label
+  Left=90
+  Top=15
+  Caption= Degrees Decmimal, Minutes, Seconds and UTM supported
+  container=grp3
+
+
+Name=labConvFrom
+  Type=Label
+  Left=6
+  Top=30
+  Caption=From coordinate
+  container=grp3
+
+name=ConvFrom
+  type=edit
+  top=30
+  left=90
+  width=260
+  container=grp3
+
+Name=btnConvGrab
+  type=button
+  caption=Grab current
+  container=grp3
+  left=365
+  top=30
+  height=20
+
+Name=btnConvCalc
+  type=button
+  caption=Calculate
+  container=grp3
+  left=90
+  top=60
+  height=20
+
+
+###############################
+# results
+
+name=grp4
+  Type=groupbox
+  left=90
+  top=390
+  height=100
+  width=300
+  caption=Results
+
+name=results
+  type=memo
+  left=5
+  top=15
+  height=80
+  width=290
+  container=grp4
+
+#####################
+# buttons
+
+
+Name=btnNext
+  type=button
+  caption=Next
+  left=120
+  top=500
+  height=25
+
+Name=btnPrevious
+  type=button
+  caption=Previous
+  left=200
+  top=500
+  height=25
+
+Name=btnExit
+  type=button
+  caption=Exit
+  left=280
+  top=500
+  height=25
+
+<enddata>

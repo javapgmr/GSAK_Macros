@@ -1,0 +1,86 @@
+#*******************************************
+# MacDescription = Reverse Hint for GSAK v6.6 B40 and later (revised 01 Apr 06)
+# MacFileName = BackwardHints.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.1
+#*******************************************
+#MacUrl=http://gsak.net/board/index.php?showtopic=1658&view=findpost&p=10058
+
+#Check if user preferences file exists, and, if not, gather input and create it.
+GOSUB Name=Preferences
+
+#Create Backward Hints
+$hints=$d_hints
+
+#Strip down to alphanumeric characters if desired
+   IF $Strip="Y"
+      GOSUB Name=StripChars
+   ENDIF
+
+#Trim hint to desired length
+   $HintLength=Val($UserHintLength)
+   $hints=trim(left($hints,$HintLength))
+
+#Reverse the hint
+   $backwardhint = ""
+   $chars = Len($hints)
+   WHILE $chars > 0
+      $backwardhint = $backwardhint + substr($hints, $chars, 1)
+      $chars = $chars - 1
+   ENDWHILE
+
+#Assign the hint to $_Special for export using the %macro Special Tag
+Set $_Special=$backwardhint
+
+
+#******************************************************
+# Subroutine for user preferences
+#******************************************************
+BEGINSUB Name=Preferences
+# Set the file path
+$datafile=$_Install + "\Macros\BWHPrefs.dat"
+
+# Check if datafile exists?
+IF (FileExists($datafile))
+
+# Yes? Read config values and assign to variables
+FILEREAD File=$datafile
+ $UserHintLength=EXTRACT($line, ";", 1)
+ $Strip=EXTRACT($line, ";", 2)
+ENDREAD
+
+ELSE
+
+# Ask for Hint Length
+$inputmsg="What is the maximum desired length for the backward hint? (Most GPSr's cannot handle more than 30 characters)"
+INPUT Msg="$inputmsg" Default="30" Varname=$UserHintLength
+
+# Ask to Strip Non-alphnumeric Characters
+$inputmsg="Do you want to reduce the hint to alphanumeric characters only (i.e. remove spaces and punctutaion)? Y/N"
+INPUT Msg="$inputmsg" Default="Y" Varname=$Strip
+
+# Save preferences for next time into $datafile, separated by ";"
+$vars=$UserHintLength + ";" + $Strip + ";" 
+$result=PUTFILE($datafile, $vars)
+  IF Left($result, 7) = "*Error*"
+    CANCEL Msg="Unable to write to $datafile!"
+  ENDIF
+ENDIF
+ENDSUB
+
+#***********************************************************
+# Subroutine to reduce hint to only alphanumeric characters 
+#***********************************************************
+BEGINSUB Name=StripChars
+   $keep = "1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+   $x = len($hints)
+   $y = 1
+   $data = ""
+   while $y <= $x
+     if at(substr($hints,$y,1),$keep) > 0 
+        $data = $data + substr($hints,$y,1)
+     endif
+     $y = $y + 1
+   endwhile
+   $hints = $data  
+ENDSUB

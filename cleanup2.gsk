@@ -1,0 +1,158 @@
+#############################################################
+# Macro to automate "cleaning up" your database by setting  
+# up to four different cache statuses (archived,           
+# temporarily unavailable, found or not updated) for deletion.           
+#                                                           
+# Note: this macro will delete the specified caches from    
+# your currently selected database.  Be sure that you're in 
+# the database you want to clean up BEFORE running this     
+# this macro!                                               
+#                                                           
+# The first time it's run, this macro will ask you to       
+# identify the status of the caches you want to delete. It  
+# will store this information in a file called              
+# "CleanUp2Data.dat" in the GSAK\Macros folder so that       
+# you don't have to answer the questions again. If you      
+# want to change this information later, delete the         
+# CleanUpData.dat file and run the macro again.           
+#############################################################
+
+VerCheck Version=6.6.1.15 (please update GSAK to the latest version to run this macro - see http://gsak.net)
+
+$StaleDate="36500"
+
+# Set the file path
+$datafile=$_Install + "\Macros\CleanUp2Data.dat"
+
+# Does it already exist?
+IF (FileExists($datafile))
+
+# Yes? Read config values and assign to variables
+FILEREAD File=$datafile
+ $Archived=EXTRACT($line, ";", 1)
+ $TempUnavailable=EXTRACT($line, ";", 2)
+ $Found=EXTRACT($line, ";", 3)
+ $NotUpdated=EXTRACT($line,";", 4)
+ $StaleDate=EXTRACT($line,";", 5)
+
+ENDREAD
+
+ELSE
+
+# No?  Ask for the status of cahces you want to delete.
+# Delete Unfound Archived?
+$inputmsg="Do you want to delete all archived caches that that you haven't found? (Y/N)"
+INPUT Msg="$inputmsg" Default="Y" Varname=$Archived
+
+# Delete Temporarily Unavailable?
+$inputmsg="Do you want to delete all temporarily unavailable caches that you haven't found? (Y/N)"
+INPUT Msg="$inputmsg" Default="Y" Varname=$TempUnavailable
+
+# Delete Caches You've Found?
+$inputmsg="Do you want to delete ALL caches that you've found? (Y/N)"
+INPUT Msg="$inputmsg" Default="Y" Varname=$Found
+
+# Delete Caches Not Updated?
+$inputmsg="Do you want to delete ALL caches that were not updated within a specified time? (Y/N)"
+INPUT Msg="$inputmsg" Default="Y" Varname=$NotUpdated
+IF $NotUpdated="Y"
+   $inputmsg="Delete caches that were not updated in how many days (e.g. enter 7 for one week, 10 for 10 days):"
+   INPUT Msg="$inputmsg" Default="7" Varname=$StaleDate
+ENDIF
+
+# Now save those database values for next time into $datafile, separated by ";"
+$vars=$Archived + ";" + $TempUnavailable + ";" + $Found + ";" + $NotUpdated + ";" + $StaleDate
+$result=PUTFILE($datafile, $vars)
+IF Left($result, 7) = "*Error*"
+ CANCEL Msg="Unable to write to $datafile!"
+ ENDIF
+ENDIF
+
+#Debug Code, commented out
+#Pause Msg= Archived=$Archived; TempUnavailable=$TempUnavailable; Found=$Found; NotUdated=$NotUpdated; Stale Date=$StaleDate
+
+# Filter for the desired cache status to delete
+
+IF $NotUpdated="Y"
+
+   IF $Archived="Y" and $TempUnavailable="Y" and $Found="Y"
+      MFilter IF=$d_archived or $d_TempDisabled or $d_Found or $d_LastGPXDate<($_Today-VAL($StaleDate))
+   ENDIF
+
+   IF $Archived="Y" and $TempUnavailable="Y" and $Found<>"Y"
+      MFilter IF=not ($d_Found) and ($d_archived or $d_TempDisabled or $d_LastGPXDate<($_Today-VAL($StaleDate)))
+   ENDIF
+
+   IF $Archived="Y" and $Found="Y" and $TempUnavailable<>"Y"
+      MFilter IF=not ($d_TempDisabled) and ($d_archived or $d_Found or $d_LastGPXDate<($_Today-VAL($StaleDate)))
+   ENDIF
+
+   IF $TempUnavailable="Y" and $Found="Y" and $Archived<>"Y"
+      MFilter IF=not ($d_archived) and ($d_TempDisabled or $d_Found or $d_LastGPXDate<($_Today-VAL($StaleDate)))
+   ENDIF
+
+   IF $Archived="Y" and $TempUnavailable<>"Y" and $Found<>"Y" 
+      MFilter IF=not ($d_Found or $d_TempDisabled) and ($d_archived or $d_LastGPXDate<($_Today-VAL($StaleDate)))
+   ENDIF   
+
+   IF $TempUnavailable="Y" and $Found<>"Y" and $Archived<>"Y"
+      MFilter IF=not ($d_found or $d_archived) and ($d_TempDisabled or $d_LastGPXDate<($_Today-VAL($StaleDate)))
+   ENDIF
+
+   IF $Found="Y" and $Archived<>"Y" and $TempUnavailable<>"Y"
+      MFilter IF=not ($d_archived or $d_TempDisabled) and $d_Found or $d_LastGPXDate<($_Today-VAL($StaleDate))
+   ENDIF
+
+   IF $Found<>"Y" and $Archived<>"Y" and $TempUnavailable<>"Y"
+      MFilter IF=not ($d_archived or $d_TempDisabled or $d_Found) and $d_LastGPXDate<($_Today-VAL($StaleDate))
+   ENDIF
+
+#Debug Code, commented out
+#Pause Msg=Filter Count=$_FilterCount
+
+ELSE
+
+   IF $Archived="Y" and $TempUnavailable="Y" and $Found="Y" 
+      MFilter IF=$d_archived or $d_TempDisabled or $d_Found
+   ENDIF
+
+   IF $Archived="Y" and $TempUnavailable="Y" and $Found<>"Y"
+      MFilter IF=(not ($d_Found) and $d_archived) or (not ($d_found) and $d_TempDisabled)
+   ENDIF
+
+   IF $Archived="Y" and $Found="Y" and $TempUnavailable<>"Y"
+      MFilter IF=not ($d_TempDisabled) and ($d_archived or $d_Found)
+   ENDIF
+
+   IF $TempUnavailable="Y" and $Found="Y" and $Archived<>"Y"
+      MFilter IF=$d_TempDisabled or $d_Found
+   ENDIF
+
+   IF $Archived="Y" and $TempUnavailable<>"Y" and $Found<>"Y"  
+      MFilter IF=(not ($d_Found) and $d_archived)
+   ENDIF   
+
+   IF $TempUnavailable="Y" and $Found<>"Y" and $Archived<>"Y"
+      MFilter IF=(not ($d_found) and $d_TempDisabled)
+   ENDIF
+
+   IF $Found="Y" and $Archived<>"Y" and $TempUnavailable<>"Y"
+      MFilter IF=$d_Found
+   ENDIF
+ENDIF
+
+#Test to insure there are waypoints in the filter and delete if found
+IF $_FilterCount > 0
+  MacroSet Dialog=Delete VarName=$Delete
+  DELETE Settings=<macro>
+ELSE
+  PAUSE Msg="No waypoints in filter, action cancelled"
+ENDIF
+
+<data> VarName=$Delete
+[TfmDelete]
+cbxStop.Checked=False
+rbtFilter.Checked=True
+rbtFlagged.Checked=False
+rbtOnly.Checked=False
+<enddata>

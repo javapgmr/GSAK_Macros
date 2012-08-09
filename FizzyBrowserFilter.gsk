@@ -1,0 +1,17 @@
+$sqlfile = $_AppData + "\Macros\FizzyBrowser.db3"
+$table = Extract($_MacroParms,"~",1)
+$where = Extract($_MacroParms,"~",2)
+BEGINCASE
+CASE $table = "CF"  # SQL where clause for cachesF table
+  $_sql = "SELECT DISTINCT Code FROM cachesF WHERE " + $where
+CASE $table = "CU"  # SQL where clause for cachesU table
+  $_sql = "SELECT DISTINCT Code FROM cachesU WHERE " + $where
+OTHERWISE
+  PAUSE Msg="Unrecognized parameter: $table"
+ENDCASE
+$status = SQLite("open",$sqlfile)
+$status = SQLite("sql",$_sql)
+$status = Replace($_NewLine,";",$status,true)
+MACROFLAG Type=clear range=all
+$ret = CodeMatch($status,";","M")
+MFILTER Expression=$d_MacroFlag

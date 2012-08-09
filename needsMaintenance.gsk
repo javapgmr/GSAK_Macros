@@ -1,0 +1,38 @@
+#***************************************************************
+# Set a filter on all caches that have a "Needs Maintenance" log
+# without a corresponding "Owner Maintenance" log
+#
+# Note: logs are always presented newest to oldest when reading them
+#***************************************************************
+
+MacroFlag Type=clear Range=all
+$ThisRecord = 0
+Goto position=top
+While not($_eol)
+  $ThisRecord = $ThisRecord + 1
+  $status = "Now processing: $ThisRecord of $_Count"
+  ShowStatus msg=$status 
+  Table Active=Logs scope=parent
+  While not($_Eol)
+    # exit out of log loop if "Owner Maintenance" found before "Needs Maintenance"
+    If $d_ltype = "Owner Maintenance"
+      break
+    EndIf 
+    # we have found a "Needs Maintenace" before any "Owner Maintenance"
+    # so flag this cache and exit the loop
+    if $d_lType = "Needs Maintenance"
+      $d_MacroFlag=True
+      Break
+    endif
+    goto position=next
+  EndWhile
+  Table Active=caches
+  GoTo Position=Next
+EndWhile
+Mfilter if=$d_MacroFlag
+If $_FilterCount = 0
+  cancel msg="Sorry, no caches with 'Needs Maintenance' logs found"
+EndIf
+
+
+    

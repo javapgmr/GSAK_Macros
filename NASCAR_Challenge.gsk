@@ -1,0 +1,26 @@
+#*******************************************
+# MacDescription = Determine if NASCAR Challenge (GC2A00B) is met
+# MacFileName = NASCAR_Challenge.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.11
+# MacUrl=
+#*******************************************
+$Out="Car;Code;Cache Name;Date Found;" + $_CrLf
+$CarNums="2,3,4,5,6,7,8,9,11,14,17,18,20,22,24,27,30,38,42,43,44,48,60,71,72,87,88,91,92,97"
+$Codes="'GCAAAA'"
+
+$x=1
+WHILE $x<=30
+    $Car=Extract($CarNums,",",$x)
+    $_sql="SELECT Code,Name,(Select lDate From Logs WHERE lIsOwner AND g_foundlog(ltype) AND lParent=Code) as LogDate from Caches WHERE LogDate<>'' AND Code like '%$Car%' AND Code NOT IN ($Codes) AND $_Where LIMIT 1"
+    $Result=Sqlite("sql",$_sql)
+    IF $Result=""
+        $Result="-;-;Not Found;" + $_CrLf
+    ELSE
+        $Codes=$Codes + "," + "'" + Extract($Result,";",1) + "'"
+    ENDIF
+    $Out=$Out + $Car + ";" + $Result + $_CrLf
+    $x=$x+1
+ENDWHILE
+$Display=SqlToHtml($Out, "NASCAR Challenge Caches Found", "Y")
+

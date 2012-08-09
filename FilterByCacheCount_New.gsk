@@ -1,0 +1,941 @@
+#*******************************************
+# MacVersion = 1.0.13
+# MacDescription = Select caches by number of waypoints from center
+# MacAuthor = javapgmr
+# MacFileName = FilterByCacheCount.gsk 
+# MacUrl = http://gsak.net/board/index.php?showtopic=12872
+#*******************************************
+###########################################################
+# 
+# This macro will allow you to select a number of caches including children and set a filter for that.
+#
+# 
+###############################################################
+# Version check
+VERCHECK Version=7.7.0.0 
+
+GOSUB Name=Declare
+
+DEBUG Status=off
+
+MACSETTINGS Type=R FileCheck=N
+ $Form = EditForm($Form,"Form1","Top",$Top)
+ $Form = EditForm($Form,"Form1","Left",$Left)
+
+$ratings="1.0;1.5;2.0;2.5;3.0;3.5;4.0;4.5;5.0"
+
+$macrohome = Sysinfo("MacroPath")
+$strMacroList =";" + Dir($macroHome + "\*.gsk", "F")
+
+# Un comment the next line if you want to run the macro one line at a time
+#DEBUG Status="on"
+
+GOSUB Name=SETUPFORM
+
+$Changed = TRUE
+	
+
+WHILE TRUE 
+	
+$formexit = form($form, "")
+	BEGINCASE
+  CASE $FormExit = "DelayExit"
+			GOSUB Name=Main
+      BREAK
+	CASE $FormExit = "SystemExit"
+  		RETURN
+			BREAK 
+	CASE $FormExit = "Ok"	
+	    $Top = $_FormTop
+	    $Left = $_FormLeft		
+			MACSETTINGS Type=S  Vars=vN,vNW,vNE,vE,vS,vSW,vSE,vW,vTraditional,vMulti,vLetterbox,vCITO,vEvent,vLocationless,vVirtual,vWebcam,vMystery,vBenchmark,vOther,vEarth,vAPE,vMega,vWhereIGo,vMaze,vunAvailable,vArchived,vDiff,vTerr,vNumWp,vOwned,Bypass,Bypass2,Bypass3,ChildPts,MacroToRun,vExcludeNonCorr,v2DNF,v4DNF,vIncAll,vHEF,Top,Left
+			GOSUB Name=Main
+			BREAK
+	CASE $FormExit = "Cancel"
+			RETURN
+			BREAK
+		OTHERWISE
+			GOSUB Name=SETUPFORM	
+	ENDCASE
+ENDWHILE
+
+########
+BEGINSUB Name=Main
+SPEEDMODE status=on
+if IsEmpty($vNumWp)
+	$vNumWp = "950"
+EndIf
+	
+# Keep asking until they enter a valid number
+IF IsEmpty($vNumWp) OR RegEx("[^0-9.]", $vNumWp)
+	MSGOk Msg="Number of Waypoints is missing or not numeric."
+	EXITSUB
+ENDIF
+
+$NumWPN = Val($vNumWP)
+
+$HoldWhere = $_Where 
+SHOWSTATUS msg="Clearing MacroFlags" Width=350
+MACROFLAG type=clear range=All
+
+
+
+SHOWSTATUS msg="Setting initial filter settings" Width=350
+IF $Bypass
+	$vDiff = "5"
+	$vTerr = "5"
+ELSE
+ENDIF
+
+IF $Bypass2
+	$vN  = TRUE
+	$vNW = TRUE
+	$vNE = TRUE
+	$vE  = TRUE
+	$vS  = TRUE
+	$vSW = TRUE
+	$vSE = TRUE
+	$vW  = TRUE
+ENDIF
+
+IF $ByPass3
+$vTraditional=TRUE
+$vMulti=TRUE
+$vLetterbox=TRUE
+$vCITO=TRUE
+$vEvent=TRUE
+$vLocationless=TRUE
+$vVirtual=TRUE
+$vWebcam=TRUE
+$vMystery=TRUE
+$vBenchmark=TRUE
+$vOther=TRUE
+$vEarth=TRUE
+$vAPE=TRUE
+$vMega=TRUE
+$vWhereIGo=TRUE
+$vMaze=TRUE
+ENDIF
+
+DEBUG status=Off
+
+$CR=Replace("{Child}",BoolToStr($ChildPts,"True","False"),$CR,TRUE)
+
+# Save the currently selected code and make sure it is part of the  filter
+$CurrentCode = $d_Code
+$diff = (Val($vDiff)* 2) - 2
+$terr = (Val($vTerr)* 2) - 2
+
+$CR=Replace("{N}",BoolToStr($vN,"True","False"),$CR,TRUE)
+$CR=Replace("{NW}",BoolToStr($vNW,"True","False"),$CR,TRUE)
+$CR=Replace("{NE}",BoolToStr($vNE,"True","False"),$CR,TRUE)
+$CR=Replace("{E}",BoolToStr($vE,"True","False"),$CR,TRUE)
+$CR=Replace("{S}",BoolToStr($vS,"True","False"),$CR,TRUE)
+$CR=Replace("{SW}",BoolToStr($vSW,"True","False"),$CR,TRUE)
+$CR=Replace("{SE}",BoolToStr($vSE,"True","False"),$CR,TRUE)
+$CR=Replace("{W}",BoolToStr($vW,"True","False"),$CR,TRUE)
+
+$CR=Replace("{traditional}",BoolToStr($vTraditional,"True","False"),$CR,TRUE)
+$CR=Replace("{multi}",BoolToStr($vMulti,"True","False"),$CR,TRUE)
+$CR=Replace("{letterbox}",BoolToStr($vLetterbox,"True","False"),$CR,TRUE)
+$CR=Replace("{cito}",BoolToStr($vCITO,"True","False"),$CR,TRUE)
+$CR=Replace("{event}",BoolToStr($vEvent,"True","False"),$CR,TRUE)
+$CR=Replace("{locationless}",BoolToStr($vLocationless,"True","False"),$CR,TRUE)
+$CR=Replace("{virtual}",BoolToStr($vVirtual,"True","False"),$CR,TRUE)
+$CR=Replace("{webcam}",BoolToStr($vWebcam,"True","False"),$CR,TRUE)
+$CR=Replace("{mystery}",BoolToStr($vMystery,"True","False"),$CR,TRUE)
+$CR=Replace("{benchmark}",BoolToStr($vBenchmark,"True","False"),$CR,TRUE)
+$CR=Replace("{other}",BoolToStr($vOther,"True","False"),$CR,TRUE)
+$CR=Replace("{earth}",BoolToStr($vEarth,"True","False"),$CR,TRUE)
+$CR=Replace("{ape}",BoolToStr($vAPE,"True","False"),$CR,TRUE)
+$CR=Replace("{megaevent}",BoolToStr($vMega,"True","False"),$CR,TRUE)
+$CR=Replace("{whereigo}",BoolToStr($vWhereIGo,"True","False"),$CR,TRUE)
+$CR=Replace("{maze}",BoolToStr($vMaze,"True","False"),$CR,TRUE)
+
+$CR=Replace("{terr}",NumToStr($terr),$CR,TRUE)
+$CR=Replace("{diff}",NumToStr($diff),$CR,TRUE)
+$CR=Replace("{unAvailable}",BoolToStr($vunAvailable,"True","False"),$CR,TRUE)
+$CR=Replace("{Archived}",BoolToStr($vArchived,"True","False"),$CR,TRUE)
+
+IF $v2DNF 
+$FilterNotFounds=Replace("{DNFLOG}","2",$FilterNotFounds,TRUE)
+$FilterDNF = TRUE
+ENDIF
+
+IF $v4DNF 
+$FilterNotFounds=Replace("{DNFLOG}","4",$FilterNotFounds,TRUE)
+$FilterDNF = TRUE
+ENDIF
+
+SHOWSTATUS msg="Sorting by Distance" Width=350
+SQLSort OrderBy="Distance"
+
+GOTO Position=Top
+	# Set the Filter dialog with the point filter
+
+SHOWSTATUS msg="Initial Filtering" Width=350  
+MACROSET Dialog=Filter VarName=$CR 
+	# Run the filter
+	IF $vHEF AND $_FilterActive
+		FILTER Name=<macro> Join=AND
+	ELSE
+		FILTER Name=<macro>
+	ENDIF
+
+SHOWSTATUS msg="Eliminating DNF's" Width=350
+	IF $FilterDNF
+	# Set the Filter dialog with the point filter
+	MACROSET Dialog=Filter VarName=$FilterNotFounds
+	# Run the filter
+	FILTER Name=<macro> Reverse=Yes  Join=AND
+	ENDIF
+
+SHOWSTATUS msg="Removing mysteries now solved" Width=350
+IF $vExcludeNonCorr
+ MFILTER If=NOT($d_CacheType ="U") OR ($d_CacheType = "U" AND $d_HasCorrected) Join=And
+ENDIF
+
+SHOWSTATUS msg="Eliminating owned" Width=350
+If not ($vOwned)
+	MFILTER Expression= not(IsOwner())  Join=And
+ENDIF
+	
+	# If there's no results, say so and exit
+	IF $_FilterCount < 1
+		PAUSE Msg="No records match the filter. Clearing and exiting."
+		CANCEL
+	ENDIF
+
+
+SHOWSTATUS msg="Counting caches" Width=350
+GOTO Position=top
+
+#
+# select * from caches left join waypoints on caches.code = waypoints.cparent limit 500
+#
+$TotalCount=0
+$CacheCount=0 
+$status = sqlite("sql",$_SqlGrid, "sqlget=yes")
+WHILE not($_sqleol)
+  $data = sqlget("code")  	
+	$Counts = sqlite("sql", "select Count(waypoints.cparent) from waypoints where waypoints.cparent like '$data'")
+	$Count = Val($Counts)
+	IF ($Count + $TotalCount) < $NumWpn
+			$CacheCount = $CacheCount + 1
+			$TotalCount = $TotalCount + $Count + 1
+	ELSE
+		 	BREAK	
+	ENDIF
+	SQLNEXT
+ENDWHILE
+SQLGetClose
+GOTO Position=top
+MACROFLAG Type=set Range=$CacheCount
+MFILTER Expression=MACROFLAG  Join=And
+
+#SHOWSTATUS msg="Setting Filters" Width=350
+#GOSUB Name=FilterSet
+#
+#cancelfilter
+#SHOWSTATUS msg="Restoring Filters" Width=350
+#Gosub Name=FilterRestore
+
+SHOWSTATUS msg="Running Macro" Width=350
+IF $MacroToRun <> ""
+	MACRO File=$MacroToRun
+ENDIF
+
+Return
+
+
+
+ENDSUB
+
+#*******************************************************
+#   Variable declarations for
+#   DistanceWithfilters.gsk
+#
+#   Generated 06/27/2008 7:57:23 PM on GSAKVariables.gsk Rev V0.20 B15
+#
+#*******************************************************
+
+
+BEGINSUB Name=Declare
+#*******************************************************
+#   Variable declarations for
+#   FilterByCacheCountSQL.gsk
+#
+#   Generated 02/06/2010 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+DECLARE Var=$Bypass Type=Boolean
+DECLARE Var=$Bypass2 Type=Boolean
+DECLARE Var=$Bypass3 Type=Boolean
+Declare Var=$CacheCount Type=Numeric
+Declare Var=$Changed Type=Boolean
+Declare Var=$Count Type=Numeric
+Declare Var=$Counts Type=String
+Declare Var=$CR Type=String
+Declare Var=$CurrentCode Type=String
+Declare Var=$data Type=String
+Declare Var=$diff Type=Numeric
+Declare Var=$FilterDNF Type=Boolean
+Declare Var=$FilterNotFounds Type=String
+Declare Var=$Form Type=String
+Declare Var=$formexit Type=String
+Declare Var=$FSrcodes Type=String
+Declare Var=$FSRstatus Type=String
+DECLARE Var=$HoldWhere Type=String
+Declare Var=$Left Type=String
+Declare Var=$macrohome Type=String
+Declare Var=$NumWPN Type=Numeric
+Declare Var=$ratings Type=String
+Declare Var=$status Type=String
+Declare Var=$strMacroList Type=String
+Declare Var=$terr Type=Numeric
+Declare Var=$Top Type=String
+Declare Var=$TotalCount Type=Numeric
+Declare Var=$vAPE Type=Boolean
+Declare Var=$vBenchmark Type=Boolean
+Declare Var=$vCITO Type=Boolean
+Declare Var=$vDiff Type=String
+Declare Var=$vE Type=Boolean
+Declare Var=$vEarth Type=Boolean
+Declare Var=$vEvent Type=Boolean
+Declare Var=$vLetterbox Type=Boolean
+Declare Var=$vLocationless Type=Boolean
+Declare Var=$vMaze Type=Boolean
+Declare Var=$vMega Type=Boolean
+Declare Var=$vMulti Type=Boolean
+Declare Var=$vMystery Type=Boolean
+Declare Var=$vN Type=Boolean
+Declare Var=$vNE Type=Boolean
+Declare Var=$vNumWp Type=String
+Declare Var=$vNW Type=Boolean
+Declare Var=$vOther Type=Boolean
+Declare Var=$vS Type=Boolean
+Declare Var=$vSE Type=Boolean
+Declare Var=$vSW Type=Boolean
+Declare Var=$vTerr Type=String
+Declare Var=$vTraditional Type=Boolean
+Declare Var=$vVirtual Type=Boolean
+Declare Var=$vW Type=Boolean
+Declare Var=$vWebcam Type=Boolean
+Declare Var=$vWhereIGo Type=Boolean
+ENDSUB
+
+BEGINSUB Name=SETUPFORM
+IF $Bypass
+	$form = editform($form,"vDiff","enabled","No")
+	$form = editform($form,"vTerr","enabled","No")
+	$form = editform($form,"LDiff","enabled","No")
+	$form = editform($form,"LTerr","enabled","No")
+
+ELSE
+	$form = editform($form,"vDiff","enabled","Yes")
+	$form = editform($form,"vTerr","enabled","Yes")
+	$form = editform($form,"LDiff","enabled","Yes")
+	$form = editform($form,"LTerr","enabled","Yes")
+
+ENDIF	
+
+IF $Bypass2
+	$form = editform($form,"vN","enabled","No")
+	$form = editform($form,"vS","enabled","No")
+	$form = editform($form,"vE","enabled","No")
+	$form = editform($form,"vW","enabled","No")
+	$form = editform($form,"vNW","enabled","No")
+	$form = editform($form,"vNE","enabled","No")
+	$form = editform($form,"vSW","enabled","No")
+	$form = editform($form,"vSE","enabled","No")
+ELSE
+	$form = editform($form,"vN","enabled","Yes")
+	$form = editform($form,"vS","enabled","Yes")
+	$form = editform($form,"vE","enabled","Yes")
+	$form = editform($form,"vW","enabled","Yes")
+	$form = editform($form,"vNW","enabled","Yes")
+	$form = editform($form,"vNE","enabled","Yes")
+	$form = editform($form,"vSW","enabled","Yes")
+	$form = editform($form,"vSE","enabled","Yes")
+ENDIF	
+
+IF $Bypass3
+	$form = editform($form,"CG","enabled","No")
+ELSE
+		$form = editform($form,"CG","enabled","Yes")
+ENDIF
+ENDSUB
+
+<data> VarName=$CR
+edtDesc=
+cbxDesc=0
+cbxFilter=4
+edtPlacedBy=
+cbxDifficulty=0
+cbxTerrain=0
+cbxDif={diff}
+cbxTer={terr}
+cbxPlacedBy=0
+cbxDif2=8
+cbxTer2=8
+edtUserData=
+cbxUserData=0
+chkReverse=False
+edtTbugName=
+cbxTbugName=0
+cbxSource=0
+edtSource=
+cbxUser2=0
+EdtUser2=
+cbxOwnerName=0
+edtOwnerName=
+edtUserId=
+cbxState=0
+cbxCountry=0
+edtState=
+edtCountry=
+cbxUsort=4
+edtUsort=0
+edtUsort2=0
+edtCode=
+cbxCode=0
+cbxFoundCount=0
+EdtFoundCount=0
+cbxDegrees=0
+edtDegrees=
+chkFound=False
+chkNotFound=True
+chkExclude=False
+chkAvailable=True
+chkArchivedOnly={Archived}
+chkTempUnavailable={UnAvailable}
+chkUserFlag1=True
+chkUserFlag2=True
+chkBugNo=True
+cbxBugs=True
+chkNoteNo=True
+chkNoteYes=True
+edtFull=
+chkFullHighlight=True
+chkRegEx=False
+chkFullNotes=False
+chkFullLogs=False
+chkFullDes=False
+RbtFullAll=True
+rbtFullSelect=False
+chkFtfNo=True
+chkFtfyes=True
+cbxN={N}
+cbxNW={NW}
+cbxNe={NE}
+cbxS={S}
+cbxSW={SW}
+cbxSE={SE}
+cbxE={E}
+cbxW={W}
+cbxMicro=True
+cbxUnknown=True
+cbxRegular=True
+cbxLarge=True
+cbxSmall=True
+chkLockYes=True
+chkLockNo=True
+chkCorrectYes=True
+chkCorrectNo=True
+chkDNFYes=True
+chkDNFNo=True
+chkWatchYes=True
+chkWatchNo=True
+chkChildYes={Child}
+chkChildNo={Child}
+
+Traditional={traditional}
+Multi={multi}
+LetterBox={letterbox}
+CITO={cito}
+Event={event}
+Locationless={locationless}
+Virtual={virtual}
+Web Cam={webcam}
+Mystery={mystery}
+Benchmark={benchmark}
+Other={other}
+Earth={earth}
+Project APE={ape}
+Mega Event={megaevent}
+Wherigo={whereigo}
+<enddata>
+
+<data> VarName=$FilterNotFounds
+cbxLogDate=6
+edtLogDateF=     40068
+edtLogDateT=     40068
+cbxLogInclude=0
+edtLogDateDuring=
+cbxLogDateDuring=0
+cbxLogCount=2
+edtLogFrom={DNFLOG}
+edtLogTo=
+chkLogFound=False
+chkLogNotFound=True
+chkLogNote=False
+chkLogMatch=False
+rbtExact=False
+rbtWild=False
+rbtId=True
+edtGeoName=
+chkLogNeedsA=True
+chkLogTypes=False
+rbtRegex=False
+chkLogSearchFound=True
+chkLogSearchNotFound=True
+chkLogSearchNote=False
+cbxLogsToSearch={DNFLOG}
+
+LtDidn't find it=True
+LtNeeds Archived=True
+<enddata>
+
+
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Tue 07-Jun-2011 16:26:44
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Exitonclick = No
+  Height = 407
+  Width = 416
+
+Name = Groupbox1
+  Type = Groupbox
+  Height = 67
+  Left = 220
+  Top = 266
+  Width = 120
+  Taborder = 22
+
+Name = Lbl1
+  Type = Label
+  Height = 24
+  Left = 85
+  Size = 14
+  Style = bold
+  Top = 4
+  Width = 243
+  Caption = Caches by Count w/filters
+
+Name = FrmLbl1
+  Type = Label
+  Height = 13
+  Left = 5
+  Style = bold
+  Top = 35
+  Width = 84
+  Caption = Cache count:
+
+Name = vNumWp
+  Type = Edit
+  Height = 21
+  Left = 150
+  Top = 31
+  Width = 37
+  Taborder = 0
+
+Name = vUnavailable
+  Type = Checkbox
+  Captionposition = Left
+  Fontcolor = 255
+  Fontstyle = bold
+  Height = 17
+  Left = 4
+  Top = 88
+  Width = 182
+  Taborder = 1
+  Caption = Include Unavailable?
+
+Name = Bypass
+  Type = Checkbox
+  Captionposition = Left
+  Exitonchange = Yes
+  Fontcolor = 255
+  Fontstyle = bold
+  Height = 17
+  Left = 4
+  Top = 120
+  Width = 182
+  Taborder = 2
+  Caption = Select all Diff./Terr.
+
+Name = LDiff
+  Type = Label
+  Height = 13
+  Left = 21
+  Style = bold
+  Top = 152
+  Width = 28
+  Caption = Diff <=
+
+Name = vDiff
+  Type = Combobox
+  Height = 21
+  Left = 138
+  Top = 148
+  Values = $ratings
+  Width = 49
+  Taborder = 3
+
+Name = LTerr
+  Type = Label
+  Height = 13
+  Left = 21
+  Style = bold
+  Top = 175
+  Width = 31
+  Caption = Terr <=
+
+Name = vTerr
+  Type = Combobox
+  Height = 21
+  Left = 138
+  Top = 171
+  Values = $ratings
+  Width = 49
+  Taborder = 4
+
+Name = vOwned
+  Type = Checkbox
+  Captionposition = Left
+  Fontcolor = 255
+  Fontstyle = bold
+  Height = 16
+  Left = 4
+  Top = 202
+  Width = 182
+  Taborder = 5
+  Caption = Include Owned:
+
+Name = Bypass2
+  Type = Checkbox
+  Captionposition = Left
+  Exitonchange = Yes
+  Fontcolor = 255
+  Fontstyle = bold
+  Height = 17
+  Left = 4
+  Top = 225
+  Width = 182
+  Taborder = 6
+  Caption = Bypass directions:
+
+Name = vN
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 18
+  Left = 12
+  Top = 257
+  Width = 29
+  Taborder = 7
+  Caption = N
+
+Name = vNW
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 18
+  Left = 51
+  Top = 257
+  Width = 37
+  Taborder = 8
+  Caption = NW
+
+Name = vNE
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 18
+  Left = 98
+  Top = 257
+  Width = 35
+  Taborder = 9
+  Caption = NE
+
+Name = vE
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 18
+  Left = 142
+  Top = 257
+  Width = 35
+  Taborder = 10
+  Caption = E
+
+Name = vS
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 20
+  Left = 12
+  Top = 277
+  Width = 29
+  Taborder = 11
+  Caption = S
+
+Name = vSW
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 17
+  Left = 51
+  Top = 277
+  Width = 37
+  Taborder = 15
+  Caption = SW
+
+Name = vSE
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 20
+  Left = 98
+  Top = 277
+  Width = 35
+  Taborder = 12
+  Caption = SE
+
+Name = vW
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 21
+  Left = 142
+  Top = 277
+  Width = 35
+  Taborder = 13
+  Caption = W
+
+Name = Bypass3
+  Type = Checkbox
+  Captionposition = Left
+  Exitonchange = Yes
+  Fontcolor = 255
+  Fontstyle = bold
+  Height = 17
+  Left = 200
+  Top = 31
+  Width = 182
+  Taborder = 14
+  Caption = Select all cache types:
+
+Name = Ok
+  Type = Button
+  Enter = yes
+  Height = 24
+  Left = 115
+  Top = 340
+  Width = 69
+  Taborder = 16
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 24
+  Left = 218
+  Top = 340
+  Width = 69
+  Taborder = 17
+  Caption = Cancel
+
+Name = ChildPts
+  Type = Checkbox
+  Captionposition = Left
+  Fontcolor = 255
+  Fontstyle = bold
+  Height = 17
+  Left = 4
+  Top = 71
+  Width = 182
+  Taborder = 18
+  Caption = Include Child points?
+
+Name = Label1
+  Type = Label
+  Height = 13
+  Left = 10
+  Style = bold
+  Top = 240
+  Width = 120
+  Caption = or select directions:
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 18
+  Style = bold
+  Top = 136
+  Width = 155
+  Caption = or select difficulty/terrain;
+
+Name = MacroToRun
+  Type = Combobox
+  Color = 16777215
+  Height = 21
+  Left = 7
+  Top = 313
+  Values = $strMacroList
+  Width = 179
+  Taborder = 19
+
+Name = Label4
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 7
+  Style = bold
+  Top = 297
+  Width = 169
+  Caption = Macro to run after selection:
+
+Name = vExcludeNonCorr
+  Type = Checkbox
+  Captionposition = Left
+  Fontcolor = 255
+  Fontsize = 8
+  Fontstyle = bold
+  Height = 17
+  Left = 200
+  Top = 232
+  Width = 182
+  Taborder = 20
+  Caption = Exclude uncorrected Mystery
+
+Name = vArchived
+  Type = Checkbox
+  Captionposition = Left
+  Fontcolor = 255
+  Fontstyle = bold
+  Height = 17
+  Left = 4
+  Top = 105
+  Width = 182
+  Taborder = 21
+  Caption = Include Archived?
+
+Name = vIncAll
+  Type = Radiobutton
+  Captionposition = Left
+  Container = Groupbox1
+  Fontcolor = 255
+  Fontstyle = bold
+  Height = 19
+  Left = 6
+  Top = 7
+  Width = 107
+  Taborder = 0
+  Caption = Include All
+
+Name = v2DNF
+  Type = Radiobutton
+  Captionposition = Left
+  Container = Groupbox1
+  Fontcolor = 255
+  Fontstyle = bold
+  Height = 19
+  Left = 6
+  Top = 24
+  Width = 107
+  Taborder = 1
+  Caption = last 2 DNF logs
+
+Name = v4DNF
+  Type = Radiobutton
+  Captionposition = Left
+  Container = Groupbox1
+  Fontcolor = 255
+  Fontstyle = bold
+  Height = 19
+  Left = 6
+  Top = 41
+  Width = 107
+  Taborder = 2
+  Caption = last 4 DNF logs
+
+Name = Label5
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 202
+  Style = bold
+  Top = 253
+  Width = 185
+  Caption = Exclude caches with DNF logs:
+
+Name = vHEF
+  Type = Checkbox
+  Captionposition = Left
+  Color = -2147483633
+  Fontcolor = 255
+  Fontstyle = bold
+  Height = 17
+  Left = 4
+  Top = 55
+  Width = 182
+  Taborder = 23
+  Caption = Honor existing filters?
+
+Name = CG
+  Type = Checkgroup
+  Columns = 2
+  Height = 169
+  Left = 202
+  Style = bold
+  Top = 57
+  Values = Traditional;Letterbox;Event;Virtual;Mystery;Other;Ape;WhereIGo;Multi;CITO;LocationLess;WebCam;BenchMark;Earth;Mega;Maze
+  Width = 195
+  Taborder = 32
+  Caption = Cache Type
+
+<enddata>
+
+
+
+
+
+
+
+BEGINSUB  Name=FilterSet
+$FSrcodes = sqlite("sql","Select code from Caches where RowId in (Select * from GridTemp)")
+ENDSUB
+
+BEGINSUB Name=FilterRestore
+macroflag type=clear range=all
+$FSRstatus = codematch($FSRcodes,$_NewLine,"M")
+MFILTER where=MACROFLAG
+ENDSUB
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

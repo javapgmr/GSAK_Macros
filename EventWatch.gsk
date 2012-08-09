@@ -1,0 +1,125 @@
+#@##################################################################################
+#@ MacFileName	  = EventWatch.gsk
+#@ MacVersion     = 1.1b
+#@ MacAuthor	    = Wayne (Team Red Roo)
+#@ MacDescription = Select and Display a sorted list of Event caches.
+#@ MacUrl         =
+#@##################################################################################
+  VERCHECK Version=7.2.3.0 (please update GSAK to the latest version (free) to run this macro - see http://gsak.net)
+  GOSUB Name=Initialise
+  MFILTER Expression=(Upper($d_CacheType)="E" OR Upper($d_CacheType)="C" OR Upper($d_CacheType)="Z") AND $d_PlacedDate >= $_Today
+  SORT BY="Placeddate" Sequence="A"                                   
+  IF $_FilterCount = 0
+     $EwForm=EditForm($EwForm,"Coming","Enabled","No")          
+     SHOWSTATUS Msg="* There are no future events listed  :-("
+     MFILTER Expression=(Upper($d_CacheType)="E" OR Upper($d_CacheType)="C" OR Upper($d_CacheType)="Z")
+     IF $_FilterCount=0                                               
+        SORT BY="Distance"                                             
+        RETURN 
+     ENDIF 
+     SORT BY="Placeddate" Sequence="D"                                
+  ELSE 
+     SPLITSCREEN Display=On
+  ENDIF 
+  SPEEDMODE Status=OFF
+  WHILE TRUE                                                          
+     $EwAct=Form($EwForm,"")
+     BEGINCASE 
+        CASE $EwAct="Exit"
+           BREAK 
+        CASE $EwAct="DelayExit"
+           BREAK 
+        CASE $EwAct="SystemExit"
+           CANCEL 
+        CASE $EwAct="Coming"
+           MFILTER Expression=(Upper($d_CacheType)="E" OR Upper($d_CacheType)="C" OR Upper($d_CacheType)="Z") AND $d_PlacedDate >= $_Today
+           SORT BY="Placeddate" Sequence="A"
+        CASE $EwAct="Past"
+           MFILTER Expression=(Upper($d_CacheType)="E" OR Upper($d_CacheType)="C" OR Upper($d_CacheType)="Z") AND $d_PlacedDate < $_Today
+           SORT BY="Placeddate" Sequence="D"
+        CASE $EwAct="All"
+           MFILTER Expression=(Upper($d_CacheType)="E" OR Upper($d_CacheType)="C" OR Upper($d_CacheType)="Z")
+           SORT BY="Placeddate" Sequence="A"
+     ENDCASE 
+     $EwForm=EditForm($EwForm,"FormEw","Delay","0")
+     SHOWSTATUS Msg=x Display=Off
+     GOSUB Name=SetFormPosition
+  ENDWHILE 
+  $Ft=$_FormTop
+  $Fl=$_FormLeft
+  MACSETTINGS Type=S Vars=Fl,Ft
+  SPEEDMODE Status=On                                                 
+  RETURN 
+  BEGINSUB Name=SetFormPosition
+     $Ft=$_FormTop
+     $Fl=$_FormLeft
+     $EwForm=EditForm($EwForm,"FormEw","Top",$Ft)
+     $EwForm=EditForm($EwForm,"FormEw","Left",$Fl)
+  ENDSUB 
+  BEGINSUB Name=Initialise
+#@     OPTION Explicit=Yes
+     DECLARE Var=$Fl Type=String
+     DECLARE Var=$Ft Type=String
+     DECLARE Var=$EwAct Type=String
+     DECLARE Var=$EwForm Type=String
+     $EwForm=EditForm($EwForm,"FormEw","Caption",Left(SysInfo("Macrofile"),AT(".",SysInfo("Macrofile"))-1)+" - "+" v"+AllTrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath") + "\" + SysInfo("Macrofile")),1,1)))
+     MACSETTINGS Type=R FileCheck=N
+     IF $Fl <> "" AND $Ft <> ""
+        $EwForm=EditForm($EwForm,"FormEw","Top",$Ft)
+        $EwForm=EditForm($EwForm,"FormEw","Left",$Fl)
+     ENDIF 
+  ENDSUB 
+  <DATA> VarName=$EwForm
+Name = FormEw
+  Type = Form
+  Color = 16252642
+  Delay = 10											                                    # Display the form for 'Delay = xx'
+  Height = 303
+  Left = 610
+  Top = 120
+  Width = 263
+Name = Label1
+  Type = Label
+  Color = 503036
+  Font = Comic Sans MS
+  Height = 27
+  Left = 63
+  Size = 14
+  Style = bold
+  Top = 12
+  Width = 120
+  Caption = Event Watch
+Name = Coming
+  Type = Button
+  Height = 25
+  Left = 70
+  Top = 67
+  Width = 105
+  Taborder = 1
+  Caption = Coming Events
+Name = Past
+  Type = Button
+  Height = 25
+  Left = 70
+  Top = 109
+  Width = 106
+  Taborder = 2
+  Caption = Past Events
+Name = All
+  Type = Button
+  Height = 25
+  Left = 70
+  Top = 152
+  Width = 107
+  Taborder = 3
+  Caption = All Events
+Name = Exit
+  Type = Button
+  Escape = Yes
+  Height = 25
+  Left = 70
+  Top = 218
+  Width = 107
+  Taborder = 4
+  Caption = Exit
+  <ENDDATA> 

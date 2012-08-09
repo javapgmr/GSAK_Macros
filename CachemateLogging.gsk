@@ -1,0 +1,3281 @@
+# MacDescription=Cachemate to GSAK Logging program.
+# MacFileName=CacheMateLogging.gsk
+# MacAuthor=jholly
+# MacVersion=3.0.3
+# MacUrl=http://gsak.net/board/index.php?showtopic=10739
+#############################################
+# CacheMateLogging v0.2
+# Updated 12-6-07
+# Modified by jholly from original code
+# by Pasha Phares and Lignumaqua
+# REQUIRES: GSAK V7.5 or higher
+#
+# Macro to get the latest copy of Cachemate's
+# backup database, extract the finds, update
+# the local copy, then sequentially (by found
+# date and time) open the 
+# GC.com logging page with the user notes
+# from the local record copied into the
+# clipboard. Once logging is complete, finds
+# are moved to another database If the user
+# has defined that.
+
+# Optionally the user is able to pre-pend the
+# cachemate time and date and update the logged
+# caches with the geocaching.com logid's.
+#
+# REQUIRED: nothing. GSAK has added features
+# that allow the macro to take care of every-
+# thing for you. :)
+#
+# Optional: If you wish to update the logged
+# caches with the logid's you must have installed
+# the macro RefreshAllGPX.gsk. Don't forget to 
+# edit the username and password fields. 
+#
+#
+# Lignumaqua changed/added:
+# 1. Added a V7 form for all user selectable options
+# 2. Added new option to choose If waypoint is matched by Short Name or Code
+# 3. Added new option to choose If data is inserted into 'User Notes' or 'Logs' section. 
+#    Auto Log only runs If 'Logs'is selected
+# 4. Automatically creates any missing files or folders
+# 5. Miscellaneous changes to take advantage of V7 features
+#
+# jholly changed/added
+# 0. updated to 7.2.0.98
+# 1. Added new option to copy/move records after logging.
+# 2. removed commented/dead code
+#
+# V1.0.1
+# 1. Added support for benchmarks
+#
+# V1.0.2
+# 1. Added call to RefreshAllGPX to update log ID's
+#
+# V1.1
+# 1. Added file check for RefreshAllGPX
+# 2. Changed from ShowForm() to Form() 
+#
+# V1.2
+# 1. Added options to form for pre-pending date/time/date and time/or nothing
+# 2. Added Help file
+# 3. Code clean up
+# 
+# V1.2.01
+# 1. logic error correction on checking RefreshAllGPX installed
+#
+# V2.0 - Not Released
+# 1. Dropped cmsettings box - not needed
+# 2. Added handling for DNF's
+# 3. Updated help file
+#
+# V2.1 
+# 1. changed DNF handling
+# 2. moved cm2gpx settings to own config menu
+# 3. added more options on timestamping, added menu
+# 4. Moved DNF handling to separate config menu, added colorizing name column
+# 5. Code restructuring
+# 6. Help file update
+#
+# V2.1.01
+# 1. Save/restore on logging
+#
+# V2.0 - Not Released
+# 1. Dropped cmsettings box - not needed
+# 2. Added handling for DNF's
+# 3. Updated help file
+#
+# V2.1 
+# 1. changed DNF handling
+# 2. moved cm2gpx settings to own config menu
+# 3. added more options on timestamping, added menu
+# 4. Moved DNF handling to separate config menu, added colorizing name column
+# 5. Code restructuring
+# 6. Help file update
+#
+# V2.2
+# 1. Removed code/smart only match to anything match
+# 2. Added confirm list prior to start logging
+# 3. Expanded logging to include free form tags with user defined tags
+#
+# V2.2.01
+# 1. Corrected a Declare problem
+#
+# V2.2.02
+# 1. Corrected code match problem in ReadGPX
+# 2. Made single call to ReadGPX
+#
+# V2.2.03
+# 1. Moved main form to the left
+#
+# V2.2.04 (Not published)
+# 1. Added Pause back in
+#
+# V2.2.1
+# 1. Added back section to load
+#
+# V2.2
+# 1. Added Name/SmartName display to log form
+#
+# V2.2.4
+# 1. Added find/dnf count to confirm form
+# 2. Removed suffix checkboxes and replaced with tags
+#
+# V2.2.5
+# 1. Added missing variable declarations
+# 2. Removed uneeded code from dialog
+#
+# V2.2.6
+# 1. Added missing variable declarations
+# 2. bushman4's RefreshAllGPX is dead. Changed over to SprayPaint's RefreshAllGPX2_0 macro.
+#
+# V2.2.7
+# 1. Fixed bad tags. 
+#
+# V2.3
+# 1. Changed to use V7.6.1.19, DNF's now recognized by GSAK
+# 2. Added warning to log form for log date <> $_Today
+#
+# V2.3.1
+# 1. Removed use of RefreshAllGPX and put in place a call to bookmark.gsk
+# 2. Added support for 7.7.0.91
+#
+# V2.3.2
+# 1. Fixed Transaction error. 
+# 2. Removed dead code.
+# 3. Added ability to click on radiobutton and checkbox captions to select
+#
+# V2.3.3
+# 1. Incorrect variable name on Move radio button on Main Form
+# 2. Allow main form to be centered. 
+# 3. Removed sleeper bug on saving flags.  
+#
+# V2.3.4
+# 1. fixed problem with code match overriding match selection. 
+# 2. Replaced all $_Install with $_AppData
+# 3. Added Exitonchange to move radio buttons and DNF checkbox
+#
+# V2.3.5
+# 1. Added button for cache page display.
+#
+# V3.0
+# 1. Moved to Version 8.0 GSAK. Use API to update caches after logging
+#
+# V3.0.1
+# 1. Added getting find count from GC.com
+# 
+# V3.0.2
+# 1. Added getting logs or skipping
+#
+# V3.0.3
+#1. Fixed type on rbtGCLogs.
+#
+#############################################
+#
+#############################################
+# Usage:	1)Sync your Palm device to make a
+#			backup copy of your CacheMate DB.
+#			2)Run this macro
+#############################################
+
+# Version check
+#You can find the latest version of GSAK in the forums at http://support.gsak.net/.
+VerCheck Version=8.0.0.133 (see http://www.gsak.net/board for version 7.7)
+
+GoSub Name=Init
+
+# Clear all user flags and init variables
+UserFlag Type=clear Range=All
+MacroFlag Type=clear Range=All
+$VarCheck = True
+array(1,0) = "2"    #array to store last total and today
+array(2,0) = "5"    #array to store code/smart state
+array(4,0) = "3"    #array to store  DNF state info
+array(5,0) = "2"    #array to store cm2gpx state info
+$thanks = "Thanks for the cache!"
+$FlagFile = $_AppData + "\Macros\CMLFlag.dat"
+$cbxNumLogs = "4"
+
+#=====================================
+# Forms
+#=====================================
+
+#@+++++++++++++++++
+#@ Main Logging form
+#@+++++++++++++++++
+While True
+	# Display form
+	$MainFormExit = Form($MainForm, "")
+	
+	# Save current form position
+	$MainForm = EditForm($MainForm, "MainForm", "Top", $_FormTop)
+	$MainForm = EditForm($MainForm, "MainForm", "Left", $_FormLeft)
+	BeginCase
+    # red x 
+		Case $MainFormExit = "SystemExit"
+			Cancel msg="Import cancelled"
+		
+		# not used but just in case
+		Case $MainFormExit = "DelayExit"
+			Cancel msg="Unexpected Delay exit from form"
+		
+    # Button OK
+		Case $MainFormExit = "mfOk"
+			GoSub name=VarCheck
+			If $VarCheck
+				GoSub Name=WriteConfigFile
+				GoSub Name=main
+				Break   #Exit back to GUI
+			Else
+				#had a bad value, clear flag and retry
+				$VarCheck = True
+			EndIf
+
+    # cancel button
+		Case $MainFormExit = "mfCancel"
+			Cancel msg="Import cancelled"
+           
+		Case $MainFormExit  = "mfHelp"
+			GoSub name=CMLHelp
+            
+    # cm2gpx config
+    Case $MainFormExit = "mfCm2config"
+      GoSub Name=cm2form
+            
+    # setup for DNF coloring and removal
+    Case $MainFormExit = "mfDNFConfig"
+      GoSub Name=DNFform
+			
+		Case $MainFormExit = "mfSection"
+			GoSub Name=SectionForm
+
+    Case $MainFormExit = "mfMatch"
+      GoSub Name=MatchForm
+            
+    Case $MainFormExit = "mfTemplateCfg"
+      GoSub Name=TemplateConfig
+            
+    # clicked a change on exit button
+    Otherwise
+      GoSub Name=ChangeMainForm
+        
+	EndCase
+EndWhile
+
+#@+++++++++++++++++++++++++++++++++
+#@ Match form
+#@+++++++++++++++++++++++++++++++++
+BeginSub Name=MatchForm
+
+  array(2,1) = BoolToStr($rbtMatchCode, "T", "F")
+  array(2,2) = BoolToStr($rbtMatchSmart, "T", "F")
+  array(2,3) = BoolToStr($rbtMatchDrop2, "T", "F")
+  array(2,4) = BoolToStr($rbtMatchOther, "T", "F")
+  array(2,5) = $edtMatchOther
+
+  While True
+    $MatchFormExit = Form($MatchForm, "")
+    $MatchForm = EditForm($MatchForm, "MatchForm", "Top", $_FormTop)
+    $MatchForm = EditForm($MatchForm, "MatchForm", "Left", $_FormLeft)
+        
+    BeginCase
+      Case $MatchFormExit = "SystemExit"
+        $rbtMatchCode =  StrToBool(array(2,1))
+        $rbtMatchSmart = StrToBool(array(2,2))
+        Break
+               
+      Case $MatchFormExit = "DelayExit"
+        Break
+                
+      Case $MatchFormExit = "wpOk"
+        Break
+                
+      Case $MatchFormExit = "wpCancel"
+        $rbtMatchCode =  StrToBool(array(2,1))
+        $rbtMatchSmart = StrToBool(array(2,2))
+        $rbtMatchDrop2 = StrToBool(array(2,3))
+        $rbtMatchOther = StrToBool(array(2,4))
+        $edMatchOther  = array(2,5)
+        Break
+                
+      Case $MatchFormExit = "wpHelp"
+        GoSub Name=MatchHelpSub
+				
+			Otherwise
+				GoSub Name=ChangeMatchForm
+    EndCase
+  EndWhile
+EndSub
+
+#@++++++++++++++++++++++++++++++++
+#@ DNF form
+#@++++++++++++++++++++++++++++++++
+BeginSub Name=DNFform
+
+  array(4,1) = BoolToStr($chkDNFColor, "T", "F")
+  array(4,2) = $cbxDNFColor
+  array(4,3) = BoolToStr($chkDNFRemove, "T", "F")
+    
+  While True
+    $DNFExit = Form($DNFform, "")
+    $DNFform = EditForm($DNFform, "DNFform", "Top", $_FormTop)
+    $DNFform = EditForm($DNFform, "DNFform", "Left", $_FormLeft)
+        
+    BeginCase
+      Case $DNFExit = "SystemExit"
+        $chkDNFColor = StrToBool(array(4,1))
+        $cbxDNFColor = array(4,2)
+        $chkDNFRemove = StrToBool(array(4,3))
+        Break
+                
+      Case $DNFExit = "DelayExit"
+        Break
+                
+      Case $DNFExit = "DNFOk"
+        If $chkDNFColor
+          GoSub Name=AssignColor
+        EndIf
+        Break
+                
+      Case $DNFExit = "DNFCancel"
+        $chkDNFColor = StrToBool(array(4,1))
+        $cbxDNFColor = array(4,2)
+        $chkDNFRemove = StrToBool(array(4,3))
+        Break
+                
+      Case $DNFExit = "DNFHelp"
+        GoSub Name=DNFHelpSub
+                
+      Otherwise
+        GoSub Name=ChangeDNFform
+    EndCase
+  EndWhile
+EndSub
+
+#@+++++++++++++++++++++++++++
+#@ Data Section Import
+#@+++++++++++++++++++++++++++
+BeginSub Name=SectionForm
+  While True
+    $SectionExit = Form($SectionForm, "")
+    $SectionForm = EditForm($SectionForm, "SectionForm", "Top", $_FormTop)
+    $SectionForm = EditForm($SectionForm, "SectionForm", "Left", $_FormLeft)
+        
+    BeginCase
+      Case $SectionExit = "SystemExit"
+        Break
+                
+      Case $SectionExit = "DelayExit"
+        Break
+                
+      Case $SectionExit = "SectionOK"
+        Break
+                                
+      Case $SectionExit = "SectionHelp"
+        GoSub Name=SectionHelpSub
+    EndCase
+  EndWhile
+EndSub
+
+#@+++++++++++++++++++++++++++
+#@ CM2GPX configuration
+#@+++++++++++++++++++++++++++
+BeginSub Name=cm2form
+    
+  array(5,1) = $fnmCm2GPX
+  array(5,2) = $edtCm2options
+    
+  While True
+    $CmExit = Form($cm2form, "")
+    $cm2form = EditForm($cm2form, "cm2form", "Top", $_FormTop)
+    $cm2form = EditForm($cm2form, "cm2form", "Left", $_FormLeft)
+       
+    BeginCase
+      Case $CmExit = "SystemExit"
+        $fnmCm2GPX = array(5,1)
+        $edtCm2options = array(5,2)
+        Break
+                
+      Case $CmExit = "DelayExit"
+        Break
+                
+      Case $CmExit = "CM2Ok"
+        Break
+
+      Case $CmExit = "CM2Cancel"
+        $fnmCm2GPX = array(5,1)
+        $edtCm2options = array(5,2)
+        Break
+                
+      Case $CmExit = "CM2Help"
+        GoSub Name=CM2HelpSub
+               
+    EndCase
+  EndWhile
+EndSub
+
+#@++++++++++++++++++++++
+#@ Template Config form
+#@++++++++++++++++++++++
+
+BeginSub Name=TemplateConfig
+	While True
+		$TemplateExit =  Form($TemplateForm, "")
+
+		#save the screen position
+		$TemplateForm = EditForm($TemplateForm, "TemplateForm", "Top", $_FormTop)
+		$TemplateForm = EditForm($TemplateForm, "TemplateForm", "Left", $_FormLeft)
+		
+		BeginCase
+			Case $TemplateExit = "SystemExit"
+				Cancel msg="Macro Terminated"
+				
+			Case $TemplateExit = "DelayExit"
+				msgOK msg=DelayExit
+				
+			Case $TemplateExit = "tmpOK"
+				GoSub Name=WriteConfigFile
+				Break
+		EndCase
+	EndWhile
+EndSub
+
+#@+++++++++++++++++++++++++
+#@ Log Form
+#@+++++++++++++++++++++++++
+BeginSub Name=LogForm
+	# initialize display
+	$run = $edtTotalCount
+  
+  # fix up the warning if not logging on same day
+  BeginCase
+    Case $d_found
+      If $d_FoundByMeDate = $_Today
+        $LogForm = EditForm($LogForm, "warn1", "visible", "no")
+        $LogForm = EditForm($LogForm, "warn2", "visible", "no")
+        $LogForm = EditForm($LogForm, "warn3", "visible", "no")
+        $LogForm = EditForm($LogForm, "LogDate", "visible", "no")
+      Else
+        $LogForm = EditForm($LogForm, "warn1", "visible", "yes")
+        $LogForm = EditForm($LogForm, "warn2", "visible", "yes")
+        $LogForm = EditForm($LogForm, "warn3", "visible", "yes")
+        $LogForm = EditForm($LogForm, "LogDate", "visible", "yes")
+      EndIf
+
+    Case $d_DNF
+      If $d_DNFDate = $_Today
+        $LogForm = EditForm($LogForm, "warn1", "visible", "no")
+        $LogForm = EditForm($LogForm, "warn2", "visible", "no")
+        $LogForm = EditForm($LogForm, "warn3", "visible", "no")
+        $LogForm = EditForm($LogForm, "LogDate", "visible", "no")
+      Else
+        $LogForm = EditForm($LogForm, "warn1", "visible", "yes")
+        $LogForm = EditForm($LogForm, "warn2", "visible", "yes")
+        $LogForm = EditForm($LogForm, "warn3", "visible", "yes")
+        $LogForm = EditForm($LogForm, "LogDate", "visible", "yes")
+      EndIf
+  EndCase
+
+	While True
+		$LogExit =  Form($LogForm, "")
+
+		#save the screen position
+		$LogForm = EditForm($LogForm, "LogForm", "Top", $_FormTop)
+		$LogForm = EditForm($LogForm, "LogForm", "Left", $_FormLeft)
+		
+		BeginCase
+			Case $LogExit = "SystemExit"
+				cancel msg="Macro Terminated"
+				
+			Case $LogExit = "DelayExit"
+				msgOK msg=DelayExit
+				cancel 
+				
+			Case $LogExit = "logOK"
+				Break
+                
+			Case $LogExit = "cfgTemplate"
+				GoSub Name=TemplateConfig
+                
+			Case $LogExit = "logReset"
+				$TodayCount = "1"
+				
+			Case $LogExit = "logRefresh"
+				If $d_found
+					$ThisCacheLogText = $edtLogTemplate
+					GoSub Name=DoFoundTemplate
+				Else
+					$ThisCacheLogText = $edtDNFTemplate
+					GoSub Name=DoDNFTemplate
+				EndIf
+				GoSub Name=GenerateTime
+				
+			Case $CPage
+				Web URL=$d_url
+
+				Otherwise	
+				GoSub Name=LoadName
+				GoSub Name=WriteConfigFile
+        EndCase
+	EndWhile
+EndSub
+#@+++++++++++++++++++++++++++++
+#@ Main Form Help 
+#@+++++++++++++++++++++++++++++
+BeginSub Name=CMLHelp
+	While True
+		$HelpExit =  Form($HelpForm, "")
+
+		#save the screen position
+		$HelpForm = EditForm($HelpForm, "MainFormHelp", "Top", $_FormTop)
+		$HelpForm = EditForm($HelpForm, "MainFormHelp", "Left", $_FormLeft)
+		
+		BeginCase
+			Case $HelpExit = "SystemExit"
+				Break
+				
+			Case $HelpExit = "DelayExit"
+				Break
+				
+			Case $HelpExit = "HClose"
+				Break
+		EndCase
+	EndWhile
+EndSub
+
+#@+++++++++++++++++++++++++++++
+#@ CM2GPX Help
+#@+++++++++++++++++++++++++++++
+BeginSub Name=CM2HelpSub
+	While True
+		$CM2HelpExit =  Form($CM2HelpForm, "")
+
+		#save the screen position
+		$CM2HelpForm = EditForm($CM2HelpForm, "CM2GPXHelp", "Top", $_FormTop)
+		$CM2HelpForm = EditForm($CM2HelpForm, "CM2GPXHelp", "Left", $_FormLeft)
+				
+		BeginCase
+			Case $CM2HelpExit = "SystemExit"
+				Break
+				
+			Case $CM2HelpExit = "DelayExit"
+				Break
+				
+			Case $CM2HelpExit = "HClose"
+				Break
+		EndCase
+	EndWhile
+EndSub
+
+#@++++++++++++++++++++++++++++
+#@ Code/Smart Name Help
+#@++++++++++++++++++++++++++++
+BeginSub Name=MatchHelpSub
+	While True
+		$MatchHelpExit =  Form($MatchHelpForm, "")
+
+		#save the screen position
+		$MatchHelpForm = EditForm($MatchHelpForm, "MatchHelp", "Top", $_FormTop)
+		$MatchHelpForm = EditForm($MatchHelpForm, "MatchHelp", "Left", $_FormLeft)
+		
+		BeginCase
+			Case $MatchHelpExit = "SystemExit"
+				Break
+				
+			Case $MatchHelpExit = "DelayExit"
+				Break
+				
+			Case $MatchHelpExit = "HClose"
+				Break
+		EndCase
+	EndWhile
+EndSub
+
+#@+++++++++++++++++++++++++++
+#@ DNF help
+#@+++++++++++++++++++++++++++
+BeginSub Name=DNFHelpSub
+	While True
+		$DNFHelpExit =  Form($DNFHelpForm, "")
+
+		#save the screen position
+		$DNFHelpForm = EditForm($DNFHelpForm, "DNFHelp", "Top", $_FormTop)
+		$DNFHelpForm = EditForm($DNFHelpForm, "DNFHelp", "Left", $_FormLeft)
+		
+		BeginCase
+			Case $DNFHelpExit = "SystemExit"
+				Break
+				
+			Case $DNFHelpExit = "DelayExit"
+				Break
+				
+			Case $DNFHelpExit = "HClose"
+				Break
+		EndCase
+	EndWhile
+EndSub
+
+#@+++++++++++++++++++++++++++
+#@ Section help
+#@+++++++++++++++++++++++++++
+BeginSub Name=SectionHelpSub
+	While True
+		$SectionHelpExit =  Form($SectionHelpForm, "")
+
+		#save the screen position
+		$SectionHelpForm = EditForm($SectionHelpForm, "SectionHelp", "Top", $_FormTop)
+		$SectionHelpForm = EditForm($SectionHelpForm, "SectionHelp", "Left", $_FormLeft)
+		
+		BeginCase
+			Case $SectionHelpExit = "SystemExit"
+				Break
+				
+			Case $SectionHelpExit = "DelayExit"
+				Break
+				
+			Case $SectionHelpExit = "HClose"
+				Break
+		EndCase
+	EndWhile
+EndSub
+
+################################
+#
+# Subroutines
+#
+################################
+
+#@++++++++++++++++++++
+#@ Main processing loop
+#@++++++++++++++++++++
+
+BeginSub Name=Main
+	# If we get to here then the user must have clicked on the OK button
+	# update from form 
+
+	# Select the database If it isn't already
+	$currentdb = $_CurrentDatabase
+	If $currentdb <> $cbxDataBase
+		Database Name="$cbxDataBase" Action=Select
+	EndIf
+	GoSub Name=SaveState
+	# Run cm2gpx.exe to create $findsgpx
+	RunPgm Pgm=$fnmCm2GPX Parms=$edtCm2options -o "$findsgpx" "$fnmpdbfile" Wait=Yes
+	# Make sure findsgpx exists before continuing
+	If NOT (FileExists($findsgpx))
+		Cancel Msg="FAILURE: $findsgpx does not exist! "
+	EndIf
+
+	# Import $findsgpx into GSAK using user settings If they exist; 
+	# First set the match 
+	Vsub Status=off
+	BeginCase
+		Case $rbtMatchCode             
+			$CachemateLog = Replace("MatchString", "%code", $CachemateLog, FALSE)
+
+		Case $rbtMatchSmart
+			$CachemateLog = Replace("MatchString", "%smart", $CachemateLog, FALSE)
+            
+		Case $rbtMatchDrop2
+			$CachemateLog = Replace("MatchString", "%drop2", $CachemateLog, FALSE)
+
+		Case $rbtMatchOther
+			$CachemateLog = Replace("MatchString", $edtMatchOther, $CachemateLog, FALSE)
+	EndCase
+	Vsub status=on
+	If $rbtLog
+		$CachemateLog = Replace("XXLOGXX", "True", $CachemateLog, FALSE)
+		$CachemateLog = Replace("XXNOTESXX", "False", $Cachematelog, FALSE)
+	Else
+		$CachemateLog = Replace("XXLOGXX", "False", $CachemateLog, FALSE)
+		$CachemateLog = Replace("XXNOTESXX", "True", $Cachematelog, FALSE)
+	EndIf
+	If $rbtReplace
+		$CachemateLog = Replace("XXREPLACEXX", "True", $CachemateLog, FALSE)
+		$CachemateLog = Replace("XXADDXX", "False", $CachemateLog, FALSE)
+	Else
+		$CachemateLog = Replace("XXREPLACEXX", "False", $CachemateLog, FALSE)
+		$CachemateLog = Replace("XXADDXX", "True", $CachemateLog, FALSE)
+	EndIf
+	
+	MacroSet Dialog=CachemateLog VarName=$CachemateLog
+	CacheMate Settings=<macro> File="$findsgpx"
+	# Filter so our list is only new finds using the UserFlag set during Cachemate import
+	Mfilter Expression If=$d_UserFlag
+	# If there's records in the filter, sort 'em and log 'em, pausing between each for the user to confirm.
+	If $_FilterCount > 0
+		Sort By="UserSort" 
+		GoSub Name=ShowConfirm
+		$TodayCount = "1"		#initialize counter for today's run  
+		Transaction Action=Begin
+		While NOT($_EOL)
+			GoSub Name=ReadGPX
+			If $d_found
+				BeginCase
+					Case $d_CacheType="G"
+						If $chkDNFRemove and $d_DNFDate <> [00000000]
+							SETCOLOR Color=clear Row=current Column="name"
+						EndIf   
+						#If logging a benchmark, dIfferent url string
+						$url = "http://www.geocaching.com/mark/log.aspx?WP=$d_Code&LogType=2"
+
+					# CITO, Event, Maze or Mega types, Attend Record
+					Case $d_CacheType="C" OR $d_CacheType="E" OR $d_CacheType="X" OR $d_CacheType="Z"
+						# logging attended
+						If $chkDNFRemove and $d_DNFDate <> [00000000]
+							SETCOLOR Color=clear Row=current Column="name"
+						EndIf   
+						$url = "http://www.geocaching.com/seek/log.aspx?ID=%gcid&LogType=10"
+ 
+					#WebCam
+					Case $d_CacheType="W"
+						# photo taken
+						If $chkDNFRemove and $d_DNFDate <> [00000000]
+							SETCOLOR Color=clear Row=current Column="name"
+						EndIf   
+						$url = "http://www.geocaching.com/seek/log.aspx?ID=%gcid&LogType=11"
+                    
+					# Everything else
+					Otherwise
+						# found it
+						If $chkDNFRemove and $d_DNFDate <> [00000000]
+							SETCOLOR Color=clear Row=current Column="name"
+						EndIf
+						$url = "http://www.geocaching.com/seek/log.aspx?ID=%gcid&LogType=2"
+				EndCase
+			ELSE # Must be Not Found
+				If $d_CacheType="G"
+					# check to see if we should color
+					IF $chkDNFColor
+						SETCOLOR Color=$Color Row=current Column="name"
+					EndIf
+					#If logging a benchmark, different url string
+					$url = "http://www.geocaching.com/mark/log.aspx?WP=$d_Code&LogType=3"
+					# Set macro flag if not found, will remove it from the moves
+					$d_MacroFlag = True
+					# Everything else
+				Else
+					# not found
+					# check to see if we should color
+					If $chkDNFColor
+						SETCOLOR Color=$Color Row=current Column="name"
+					EndIf
+					$url = "http://www.geocaching.com/seek/log.aspx?ID=%gcid&LogType=3"
+					# Clear user flag to take it out of the filter so it is not moved
+					$d_MacroFlag = True
+				EndIf
+			EndIF
+			GoSub Name=ShowLog
+			Web Url=$url
+			Pause Msg="Click Continue when logged successfully."
+			# Purge no longer needed logs
+			Purgenote Type=LogOnly Range=Current
+			GoTo Position=Next
+		Endwhile
+        Transaction Action=End
+		
+		# see if we have any thing left to work with ... they could all be DNF's
+		MFILTER Expression If=$d_MacroFlag Reverse=Yes Join=AND
+		If $_FilterCount > 0
+			#update logids
+			If $rbtGCLogs
+				GcGetLogs Scope=Filter LogsPerCache=$cbxNumLogs ShowSummary=N	
+			Else If $rbtUpdMan
+				# Null Statement  Macro file="$_AppData\Macros\BookMark.gsk"
+			EndIf
+			#see If we want to move or copy records
+			If not ($rbtDontMove)      	# move/copy records
+				If  $rbtMove          # move
+					$MoveCopy = Replace("XXDBXX", $cbxMoveDB, $MoveCopy)
+					$MoveCopy = $MoveCopy + "rbtCopy.Checked=False" + $_NewLine
+					$MoveCopy = $MoveCopy + "rbtMove.Checked=True" + $_NewLine
+				Else				# copy
+					$MoveCopy = Replace("XXDBXX", $cbxMoveDB, $MoveCopy)
+					$MoveCopy = $MoveCopy + "rbtCopy.Checked=True" + $_NewLine
+					$MoveCopy = $MoveCopy + "rbtMove.Checked=False" + $_NewLine
+				EndIf
+				MacroSet Dialog=MoveCopy Varname=$MoveCopy
+				MoveCopy Settings=<macro>
+			EndIf
+		Endif
+	Else
+		Pause Msg="No found caches in filter! Clearing and exiting."
+	EndIf
+	#save counters
+	GoSub Name=WriteConfigFile 
+	# Done with processing, restore to what we were and go back to GUI
+	GoSub Name=RestoreState
+EndSub
+
+#@++++++++++++++++++++++
+#@ Main form support routines
+#@++++++++++++++++++++++
+BeginSub Name=VarCheck
+	# Check values are OK
+	# Location of cm2gpx.exe
+	If NOT((FileExists($fnmCm2GPX)))
+		$msg = "cm2gpx.exe not found." + $_NewLine + "Please check path to cm2gpx.exe"
+		Pause msg=$msg
+		$VarCheck = False
+	EndIf
+		
+	# location of pdb file
+	If NOT((FileExists($fnmPDBFile)))
+		$inputmsg = "No such PDB file exists!" + $_NewLine + "(At least, change [PALM USERNAME] to match the first six characters of your Palm username; If needed, change the whole string to match the PDB file to use.)" + $_NewLine + $_NewLine + "(My Palm username is 'jholly', so my entry here reads 'C:\Program Files\Palm\jholly\Backup\DefaultItems-cMat.pdb'.)"
+		Pause msg=$inputmsg
+		$VarCheck = False
+	EndIf
+	
+	# If update logid's was chosen, check for macro
+	If $rbtBkMrk
+		$tmp = $_AppData + "\Macros\BookMark.gsk"
+		If NOT((FileExists($tmp)))
+			$msg = "Macrofile for BookMark not found" + $_NewLine + "Please install file or uncheck selection"
+			Pause msg=$msg
+			$VarCheck = False
+		EndIf
+	EndIf
+EndSub
+
+BeginSub Name=ShowConfirm
+  $blanks = " -------"
+  $ProcessList = list("caches","create",";")
+	$DNFcfm = "0"
+	$Foundcfm = "0"
+  While NOT($_EOL)
+    BeginCase
+      Case $d_found
+        $wp = $d_code + SubStr($blanks, 1, (8-len($d_code))) + "- Found"
+        $Foundcfm = NumtoStr(val($Foundcfm) + 1)
+      Case $d_DNF
+        $wp = $d_code + SubStr($blanks, 1, (8-len($d_code))) + "- *DNF*"
+        $DNFcfm =  NumtoStr(Val($DNFcfm) + 1)
+      otherwise
+        $wp = $d_code + SubStr($blanks, 1, (8-len($d_code))) + "- *???*"
+    EndCase
+    $ProcessList = list("caches", "add", "$wp")
+    GoTo Position=Next
+  EndWhile
+  Goto Position=top
+  $ProcessList = list("caches", "get", "")
+  $ProcessList = RegExReplace(";", $ProcessList, $_NewLine)
+  GoSub Name=CFMList
+  $ProcessList = list("caches", "destroy", "")
+EndSub
+
+BeginSub Name=CFMList
+	While True
+		$ConfirmExit =  Form($ConfirmForm, "")
+
+		#save the screen position
+		$ConfirmForm = EditForm($ConfirmForm, "ConfirmForm", "Top", $_FormTop)
+		$ConfirmForm = EditForm($ConfirmForm, "ConfirmForm", "Left", $_FormLeft)
+		
+		BeginCase
+			Case $ConfirmExit = "SystemExit"
+				If YesNo("Do you want to exit the macro?")
+					Cancel msg=Macro Terminated
+				Else
+					Break
+				EndIf
+               				
+			Case $ConfirmExit = "DelayExit"
+				msgOK msg=DelayExit
+				
+			Case $ConfirmExit = "cfmOK"
+				Break
+                
+      Case $ConfirmExit = "cfmExit"
+        Cancel msg=Macro Terminated
+		EndCase
+	EndWhile
+EndSub
+    
+BeginSub Name=ShowLog
+    #show current cache#
+    $CurrentCache = $d_code
+    #get notes and log
+    $edtUserNote = Extract($d_UserNote, "$~", 1)
+    $LogText = Extract($d_UserNote, "$~", 2)
+    #if it is a found record
+    If $d_found
+		$LogType = "Found"
+    BeginCase
+      #case benchmark
+      Case $d_cacheType = "G"
+        #save for later
+        array(1,1) = $CurrentTotal
+        array(1,2) = $TodayCount
+        #today and total show N/A
+        $CurrentTotal = "   N/A"
+        $TodayCount = "   N/A"
+        #display log+User Note
+        GoSub Name=LoadName
+        $ThisCacheLogText = $LogText
+        GoSub Name=LogForm
+        $CurrentTotal =  array(1,1)
+        $TodayCount =  array(1,2)
+
+        #case event 
+        Case $d_CacheType = "C" OR $d_CacheType = "E" OR $d_CacheType = "X" OR $d_CacheType = "Z"
+          #display log+User Note
+          $CurrentTotal = NumToStr(Val($edtTotalCount) + 1)
+          GoSub Name=DoFoundTemplate
+          GoSub Name=LoadName
+          GoSub Name=LogForm
+          #inc total and today count
+          GoSub Name=IncCounters
+
+        Otherwise
+          #Process found template
+          $CurrentTotal = NumToStr(Val($edtTotalCount) + 1)
+          GoSub Name=DoFoundTemplate
+          #display log+template
+          GoSub Name=LoadName
+          GoSub Name=LogForm
+          #inc total and today Note
+          GoSub Name=IncCounters
+      EndCase
+    Else
+      $LogType = "Did Not Find"
+      BeginCase
+        Case $d_CacheType = "G"
+          #display log+user note
+          array(1,1) = $CurrentTotal
+          array(1,2) = $TodayCount
+          $CurrentTotal = "    N/A"
+          $run = "    N/A"
+          GoSub Name=LoadName
+          $ThisCacheLogText = $LogText
+          GoSub Name=LogForm
+          $CurrentTotal =  array(1,1)
+          $TodayCount =  array(1,2)
+
+        Case $d_CacheType = "C" OR $d_CacheType = "E" OR $d_CacheType = "X" OR $d_CacheType = "Z"
+          #display log+user note
+          $CurrentTotal =  $edtTotalCount
+          $ThisCacheLogText = $LogText
+          GoSub Name=LoadName
+          GoSub Name=LogForm
+				
+			
+        Otherwise
+          #process dnf template
+          $CurrentTotal =  $edtTotalCount
+          $edtDNFCount = NumToSTr(Val($edtDNFCount) + 1)
+          GoSub Name=DoDNFTemplate
+          #display log+User Note
+          GoSub Name=LoadName
+          GoSub Name=LogForm
+          $TodayCount = NumToStr(Val($TodayCount) + 1)
+      EndCase
+    EndIf
+    Clip data=$ThisCacheLogText
+    $d_UserNote = $edtUserNote + "$~"
+EndSub
+
+BeginSub Name=IncCounters
+  $edtTotalCount = NumToStr(Val($edtTotalCount) + 1)
+	$TodayCount = NumToStr(Val($TodayCount) + 1)
+EndSub
+
+BeginSub Name=DoFoundTemplate
+	$ThisCacheLogText = $edtLogTemplate
+	GoSub Name=FixLog
+EndSub        
+
+BeginSub Name=DoDNFTemplate
+	$ThisCacheLogText = $edtDNFTemplate
+	GoSub Name=FixLog
+EndSub    
+
+BeginSub Name=LoadName
+	If $rbtCacheName
+		$CacheName = $d_Name
+	Else
+		$CacheName = $d_SmartName
+	EndIf
+EndSub
+
+BeginSub Name=FixLog
+	GoSub Name=GenerateSuffix
+	$ThisCacheLogText = Replace("%log", "$LogText", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%nfsuffix", "$dnfsuffix", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%rsuffix", "$runsuffix", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%csuffix", "$countsuffix", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%custom1", "$edtCustom1", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%custom2", "$edtCustom2", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%count", "$CurrentTotal", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%date", "$LogDate", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%day", "$Day", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%month", "$Month", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%note", "$edtUserNote", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%notfound", "$edtDNFCount", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%nick", "$edtName", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%run", "$TodayCount", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%time12", "$strTime12", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%time", "$strTime", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%thanks", "$thanks", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%year", "$Year", $ThisCacheLogText)
+	$ThisCacheLogText = Replace("%owner", $d_OwnerName, $ThisCacheLogText)
+EndSub
+    
+BeginSub Name=GenerateSuffix
+	$num = Val($CurrentTotal)
+	GoSub Name=MakeSuffix
+	$countsuffix = $suffix
+
+	$num = Val($edtDNFCount)
+	GoSub Name=MakeSuffix
+	$dnfsuffix = $suffix
+	
+ 	$num = Val($TodayCount)
+	GoSub Name=MakeSuffix
+	$runsuffix = $suffix
+EndSub
+	
+BeginSub Name=MakeSuffix
+	# Calculate ordinal suffix
+	BEGINCASE 
+		CASE 100*(Frac($num/100)) > 10 AND 100*(Frac($num/100)) < 14
+			$suffix = "th"
+			
+		CASE $num = 0
+			$suffix = ""
+			
+		CASE Right("$num",1) = "1"
+			$suffix = "st"
+			
+		CASE Right("$num",1) = "2"
+			$suffix = "nd"
+			
+		CASE Right("$num",1) = "3"
+			$suffix = "rd"
+			
+		OTHERWISE
+			$suffix = "th"
+	ENDCASE  
+EndSub
+
+# In V2.3 the guts of this routine has been replaced. There is no longer a need to read the finds.gpx file to recover 
+# log times and dates. This done by GSAK on import, we just need to grab the info from GSAK.
+BeginSub Name=ReadGPX
+	# Get date. Record should only be a Found or DNF. If anything else the dates will not be filled in but the
+  # UserSort will be filled in. 
+  If $d_Found
+    $LogDate = DateFormat($d_FoundByMeDate)
+    $year    = Substr((datetostring($d_foundbymedate)), 1, 4)
+    $month   = Substr((datetostring($d_foundbymedate)), 5, 2)
+    $day     = Substr((datetostring($d_foundbymedate)), 7, 2)
+  EndIf
+  # No If-Else-EndIf because if some one defines a new category and exports it to the gpx it will be loaded by 
+  # GSAK but no flags or dates are updated. The Else would fail because fields are not what we think.
+  If $d_DNF
+    $LogDate = DateFormat($d_DNFDate)
+    $year    = Substr((datetostring($d_DNFDate)), 1, 4)
+    $month   = Substr((datetostring($d_DNFDate)), 5, 2)
+    $day     = Substr((datetostring($d_DNFDate)), 7, 2)
+  EndIf  
+  $hour    = SubStr((Right(NumToStr($d_UserSort), 6)), 1, 2)
+  $minute  = SubStr((Right(NumToStr($d_UserSort), 6)), 3,2)
+  $strTime = $hour + ":" + $minute
+  GoSub Name=GenerateTime
+ENDSUB
+
+
+BeginSub Name=GenerateTime
+	# 12 hour format string
+	BEGINCASE
+		CASE Val($Hour) < 12
+			$strTime12 = $Hour + ":" + $Minute + " AM"
+	
+		CASE Val($Hour) = 12
+			$strTime12 = $Hour + ":" + $Minute + " PM"
+
+		OTHERWISE
+			$strTime12 = Str(Val($Hour)-12,2,0) + ":" + $Minute + " PM"
+	ENDCASE
+EndSub
+
+#@++++++++++++++++++++++
+#@ Form Update subroutes
+#@++++++++++++++++++++++
+
+BeginSub Name=ChangeDNFform
+    If $chkDNFColor
+      $DNFform = EditForm($DNFform, "cbxDNFColor", "Enabled", "Yes")
+      $DNFform = Editform($DNFform, "chkDNFRemove", "Enabled", "Yes")
+    Else
+      $DNFform = EditForm($DNFform, "cbxDNFColor", "Enabled", "No")
+      $DNFform = Editform($DNFform, "chkDNFRemove", "Enabled", "No")
+    EndIf
+EndSub
+
+BeginSub Name=ChangeMainForm
+    If $rbtDontMove
+      $MainForm = EditForm($MainForm, "cbxMoveDB", "Enabled", "No")
+    Else
+      $MainForm = EditForm($MainForm, "cbxMoveDB", "Enabled", "Yes")
+    EndIf
+EndSub
+
+BeginSub Name=ChangeMatchForm
+	If $rbtMatchCode OR $rbtMatchSmart OR $rbtMatchDrop2
+		$MatchForm = EditForm($MatchForm, "edtMatchOther", "Enabled", "No")
+	Else
+		$MatchForm = EditForm($MatchForm, "edtMatchOther", "Enabled", "Yes")
+	EndIf
+EndSub
+
+#@+++++++++++++++++++++++++
+#@ Initialization routines
+#@+++++++++++++++++++++++++
+
+BeginSub Name=Init
+  #do some initializaton
+  GoSub Name=DeclareVars
+  GoSub Name=InitColors
+  GoSub Name=AssignColor
+  GoSub Name=SetFilePath
+  GoSub Name=Readconfigfile
+  GoSub Name=InitForm
+  GoSub Name=InitHelp
+EndSub
+
+BeginSub Name=DeclareVars
+#*******************************************************
+#   Variable declarations for
+#   C:\Users\jholly\AppData\Roaming\gsak\Macros\Cachematelogging.gsk
+#
+#   Generated 7/1/2009 on GSAKVariables.gsk Rev V0.30
+#
+#*******************************************************
+
+
+#Option Explicit=Yes
+
+Declare Var=$BatFile Type=String
+Declare Var=$blanks Type=String
+Declare Var=$Blue Type=Numeric
+Declare Var=$CachemateLog Type=String
+Declare Var=$CacheName Type=String
+Declare Var=$cbxDataBase Type=String
+Declare Var=$cbxDNFColor Type=String
+Declare Var=$cbxMoveDB Type=String
+Declare Var=$cbxNumLogs Type=String
+Declare Var=$cbxVars Type=String
+Declare Var=$chkDNFColor Type=Boolean
+Declare Var=$chkDNFRemove Type=Boolean
+Declare Var=$chkVars Type=String
+Declare Var=$cm2form Type=String
+Declare Var=$CM2HelpExit Type=String
+Declare Var=$CM2HelpForm Type=String
+Declare Var=$CM2Helptxt Type=String
+Declare Var=$CmExit Type=String
+Declare Var=$CMLCM2HelpV21 Type=String
+Declare Var=$CMLDNFHelpV21 Type=String
+Declare Var=$CMLHelpV21 Type=String
+Declare Var=$CMLMatchHelpV22 Type=String
+Declare Var=$CMLSectionHelpV221 Type=String
+Declare Var=$Color Type=Numeric
+Declare Var=$configfilepath Type=String
+Declare Var=$ConfirmExit Type=String
+Declare Var=$ConfirmForm Type=String
+Declare Var=$countsuffix Type=String
+Declare Var=$CurrentCache Type=String
+Declare Var=$currentdb Type=String
+Declare Var=$currentfilter Type=String
+Declare Var=$currentsort Type=String
+Declare Var=$CurrentTotal Type=String
+Declare Var=$data Type=String
+Declare Var=$Day Type=String
+Declare Var=$dblist Type=String
+Declare Var=$DNFcfm Type=String
+Declare Var=$DNFExit Type=String
+Declare Var=$DNFform Type=String
+Declare Var=$DNFHelpExit Type=String
+Declare Var=$DNFHelpForm Type=String
+Declare Var=$DNFHelptxt Type=String
+Declare Var=$dnfsuffix Type=String
+Declare Var=$edMatchOther Type=String
+Declare Var=$edtCm2options Type=String
+Declare Var=$edtCustom1 Type=String
+Declare Var=$edtCustom2 Type=String
+Declare Var=$edtDNFCount Type=String
+Declare Var=$edtDNFTemplate Type=String
+Declare Var=$edtLogTemplate Type=String
+Declare Var=$edtMatchOther Type=String
+Declare Var=$edtName Type=String
+Declare Var=$edtTotalCount Type=String
+Declare Var=$edtUserNote Type=String
+Declare Var=$edtVars Type=String
+Declare Var=$findsgpx Type=String
+Declare Var=$FlagFile Type=String
+Declare Var=$fnmCm2GPX Type=String
+Declare Var=$fnmPDBFile Type=String
+Declare Var=$fnmVars Type=String
+Declare Var=$Foundcfm Type=String
+Declare Var=$Green Type=Numeric
+Declare Var=$HelpExit Type=String
+Declare Var=$HelpForm Type=String
+Declare Var=$helptext Type=String
+Declare Var=$Hour Type=String
+Declare Var=$inputmsg Type=String
+Declare Var=$Load Type=String
+Declare Var=$LogDate Type=String
+Declare Var=$LogExit Type=String
+Declare Var=$LogForm Type=String
+Declare Var=$LogText Type=String
+Declare Var=$LogType Type=String
+Declare Var=$MacVars Type=String
+Declare Var=$MainForm Type=String
+Declare Var=$MainFormExit Type=String
+Declare Var=$MatchForm Type=String
+Declare Var=$MatchFormExit Type=String
+Declare Var=$MatchHelpExit Type=String
+Declare Var=$MatchHelpForm Type=String
+Declare Var=$MatchHelptxt Type=String
+Declare Var=$Minute Type=String
+Declare Var=$Month Type=String
+Declare Var=$MoveCopy Type=String
+Declare Var=$msg Type=String
+Declare Var=$num Type=Numeric
+Declare Var=$Orange Type=Numeric
+Declare Var=$owner Type=String
+Declare Var=$ProcessList Type=String
+Declare Var=$rbtBkMrk Type=Boolean
+Declare Var=$rbtCacheName Type=Boolean
+Declare Var=$rbtCacheSmrtName Type=Boolean
+Declare Var=$rbtCopy Type=Boolean
+Declare Var=$rbtDontMove Type=Boolean
+Declare Var=$rbtLog Type=Boolean
+Declare Var=$rbtGCLogs Type=Boolean
+Declare Var=$rbtMatchCode Type=Boolean
+Declare Var=$rbtMatchDrop2 Type=Boolean
+Declare Var=$rbtMatchOther Type=Boolean
+Declare Var=$rbtMatchSmart Type=Boolean
+Declare Var=$rbtMove Type=Boolean
+Declare Var=$rbtNone Type=Boolean
+Declare Var=$rbtNotes Type=Boolean
+Declare Var=$rbtReplace Type=Boolean
+Declare Var=$rbtTxtAdd Type=Boolean
+Declare Var=$rbtVars Type=String
+Declare Var=$rbtVars2 Type=String
+Declare Var=$Red Type=Numeric
+Declare Var=$result Type=String
+Declare Var=$run Type=String
+Declare Var=$runsuffix Type=String
+Declare Var=$SectionExit Type=String
+Declare Var=$SectionForm Type=String
+Declare Var=$SectionHelpExit Type=String
+Declare Var=$SectionHelpForm Type=String
+Declare Var=$SectionHelptxt Type=String
+Declare Var=$sequence Type=String
+Declare Var=$sortdata Type=String
+Declare Var=$status Type=String
+Declare Var=$strTime Type=String
+Declare Var=$strTime12 Type=String
+Declare Var=$suffix Type=String
+Declare Var=$TagHelp Type=String
+Declare Var=$TemplateExit Type=String
+Declare Var=$TemplateForm Type=String
+Declare Var=$thanks Type=String
+Declare Var=$ThisCacheLogText Type=String
+Declare Var=$tmp Type=String
+Declare Var=$tmppath Type=String
+Declare Var=$TodayCount Type=String
+Declare Var=$url Type=String
+Declare Var=$VarCheck Type=Boolean
+Declare Var=$Violet Type=Numeric
+Declare Var=$wp Type=String
+Declare Var=$Year Type=String
+Declare Var=$Yellow Type=Numeric
+###### End Generated Declarations ######
+
+#################################
+
+#Variables for BookMark.gsk
+
+ #*******************************************************
+#   Variable declarations for
+#   C:\Users\jholly\AppData\Roaming\gsak\Macros\BookMark.gsk
+#
+#   Generated 12/19/2009 on GSAKVariables.gsk Rev V0.30
+#
+#*******************************************************
+
+Declare Var=$Current Type=Numeric
+Declare Var=$GuiId Type=String
+Declare Var=$index Type=Numeric
+Declare Var=$msg Type=String
+Declare Var=$Skipped Type=Numeric
+Declare Var=$Type1 Type=String
+Declare Var=$url Type=String
+Declare Var=$WayNums Type=String
+Declare Var=$waytype Type=String
+
+
+# variables for config file
+
+$cbxVars="cbxDataBase,cbxDNFColor,cbxMoveDB,cbxNumLogs"
+$chkVars="chkDNFColor,chkDNFRemove"
+$edtVars="edtCm2options,edtDNFCount,edtCustom1,edtCustom2,edtDNFTemplate,edtLogTemplate,edtMatchOther,edtName"
+$fnmVars="fnmCm2gpx,fnmPDBFile"
+$rbtVars="rbtBkMrk,rbtCacheName,rbtCacheSmrtName,rbtCopy,rbtDontMove,rbtGCLogs,rbtLog,rbtMatchCode,rbtMatchDrop2"
+$rbtVars2="rbtMatchOther,rbtMatchSmart,rbtMove,rbtNone,rbtNotes,rbtReplace,rbtTxtAdd,rbtUpdMan"
+$MacVars=$cbxVars+","+$chkVars+","+$edtVars+","+$fnmVars+","+$rbtVars+","+$rbtVars2
+
+EndSub
+
+BeginSub Name=InitColors
+    # Establish color values
+    $Red=10461183
+    $Orange=11060735
+    $Yellow=8454143
+    $Green=13434828
+    $Blue=16777088
+    $Violet=16752591
+EndSub
+
+BeginSub Name=AssignColor
+    #Assign Color
+    BeginCase
+        CASE $cbxDNFColor="Red"
+          $Color=$Red
+          
+        CASE $cbxDNFColor="Orange"
+          $Color=$Orange
+          
+        CASE $cbxDNFColor="Yellow"
+          $Color=$Yellow
+          
+        CASE $cbxDNFColor="Green"
+          $Color=$Green
+          
+        CASE $cbxDNFColor="Blue"
+          $Color=$Blue
+          
+        CASE $cbxDNFColor="Violet"
+          $Color=$Violet
+    EndCase
+EndSub
+
+BeginSub Name=SetFilePath
+
+    # Set and validate some file paths
+    $configfilepath = $_AppData + "\Macros"
+    $tmppath = $_AppData + "\temp"
+    $findsgpx = $tmppath + "\finds.gpx"
+
+    If NOT (FolderExists($configfilepath))   
+        $BatFile = $_AppData + "\babel. bat"
+        $result = PutFile($BatFile,     "MD " + quote($configfilepath))
+        FileOpen File="$BatFile" Wait=yes
+    EndIf
+
+    If NOT (FolderExists($tmppath))
+        $BatFile = $_AppData + "\babel.bat"
+        $result = PutFile($BatFile, "MD " + quote($tmppath))
+        FileOpen File="$BatFile" Wait=yes
+    EndIf
+
+    # Delete the old findsgpx If it exists
+    If (FileExists($findsgpx))
+       FileErase File=$findsgpx
+    EndIf
+EndSub
+
+BeginSub Name=Readconfigfile
+    MacSettings Type=R File=cachematelogging FileCheck=N
+	# get edtTotalCount from GC.com
+	GoSub Name=GetTotalCount
+    If $fnmCm2gpx = ""
+      # No saved file so set defaults for form
+      $cbxDNFColor   = "Yellow"
+      $chkDNFColor   = FALSE
+      $rbtGCLogs	 = FALSE
+	  $rbtBkMrk      = FALSE
+	  $rbtNone       = TRUE
+      $edtCm2options = "-C ""Found:Not Found"" -eT"
+      $edtMatchOther = ""
+      $fnmPDBFile    = "C:\Program Files\palm\[PALM USERNAME]\Backup\DefaultItems-cMat.PDB"
+      $rbtCopy       = FALSE
+      $rbtDontMove   = TRUE
+      $rbtMatchCode  = TRUE
+      $rbtMatchSmart = FALSE
+      $rbtMatchDrop2 = FALSE
+      $rbtMatchOther = FALSE
+      $rbtLog        = TRUE
+      $rbtNotes      = FALSE
+      $rbtReplace    = TRUE
+      $rbtTxtAdd     = FALSE
+	  $rbtCopy		 = False
+      $rbtMove       = FALSE
+      $rbtCacheName  = TRUE
+      $rbtCacheSmrtName = FALSE
+	  # don't really need to initialize these variables, but need the assignment
+	  # statement so GSAK-Variables.gsk will pick them up.
+	  $cbxDataBase    = ""
+	  $cbxMoveDB      = ""
+	  $edtCustom1     = ""
+	  $edtCustom2     = ""
+	  $edtDNFTemplate = ""
+	  $edtTotalCount  = ""
+	  $edtLogTemplate = ""
+	  $edtName        = ""
+    EndIf
+    
+    GoSub Name=AssignColor
+EndSub
+
+BeginSub Name=GetTotalCount
+	$data = GcApi("GetYourUserProfile",$status)
+	IF $_GcApiError
+		# error running api so show error message
+		MSGOK msg=GcAPI error $data
+	ELSE
+		$edtTotalCount = sqlite("sql","select data from GcApi where g_Contains('a:FindCount',key)")
+	ENDIF
+EndSub
+
+BeginSub Name=InitForm
+    $dblist = sysinfo("databases")
+    GoSub Name=ChangeMainForm
+    GoSub Name=ChangeDNFform
+	Gosub Name=ChangeMatchForm
+EndSub
+
+BeginSub Name=SaveState
+    # Save various settings for restoration later
+    $currentsort = $_SortBy
+    $currentfilter = SaveFilter()
+EndSub
+
+BeginSub Name=InitHelp
+  $helptext   = MimeDecode($CMLHelpV21)
+  $CM2Helptxt = MimeDecode($CMLCM2HelpV21)
+  $DNFHelptxt = MimeDecode($CMLDNFHelpV21)
+  $MatchHelptxt = MimeDecode($CMLMatchHelpV22)
+  $SectionHelptxt = MimeDecode($CMLSectionHelpV221)
+EndSub
+
+#@+++++++++++++++++++++++++++
+#@ Miscellaneous Routines
+#@+++++++++++++++++++++++++++
+
+BeginSub Name=WriteConfigFile
+    MacSettings Type=S Vars=$MacVars File=cachemateLogging FileCheck=N
+EndSub
+
+BeginSub Name=RestoreState
+    # Done with everything.  Remove the GPX file.
+    If (FileExists($findsgpx))
+        FileErase File=$findsgpx
+    EndIf
+    
+	# Clear temporary filter and user/macro flags
+	CancelFilter
+	UserFlag Type=clear Range=All
+    MacroFlag Type=clear Range=All
+
+	# Restore userflags, filter, and sort
+	If $_CurrentDatabase <> $currentdb
+		Database Name=$currentdb Action=select
+	EndIf
+	If RestoreFilter($currentfilter, True) = 0
+		Pause Msg="Previously-set filter now would show no records. Clearing."
+	EndIf
+
+	$sortdata = Extract($currentsort, "=",1)
+	$sequence = Extract($currentsort, "=",2)
+	Sort By=$sortdata Sequence=$sequence
+
+EndSub
+
+#=== End of Code ===
+#===============================
+# Dialog templates
+#===============================
+
+<data> VarName=$CacheMateLog
+[TfmCmateLog]
+rbtLog.Checked=XXLOGXX
+rbtNo.Checked=True
+rbtNotes.Checked=XXNOTESXX
+rbtYes.Checked=False
+File1.Filename=C:\gsak\temp\finds.gpx
+rbtReplace.Checked=XXREPLACEXX
+rbtAdd.Checked=XXADDXX
+rbtFlagNo.Checked=False
+rbtFlagYes.Checked=True
+rbtDateOnly.Checked=False
+rbtDateTime.Checked=False
+rbtUserNo.Checked=False
+rbtUserYes.Checked=True
+rbtCode.Checked=True
+rbtSmart.Checked=False
+chkCRLF.Checked=True
+chkUserFlag.Checked=True
+chkUserSort.Checked=True
+edtMatch.Text=MatchString
+chkLocal.Checked=False
+<enddata>
+
+#move/copy  records
+<data> VarName=$MoveCopy
+[TfmMove]
+cbxDestination.Text=XXDBXX
+rbtAdd.Checked=True
+rbtAddFlag.Checked=False
+rbtAddIgnore.Checked=False
+rbtExistIgnore.Checked=False
+rbtFlagOnly.Checked=False
+rbtReplace.Checked=True
+rbtReplaceFlag.Checked=False
+chkDisplay.Checked=True
+<enddata>
+
+
+<data> VarName=$Load
+[TfmGpxLoad]
+chkGpx.Checked=True
+chkLoc.Checked=True
+chkZip.Checked=True
+edtFolder.Text=
+cbxZap.Checked=False
+chkClearUser.Checked=False
+chkDefault.Checked=False
+chkDelete.Checked=False
+chkSetUser.Checked=True
+chkUserOnly.Checked=False
+rbtAddOnly.Checked=False
+rbtAlways.Checked=True
+rbtExists.Checked=False
+rbtExtraChild.Checked=True
+rbtExtraExclude.Checked=False
+rbtExtraParent.Checked=False
+rbtFoundAlways.Checked=False
+rbtFoundNever.Checked=False
+rbtFoundOnly.Checked=True
+rbtNewer.Checked=True
+rbtLoadFile.Checked=True
+rbtLoadFolder.Checked=False
+edtFoundSymbol.Text=Geocache Found
+chkUpdateSymbol.Checked=True
+cbxDataBases.Text=test
+edtCounty.Text=
+cbxFileType.Text=GPX/LOC (including inside zip)
+edtState.Text=
+chkSaveFile.Checked=True
+chkSaveDatabase.Checked=False
+<enddata>
+
+<Data> Varname=$status
+<GetYourUserProfileRequest xmlns="http://www.geocaching.com/Geocaching.Live/data">
+ <AccessToken>{AccessToken}</AccessToken>
+ <ProfileOptions>
+ </ProfileOptions>
+</GetYourUserProfileRequest> 
+<enddata>
+#=============================
+# Forms
+#=============================
+
+<data> VarName=$MainForm
+Name = MainForm
+  Type = Form
+  Caption = CacheMate Import
+  Height = 507
+  Width = 650
+
+Name = grp3
+  Type = Groupbox
+  Caption = Move/Copy Option
+  Height = 85
+  Left = 210
+  Top = 134
+  Width = 271
+  Taborder = 2
+
+Name = Groupbox3
+  Type = Groupbox
+  Caption = Waypoint Options
+  Height = 65
+  Left = 93
+  Top = 328
+  Width = 325
+  Taborder = 3
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Found DB Update Options
+  Height = 73
+  Left = 208
+  Top = 232
+  Width = 273
+  Taborder = 11
+
+Name = Label1
+  Type = Label
+  Color = 16744448
+  Font = Tahoma
+  Height = 21
+  Left = 162
+  Size = 13
+  Style = bold
+  Top = 5
+  Width = 278
+  Caption = CacheMate Import and Logging
+
+Name = Label2
+  Type = Label
+  Color = 16711680
+  Font = Verdana
+  Height = 13
+  Left = 10
+  Style = bold
+  Top = 96
+  Width = 135
+  Caption = Database to update
+
+Name = cbxDataBase
+  Type = Combobox
+  Height = 21
+  Left = 210
+  Top = 88
+  Values = $dblist
+  Width = 145
+  Taborder = 1
+
+Name = Label6
+  Type = Label
+  Color = 16711680
+  Font = Verdana
+  Height = 13
+  Left = 10
+  Style = bold
+  Top = 50
+  Width = 198
+  Caption = Location of PDB file to import
+
+Name = fnmPDBFile
+  Type = File
+  Height = 21
+  Left = 210
+  Top = 48
+  Width = 382
+  Taborder = 0
+
+Name = Label13
+  Type = Label
+  Color = 16711680
+  Font = Verdana
+  Height = 13
+  Left = 10
+  Style = bold
+  Top = 163
+  Width = 173
+  Caption = Move finds after logging?
+
+Name = cbxMoveDB
+  Type = Combobox
+  Container = grp3
+  Height = 21
+  Left = 4
+  Top = 50
+  Values = $dblist
+  Width = 145
+  Taborder = 0
+
+Name = Label15
+  Type = Label
+  Container = grp3
+  Height = 13
+  Left = 160
+  Top = 50
+  Width = 94
+  Caption = Database for finds
+
+Name = mfCm2config
+  Type = Button
+  Height = 25
+  Left = 444
+  Top = 336
+  Width = 89
+  Taborder = 4
+  Caption = cm2gpx config
+
+Name = mfOk
+  Type = Button
+  Height = 25
+  Left = 106
+  Top = 416
+  Width = 75
+  Taborder = 6
+  Caption = <img src="idx:0" align="middle">OK
+
+Name = mfCancel
+  Type = Button
+  Height = 25
+  Left = 279
+  Top = 416
+  Width = 75
+  Taborder = 7
+  Caption = <img src="idx:1" align="middle">Cancel
+
+Name = mfHelp
+  Type = Button
+  Height = 25
+  Left = 444
+  Top = 416
+  Width = 75
+  Taborder = 8
+  Caption = <img src="idx:2" align="middle">Help
+
+Name = mfMatch
+  Type = Button
+  Container = Groupbox3
+  Height = 25
+  Left = 25
+  Top = 24
+  Width = 75
+  Taborder = 0
+  Caption = Match
+
+Name = mfDNFConfig
+  Type = Button
+  Container = Groupbox3
+  Height = 25
+  Left = 125
+  Top = 24
+  Width = 75
+  Taborder = 1
+  Caption = DNF Config
+
+Name = mfTemplateCfg
+  Type = Button
+  Height = 25
+  Left = 443
+  Top = 376
+  Width = 86
+  Taborder = 5
+  Caption = <img src="idx:6" align="middle">Template Config
+
+Name = mfSection
+  Type = Button
+  Container = Groupbox3
+  Height = 25
+  Left = 225
+  Top = 24
+  Width = 75
+  Taborder = 2
+  Caption = Section
+
+Name = rbtDontMove
+  Type = Radiobutton
+  Container = grp3
+  Exitonchange = Yes
+  Height = 17
+  Left = 10
+  Top = 24
+  Width = 85
+  Taborder = 1
+  Caption = DontMove
+
+Name = rbtMove
+  Type = Radiobutton
+  Container = grp3
+  Exitonchange = Yes
+  Height = 17
+  Left = 104
+  Top = 24
+  Width = 57
+  Taborder = 2
+  Caption = Move
+
+Name = rbtCopy
+  Type = Radiobutton
+  Container = grp3
+  Exitonchange = Yes
+  Height = 17
+  Left = 184
+  Top = 24
+  Width = 57
+  Taborder = 3
+  Caption = Copy
+
+Name = rbtGCLogs
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 20
+  Left = 16
+  Top = 16
+  Width = 145
+  Taborder = 0
+  Caption = Update with GCGetLogs
+
+Name = rbtUpdMan
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 20
+  Left = 16
+  Top = 40
+  Width = 209
+  Taborder = 1
+  Caption = Update manually
+
+Name = cbxNumLogs
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 160
+  Top = 16
+  Values = 1;2;3;4;5;6;7;8;9;10;11;12;15;16;17;18;19;20;21;22;23;24;25;26;27;28;29;30
+  Width = 41
+  Taborder = 2
+
+Name = Label3
+  Type = Label
+  Container = Groupbox1
+  Height = 17
+  Left = 216
+  Top = 18
+  Width = 31
+  Caption = Logs
+
+<enddata>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<Data> VarName=$ConfirmForm
+#********************************************************************
+# Form generated by GSAK form designer on Wed 09-Nov-2011 15:01:47
+#********************************************************************
+
+Name = ConfirmForm
+  Type = Form
+  Caption = Confirm
+  Height = 551
+  Width = 242
+
+Name = ProcessList
+  Type = Memo
+  Font = Courier New
+  Height = 281
+  Left = 29
+  Readonly = Yes
+  Scrollbars = Vertical
+  Size = 10
+  Style = bold
+  Top = 96
+  Width = 164
+  Taborder = 8
+
+Name = Label1
+  Type = Label
+  Color = 16711680
+  Font = verdana
+  Height = 13
+  Left = 32
+  Style = bold;italic
+  Top = 8
+  Width = 159
+  Caption = Caches to be processed
+
+Name = cfmOK
+  Type = Button
+  Height = 25
+  Left = 18
+  Top = 472
+  Width = 75
+  Taborder = 9
+  Caption = <img src="idx:0" align="middle">Confirm
+
+Name = cfmExit
+  Type = Button
+  Height = 25
+  Left = 122
+  Top = 472
+  Width = 75
+  Taborder = 10
+  Caption = <img src="idx:1" align="middle">Exit
+
+Name = Label2
+  Type = Label
+  Color = 16711680
+  Font = Verdana
+  Height = 13
+  Left = 25
+  Top = 392
+  Width = 173
+  Caption = If list is correct click Confirm
+
+Name = Label3
+  Type = Label
+  Color = 16711680
+  Font = Verdana
+  Height = 13
+  Left = 23
+  Top = 416
+  Width = 178
+  Caption = To update Palm logs click Exit
+
+Name = Label4
+  Type = Label
+  Color = 255
+  Font = verdana
+  Height = 13
+  Left = 5
+  Style = bold;underline
+  Top = 440
+  Width = 213
+  Caption = Clicking Exit will exit the macro
+
+Name = Label5
+  Type = Label
+  Color = 16711680
+  Font = verdana
+  Height = 16
+  Left = 52
+  Size = 10
+  Style = bold
+  Top = 32
+  Width = 42
+  Caption = DNF:
+
+Name = DNFcfm
+  Type = Memo
+  Font = Courier New
+  Height = 20
+  Left = 122
+  Readonly = Yes
+  Size = 10
+  Style = bold
+  Top = 32
+  Width = 41
+  Taborder = 11
+
+Name = Foundcfm
+  Type = Memo
+  Font = Courier New
+  Height = 20
+  Left = 122
+  Readonly = Yes
+  Size = 10
+  Style = bold
+  Top = 64
+  Width = 41
+  Taborder = 12
+
+Name = Label6
+  Type = Label
+  Color = 16711680
+  Font = verdana
+  Height = 16
+  Left = 52
+  Size = 10
+  Style = bold
+  Top = 67
+  Width = 58
+  Caption = Found:
+
+<enddata>
+
+
+
+
+
+
+
+<Data> VarName=$HelpForm
+#********************************************************************
+# Form generated by GSAK form designer on Sat 10-Jan-2009 16:16:59
+#********************************************************************
+
+Name = MainFormHelp
+  Type = Form
+  Caption = Logging help File
+  Height = 400
+  Width = 800
+
+Name = LabelH
+  Type = Label
+  Color = 255
+  Font = verdana
+  Height = 13
+  Left = 20
+  Size = 8
+  Style = bold
+  Top = 5
+  Width = 154
+  Caption = CacheMateLogging Help
+
+Name = HelpText
+  Type = Memo
+  Height = 325
+  Left = 9
+  Readonly = Yes
+  Scrollbars = Vertical
+  Style = Bold
+  Top = 34
+  Width = 780
+  Wrap = Yes
+  Taborder = 8
+
+Name = HClose
+  Type = Button
+  Height = 25
+  Left = 648
+  Top = 8
+  Width = 75
+  Taborder = 9
+  Caption = Close
+
+<enddata>
+
+<Data> VarName=$cm2Helpform
+#********************************************************************
+# Form generated by GSAK form designer on Sat 10-Jan-2009 16:16:18
+#********************************************************************
+
+Name = CM2GPXHelp
+  Type = Form
+  Caption = Help File
+  Height = 335
+  Width = 800
+
+Name = LabelH
+  Type = Label
+  Color = 255
+  Font = verdana
+  Height = 13
+  Left = 20
+  Size = 8
+  Style = bold
+  Top = 13
+  Width = 209
+  Caption = CacheMateLogging CM2GPX Help
+
+Name = CM2Helptxt
+  Type = Memo
+  Height = 233
+  Left = 9
+  Readonly = Yes
+  Scrollbars = Vertical
+  Style = Bold
+  Top = 40
+  Width = 780
+  Wrap = Yes
+  Taborder = 8
+
+Name = HClose
+  Type = Button
+  Height = 25
+  Left = 648
+  Top = 8
+  Width = 75
+  Taborder = 9
+  Caption = Close
+
+<enddata>
+
+<Data> VarName=$DNFHelpform
+#********************************************************************
+# Form generated by GSAK form designer on Sun 08-Feb-2009 22:59:04
+#********************************************************************
+
+Name = DNFHelp
+  Type = Form
+  Caption = Help File
+  Height = 335
+  Width = 800
+
+Name = DNFHelp
+  Type = Label
+  Color = 255
+  Font = verdana
+  Height = 13
+  Left = 12
+  Size = 8
+  Style = bold
+  Top = 13
+  Width = 184
+  Caption = CacheMateLogging DNF Help
+
+Name = DNFHelptxt
+  Type = Memo
+  Font = Verdana
+  Height = 233
+  Left = 9
+  Readonly = Yes
+  Scrollbars = Vertical
+  Style = Bold
+  Top = 40
+  Width = 780
+  Wrap = Yes
+  Taborder = 8
+
+Name = HClose
+  Type = Button
+  Height = 25
+  Left = 648
+  Top = 8
+  Width = 75
+  Taborder = 9
+  Caption = Close
+
+<enddata>
+
+<Data> VarName=$MatchHelpform
+
+Name = MatchHelp
+  Type = Form
+  Caption = Help File
+  Height = 272
+  Width = 800
+
+Name = LabelH
+  Type = Label
+  Color = 255
+  Font = verdana
+  Height = 13
+  Left = 12
+  Size = 8
+  Style = bold
+  Top = 13
+  Width = 196
+  Caption = CacheMateLogging Match Help
+
+Name = MatchHelptxt
+  Type = Memo
+  Font = Verdana
+  Height = 161
+  Left = 9
+  Readonly = Yes
+  Scrollbars = Vertical
+  Style = Bold
+  Top = 40
+  Width = 780
+  Wrap = Yes
+  Taborder = 8
+
+Name = HClose
+  Type = Button
+  Height = 25
+  Left = 648
+  Top = 8
+  Width = 75
+  Taborder = 9
+  Caption = Close
+
+<enddata>
+
+<Data> VarName=$SectionHelpform
+
+Name = SectionHelp
+  Type = Form
+  Caption = Help File
+  Height = 272
+  Width = 800
+
+Name = LabelH
+  Type = Label
+  Color = 255
+  Font = verdana
+  Height = 13
+  Left = 12
+  Size = 8
+  Style = bold
+  Top = 13
+  Width = 206
+  Caption = CacheMateLogging Section Help
+
+Name = SectionHelptxt
+  Type = Memo
+  Font = Verdana
+  Height = 161
+  Left = 9
+  Readonly = Yes
+  Scrollbars = Vertical
+  Size = 8
+  Style = Bold
+  Top = 40
+  Width = 780
+  Wrap = Yes
+  Taborder = 8
+
+Name = HClose
+  Type = Button
+  Height = 25
+  Left = 648
+  Top = 8
+  Width = 75
+  Taborder = 9
+  Caption = Close
+
+<enddata>
+
+<Data> VarName=$cm2form
+#********************************************************************
+# Form generated by GSAK form designer on Wed 09-Nov-2011 15:04:46
+#********************************************************************
+
+Name = cm2form
+  Type = Form
+  Caption = cm2gpx.exe config
+  Height = 212
+  Width = 500
+
+Name = Label1
+  Type = Label
+  Color = 16711680
+  Font = verdana
+  Height = 13
+  Left = 16
+  Top = 24
+  Width = 144
+  Caption = Location of cm2gpx.exe
+
+Name = fnmCm2GPX
+  Type = File
+  Height = 21
+  Left = 224
+  Top = 24
+  Width = 250
+  Taborder = 8
+
+Name = Label2
+  Type = Label
+  Color = 16711680
+  Font = verdana
+  Height = 13
+  Left = 16
+  Top = 72
+  Width = 205
+  Caption = Command line options for cm2gpx
+
+Name = edtCm2options
+  Type = Edit
+  Height = 21
+  Left = 224
+  Top = 72
+  Width = 250
+  Taborder = 9
+
+Name = CM2Ok
+  Type = Button
+  Height = 25
+  Left = 40
+  Top = 128
+  Width = 75
+  Taborder = 10
+  Caption = <img src="idx:0" align="middle">OK
+
+Name = CM2Cancel
+  Type = Button
+  Height = 25
+  Left = 200
+  Top = 128
+  Width = 75
+  Taborder = 11
+  Caption = <img src="idx:1" align="middle">Cancel
+
+Name = CM2Help
+  Type = Button
+  Height = 25
+  Left = 376
+  Top = 128
+  Width = 75
+  Taborder = 12
+  Caption = <img src="idx:2" align="middle">Help
+
+<enddata>
+
+
+<Data> VarName=$DNFform
+#********************************************************************
+# Form generated by GSAK form designer on Wed 09-Nov-2011 15:07:31
+#********************************************************************
+
+Name = DNFform
+  Type = Form
+  Caption = DNF configuration
+  Height = 224
+  Width = 401
+
+Name = cbxDNFColor
+  Type = Combobox
+  Height = 21
+  Left = 208
+  Top = 32
+  Values = Red;Orange;Yellow;Green;Blue;Violet
+  Width = 145
+  Taborder = 8
+
+Name = DNFOk
+  Type = Button
+  Height = 25
+  Left = 32
+  Top = 136
+  Width = 75
+  Taborder = 9
+  Caption = <img src="idx:0" align="middle">OK
+
+Name = DNFCancel
+  Type = Button
+  Height = 25
+  Left = 160
+  Top = 136
+  Width = 75
+  Taborder = 10
+  Caption = <img src="idx:1" align="middle">Cancel
+
+Name = DNFHelp
+  Type = Button
+  Height = 25
+  Left = 280
+  Top = 136
+  Width = 75
+  Taborder = 11
+  Caption = <img src="idx:2" align="middle">Help
+
+Name = chkDNFColor
+  Type = Checkbox
+  Captionposition = Left
+  Color = -2147483633
+  Exitonchange = Yes
+  Fontcolor = 16711680
+  Height = 17
+  Left = 24
+  Top = 32
+  Width = 153
+  Taborder = 12
+  Caption = Color Waypoint Name?
+
+Name = chkDNFRemove
+  Type = Checkbox
+  Captionposition = Left
+  Fontcolor = 16711680
+  Height = 17
+  Left = 24
+  Top = 80
+  Width = 153
+  Taborder = 13
+  Caption = Remove Color when found?
+
+<enddata>
+
+
+
+
+
+<Data> VarName=$MatchForm
+#********************************************************************
+# Form generated by GSAK form designer on Wed 09-Nov-2011 15:11:49
+#********************************************************************
+
+Name = MatchForm
+  Type = Form
+  Caption = Waypoint Match
+  Exitonclick = Yes
+  Height = 257
+  Width = 334
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Match waypoint in GSAK by?
+  Height = 137
+  Left = 46
+  Top = 16
+  Width = 233
+  Taborder = 0
+
+Name = wpOk
+  Type = Button
+  Height = 25
+  Left = 17
+  Top = 176
+  Width = 75
+  Taborder = 1
+  Caption = <img src="idx:0" align="middle">OK
+
+Name = wpCancel
+  Type = Button
+  Height = 25
+  Left = 125
+  Top = 176
+  Width = 75
+  Taborder = 2
+  Caption = <img src="idx:1" align="middle">Cancel
+
+Name = wpHelp
+  Type = Button
+  Height = 25
+  Left = 233
+  Top = 176
+  Width = 75
+  Taborder = 3
+  Caption = <img src="idx:2" align="middle">Help
+
+Name = edtMatchOther
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 96
+  Top = 94
+  Width = 121
+  Taborder = 0
+
+Name = rbtMatchCode
+  Type = Radiobutton
+  Container = Groupbox1
+  Fontcolor = 16711680
+  Height = 17
+  Left = 8
+  Top = 24
+  Width = 90
+  Taborder = 1
+  Caption = Code
+
+Name = rbtMatchSmart
+  Type = Radiobutton
+  Container = Groupbox1
+  Fontcolor = 16711680
+  Height = 17
+  Left = 8
+  Top = 48
+  Width = 89
+  Taborder = 2
+  Caption = Smart Name
+
+Name = rbtMatchDrop2
+  Type = Radiobutton
+  Container = Groupbox1
+  Fontcolor = 16711680
+  Height = 17
+  Left = 8
+  Top = 72
+  Width = 89
+  Taborder = 3
+  Caption = Drop2
+
+Name = rbtMatchOther
+  Type = Radiobutton
+  Container = Groupbox1
+  Fontcolor = 16711680
+  Height = 17
+  Left = 8
+  Top = 96
+  Width = 85
+  Taborder = 4
+  Caption = Other:
+
+<enddata>
+
+
+
+<Data> VarName=$SectionForm
+#********************************************************************
+# Form generated by GSAK form designer on Wed 09-Nov-2011 15:13:06
+#********************************************************************
+
+Name = SectionForm
+  Type = Form
+  Caption = Import Selection
+  Height = 220
+  Width = 400
+
+Name = SectonBox
+  Type = Groupbox
+  Caption = Section for data Import?
+  Height = 80
+  Left = 35
+  Top = 24
+  Width = 130
+  Taborder = 0
+
+Name = UpdateBox
+  Type = Groupbox
+  Caption = How to update?
+  Height = 80
+  Left = 227
+  Top = 24
+  Width = 130
+  Taborder = 1
+
+Name = SectionOK
+  Type = Button
+  Height = 25
+  Left = 66
+  Top = 136
+  Width = 75
+  Taborder = 2
+  Caption = <img src="idx:0" align="middle">OK
+
+Name = SectionHelp
+  Type = Button
+  Height = 25
+  Left = 250
+  Top = 136
+  Width = 75
+  Taborder = 3
+  Caption = <img src="idx:2" align="middle">Help
+
+Name = rbtLog
+  Type = Radiobutton
+  Container = SectonBox
+  Font = Verdana
+  Fontcolor = 16711680
+  Fontsize = 10
+  Fontstyle = bold
+  Height = 17
+  Left = 8
+  Top = 16
+  Width = 113
+  Taborder = 0
+  Caption = Log
+
+Name = Radiobutton1
+  Type = Radiobutton
+  Container = SectonBox
+  Font = Verdana
+  Fontcolor = 16711680
+  Fontsize = 10
+  Fontstyle = bold
+  Height = 17
+  Left = 8
+  Top = 48
+  Width = 90
+  Taborder = 1
+  Caption = Notes
+
+Name = rbtReplace
+  Type = Radiobutton
+  Container = UpdateBox
+  Font = Verdana
+  Fontcolor = 16711680
+  Fontsize = 10
+  Fontstyle = bold
+  Height = 17
+  Left = 16
+  Top = 24
+  Width = 90
+  Taborder = 0
+  Caption = Replace
+
+Name = rbtTxtAdd
+  Type = Radiobutton
+  Container = UpdateBox
+  Font = Verdana
+  Fontcolor = 16711680
+  Fontsize = 10
+  Fontstyle = bold
+  Height = 17
+  Left = 16
+  Top = 48
+  Width = 90
+  Taborder = 1
+  Caption = Add
+
+<enddata>
+
+
+
+<Data> VarName=$LogForm
+#********************************************************************
+# Form generated by GSAK form designer on Wed 09-Nov-2011 15:18:09
+#********************************************************************
+
+Name = LogForm
+  Type = Form
+  Caption = Log your Find or DNF:
+  Exitonclick = Yes
+  Height = 475
+  Width = 800
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Current Cache
+  Height = 45
+  Left = 10
+  Top = 155
+  Width = 639
+  Taborder = 9
+
+Name = Label1
+  Type = Label
+  Color = 16711680
+  Font = verdana
+  Height = 18
+  Left = 220
+  Size = 11
+  Style = bold
+  Top = 8
+  Width = 160
+  Caption = Update User Note:
+
+Name = edtUserNote
+  Type = Memo
+  Enabled = Yes
+  Height = 115
+  Left = 220
+  Scrollbars = Vertical
+  Size = 11
+  Top = 31
+  Width = 550
+  Wrap = Yes
+  Taborder = 0
+
+Name = Label2
+  Type = Label
+  Color = 16711680
+  Font = verdana
+  Height = 18
+  Left = 220
+  Size = 11
+  Style = bold
+  Top = 209
+  Width = 181
+  Caption = Log (to post on line):
+
+Name = ThisCacheLogText
+  Type = Memo
+  Enabled = Yes
+  Font = Verdana
+  Height = 160
+  Left = 220
+  Scrollbars = Vertical
+  Size = 11
+  Top = 239
+  Width = 550
+  Wrap = Yes
+  Taborder = 1
+
+Name = logOK
+  Type = Button
+  Enabled = Yes
+  Enter = Yes
+  Height = 25
+  Left = 38
+  Top = 401
+  Width = 83
+  Taborder = 2
+  Caption = <img src="idx:30" align="middle">Post Log
+
+Name = Label4
+  Type = Label
+  Color = 16711680
+  Font = verdana
+  Height = 16
+  Left = 10
+  Size = 10
+  Style = bold
+  Top = 209
+  Width = 103
+  Caption = Current Find:
+
+Name = CurrentTotal
+  Type = Memo
+  Font = verdana
+  Height = 20
+  Left = 120
+  Readonly = Yes
+  Size = 10
+  Style = bold
+  Top = 208
+  Width = 79
+  Taborder = 3
+
+Name = Label5
+  Type = Label
+  Color = 16711680
+  Font = verdana
+  Height = 16
+  Left = 10
+  Size = 10
+  Style = bold
+  Top = 35
+  Width = 165
+  Caption = Today's Find Number:
+
+Name = cfgTemplate
+  Type = Button
+  Height = 25
+  Left = 160
+  Top = 401
+  Width = 137
+  Taborder = 4
+  Caption = <img src="idx:11" align="middle">Configure Template
+
+Name = logReset
+  Type = Button
+  Height = 25
+  Left = 111
+  Top = 70
+  Width = 75
+  Taborder = 5
+  Caption = <img src="idx:22" align="middle">Reset
+
+Name = logSpellck
+  Type = Button
+  Height = 25
+  Left = 665
+  Spellcheck = ThisCacheLogText
+  Top = 401
+  Width = 105
+  Taborder = 6
+  Caption = <img src="idx:10" align="middle">Spell Check Log
+
+Name = CurrentCache
+  Type = Memo
+  Container = Groupbox1
+  Enabled = Yes
+  Font = vERDANA
+  Height = 21
+  Left = 10
+  Readonly = Yes
+  Size = 10
+  Style = bold
+  Top = 15
+  Width = 95
+  Taborder = 0
+
+Name = NoteSpellCk
+  Type = Button
+  Height = 25
+  Left = 665
+  Spellcheck = edtUserNote
+  Top = 160
+  Width = 105
+  Taborder = 7
+  Caption = <img src="idx:10" align="middle">Spell Check Note
+
+Name = logRefresh
+  Type = Button
+  Height = 25
+  Left = 344
+  Top = 401
+  Width = 110
+  Taborder = 8
+  Caption = <img src="idx:14" align="middle">Refresh Log
+
+Name = CacheName
+  Type = Memo
+  Container = Groupbox1
+  Font = VERDANA
+  Height = 21
+  Left = 120
+  Readonly = Yes
+  Size = 10
+  Style = bold
+  Top = 15
+  Width = 409
+  Taborder = 1
+
+Name = LogType
+  Type = Memo
+  Color = 16777215
+  Font = VERDANA
+  Height = 20
+  Left = 400
+  Readonly = Yes
+  Size = 10
+  Style = bold
+  Textcolor = 16711680
+  Top = 210
+  Width = 113
+  Taborder = 10
+
+Name = TodayCount
+  Type = Memo
+  Font = verdana
+  Height = 20
+  Left = 10
+  Readonly = Yes
+  Size = 10
+  Style = bold
+  Top = 72
+  Width = 81
+  Taborder = 11
+
+Name = warn1
+  Type = Label
+  Color = 255
+  Font = Verdana
+  Height = 16
+  Left = 10
+  Size = 10
+  Style = Bold
+  Top = 256
+  Width = 185
+  Caption = Warning: Log Date is not
+
+Name = warn2
+  Type = Label
+  Color = 255
+  Font = Verdana
+  Height = 16
+  Left = 10
+  Size = 10
+  Style = bold
+  Top = 280
+  Width = 191
+  Caption = the same as current date
+
+Name = warn3
+  Type = Label
+  Color = 16711680
+  Font = Verdana
+  Height = 16
+  Left = 10
+  Size = 10
+  Style = bold
+  Top = 304
+  Width = 72
+  Caption = Log Date
+
+Name = LogDate
+  Type = Memo
+  Height = 20
+  Left = 90
+  Readonly = Yes
+  Size = 10
+  Style = bold
+  Top = 304
+  Width = 105
+  Taborder = 12
+
+Name = rbtCacheName
+  Type = Radiobutton
+  Container = Groupbox1
+  Exitonchange = Yes
+  Fontcolor = 16711680
+  Fontstyle = bold
+  Height = 17
+  Left = 536
+  Top = 8
+  Width = 113
+  Taborder = 2
+  Caption = Name
+
+Name = rbtCacheSmrtName
+  Type = Radiobutton
+  Container = Groupbox1
+  Exitonchange = Yes
+  Fontcolor = 16711680
+  Fontstyle = bold
+  Height = 17
+  Left = 536
+  Top = 24
+  Width = 113
+  Taborder = 3
+  Caption = Smart Name
+
+Name = CPage
+  Type = Button
+  Height = 25
+  Left = 10
+  Top = 112
+  Width = 75
+  Taborder = 21
+  Caption = Cache Page
+
+<enddata>
+
+
+<data> VarName=$TagHelp
+Use the following %tags to insert data anywhere in the text:
+
+%count      : Total caches found
+%csuffix    : Ordinal suffix for total caches
+%custom1    : User Defined tag
+%custom2    : User Defined tag
+%date       : System Defined Date
+%day        : Cachemate log Day of month
+%nfsuffix   : Ordinal suffix for DNF caches
+%log        : Cachemate Log contents
+%month      : Cachemate log Month
+%note       : User Note contents
+%notfound   : Total caches not found
+%nick       : User name
+%owner      : Cache owner name
+%run        : count for today
+%rsuffix    : Ordinal suffix for run count
+%time       : Cachemate log Find Time, 24 hour format
+%time12     : Cachemate log Find Time, 12 hour format
+%thanks     : Thanks for the cache!
+%year       : Cachemate log Year
+
+For example:
+
+This cache was find %count - Found on %date at %time.
+<enddata>
+
+<Data> VarName=$TemplateForm
+#********************************************************************
+# Form generated by GSAK form designer on Wed 09-Nov-2011 15:18:54
+#********************************************************************
+
+Name = TemplateForm
+  Type = Form
+  Caption = Configure Log Template
+  Height = 525
+  Width = 800
+
+Name = Groupbox3
+  Type = Groupbox
+  Height = 450
+  Left = 396
+  Top = 15
+  Width = 373
+  Taborder = 5
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Total Find Count
+  Height = 57
+  Left = 7
+  Top = 40
+  Width = 361
+  Taborder = 1
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = DNF Count
+  Height = 57
+  Left = 7
+  Top = 112
+  Width = 361
+  Taborder = 2
+
+Name = Label1
+  Type = Label
+  Color = 16711680
+  Container = Groupbox1
+  Font = verdana
+  Height = 14
+  Left = 7
+  Size = 9
+  Style = bold
+  Top = 20
+  Width = 269
+  Caption = Enter the number of your last total find:
+
+Name = edtTotalCount
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 274
+  Top = 20
+  Width = 72
+  Taborder = 0
+
+Name = tmpOK
+  Type = Button
+  Height = 25
+  Left = 150
+  Top = 443
+  Width = 75
+  Taborder = 6
+  Caption = <img src="idx:0" align="middle">OK
+
+Name = Label5
+  Type = Label
+  Color = 16711680
+  Font = verdana
+  Height = 14
+  Left = 7
+  Size = 9
+  Style = bold
+  Top = 10
+  Width = 202
+  Caption = Enter your Geocaching name:
+
+Name = edtName
+  Type = Edit
+  Height = 21
+  Left = 244
+  Top = 10
+  Width = 125
+  Taborder = 0
+
+Name = Label16
+  Type = Label
+  Color = 16711680
+  Container = Groupbox3
+  Font = verdana
+  Height = 16
+  Left = 12
+  Size = 10
+  Style = bold
+  Top = 10
+  Width = 259
+  Caption = Tags for the log and DNF template:
+
+Name = Label20
+  Type = Label
+  Color = 16711680
+  Container = Groupbox3
+  Font = verdana
+  Height = 16
+  Left = 12
+  Size = 10
+  Style = bold
+  Top = 161
+  Width = 304
+  Caption = DNF Log Template: minium entry is %log
+
+Name = TagHelp
+  Type = Memo
+  Color = 15658734
+  Container = Groupbox3
+  Font = Courier New
+  Height = 125
+  Left = 12
+  Readonly = Yes
+  Scrollbars = Vertical
+  Size = 10
+  Style = bold
+  Top = 32
+  Width = 337
+  Taborder = 0
+
+Name = edtDNFTemplate
+  Type = Memo
+  Container = Groupbox3
+  Font = verdana
+  Height = 110
+  Left = 12
+  Scrollbars = Vertical
+  Size = 10
+  Top = 184
+  Width = 350
+  Wrap = Yes
+  Taborder = 1
+
+Name = edtLogTemplate
+  Type = Memo
+  Container = Groupbox3
+  Font = verdana
+  Height = 110
+  Left = 12
+  Scrollbars = Vertical
+  Size = 10
+  Top = 328
+  Width = 349
+  Wrap = Yes
+  Taborder = 2
+
+Name = Label22
+  Type = Label
+  Color = 16711680
+  Container = Groupbox3
+  Font = Verdana
+  Height = 16
+  Left = 12
+  Size = 10
+  Style = bold
+  Top = 304
+  Width = 320
+  Caption = Found Log Template: minium entry is %log
+
+Name = Label21
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Font = Verdana
+  Height = 14
+  Left = 7
+  Size = 9
+  Style = bold
+  Top = 20
+  Width = 221
+  Caption = Enter the number of your DNF's:
+
+Name = edtDNFCount
+  Type = Edit
+  Container = Groupbox2
+  Height = 21
+  Left = 274
+  Top = 16
+  Width = 72
+  Taborder = 0
+
+Name = Label11
+  Type = Label
+  Color = 16711680
+  Font = verdana
+  Height = 14
+  Left = 7
+  Size = 9
+  Style = bold
+  Top = 192
+  Width = 100
+  Caption = Custom tag 1:
+
+Name = edtCustom1
+  Type = Memo
+  Height = 75
+  Left = 7
+  Scrollbars = Vertical
+  Size = 10
+  Top = 216
+  Width = 362
+  Wrap = Yes
+  Taborder = 3
+
+Name = Label13
+  Type = Label
+  Color = 16711680
+  Font = verdana
+  Height = 14
+  Left = 7
+  Size = 9
+  Style = bold
+  Top = 320
+  Width = 100
+  Caption = Custom tag 2:
+
+Name = edtCustom2
+  Type = Memo
+  Font = verdana
+  Height = 75
+  Left = 7
+  Scrollbars = Vertical
+  Size = 10
+  Top = 344
+  Width = 362
+  Wrap = Yes
+  Taborder = 4
+
+<enddata>
+
+
+
+
+#============================
+# Help files
+#============================
+
+## Mime encoded help file text
+<data> VarName=$CMLHelpV21
+R2VuZXJhbCBXb3JrIEZsb3cNCg0KCUEuIEV4cG9ydCBmcm9tIEdTQUsgZm9yIFBhbG0NCgkgICAgRmls
+ZSAtPiBFeHBvcnQgLT4gQ2FjaGVtYXRlIFBEQiBGaWxlIC4uLg0KCQkgIFRoZSBvbmx5IHZhbGlkIENh
+Y2hlbWF0ZSBXYXlwb2ludCBmb3IgdGhpcyBtYWNybyBpcyAlY29kZSAoZGVmYXVsdCkgb3IgJXNtYXJ0
+LiANCglCLiBIb3QgU3luYyB0byBwdXQgZmlsZXMgb24gdGhlIFBhbG0NCglDLiBHbyBDYWNoaW5nLCBs
+b2cgZmluZHMgYXMgeW91IGZpbmQgdGhlbQ0KCSAgICAgRE5GIEhhbmRsaW5nDQoJICAgICAgICAgIE9u
+IHRoZSBsb2cgcGFnZSBzZXQgdGhlIERhdGUsIHN0YXJ0IGFuZCBlbmQgdGltZXMuIERPIE5PVCBjaGVj
+ayB0aGUgZm91bmQgYm94LiBPbiB0aGUNCgkgICAgICAgICAgSW5mbyBQYWdlIGNoYW5nZSB0aGUgY2F0
+ZWdvcnkgZnJvbSB1bmZpbGVkIHRvIE5vdCBGb3VuZA0KCUQuIEhvdCBTeW5jIHRvIHB1dCBmaWxlcyBv
+biB5b3VyIGNvbXB1dGVyDQoJRS4gUnVuIENhY2hlTWF0ZUxvZ2dpbmcgbWFjcm8uIEZpbGwgaW4gdGhl
+IGRpYWxvZyBmaWVsZHMgYXMgYmVsb3cNCg0KQ2FjaG1hdGVMb2dnaW5nIGlucHV0IGRpYWxvZw0KDQoJ
+RGF0YWJhc2UgdG8gdXBkYXRlDQoJCVNlbGVjdCB0aGUgZGF0YWJhc2UgeW91IGV4cG9ydGVkIHRvIHRo
+ZSBwYWxtIHRoYXQgaGFzIHRoZSBmb3VuZCBsb2dzLg0KCQkNCglMb2NhdGlvbiBvZiBQREIgZmlsZSB0
+byBpbXBvcnQNCgkJVGhlIGRlZmF1bHQgbG9jYXRpb24gZm9yIHRoZSBwZGIgZmlsZSBpcw0KCQkJVmlz
+dGENCgkJCQlDOlx1c2Vyc1xbTE9HSU5dXERvY3VtZW50c1xQYWxtIE9TIERlc2t0b3BcW1BhbG0gVXNl
+cl1cQmFja3VwDQoJCQlYUA0KCQkJCUM6XFByb2dyYW0gRmlsZXNcUGFsbU9uZVxbUGFsbSBVc2VyXVxC
+YWNrdXANCgkJTE9HSU4gaXMgdGhlIHVzZXIgYWNjb3VudCBvbiB5b3VyIGNvbXB1dGVyIGFuZCBQYWxt
+IFVzZXIgaXMgdGhlIHVzZXIgbmFtZSBvbiB0aGUgcGFsbS4gDQoJCVRoZSBQREIgZmlsZSBpcyBuYW1l
+ZCBhZnRlciB0aGUgZGIgZmlsZSBuYW1lIG9uIHRoZSBQYWxtLCBpLmUuLCBpZiB0aGUgUGFsbSBkYiB3
+YXMgS2l0c2FwLA0KCQl0aGUgcGRiIGZpbGUgb24geW91ciBjb21wdXRlciBpcyBLaXRzYXBJdGVtcy1j
+TWF0LnBkYi4gVGhlIGRlZmF1bHQgbG9jYXRpb25zIGNhbiBiZSBjaGFuZ2VkLCANCgkJZGVwZW5kaW5n
+IG9uIHlvdXIgZGVza3RvcCB2ZXJzaW9uIHlvdSBtaWdodCBoYXZlIGEgYnJvd3NlIHNlbGVjdGlvbiBp
+biB0aGUgdG9vbHMtPk9wdGlvbnMuLi4tPkdlbmVyYWwNCgkJb3IgeW91IG1heSBoYXZlIHRvIHJlLXJ1
+biB0aGUgaW5zdGFsbGVyLg0KCQkNCglNb3ZlIGZpbmRzIGFmdGVyIGxvZ2dpbmc/DQoJCVRoaXMgY29u
+dHJvbHMgd2hhdCBpcyBkb25lIHdpdGggdGhlIGNhY2hlIGFmdGVyIGxvZ2dpbmc7IGRvbid0IG1vdmUs
+IGluIHdoaWNoIGNhc2UgaXQgd2lsbCByZW1haW4gDQoJCWluIHRoZSBjdXJyZW50IGRhdGFiYXNlLiBU
+aGUgRGF0YWJhc2UgZm9yIGZpbmRzIGRvZXMgbm90IG1hdHRlciB3aXRoIHRoaXMgb3B0aW9uLiBNb3Zl
+IHdpbGwgbW92ZSB0aGUgDQoJCXdheXBvaW50IGZyb20gdGhlIHByZXNlbnQgZGF0YWJhc2UgdG8gdGhl
+IHNlbGVjdGVkIGRhdGFiYXNlLiBUaGUgd2F5cG9pbnQgd2lsbCBiZSBkZWxldGVkIGZyb20gdGhlIA0K
+CQljdXJyZW50IGRhdGFiYXNlLiBDb3B5IGlzIGxpa2UgbW92ZSwgZXhjZXB0IHRoZSB3YXlwb2ludCB3
+aWxsIGJlIGluIGJvdGggZGF0YWJhc2VzLg0KCQ0KCVVwZGF0ZSBsb2cgaWQNCgkJRmluZFN0YXRHZW4g
+YW5kIG90aGVyIHN0YXRpc3RpYyBwYWNrYWdlcyByZWx5IG9uIHRoZSBnZW9jYWNoaW5nLmNvbSBsb2cg
+SUQgdG8gZ2V0IHRoZSBjb3JyZWN0IG1pbGVzdG9uZQ0KCQlvcmRlci4gVGhpcyB3aWxsIGJlIG1pc3Np
+bmcgYWZ0ZXIgY2FjaGVtYXRlbG9nZ2luZyBydW5zLiBDaGVja2luZyB0aGlzIG9wdGlvbiB3aWxsIHJ1
+biB0aGUgbWFjcm8gDQoJCVJlZnJlc2hBbGxHUFggdG8gdXBkYXRlIHRoZSBmb3VuZCBjYWNoZXMgd2l0
+aCB0aGUgbG9naWRzLiBUaGlzIHdpbGwgaW5jcmVhc2UgdGhlIGxvZ2dpbmcgdGltZSBieSBuaW5lDQoJ
+CXNlY29uZHMgcGVyIGNhY2hlLiBBZnRlciB5b3UgaW5zdGFsbCB0aGlzIG1hY3JvLCB2ZXJzaW9uIDEu
+NSwgYmUgc3VyZSB0byB1cGRhdGUgbGluZSAyOSB3aXRoIHlvdXIgR0MuY29tDQoJCXVzZXIgbmFtZSBh
+bmQgbGluZSAzMCB3aXRoIHlvdXIgcGFzc3dvcmQuIEJvdGggdGhlIHVzZXJuYW1lIGFuZCBwYXNzd29y
+ZCBuZWVkIHRvIGJlIGVuY2xvc2VkIGluIGRvdWJsZSANCgkJcXVvdGVzLg0KDQoJCUlmIHlvdSBkb24n
+dCBzZWxlY3QgdGhpcyBvcHRpb24geW91IGRvbid0IG5lZWQgUmVmcmVzaEFsbEdQWCBpbnN0YWxsZWQu
+DQoNCkNsaWNrIE9LLg0KDQoJVGhlIG1hY3JvIHdpbGwgcnVuLCBpbXBvcnRpbmcgdGhlIGZpbmRzIGFu
+ZCB1cGRhdGUgdGhlIGN1cnJlbnQgZGF0YWJhc2UuIFRoZW4gb25lIGF0IGEgdGltZSBpdCB3aWxsIGJy
+aW5nIHVwIA0KCWEgbG9nZ2luZyBwYWdlIG9uIEdDLmNvbSBmb3IgdGhlIGN1cnJlbnQgY2FjaGUuIEVu
+dGVyIHRoZSBkYXRlIG9uIHRoZSBsb2cgcGFnZSwgdHlwZSBvZiBmaW5kIChpdCBpcyBhbHdheXMgZm91
+bmQpIA0KCWFuZCBtb3ZlIHRoZSBjdXJzb3IgdG8gdGhlIGxvZy4gUmlnaHQgY2xpY2sgdGhlIG1vdXNl
+IHRvIHBhc3RlIHRoZSBjYWNoZW1hdGUgbG9nIGludG8gdGhlIGNhY2hlIGxvZy4gU2VsZWN0IGFueSAN
+CglidWdzIG9yIGNvaW5zIHlvdSBkcm9wcGVkIGFuZCBjbGljayBzdWJtaXQuIA0KDQoJT25jZSB0aGUg
+bG9nIHN1Ym1pc3Npb24gY29tcGxldGVzLCBzd2l0Y2ggYmFjayB0byBHU0FLIGFuZCBjbGljayBDb250
+aW51ZSBvbiB0aGUgcG9wdXAuIFRoaXMgd2lsbCBicmluZyB1cCB0aGUgDQoJbmV4dCBjYWNoZSBsb2cg
+cGFnZS4gUmVwZWF0IGZvciBob3dldmVyIG1hbnkgY2FjaGVzIHlvdSBoYXZlLiBXaGVuIGRvbmUgZ28g
+YmFjayB0byBHU0FLIGFuZCBjbGljayBjb250aW51ZSBvbiANCgl0aGUgcG9wdXAuIEdTQUsgd2lsbCBm
+aW5pc2ggYW55IHVwZGF0aW5nIG5lZWRlZCBhbmQgdGhlbiB0aGUgbWFjcm8gd2lsbCBlbmQuDQoNCglP
+Y2Nhc2lvbmFsbHkgR0MuY29tIHdpbGwgYmUgc2xvdyBvbiBicmluZ2luZyB1cCB0aGUgbG9nIHBhZ2Us
+IGJlIHBhdGllbnQsIGl0IHdpbGwgY29tZSB1cC4gSWYgeW91IGdvIGJhY2sgdG8gDQoJR1NBSyBhbmQg
+Y2xpY2sgY29udGludWUgb24gdGhlIHBvcHVwIHRoZSBsb2cgaW5mb3JtYXRpb24gaW4gdGhlIGNsaXBi
+b2FyZCBvbiB0aGlzIGNhY2hlIHdpbGwgYmUgcmVwbGFjZWQgYnkgdGhlIA0KCWxvZyBpbmZvcm1hdGlv
+biBvbiB0aGUgbmV4dCBjYWNoZS4gQWxzbyB5b3UgY291bGQgbG9nIG91dCBvZiBvcmRlciBkZXBlbmRp
+bmcgb24gd2hpY2ggbG9nIHlvdSBzdWJtaXQgZmlyc3QuIA0K
+<enddata>
+
+<data> VarName=$CMLCM2HelpV21
+Q2FjaG1hdGVMb2dnaW5nIGlucHV0IGRpYWxvZywgQ00yR1BYLmV4ZSBjb25maWcNCg0KCUxvY2F0aW9u
+IG9mIGNtMmdweC5leGUNCgkJVGhpcyBpcyBpbnN0YWxsZWQgYWxvbmcgd2l0aCBHU0FLLiBUaGUgZGVm
+YXVsdCBkZXBlbmRzIG9uIHRoZSBvcGVyYXRpbmcgc3lzdGVtDQoJCQlWaXN0YQ0KCQkJCUM6XEdTQUtc
+Y20yZ3B4XGNtMmdweC5leGUNCgkJCVhQIA0KCQkJCUM6XFByb2dyYW0gRmlsZXNcZ3Nha1xjbTJncHhc
+Y20yZ3B4LmV4ZQ0KCQlJZiB5b3UgaGF2ZSBjaGFuZ2VkIHRoZSBkZWZhdWx0cyBvciBpbnN0YWxsZWQg
+Y20yZ3B4IHNvbWUgb3RoZXIgcGxhY2UgZW50ZXIgdGhlIGNvcnJlY3QgaW5mb3JtYXRpb24uDQoJCVRo
+ZSBjbTJncHggYXBwbGljYXRpb24gaXMgcnVuIGF1dG9tYXRpY2FsbHkgYnkgdGhlIG1hY3JvLg0KCQ0K
+CUNvbW1hbmQgbGluZSBvcHRpb25zIGZvciBjbTJncHgNCgkJR28gd2l0aCB0aGUgZGVmYXVsdCBvZiAt
+QyAiRm91bmQ6Tm90IEZvdW5kIiAtZVQuIElmIHlvdSBlbnRlciBzb21ldGhpbmcgZGlmZmVyZW50IHRo
+ZSBtYWNybyB3aWxsIA0KCQlwcm9iYWJseSBmYWlsLiANCgkNCg==
+<enddata>
+
+<data> VarName=$CMLDNFHelpV21
+Q2FjaG1hdGVMb2dnaW5nIGlucHV0IGRpYWxvZywgRE5GIGNvbmZpZw0KDQpDb2xvciB3YXlwb2ludCBu
+YW1lDQogICAgQ2hlY2tpbmcgdGhpcyBib3ggd2lsbCBjb2xvciB0aGUgd2F5cG9pbnQgbmFtZSBmb3Ig
+RE5GIGVudGVyaWVzLiBUaGUgY29sb3IgaXMgdGhlDQogICAgc2VsZWN0ZWQgY29sb3IgZnJvbSB0aGUg
+Y29tYm9ib3ggdG8gdGhlIHJpZ2h0LiBUaGUgY29sb3IgY2FuIGJlIGNsZWFyZWQgdXNpbmcgdGhlIA0K
+ICAgIFdheXBvaW50IC0+IENvbG9yLi4uIGRpYWxvZy4NCiAgICANClJlbW92ZSBjb2xvciB3aGVuIGZv
+dW5kDQogICAgSWYgeW91IHdpc2ggdG8gcmVtb3ZlIHRoZSBETkYgaGlnaGxpZ2h0IGNvbG9yIHdoZW4g
+eW91IGZpbmQgdGhlIGNhY2hlLCBjaGVjayB0aGlzIGJveC4gDQogICAgDQpJZiB0aGUgY29sb3Igd2F5
+cG9pbnQgbmFtZSBib3ggaXMgdW5jaGVja2VkIG90aGVyIG9wdGlvbnMgd2lsbCBiZSBncmF5ZWQgb3V0
+IGFuZCBjYW4gbm90DQpiZSBzZWxlY3RlZC4g
+<enddata>
+
+<data> VarName=$CMLMatchHelpV22
+CQ0KCU1hdGNoIHdheXBvaW50IGluIEdTQUsgYnk/DQoJCVRoaXMgaXMgZm9yIGhvdyB5b3UgZXhwb3J0
+ZWQgdGhlIEdTQUsgZGF0YWJhc2UuIFdoYXRldmVyIHlvdSBjaG9vc2UsIG9yIHdoYXQgeW91IHB1dCBp
+bnRvDQoJCXRoZSBvdGhlciBlZGl0IGJveCBtdXN0IGJlIGV4YWN0bHkgd2hhdCB5b3UgdXNlZCBvbiB0
+aGUgQ2FjaGVtYXRlIGV4cG9ydCBkaWFsb2cgaW4gdGhlIA0KCQlDYWNoZW1hdGUgV2F5cG9pbnQgb3B0
+aW9uLiBUaGUgY29kZSBzZWxlY3Rpb24gaXMgJWNvZGUsIHRoZSBzbWFydCBuYW1lIHNlbGVjdGlvbiBp
+cyANCgkJJXNtYXJ0IGFuZCB0aGUgZHJvcDIgc2VsZWN0aW9uIGlzICVkcm9wMi4NCgkNCg0K
+<enddata>
+
+<data> VarName=$CMLSectionHelpV221
+CQ0KCUluc2VydCBkYXRhIGludG8gd2hpY2ggR1NBSyBzZWN0aW9uDQoJCU5vdGVzLCB0aGUgdG9wIHNl
+Y3Rpb24sIG9yIGxvZ3MsIHRoZSBib3R0b20gc2VjdGlvbi4NCg0KICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBOT1RFDQoJICBJZiB5
+b3UgY2hvb3NlIHRvIGltcG9ydCB0aGUgY2FjaGVtYXRlIGxvZyBkYXRhIGludG8gdGhlIG5vdGVzIHNl
+Y3Rpb24gaW5zdGVhZCBvZiB0aGUgbG9nIHNlY3Rpb24sIA0KCSAgYmUgYXdhcmUgdGhhdCB0aGUgJWxv
+ZyB0ZW1wbGF0ZSB0YWcgd2lsbCBub3QgaGF2ZSBhbnkgdGV4dC4gSWYgeW91IGNob29zZSB0byBSZXBs
+YWNlIGluc3RlYWQgb2YgIA0KCSAgQWRkLCBhbnkgcHJpb3IgdGV4dCBpbiB0aGUgaW1wb3J0IHNlY3Rp
+b24gd2lsbCBiZSByZXBsYWNlZCB3aXRoIHdoYXQgaXMgYmVpbmcgaW1wb3J0ZWQuICAgICAgDQo=
+<enddata>
+

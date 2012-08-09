@@ -1,0 +1,1559 @@
+#*******************************************
+# MacVersion = 20100205
+# MacDescription = Filter On Locations List
+# MacAuthor = pdops
+# MacFileName = FilterOnLocations.gsk
+# MacUrl =http://gsak.net/board/index.php?showtopic=9462&view=getlastpost
+#*******************************************
+
+# 20090110 modified code for parsing coordinates
+# 20090113 further modifications to code for parsing coordinates and distances
+# 20090203 MacSettings save/restore added
+# 20090320 Edited Distances and checkbox selections now saved and restored.
+# 20090321 Integration into one form, added views and updated help file
+# 20090322 Revised code for syncing checkbox list at startup
+# 20090323 Added saved settings groups
+# 20090326 Dropdown lists for saved settings and review page
+# 20090327 Tidy up code
+# 20090331 Switch to load SQLite database immediately then query for all actions
+# 20090402 Fix bugs in parsing and dropdown lists
+# 20100204 Fix code to handle change in implementation of Filter Join in v7.7
+# 20100205 Fix bug with initial position of macro form.
+
+########################################################################################### 
+
+
+ShowStatus Msg="Please Wait Loading" Title=LOADING
+
+CANCELFILTER
+
+# Set Status Flag
+$PointsFlag="Yes"
+
+# view all entires in CheckBoxList
+$SetView="all"
+
+$LocationsList=SysInfo("Locations")
+
+
+$Flag=""
+
+
+#+++++ These values are used when there is no MacSettings file
+#+++++ (usually only on the first run after installation) 
+
+# Set default text size for help screen
+$cbFont="10"
+
+# Set default search distance
+$SearchDistance="10"
+
+# Get CheckBoxList Values
+$PointCoords=SysInfo("Locations")
+
+
+# Initialize Variables
+
+$Type=""
+
+$Dist_ID=""
+
+$CBL=""
+
+$CSVlist=""
+
+$CustomCBL1="Empty"
+
+$CustomCBL2="Empty"
+
+$CustomCBL3="Empty"
+
+$CustomCBL4="Empty"
+
+$CustomCBL5="Empty"
+
+$SETcbSaveCustom=""
+
+$SETcbLoadCustom=""
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+# Restore Saved Settings from MacSettings file FilterOnLocations.xml
+MacSettings Type=R FileCheck=N
+
+
+# Get user' Locations list and compare with stored version, If no changes used stored data to
+# populate database. If changed parse data into format ID,Name,Latitude,Longitude,Distance
+# where ID is Name,Latitude,Longitude (without commas) and coodinates are decimal degrees.
+# Location list entries without a distance value are assigned a default value
+# CSV list is imported into SQLite DB in memory, output is sorted ascending and used to
+# populate the CheckListBox (values)
+
+
+If $LocationsList = SysInfo("Locations") AND $CSVlist<>""
+
+	$Flag="Matched"
+
+EndIf
+
+#Timer Status=on
+
+GoSub name=LoadDatabase
+
+#Timer Status=off
+
+ShowStatus Display=Off
+
+# Display Form
+
+# Set Search Distance form labels to metric or imperial units depending on user's settings
+
+If sysinfo("distance") = "K" # for metric units
+
+	$Form = EditForm($Form,"Label1","Caption","Km (for 500m enter .5)")
+
+	$Header="Name" + " , " + "Latitude" + " , " + "Longitude" + " , " + "Km"
+
+Else
+
+	$Header="Name" + " , " + "Latitude" + " , " + "Longitude" + " , " + "Miles"
+
+Endif
+
+
+$Form = EditForm($Form,"SelectLocations","Caption","Select Locations To Filter On From The $NumLiveLocs Listed Below")
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+While True # Infinite loop to redisplay form as required
+
+	$Form = EditForm($Form,"CBL","Values",$PointCoords)
+
+	$FormExit = form($form,"")
+
+	# Save the screen position of the form for redisplay
+	  $Form = EditForm($Form,"Form1","Top",$_FormTop)
+	  $Form = EditForm($Form,"Form1","Left",$_FormLeft)
+
+
+   BeginCase
+
+	Case $FormExit = "SystemExit"
+      		break
+
+	Case $FormExit = "btnSetAll"
+		$CBL=$PointCoords
+
+	Case $FormExit = "btnClearAll"
+		$CBL=""
+
+	Case $FormExit = "btnHelp"
+		GOSUB Name=DisplayHelpScreen
+
+	Case $FormExit = "btnView"
+		GoSub Name=View
+
+	Case $FormExit = "btnReset"
+		$PointCoords=$InitialPointCoords
+		$Form = EditForm($Form,"CBL","Values",$PointCoords)
+		$CBL=""
+
+	Case $FormExit = "btnSetDistances"
+
+		GoSub Name=SetDistances
+
+	Case $FormExit = "btnOk"
+		GoSub name=savesettings
+		GoSub Name=SetFilter
+
+	Case $FormExit = "btnEXIT"
+		GoSub name=savesettings
+		break
+
+	Case $FormExit = "btnViewCustom"
+		GoSub name=viewfilters
+
+
+	# Dropdown Lists For Selecting Save Or Load Custom Joined Filter Settings
+	# Save list resets to blank value for exitonclick to work properly with other
+	# controls and not activate inadvertently
+
+	Case $cbSaveCustom = "CUS 1"
+		$CustomCBL1=$CBL
+		$cbSaveCustom="      "
+		$msg="Saved As Custom Filter Settings 1"
+		$msg=$msg + $_NewLine + $_NewLine
+		$msg=$msg + replace(";",$_NewLine,$CustomCBL1)
+		MsgOK msg=$msg
+
+	Case $cbSaveCustom = "CUS 2"
+		$CustomCBL2=$CBL
+		$cbSaveCustom="      "
+		$msg="Saved As Custom Filter Settings 2"
+		$msg=$msg + $_NewLine + $_NewLine
+		$msg=$msg + replace(";",$_NewLine,$CustomCBL2)
+		MsgOK msg=$msg
+
+	Case $cbSaveCustom = "CUS 3"
+		$CustomCBL3=$CBL
+		$cbSaveCustom="      "
+		$msg="Saved As Custom Filter Settings 3"
+		$msg=$msg + $_NewLine + $_NewLine
+		$msg=$msg + replace(";",$_NewLine,$CustomCBL3)
+		MsgOK msg=$msg
+
+	Case $cbSaveCustom = "CUS 4"
+		$CustomCBL4=$CBL
+		$cbSaveCustom="      "
+		$msg="Saved As Custom Filter Settings 4"
+		$msg=$msg + $_NewLine + $_NewLine
+		$msg=$msg + replace(";",$_NewLine,$CustomCBL4)
+		MsgOK msg=$msg
+
+	Case $cbSaveCustom = "CUS 5"
+		$CustomCBL5=$CBL
+		$cbSaveCustom="      "
+		$msg="Saved As Custom Filter Settings 5"
+		$msg=$msg + $_NewLine + $_NewLine
+		$msg=$msg + replace(";",$_NewLine,$CustomCBL5)
+		MsgOK msg=$msg
+
+
+	Case $cbLoadCustom = "CUS 1"
+		If $CustomCBL1<>"Empty"
+			$CustomCBL=$CustomCBL1
+			GoSub name=SetCustom
+
+		Else
+			MsgOK msg=Custom Group 1 is empty
+		EndIf
+
+	Case $cbLoadCustom = "CUS 2"
+		If $CustomCBL2<>"Empty"
+			$CustomCBL=$CustomCBL2
+			GoSub name=SetCustom
+		Else
+			MsgOK msg=Custom Group 2 is empty
+		EndIf
+
+	Case $cbLoadCustom = "CUS 3"
+		If $CustomCBL3<>"Empty"
+			$CustomCBL=$CustomCBL3
+			GoSub name=SetCustom
+		Else
+			MsgOK msg=Custom Group 3 is empty
+		EndIf
+
+	Case $cbLoadCustom = "CUS 4"
+		If $CustomCBL4<>"Empty"
+			$CustomCBL=$CustomCBL4
+			GoSub name=SetCustom
+		Else
+			MsgOK msg=Custom Group 4 is empty
+		EndIf
+
+	Case $cbLoadCustom = "CUS 5"
+		If $CustomCBL5<>"Empty"
+			$CustomCBL=$CustomCBL5
+			GoSub name=SetCustom
+		Else
+			MsgOK msg=Custom Group 5 is empty
+		EndIf
+
+   EndCase
+
+
+
+EndWhile  # display of form
+
+
+
+### SUBROUTINES ##########################################################################
+
+BeginSub name=savesettings
+
+$_SQL="Select Dist,ID From Locations ORDER BY Name"
+$Dist_ID = sqlite("sql","$_SQL","delim=~")
+$Dist_ID = replace($_NewLine,";",$Dist_ID)
+
+$_SQL="Select * From Locations ORDER BY Name"
+$CSVlist =  sqlite("sql","$_SQL","delim=,")
+
+MacSettings Type=S Vars=Dist_ID,CSVlist,LocationsList,CBL,SearchDistance,cbFont,CustomCBL1,CustomCBL2,CustomCBL3,CustomCBL4,CustomCBL5
+		
+EndSub
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+BeginSub name=LoadDatabase
+
+# Create and open SQLite db in memory and  create table Locations
+
+$status = sqlite("create",":memory:","")
+
+$status = sqlite("open",":memory:","")
+
+$status = sqlite("sql","DROP TABLE IF EXISTS Locations","")
+
+$status = sqlite("sql","CREATE TABLE Locations (ID,Name,Lat,Lon,Dist)","")
+
+
+IF $Flag<>"Matched"   # if Locations list has changed
+
+	# Parse SysInfo("Locations")
+
+	$Data=SysInfo("Locations")
+
+	# Each single entry separated by a ; (semi colon) with a trailing ; (semi colon)
+	
+	$IDlist=""
+
+	# count semi colons to get number
+	$NumEntries = RegExCount(";",$Data)
+
+
+	$count=1
+
+	While $count<=$NumEntries
+
+		$Single = Extract($Data, ";", $count)
+
+		$Name = AllTrim(Extract($Single, ",", 1))
+
+		$commas = RegExCount(",",$Single)
+
+		# Find Distance value
+		# 1 comma - no distance in string
+		# 2 commas - either longitude or distance after 2nd comma
+		# 3 commas - distance after 3rd comma or not at all
+
+		$ListDistance = "0"
+
+		If $commas=2
+
+			# tests for Lat,Lon pair after 1st comma
+			# if not error then distance is after 2nd comma
+
+			$Test = AllTrim(Extract($Single, ",",2))
+
+			$Test = GCalc( $Test, "FormatDegrees")
+
+			If NOT($Test="*Error* Invalid coordinate string")
+
+				$ListDistance =	AllTrim(Extract($Single, ",",3))
+				
+				# Error trap coordinate in format 14 21.500
+				If RegExCount(" ",$ListDistance) > 0
+
+					$ListDistance ="0"
+				EndIf
+
+			EndIf
+
+		EndIf
+
+
+		IF $commas=3
+
+			$ListDistance = AllTrim(Extract($Single, ",", 4))
+
+		EndIf
+
+
+		# If no distance present in Location string use default distance
+
+		If Val($ListDistance)=0
+
+			$ListDistance=$SearchDistance
+	
+		EndIf
+
+		# Extract coordinates, add distance 
+		
+		$Temp = GCalc( $Single, "FormatDegrees")
+
+		# Extract latitude
+		$latitude=extract($Temp,";",1)
+
+		# Extract longitude
+		$longitude=extract($Temp,";",2)
+
+
+		# create ID comprised of Name,Latitdue,Longitude (without commas)
+		$ID = $name + $latitude + $longitude 
+	
+
+		$entry="'" + $ID + "','" + $name + "','" + $latitude + "','" + $longitude + "','" + $ListDistance + "'"
+
+		#insert entry into table
+
+		$_SQL="INSERT INTO Locations VALUES ($entry)"
+
+		$status = sqlite("sql","$_SQL")
+
+
+		$count= $count + 1
+
+	EndWhile
+
+
+ELSE   #import saved $CSVlist if locations list unchanged from last run
+
+	$status = sqlite("import",$CSVlist,"table=Locations delim=,")
+
+ENDIF
+
+
+If $Dist_ID<>""
+
+	# Update with saved distance values
+
+	$NumEntries = RegExCount(";",$Dist_ID) + 1
+
+	$count=1
+
+	While $count<=$NumEntries
+
+		$Dist_IDsingle=extract($Dist_ID,";",$count)
+
+		$_SQL="UPDATE Locations SET Dist='" + replace("~","' WHERE ID='",$Dist_IDsingle) + "'"
+
+		$Work = sqlite("sql","$_SQL","delim=,")
+
+		$count=$count + 1
+
+	EndWhile
+
+EndIf
+
+# Extract data and format for CheckListBox
+
+$_SQL="Select Name,Lat,Lon,Dist From Locations ORDER BY Name"
+
+$PointCoords = sqlite("sql","$_SQL","delim=,")
+
+$PointCoords = replace($_NewLine,";",$PointCoords)
+
+$NumLiveLocs=$_SqlRows     # used for form label
+
+# used for reset button
+$InitialPointCoords=$PointCoords
+
+
+# Check saved $CBL entries and delete if not in live Locations list to correct when
+# a location has been removed from live list but is stiil in a saved in backup file
+
+$OUTPUT=""
+
+$NumEntries = RegExCount(";",$CBL) + 1
+
+$count=1
+
+While $count<=$NumEntries
+
+	$OneLine=extract($CBL,";",$count)
+
+	# create ID comprised of Name,Latitdue,Longitude (without commas)
+	$ID= Remove(keep($Oneline,"^.*?,.*?,.*?,","R"),",","C")
+
+	$_SQL="SELECT * FROM Locations WHERE ID='$ID'"
+
+	$Work = sqlite("sql","$_SQL")
+
+	If $work<>""
+
+		If $OUTPUT=""
+
+			$OUTPUT=$OneLine
+
+		Else
+			$OUTPUT=$OUTPUT + ";" + $OneLine
+
+		EndIf
+
+	EndIf
+
+	$count=$count + 1
+
+EndWhile
+
+$CBL=$OUTPUT
+
+EndSub
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+BeginSub Name=SetDistances
+
+# Update CheckBoxList ($PointCoords and $CBL) with value from macro form ($SearchDistance)
+
+# no boxes checked
+If $CBL=""
+
+	MsgOK msg="Please select at least one location"
+	ExitSub
+
+EndIf
+
+# invalid search radius distance
+If val($SearchDistance)=0
+
+	MsgOK msg="Please Set Search Distance $_Newline To Greater Than Zero"
+	ExitSub
+
+EndIf
+
+
+$newCBL=""
+
+$NumEntries = RegExCount(";",$CBL) + 1
+
+$count=1
+
+While $count<=$NumEntries
+
+	$CBLsingle=extract($CBL,";",$count)
+
+	# create ID comprised of Name,Latitdue,Longitude (without commas)
+	$ID= Remove(keep($CBLsingle,"^.*?,.*?,.*?,","R"),",","C")
+
+	$_SQL="UPDATE Locations SET Dist='$SearchDistance' WHERE ID='$ID'"
+
+	$Work = sqlite("sql","$_SQL","delim=,")
+
+
+	# Name,Lat,Long
+	$NLL= Remove($CBLsingle,"\d{1,}$","R")
+
+	If $newCBL=""
+
+		$newCBL=$NLL + $SearchDistance
+
+	Else
+		$newCBL=$newCBL + ";" + $NLL + $SearchDistance
+
+	EndIf
+
+	$count=$count + 1
+
+EndWhile
+
+$_SQL="Select Name,Lat,Lon,Dist From Locations ORDER BY Name"
+
+$PointCoords = sqlite("sql","$_SQL","delim=,")
+
+$PointCoords = replace($_NewLine,";",$PointCoords)
+
+$CBL=$newCBL
+
+
+EndSub
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+BeginSub name=SetCustom
+
+# save current settings prior to creating filter based on saved custom settings
+
+GoSub name=savesettings
+
+# Parse saved custom setting and import into database table CUSTOM
+
+$CustomCSV=""
+
+$NumEntries = RegExCount(";",$CustomCBL) + 1
+
+$count=1
+
+While $count<=$NumEntries
+
+	$CBLsingle=extract($CustomCBL,";",$count)
+
+	# create ID comprised of Name,Latitdue,Longitude (without commas)
+	$ID= Remove(keep($CBLsingle,"^.*?,.*?,.*?,","R"),",","C")
+
+	$newline=$ID + "," + $CBLsingle
+
+	If $CustomCSV=""
+
+		$CustomCSV=$newline
+
+	Else
+
+		$CustomCSV=$CustomCSV + $_NewLine + $newline
+
+	EndIf
+
+	$count=$count + 1
+
+EndWhile
+
+$status = sqlite("sql","DROP TABLE IF EXISTS CUSTOM","")
+
+$status = sqlite("sql","CREATE TABLE CUSTOM (ID,Name,Lat,Lon,Dist)","")
+
+$status = sqlite("import",$CustomCSV,"table=CUSTOM delim=,")
+
+$CBL=$CustomCBL
+
+# set filter type flag for Sub Name=SetFilter to use correct data
+$Type="Custom"
+
+GoSub Name=SetFilter
+
+EndSub
+
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+BeginSub Name=SetFilter
+
+# Error trap for no points seleted
+
+If $CBL=""
+
+	MsgOK msg="Please select at least one location"
+	ExitSub
+
+EndIf
+
+SHOWSTATUS Msg="Setting Filter. Please Wait" Title=Please Wait
+
+$IDlist=""
+
+$NumEntries = RegExCount(";",$CBL) + 1
+
+$count=1
+
+While $count<=$NumEntries
+
+	$CBLsingle=extract($CBL,";",$count)
+
+	# create ID comprised of Name,Latitdue,Longitude (without commas)
+	$ID= Remove(keep($CBLsingle,"^.*?,.*?,.*?,","R"),",","C")
+
+
+	If $IDlist=""
+
+		$IDlist=$ID
+
+	Else
+
+		$IDlist=$IDlist + "," + $ID
+
+	EndIf
+
+	$count=$count + 1
+
+EndWhile
+
+# where statement for IDs from $CBL
+
+$Where="WHERE ID='" + replace(",","' OR id='",$IDlist) + "'"
+
+
+If $Type<>"Custom"
+
+	# query A table for list of distinct distance values
+
+	$_SQL="SELECT DISTINCT Dist FROM Locations $Where"
+
+Else
+
+	# query custom table for list of distinct distance values
+
+	$_SQL="SELECT DISTINCT Dist FROM CUSTOM $Where"
+
+EndIf
+
+$DistinctDist = sqlite("sql","$_SQL")
+
+$numDDValues=$_SqlRows
+
+# format data for use of extract function - CSV all on one line
+$DistinctDist=replace("$_NewLine",",",$DistinctDist,true)
+
+
+GoSub name=GroupByDistanceThenFilter
+
+
+IF $_FilterCount = 0
+
+	MsgOK Msg="No waypoints in filter, action cancelled"
+
+ELSE
+
+	If $numDDValues=1
+
+			GoSub name=SaveFilter
+	EndIf
+
+ENDIF
+
+
+SHOWSTATUS Msg="Setting Filter. Please Wait" Display=Off
+
+
+# Exit Macro
+Cancel
+
+
+EndSub
+
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+BeginSub name=GroupByDistanceThenFilter
+
+$dnum=1
+
+While True
+
+	$TempD = Extract($DistinctDist, ",", $dnum)
+
+	If $TempD=""
+		Break
+	EndIf
+
+	# where statement for SQLite query
+	$Where="WHERE Dist = '$TempD' AND (ID='" + replace(",","' OR id='",$IDlist) + "')"
+
+	If $Type<>"Custom"
+
+		$distgroup = sqlite("sql","SELECT Lat,Lon From Locations $Where","delim=,")
+	Else
+
+		$distgroup = sqlite("sql","SELECT Lat,Lon From CUSTOM  $Where","delim=,")
+	EndIf
+
+	$distgroup="~" + replace("$_NewLine","~",$distgroup,true)
+
+	$PointCoords=$distgroup
+
+	$SearchDistance=$TempD
+
+	# insert coordinate and distance data into <data> statement used for MacroSet
+
+	$Filter=Replace("InsertPointCoordsHere", $PointCoords, $FilterOrg, true)
+
+	$Filter=Replace("InsertDistanceHere", $SearchDistance, $Filter, true)
+
+	#Set filter
+
+	MacroSet Dialog=Filter VarName=$filter
+#20100204
+	If $numDDValues=1 OR $dnum=1
+
+		Filter Name=<macro>
+
+	Else
+
+		Filter Name=<macro> Join=Or
+
+	EndIf
+
+	$dnum=$dnum+1
+
+EndWhile
+
+EndSub
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+BeginSub Name=View
+
+# Toggle between viewing all or just the selected checkboxes
+
+If $CBL=""
+
+	ExitSub
+
+Else
+
+	If $SetView="all"
+
+		$PointCoordsView=$PointCoords
+		$PointCoords=$CBL
+		$Form = EditForm($Form,"btnSetDistances","Enabled","No")
+		$Form = EditForm($Form,"btnReset","Enabled","No")
+		$Form = EditForm($Form,"btnView","Caption","View All")
+		$SetView="checkedboxes"
+
+	Else
+
+		$PointCoords=$PointCoordsView
+		$Form = EditForm($Form,"btnSetDistances","Enabled","Yes")
+		$Form = EditForm($Form,"btnReset","Enabled","Yes")
+		$Form = EditForm($Form,"btnView","Caption","View Ticked")
+		$SetView="all"
+
+	EndIf
+
+EndIf
+
+
+EndSub
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+BeginSub name=viewfilters
+
+# Review all custom filter settings on separate form
+
+$HeaderUnderline="~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+
+$StatusC1=replace(";",$_NewLine,$CustomCBL1)
+$StatusC2=replace(";",$_NewLine,$CustomCBL2)
+$StatusC3=replace(";",$_NewLine,$CustomCBL3)
+$StatusC4=replace(";",$_NewLine,$CustomCBL4)
+$StatusC5=replace(";",$_NewLine,$CustomCBL5)
+$ViewMsg="Custom 1" + $_NewLine + $Header + $_NewLine + $HeaderUnderline  + $_NewLine + $StatusC1
+$ViewMsg=$ViewMsg + $_NewLine + $_NewLine
+$ViewMsg=$ViewMsg + "Custom 2" + $_NewLine + $Header + $_NewLine + $HeaderUnderline + $_NewLine + $StatusC2
+$ViewMsg=$ViewMsg + $_NewLine + $_NewLine
+$ViewMsg=$ViewMsg + "Custom 3" + $_NewLine + $Header + $_NewLine + $HeaderUnderline + $_NewLine + $StatusC3
+$ViewMsg=$ViewMsg + $_NewLine + $_NewLine
+$ViewMsg=$ViewMsg + "Custom 4" + $_NewLine + $Header + $_NewLine + $HeaderUnderline + $_NewLine + $StatusC4
+$ViewMsg=$ViewMsg + $_NewLine + $_NewLine
+$ViewMsg=$ViewMsg + "Custom 5" + $_NewLine + $Header + $_NewLine + $HeaderUnderline + $_NewLine + $StatusC5
+		
+#$ViewMsg=replace(",",$_Tab,$ViewMsg)
+
+While True # Infinite loop to redisplay form
+
+	$FormExit = form($formsaved,"")
+
+	# Save the screen position of the form for redisplay
+	$Formsaved = EditForm($Formsaved,"Form1Saved","Top",$_FormTop)
+	$Formsaved = EditForm($Formsaved,"Form1Saved","Left",$_FormLeft)
+
+	BeginCase
+
+		Case $FormExit = "SystemExit"
+			ExitSub
+
+		Case $FormExit = "btnCLOSE"
+			ExitSub
+		
+	EndCase
+
+EndWhile #form
+
+EndSub
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+BeginSub name=SaveFilter  # save set fiter (only used when all points use same distance)
+
+	SHOWSTATUS Msg="Setting Filter. Please Wait" Display=Off
+
+	SPEEDMODE STATUS=off
+
+	# create default filter name based on search radius distance
+
+	If sysinfo("distance") = "K" # for metric units
+
+		$FilterName="Radius $SearchDistance kilometres"
+
+	Else
+
+		$FilterName="Radius $SearchDistance miles"
+
+	EndIf
+
+While True # Infinite loop to redisplay form as required
+
+	$FilterB = form($SaveFilterForm,"")
+
+	BeginCase
+
+   	 Case $FilterB = "SystemExit"
+
+		Cancel
+
+	Case $FilterB = "ExitFilter"
+
+		 Cancel
+
+	Case $FilterB = "btnSaveFilter"
+
+		$MsgFilter= "The filter named " + $_Quote + " $FilterName " + $_Quote + " has been saved and will"
+		$MsgFilter= $MsgFilter + $_NewLine + "now appear in the in the dropdown list of filters."
+
+		$Filters=SysInfo("Filters")
+
+		$Filters=$Filters +";"
+
+		$FName= ";" + "$FilterName" + ";"
+
+		# Check if filter name exists
+
+		If RegEx($FName,$Filters)
+
+			GOSUB Name=FilterNameExists
+
+		Else
+
+			MacroSet Dialog=Filter VarName=$filter Name=$FilterName
+			MsgOK msg=$MsgFilter
+
+		EndIf
+
+	EndCase
+
+	Break
+
+EndWhile
+
+EndSub
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+BEGINSUB Name=FilterNameExists
+
+	While true	# display form
+
+		$FormExit = form($FilterNameYesNoForm,"")
+
+		# Save the screen position of the form for redisplay
+		$FilterNameYesNoForm = EditForm($FilterNameYesNoForm,"FilterYesNo","Top",$_FormTop)
+		$FilterNameYesNoForm = EditForm($FilterNameYesNoForm,"FilterYesNo","Left",$_FormLeft)
+
+		If $FormExit = "SystemExit"
+			break
+		EndIf
+
+		BeginCase
+
+			Case $BtnYes
+
+				MacroSet Dialog=Filter VarName=$filter Name=$FilterName
+				MsgOK msg=$MsgFilter
+				ExitSub
+
+			Case $BtnNo
+				GoSub name=SaveFilter
+				ExitSub
+
+		EndCase
+
+	EndWhile
+
+ENDSUB
+
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+BEGINSUB Name=DisplayHelpScreen
+
+$help = EditForm($help,"HelpText","Size","$cbFont")
+
+While true
+
+	$FormExit = form($help,"")
+
+	# Save the form's current position for redisplay
+	$help = EditForm($help,"help1","Top",$_FormTop)
+	$help = EditForm($help,"help1","Left",$_FormLeft)
+
+	BeginCase
+
+		Case $FormExit = "SystemExit"
+			ExitSub
+
+		Case $FormExit = "btnClose"
+			ExitSub
+
+		Case $FormExit = "btnCopy"
+			Clip data=$HelpText
+	EndCase
+
+	$help = EditForm($help,"HelpText","Size","$cbFont")
+
+EndWhile
+
+ENDSUB
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+# Filter Settings ######################################################################################################
+
+<data> VarName=$FilterOrg
+edtArcDistance=InsertDistanceHere
+chkArcExclude=False
+rbtArc=False
+rbtPoly=False
+rbtPoint=True
+rbtReplace=True
+rbtAppend=False
+
+ArcFilter=InsertPointCoordsHere
+<enddata>
+
+#########################################################################################################################
+
+# *** Help Text  +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+<data> VarName=$HelpText
+Filter On Selected  Points In Your Locations List (Tools=> Options=> Locations)
+
+
+Preparations:
+
+Search radius distances can be set and saved in the macro.  Please note that your Locations List is not modified but the distance values are saved by the macro.
+
+Alternately, distance search values for individual locations can be permanently set by editing your Locations list  entries to add the distance.after the coordinates. The distance for a Location is added immediately after the coordinates by entering a comma then the number.
+
+ 
+Simple Instructions:
+
+- Select the check boxes for the Locations you want to use with the point filter.
+
+- Set search distance(s) by entering  a value in the "Search Distance" box  and using the "Edit Distances" button
+
+- Press the "Run Filter" button to set the filter and exit the macro.
+
+
+Detailed Information and Instructions:
+
+The macro will set a filter on multiple points selected from your Locations list with search radius distances specified for each individual point.  If a single search distance is used the result will be a 'Point' type filter which can be saved and later run from the "Select a Saved Filter"  dropdown list on GSAK's  main screen. If multiple search distances are used a 'Joined' filter is created which cannot be saved by normal methods.  However,  the settings for the 'Joined' filter can be saved in the macro for easy reuse later.
+
+Your Locations list entries will be displayed in the macro sorted alphabetically and in the decimal degree format.
+
+Distances values set will respect your settings for kilometres or miles (Tools=>Options=>General).
+
+Distance values can be set and saved in the macro as described below.
+
+Search distances can be set/edited individually, in groups or for all entries at once.  Select a point or points, enter the distance in the "Search Distance" box and press the "Edit Distances" button to update the list with the new search distance values.  Repeat as required until all distances have been set as desired.
+
+Any Locations that do not have a distance set will be assigned the distance specified on the macro form in the  "Search Distance" box (the initial default value is 10) at start up.
+
+Distance values for individual locations can also be permanently set by editing your Locations list (Tools=> Options=> Locations) entries to add the distance.after the coordinates. The distance for a Location is added immediately after the coordinates by entering a comma then the number. If you see unexpected results  try using the format Location. Latitude, Longitude,Distance  in your Locations list entries.
+
+Distances derived from your Locations list entries can also edited in the macro.
+
+Note that previously this feature of the Locations list was used in the generation of HTML indices (distance and bearing from the selected location) but was deprecated in V7. Adding the distances now will not affect HTML generation.
+
+The "Reset" button will clear all selections and reset distances to their values at startup.
+
+The currently displayed distances and checkbox selections are saved at exit.
+
+Note that any settings saved do not (and cannot) change your Locations list entries (Tools=> Options=> Locations).  However,  saved distances will take precedence over any distance values from your Locations list when the macro is run.
+
+The display of only selected locations (checked boxes) can be toggled off / on with the 'View Selected' / 'View All' button.
+
+The macro can also store 5 groups of selections as custom settings where the Locations selected and their search distances are saved. Settings are saved by selecting an entry from the 'Save' drop-down menu. To change a custom setting simply save the new setting over top of the old.  The currently configured custom settings can be displayed in a pop-up dialog for review. To set a saved filter select the desired entry from the 'Run' drop-down menu.
+
+While the macro groups Locations by common search distance before setting each filter to improve process speed, a separate filter must still be run for each unique distance value. As a result, the greater the number of unique distances the longer it will take for the final joined results to display.
+
+Press the "Run Filter" to set the filter and exit the macro.  If only one distance value is used the resulting filter can be saved and be later run from the "Select a Saved Filter"  dropdown list on GSAK's  main screen. The macro will detect this situation and prompt you for a filter name. The default name provided is the search radius.
+
+Note that filters using multiple search distances require joined filters and cannot be saved by this method. However the 'custom settings' feature of the macro is good for this purpose.
+
+
+<enddata>
+
+#########################################################################################################################
+
+
+
+## FORMS  #################################################################################
+
+<Data> VarName=$form
+
+#********************************************************************
+
+# Form generated by GSAK form designer on Mon 30-Mar-2009 13:04:40
+
+#********************************************************************
+Name = Form1
+  Type = Form
+  Caption = Select Location Points and Search Distance
+  Color = 13553358
+  Height = 600
+  Width = 432
+
+Name = CBL
+  Type = Checklistbox
+  Columns = 0
+  Height = 361
+  Left = 15
+  Top = 81
+  Values = $PointCoords
+  Width = 395
+  Taborder = 8
+
+Name = btnOk
+  Type = Button
+  Height = 25
+  Left = 227
+  Top = 540
+  Width = 72
+  Taborder = 9
+  Caption = RUN FILTER
+
+Name = btnEXIT
+  Type = Button
+  Height = 25
+  Left = 366
+  Top = 540
+  Width = 44
+  Taborder = 10
+  Caption = EXIT
+
+Name = SearchDistance
+  Type = Edit
+  Height = 21
+  Left = 15
+  Top = 509
+  Width = 26
+  Taborder = 11
+
+Name = Label1
+  Type = Label
+  Height = 15
+  Left = 48
+  Size = 9
+  Style = bold
+  Top = 524
+  Width = 141
+  Caption = Miles (.5 =half a mile)
+
+Name = btnClearAll
+  Type = Button
+  Height = 20
+  Left = 73
+  Top = 450
+  Width = 48
+  Taborder = 12
+  Caption = Clear All
+
+Name = btnSetAll
+  Type = Button
+  Height = 20
+  Left = 15
+  Top = 450
+  Width = 53
+  Taborder = 13
+  Caption = Select All
+
+Name = Label2
+  Type = Label
+  Color = 16711680
+  Height = 33
+  Left = 14
+  Size = 22
+  Style = bold;italic
+  Top = 1
+  Width = 395
+  Caption = Filter On Selected Locations
+
+Name = Label3
+  Type = Label
+  Height = 13
+  Left = 57
+  Style = bold
+  Top = 36
+  Width = 309
+  Caption = From Your Locations List (Tools=>Options=>Locations)
+
+Name = SelectLocations
+  Type = Label
+  Height = 16
+  Left = 16
+  Size = 10
+  Style = bold
+  Top = 56
+  Width = 390
+  Caption = Select Locations To Filter On From The nnn Listed Below
+
+Name = btnSetDistances
+  Type = Button
+  Enabled = Yes
+  Height = 20
+  Left = 15
+  Top = 544
+  Width = 189
+  Taborder = 14
+  Caption = Edit Distances On The Selected Points
+
+Name = btnReset
+  Type = Button
+  Height = 20
+  Left = 15
+  Top = 476
+  Width = 186
+  Taborder = 15
+  Caption = Clear Selections /  Reset Distances
+
+Name = btnHelp
+  Type = Button
+  Height = 25
+  Left = 312
+  Top = 540
+  Width = 44
+  Taborder = 16
+  Caption = Help
+
+Name = btnView
+  Type = Button
+  Height = 20
+  Left = 127
+  Top = 450
+  Width = 75
+  Taborder = 17
+  Caption = View Selected
+
+Name = btnViewCustom
+  Type = Button
+  Height = 20
+  Left = 267
+  Top = 502
+  Width = 98
+  Taborder = 18
+  Caption = REVIEW ALL
+
+Name = Label6
+  Type = Label
+  Height = 15
+  Left = 48
+  Size = 9
+  Style = bold
+  Top = 497
+  Width = 154
+  Caption = Search Radius Distance
+
+Name = Label7
+  Type = Label
+  Height = 15
+  Left = 48
+  Size = 9
+  Style = bold
+  Top = 510
+  Width = 152
+  Caption = From Location Points in
+
+Name = Bar1
+  Type = Memo
+  Color = 8388736
+  Height = 7
+  Left = 224
+  Top = 528
+  Width = 186
+  Taborder = 19
+
+Name = Bar2
+  Type = Memo
+  Color = 8388736
+  Height = 118
+  Left = 212
+  Top = 450
+  Width = 6
+  Taborder = 20
+
+Name = cbSaveCustom
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 259
+  Top = 473
+  Values =      ;CUS 1;CUS 2;CUS 3;CUS 4;CUS 5
+  Width = 57
+  Taborder = 21
+
+Name = cbLoadCustom
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 353
+  Top = 473
+  Values =      ;CUS 1;CUS 2;CUS 3;CUS 4;CUS 5
+  Width = 57
+  Taborder = 22
+
+Name = Label8
+  Type = Label
+  Color = 0
+  Height = 16
+  Left = 224
+  Size = 10
+  Style = bold
+  Top = 451
+  Width = 185
+  Caption = CUSTOM SAVED FILTERS
+
+Name = Label4
+  Type = Label
+  Height = 15
+  Left = 223
+  Size = 9
+  Style = bold
+  Top = 476
+  Width = 34
+  Caption = SAVE
+
+Name = Label5
+  Type = Label
+  Height = 15
+  Left = 319
+  Size = 9
+  Style = bold
+  Top = 476
+  Width = 30
+  Caption = RUN
+
+<enddata>
+
+
+#
+######### Define Help Form Layout #################################################
+
+<Data> VarName=$help
+#********************************************************************
+# Form generated by GSAK form designer on Sat 21-Mar-2009 11:14:34
+#********************************************************************
+
+Name = help1
+  Type = Form
+  Caption = Help
+  Color = 16777215
+  Height = 584
+  Width = 604
+
+Name = btnClose
+  Type = Button
+  Escape = Yes
+  Height = 20
+  Left = 509
+  Top = 3
+  Width = 75
+  Taborder = 8
+  Caption = Close
+
+Name = HelpText
+  Type = Memo
+  Color = 15987699
+  Height = 515
+  Left = 9
+  Readonly = Yes
+  Scrollbars = Vertical
+  Size = 8
+  Style = Bold
+  Top = 28
+  Width = 578
+  Wrap = Yes
+  Taborder = 9
+
+Name = cbFont
+  Type = Combobox
+  Color = 15987699
+  Exitonchange = Yes
+  Height = 21
+  Left = 10
+  Top = 2
+  Values = 8;9;10;11;12;14
+  Width = 64
+  Taborder = 10
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 88
+  Size = 10
+  Style = bold
+  Top = 4
+  Width = 64
+  Caption = Text Size
+
+Name = btnCopy
+  Type = Button
+  Escape = Yes
+  Height = 20
+  Left = 219
+  Top = 3
+  Width = 155
+  Taborder = 11
+  Caption = Copy Help Text To Clipboard
+
+<enddata>
+
+
+<Data> VarName=$SaveFilterForm
+#********************************************************************
+# Form generated by GSAK form designer on Tue 06-Jan-2009 14:00:51
+#********************************************************************
+
+Name = SaveFilterForm
+  Type = Form
+  Caption = Name and Save Filter
+  Height = 162
+  Width = 275
+
+Name = FilterName
+  Type = Edit
+  Height = 21
+  Left = 27
+  Top = 56
+  Width = 209
+  Taborder = 8
+
+Name = btnSaveFilter
+  Type = Button
+  Height = 25
+  Left = 28
+  Top = 95
+  Width = 75
+  Taborder = 9
+  Caption = Save Filter
+
+Name = btnExitFilter
+  Type = Button
+  Height = 25
+  Left = 165
+  Top = 95
+  Width = 75
+  Taborder = 10
+  Caption = Exit
+
+Name = Label5
+  Type = Label
+  Height = 20
+  Left = 36
+  Size = 12
+  Style = bold
+  Top = 18
+  Width = 194
+  Caption = Enter Filter Name Below
+
+<enddata>
+
+<Data> VarName=$FilterNameYesNoForm
+#********************************************************************
+# Form generated by GSAK form designer on Wed 07-Jan-2009 13:57:34
+#********************************************************************
+
+Name = FilterYesNo
+  Type = Form
+  Caption = Filter Exits
+  Height = 153
+  Width = 322
+
+Name = YesNoFormLbl1
+  Type = Label
+  Color = 255
+  Height = 25
+  Left = 51
+  Size = 16
+  Style = bold
+  Top = 13
+  Width = 212
+  Caption = Filter Already Exists
+
+Name = YesNoFormLbl2
+  Type = Label
+  Height = 15
+  Left = 10
+  Size = 9
+  Style = bold
+  Top = 48
+  Width = 294
+  Caption = Do You Want To Overwrite The Existing Filter?
+
+Name = BtnYes
+  Type = Button
+  Height = 25
+  Left = 75
+  Top = 79
+  Width = 50
+  Taborder = 8
+  Caption = YES
+
+Name = BtnNo
+  Type = Button
+  Height = 25
+  Left = 189
+  Top = 79
+  Width = 50
+  Taborder = 9
+  Caption = NO
+
+<enddata>
+
+
+
+<Data> VarName=$formsaved
+#********************************************************************
+# Form generated by GSAK form designer on Tue 31-Mar-2009 12:32:30
+#********************************************************************
+
+Name = Form1Saved
+  Type = Form
+  Caption = Review Saved Filter Settings
+  Color = 13553358
+  Height = 600
+  Width = 432
+
+Name = btnCLOSE
+  Type = Button
+  Height = 25
+  Left = 174
+  Top = 537
+  Width = 75
+  Taborder = 8
+  Caption = CLOSE
+
+Name = ViewMsg
+  Type = Memo
+  Height = 510
+  Left = 11
+  Readonly = Yes
+  Scrollbars = Vertical
+  Size = 10
+  Style = bold
+  Top = 17
+  Width = 402
+  Taborder = 9
+
+<enddata>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

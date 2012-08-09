@@ -1,0 +1,51 @@
+############################################
+# MacVersion = 1.00
+# MacDescription = swbBuildCombined
+# MacFileName = swbBuildCombined.gsk
+# MacAuthor = javapgmr
+############################################
+DECLARE VAR=$ExportDB Type=String
+DECLARE VAR=$CurrDB Type=String
+$ExportDB="Combined"
+
+if ($_CurrentDatabase = $ExportDB)
+DataBase Name="Default" Action=Select StopStartupMacro=Y
+ENDIF
+
+If DatabaseExists($ExportDB)
+DATABASE Name=$ExportDB Action=delete
+ENDIF
+DATABASE Name=$ExportDB Action=create
+
+$CurrDB="Default"
+SHOWSTATUS msg="Switching to $CurrDB Database" Width=350
+DataBase Name=$CurrDB Action=Select StopStartupMacro=Y
+SHOWSTATUS msg="Copying $CurrDB contents to $ExportDB Database" Width=350
+$MoveCopy = $MoveCopy + "cbxDestination.Text=" + $ExportDB + $_NewLine
+MACROSET Dialog=MoveCopy VarName=$MoveCopy
+MOVECOPY Settings=<macro>
+
+$CurrDB="Trip"
+SHOWSTATUS msg="Switching to $CurrDB Database" Width=350
+DataBase Name=$CurrDB Action=Select StopStartupMacro=Y
+SHOWSTATUS msg="Copying $CurrDB contents to $ExportDB Database" Width=350
+$MoveCopy = $MoveCopy + "cbxDestination.Text=" + $ExportDB + $_NewLine
+MACROSET Dialog=MoveCopy VarName=$MoveCopy
+MOVECOPY Settings=<macro>
+
+
+  <DATA> VarName=$MoveCopy
+      [TfmMove]
+      rbtAdd.Checked=True
+      rbtAddFlag.Checked=False
+      rbtAddIgnore.Checked=False
+      rbtCopy.Checked=True
+      rbtExistIgnore.Checked=False
+      rbtFlagOnly.Checked=False
+      rbtMove.Checked=False
+      rbtReplace.Checked=False
+      rbtReplaceFlag.Checked=True
+      chkDisplay.Checked=True
+  <ENDDATA>
+
+

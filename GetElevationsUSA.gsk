@@ -1,0 +1,109 @@
+vercheck version=7.7.2.16 (please update GSAK to the latest version to run this macro - see http://gsak.net)
+
+#*******************************************
+# MacVersion = 1.1
+# MacDescription = Get elevations for USA with 10m or better horizontal accuracy
+# MacAuthor = Cairngorm
+# MacFileName = GetElevationsUSA.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=21416
+#*******************************************
+
+#save user's previous settings
+$oldsort = $_OrderBy
+#if user has been sorting on a column that we will be changing,
+if at("elevation",lower($oldsort)) + at("resolution",lower($oldsort)) > 0
+	#we need to replace that with two other sorts
+	SqlSort OrderBy=Terrain, Distance
+	endif
+
+$SavedFilter = ""
+if SysInfo("JoinFilter") = "N"
+	#can't easily save a joined filter, sorry
+	$SavedFilter = SaveFilter()
+	endif
+
+#Some GISdata constants 
+#use these values with GET parameter ElevationOnly=0 (0 means yes!)
+#$marker1 = "<double>"
+#$marker2 = "</double>"
+#or use these with GET parameter ElevationOnly=1, for more verbosity (1 means no!)
+$marker1 = "<Elevation>"
+$marker2 = "</Elevation>"
+$marker3 = "<Data_ID>"
+$marker4 = "</Data_ID>"
+ $unit = "METERS"
+#GSAK stores all elevations in meters, and converts them on the fly
+
+################## HERE WE GO - GET USER CHOICES ####################
+
+choose msg="Which elevations do you want to fetch?" opt1="US caches with missing elevations" opt2="Update all US caches"
+
+Mfilter Where=Country='United States' Join=and
+if $result<>2
+	Mfilter Where=Resolution='' Join=and
+	endif
+
+IF $_FilterCount > 0
+	############################# FINAL SETUP #########################
+
+	goto position=top
+	$counter3=0
+	$counter10=0
+	$counter30=0
+	$countdown= $_Count
+	$countdownsnapshot = $_Count
+	Transaction Action=Begin
+	############################## MAIN LOOP #########################
+
+	WHILE not($_EOL)
+		$url = "http://gisdata.usgs.net//xmlwebservices2/elevation_service.asmx/getElevation?X_Value=" + $d_longitude + "&Y_Value=" + $d_latitude + "&Elevation_Units=" + $unit + "&Source_Layer=-1&Elevation_Only=1"
+		$rawdata = geturl($url)
+		#FIRST GET ELEVATION
+		$pointer1 = at($marker1,$rawdata) + len($marker1)
+		$pointer2 = atstart($marker2,$rawdata,$pointer1)
+		$elevation = substr($rawdata,$pointer1,$pointer2-$pointer1)
+		#NOW GET RESOLUTION
+		$pointer1 = at($marker3,$rawdata) + len($marker3)
+		$pointer2 = atstart($marker4,$rawdata,$pointer1)
+		$datasource = substr($rawdata,$pointer1,$pointer2-$pointer1)
+
+		BeginCase
+			Case left($datasource,5) = "Elev_"
+				$resolution = "3m"
+				$counter3 = $counter3 +1
+			Case At("_13",$datasource) > 0 
+				$resolution = "10m"
+				$counter10 = $counter10 +1
+			OtherWise
+				$resolution = "30m"
+				$counter30 = $counter30 +1
+			EndCase
+		#ignore results with the GISdata error code
+		if $elevation <> "-1.79769313486231E+308"
+			$d_Elevation = val($elevation)
+			$d_Resolution = $resolution
+			#give a reassuring progress report
+			#using user's preferred units
+			if $_Units = "K"
+			$tempstring = numtostr($countdown) + " (" + $resolution + ") " + numtostr(int($d_Elevation)) + "m " + $d_Name
+				else
+				$tempstring = numtostr($countdown) + " (" + $resolution + ") " + numtostr(int($d_Elevation * 39.43/12)) + "ft " + $d_Name
+				endif
+			else $tempstr = "Invalid data for" + $d_Code + " " + $d_Name
+			ENDIF
+		showstatus msg=$tempstring 
+		goto position=next
+		$countdown = $countdown -1
+		ENDWHILE
+	SHOWSTATUS msg="dummytext" display=off
+
+	###################################################################
+	Transaction Action=End
+	ENDIF
+	
+#restore user's previous settings
+if $SavedFilter <> ""
+	$tempnum = RestoreFilter($SavedFilter,True)
+	endif
+SqlSort OrderBy=$oldsort
+

@@ -1,0 +1,26 @@
+#*******************************************
+# MacDescription = Report the frequency of attributes in a database
+# MacFileName = FrequencyOfNotAttributes.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.2
+# MacUrl=
+#*******************************************
+
+
+IF $_FilterActive
+    $count = val(sqlite("sql","select count(*) from attributes where not aInc and acode in (Select code from caches where rowid in (select * from gridtemp))"))
+    $_sql="select g_AttributeName(aId),count(aID),round(((cast(Count(aID) as real)/$Count)*100),1)"
+    $_sql=$_sql + " from attributes where not aInc and acode in (Select code from caches where rowid in (select * from gridtemp)) "
+    $_sql=$_sql + "Group by aID Order by Count(aID) DESC"
+    $result = Sqlite("sql",$_sql)
+ELSE
+    $count = val(sqlite("sql","select count(*) from attributes where not aInc"))
+    $_sql="select g_AttributeName(aId),count(aID),round(((cast(Count(aID) as real)/$Count)*100),1)"
+    $_sql=$_sql + " from attributes where not aInc Group by aID Order by Count(aID) DESC"
+    $result = Sqlite("sql",$_sql)
+ENDIF
+
+$result="Attribute;Frequency;Percent" + $_NewLine + $Result
+$Output=SqlToHtml($result,"Frequency of NOT attributes","y")
+
+

@@ -1,0 +1,1160 @@
+#*******************************************
+# MacVersion = 20090123
+# MacDescription = List Multi Finds and Record All Finds
+# MacAuthor = PDOP's
+# MacFileName = MultiAndAllFinds.gsk
+# MacUrl =http://gsak.net/board/index.php?showtopic=7698&view=getlastpost
+#*******************************************
+
+# List MultiFinds (More Than One Find For A Geocache by a Geocacher)
+# Searches by $d_OwnerID to allow for name changes
+# Calculates Finds for each Cache with options to write these to UserData fields
+# Calculate total finds for the Database with option to write to file or database notes
+
+
+################################################################################################
+
+VerCheck Version=7.5.1.19 (please update GSAK to the latest version to run this macro - see http://gsak.net)
+
+$CkbxOpenFile=false
+
+# restore saved settings
+
+MacSettings Type=R FileCheck=N
+
+# set form text size
+
+$form = EditForm($form,"Memo1","Size","$cbFont")
+
+# Define dropdown list of databases to match users
+
+$dblist = SysInfo("databases")
+
+# Set dropdown list of databases to Current database
+
+$DLdatabases=$_CurrentDatabase
+
+# Define List of Filters to match users
+
+$filters = sysinfo("filters")
+
+$filters = "NONE;RESTORE;" + $filters
+
+# Edit form to insert $filters variable
+
+$form = editform($form,"CBfilter","Values",$filters)
+
+$OriginalFilter = SAVEFILTER()
+
+GoSub name=SetFilterComboBox
+
+# Show instructions
+
+$Memo1=$Instructions
+
+# Create Lists
+
+$Mike = list("MLog","create","$_NewLine")
+
+#======= Display Form ===========
+
+While True
+
+$Exit = Form($form,"")
+$error = ""
+
+# Exit by clicking X in top right corner
+If $Exit = "SystemExit"
+$ExitButton = True
+EndIf
+
+If $ExitButton
+
+	# Erases SQL table from disk and memory
+	$status = sql("Drop Table ddSQLdata","")
+
+		IF RESTOREFILTER($OriginalFilter, True) = 0
+
+			MsgOK Msg="Previously-set filter would now show no records. Clearing."
+
+		ENDIF
+
+	MacSettings Type=S Vars=user,user2,user3,user4,USERNOTE,DbNote,DatabaseFile,cbFont,CkbxOpenFile
+
+	CANCEL
+
+EndIf
+
+# Save the screen position of the form for later
+$Form = EditForm($Form,"Form1","Top",$_FormTop)
+$Form = EditForm($Form,"Form1","Left",$_FormLeft)
+
+If $_CurrentDatabase <> $DLdatabases
+   DATABASE Name=$DLdatabases
+
+	# Set dropdown list of databases to Current database
+	  $DLdatabases=$_CurrentDatabase
+
+	# Erases SQL table from disk and memory
+	$status = sql("Drop Table ddSQLdata","")
+
+	$CBfilter = "NONE"
+
+Endif
+
+# RUN button
+
+IF $RUN
+
+Timer Status=On
+
+# initiaze variables
+
+$FinalReport1=""
+
+$FinalReport2=""
+
+$FinalReport3=""
+
+$DBcount=0
+
+$adjustedDBcount=0
+
+$cCounter=0
+
+$cCount=$_count
+
+$TotalM=0
+
+$TotalNM=0
+
+$ReportDate=DateToString($_today)
+
+$CacheLines = ""
+
+# Release SQL tables from memory in case updated outside the SQL engine
+
+$status = sql("Release Table logs","")
+
+$status = sql("Release Table ddSQLdata","")
+
+# file name and path for SQL disk table (file)
+$FilePath=$_Install + "\macros\ddSQLdata.txt"
+
+# Create SQL table with database table active "logs" comprised of $D_lParent( Code of parent), $D_lOwnerID and
+# $D_lType database variables. The SQL table is written to disk in ddSQLdata.txt and to memory
+# in table called ddSQLdata
+
+$status = dbtosql("logs","lParent,lOwnerID,lType ",$filepath,"")
+
+# Iterate through each cache in the database starting from the top
+
+Goto position=top
+
+WHILE not($_EoL)
+
+$cCounter=$cCounter+1
+
+$Remaining=$cCount-$cCounter
+
+SHOWSTATUS Msg="Processing - $Remaining Remaining : Geocache $D_Code " Top=100 Height=150 Width=300 Title=Processing - $cCounter of $cCount : Geocache $D_Code
+
+# Release SQL tables from memory in case updated outside the SQL engine
+
+$status = sql("Release Table Mike","")
+
+$status = sql("Release Table Mike1","")
+
+$status = sql("Release Table Mike2","")
+
+$status = sql("ASSIGN TO Mike SELECT lOwnerID,lType FROM ddSQLdata Where lParent='$D_Code'","")
+$status = sql("ASSIGN TO Mike1 SELECT lOwnerID FROM Mike WHERE lType='Found it' OR lType='Attended' OR lType='Webcam Photo Taken' ","")
+$status = sql("ASSIGN TO Mike2 SELECT lOwnerID, count(lOwnerID) as Total FROM Mike1 Group By lOwnerID having total > 1","")
+$status = sql("SELECT lOwnerID FROM Mike2","")
+
+# places results of SQL query into a list which has a unique/distinct $D_lOnwerID entry for each 
+# geocacher that has logged more than one find on any geocache(s)
+
+$List1=list("MLog","Replace","$Status")
+
+# counts finds for this cache
+$CFC=val(sql("SELECT COUNT(lOwnerID) FROM Mike1",""))
+
+# Initializes $CFCadjusted which will be the find count adjusted for multiple finds
+$CFCadjusted=$CFC
+
+GOSUB Name=CacheReport
+
+# Iterating through database reporting on each cache
+
+Table Active=Caches
+
+# Counting up all Find logs for database
+
+$DBcount=$DBcount+$CFC
+
+# Counting up all adjusted Find logs for database
+
+$AdjustedDBcount=$adjustedDBcount+$CFCadjusted
+
+	# Individual Geocache Total Finds Reporting Options Checkboxes
+
+	# Write Total Finds for this Cache to UserData. Overwrites any existing string
+
+	If $user #check box is selected
+		$CFCs = Str($CFC,4, 0)
+		$CFCs = Replace(" ","0",$CFCs, true)
+		$d_UserData = "$CFCs ($CFCadjusted) Finds at $ReportDate"
+	EndIf
+
+	# Write Total Finds for this Cache to User2. Overwrites any existing string
+
+	If $USER2 #check box is selected
+		$CFCs = Str($CFC,4, 0)
+		$CFCs = Replace(" ","0",$CFCs, true)
+		$d_User2 = "$CFCs ($CFCadjusted) Finds at $ReportDate"
+	EndIf
+
+	# Write Total Finds for this Cache to User3. Overwrites any existing string
+
+	If $USER3 #check box is selected
+		$CFCs = Str($CFC,4, 0)
+		$CFCs = Replace(" ","0",$CFCs, true)
+		$d_User3 = "$CFCs ($CFCadjusted) Finds at $ReportDate"
+	EndIf
+
+	# Write Total Finds for this Cache to User4. Overwrites any existing string
+
+	If $USER4 #check box is selected
+		$CFCs = Str($CFC,4, 0)
+		$CFCs = Replace(" ","0",$CFCs, true)
+		$d_User4 = "$CFCs ($CFCadjusted) Finds at $ReportDate"
+	EndIf
+
+	# Write Total Finds for this Cache to User Note. Append to any existing string
+
+	$Age=DateDiff($d_PlacedDate,$_Today)
+
+	If $USERNOTE #check box is selected
+
+		If $d_UserNote  = ""
+		$d_UserNote  = "$CFC ($CFCadjusted adjusted for double dipping) Finds in $age Days as of $_today"
+		Else
+		$existingUN=$d_UserNote
+		$d_UserNote = $existingUN + $_NewLine + "$CFC ($CFCadjusted adjusted for double dipping) Finds in $age Days as of $_today"
+		EndIf
+	EndIf
+
+	# Prepare text for Finds by Geocache Summary
+
+	$Code=$d_code + "       "
+	$Code=Left($Code,10)
+	$CFCs = Str($CFC, 4, 0)
+	$CFCadjS = Str($CFCadjusted, 4, 0)
+	$ageS = Str($Age, 4, 0)
+
+	If $CacheLines = ""
+
+		$CacheLines = "$Code $CFCs    $CFCadjS       $ageS Days"
+	Else
+
+		$CacheLines = $CacheLines + $_Newline + "$Code $CFCs    $CFCadjS       $ageS Days"
+
+	EndIf
+
+# Empty list of contents before processing the next cache
+
+$Mike = list("Mlog","replace","")
+
+# Goto next geocache in database
+
+GOTO Position=next
+
+ENDWHILE # for database
+
+Goto position=top
+
+# Refresh screen if any checkboxes selected
+If $user=true OR $USER2=true OR $USER3=true OR $USER4=true OR $USERNOTE=true OR $DatabaseFile=true OR $DbNote=True
+SpeedMode Status=Off
+SpeedMode Status=On
+EndIF
+
+SHOWSTATUS Msg="Scanning " Display=Off
+
+# Text for "Finds By Geocache" section
+
+$CLheader ="Total Number of Finds For Each Geocache" + $_NewLine + $_Newline
+$CLheader = $_Newline + $CLheader + "Geocache    Finds  Adjusted   Cache Age"
+$CLheader = $_Newline + $CLheader + $_Newline + "---------------------------------------"
+$CacheLines = $CLheader + $_Newline + $CacheLines + $_Newline
+
+GOSUB Name=FinalReport
+
+	# Database Total Finds Reporting Options Checkboxes
+
+	# Write Total Finds for this Cache to Db Note. Append to any existing string
+
+	If $DbNote #check box is selected
+
+		$DatabaseTotals="Total Finds are $DBcount ($adjustedDBcount adjusted for double dipping) as of $ReportDate"
+
+		If IsEmpty($_DbNotes)
+
+			$_DbNotes=$DatabaseTotals
+		Else
+
+			$Length=len($_DbNotes)
+
+			$Keep= $Length - 2
+
+			# removes unwanted carriage return / linefeeds above last entry
+
+			If $Length>1 AND Right($_DbNotes,2)=chr(13)+Chr(10)
+#  MsgOK msg=CR LF detected
+				$_DbNotes=Left($_DbNotes, $Keep)
+
+			EndIf
+
+
+			$_DbNotes = $_DbNotes + $_NewLine + $DatabaseTotals
+
+		EndIf
+
+	EndIf
+
+	# Write Total Finds for this Database to file. Append to any existing file
+
+	If $DatabaseFile #check box is selected
+		$DatabaseTotals="Total Finds are $DBcount ($adjustedDBcount adjusted for double dipping) as of $ReportDate"
+		GOSUB Name=SaveToFile
+	EndIf
+
+ENDIF # for RUN button
+
+If $CLIP
+
+	CLIP DATA=$memo1
+
+EndIf
+
+If $CBfilter<>$currentfilter
+
+	GoSub name=filter
+
+EndIf
+
+$form = EditForm($form,"Memo1","Size","$cbFont")
+
+EndWhile # FORM
+
+###############################   SUBROUTINES   #################################################
+
+#***************************************************************************************
+
+BeginSub name=filter
+
+SPEEDMODE STATUS=off
+
+If $CBfilter = "NONE"
+
+	CANCELFILTER
+
+Else
+
+	If $CBfilter =  "RESTORE"
+
+		IF RESTOREFILTER($OriginalFilter, True) = 0
+
+			MsgOK Msg="Previously-set filter would now show no records. Clearing."
+
+		ENDIF
+
+	Else
+
+		
+		ShowStatus Msg="Setting Filter Please Wait"
+   
+		Filter Name="$CBfilter"
+
+		ShowStatus Msg="Setting Filter Please Wait" Display=Off
+
+		IF $_FilterCount = 0
+
+			MsgOK Msg="No waypoints in filter, action cancelled"
+
+			If $currentfilter = "NONE"
+
+				CANCELFILTER
+
+			Else			
+
+				Filter Name="$currentfilter"
+
+			EndIf
+
+		ENDIF
+
+	EndIF
+
+EndIf
+
+GoSub name=SetFilterComboBox
+
+SPEEDMODE STATUS=on
+
+EndSub
+
+# ***************************************************************************************
+
+BeginSub name=SetFilterComboBox
+
+# Extract current filter name to update selection showing in ComboBox
+
+If $_FilterActive
+
+	$currentfilter = SAVEFILTER()
+
+	$currentfilter = Replace("$_NewLine",";",$currentfilter,true)
+
+	$currentfilter = Extract($currentfilter, ";", 4)
+
+	$currentfilter = Substr($currentfilter, 13, 0)
+
+	# Set comboBox to current filter
+
+	$CBfilter=$currentfilter
+Else
+
+	$CBfilter="NONE"
+
+	$currentfilter="NONE"
+
+EndIf
+
+EndSub
+
+#****************************************************************************************
+
+BeginSub name=CacheReport  # This sub processes a single geocache
+
+# Trap error message when SQL query returns no records (equivalent to zero matches)
+
+If list("MLog","Get","")="*ERROR* SELECT FROM: no records"
+
+$MLcount=0
+
+Else
+
+$MLcount=Val(list("MLog","Count",""))
+
+EndIf
+
+# Initialize reports
+
+$CacheReport=""
+
+$CacheReport2=""
+
+# Report only if geocache has mutiple finds by the same geocacher
+
+IF $MLcount>0
+
+	$aa=1
+
+	While $MLcount >= $aa
+
+	$Mlog =Val(list("MLog","Item","$aa"))
+
+	# line in report for this author ID
+	$IDlog= "Geocacher ID# $Mlog :" + $_NewLine
+
+	Table Active=Logs Scope=Parent
+
+	  GOTO position=Bottom                # Start with the oldest log
+	  $lognum = $_count
+
+		$FLCidTot=0
+
+	# Iterate through logs for this cache looking for find logs by this multi logger ID
+
+		WHILE $lognum > 0
+
+		# Initialize FoundLogCount for this OwnerID
+		$FLCid=0
+
+			If $Mlog=$d_lOwnerid AND ($d_lType="Found it" OR $d_lType="Attended" OR $d_lType="Webcam Photo Taken")
+
+			$IDlog= $IDlog + $_NewLine  + "$d_lDate as $d_lBy"
+
+			$FLCid=$FLCid+1
+
+			EndIf
+
+	    GOTO Position=-1                  # Next log chronologically
+	    $lognum = $lognum - 1
+
+		# Add FLCid to Total find count for this cache
+		$FLCidTot=$FLCidTot+$FLCid
+
+		ENDWHILE # logs for this cache by single ID
+
+	$CFCadjusted=$CFCadjusted-$FLCidTot+1
+
+	$CacheReport=$CacheReport + $IDLog + $_NewLine + $_NewLine
+
+	$aa=$aa+1
+
+	EndWhile # For a single owner ID
+
+	$CacheReport2 = "$D_Code  $D_Name has these multuple finds:" + $_newLine  + $_newLine  + $CacheReport
+
+	# increment count of Geocaches with Multiple finds by the Same Cacher
+	$TotalM=$TotalM+1
+
+ELSE
+
+	$ReportNM= $D_Code
+
+	$FinalReport2=$FinalReport2 + "$ReportNM "
+
+	$TotalNM=$TotalNM+1
+
+ENDIF # $MLcount>0
+
+$FinalReport1=$FinalReport1 + "$CacheReport2"
+
+EndSub
+
+#****************************************************************************************
+
+BeginSub name=FinalReport
+
+# Final Report for the Database
+
+$Devider="  -----------------------------------------------------------------------------"
+
+$Header= "Summary Report for Database $_Quote$_CurrentDatabase$_Quote as of $ReportDate at " + Time + $_NewLine + $_NewLine
+
+$Header= $Header + "There Are $TotalM Geocaches with Multiple finds by the Same Cacher(s) (matched by Owner ID#)"
+
+$DuplicateFinds = $DBcount - $adjustedDBcount
+
+$Header= $Header + " and a total of $DuplicateFinds Multiple Finds"
+
+$Header2="There are $TotalNM Geocaches without Multiple Finds in the database $_Quote$_CurrentDatabase$_Quote:"
+
+$FinalReport3=$Header + $_NewLine + $_NewLine + $FinalReport1 + $_NewLine
+
+$FinalReport3=$FinalReport3 + $Header2 + $_NewLine + $_NewLine + $FinalReport2
+
+$FinalReport3=$FinalReport3+ $_NewLine + $_NewLine + $Devider  + $_NewLine + $CacheLines
+
+$FinalReport3=$FinalReport3 + $_NewLine + "Total Finds are $DBcount ($adjustedDBcount adjusted) for the database $_Quote$_CurrentDatabase$_Quote"
+
+$FinalReport3=$FinalReport3 + $_Newline + $_NewLine + "Adjusted Numbers Take Into Account Multiple Finds Logged By a Geocacher(s) On The Same Geocache"
+
+Timer Status=Off Msg=No
+$TotalTime=Round($_Timer, 1)
+
+$FinalReport3=$FinalReport3 + $_NewLine + $_NewLine + "Total Time To Process This Database  $TotalTime Seconds"
+
+$Memo1=$FinalReport3
+
+EndSub
+
+#****************************************************************************************
+
+BEGINSUB Name=SaveToFile
+
+$FileFolder= $_install + "\macros\DatabaseFinds\"
+
+$Filename = "TotalFinds_" + $_CurrentDatabase + "_Database.txt"
+
+$FilePath=$FileFolder + $Filename 
+
+$DefaultFilePath=$FileFolder + $Filename
+
+# Message to display in form memo field 
+
+If Not(FolderExists($_install + "\macros\DatabaseFinds"))
+
+$FileSaveMessage="By default the macro will create a " + $_quote + "DatabaseTotals" + $_quote +" folder in the GSAK macro directory for saving files"
+$FileSaveMessage=$FileSaveMessage + " and the total finds for " + $_quote + $_CurrentDatabase  + $_quote +" database will be saved in the file "
+
+Else
+
+$FileSaveMessage="By default total finds for " + $_quote + $_CurrentDatabase  + $_quote +" database will be saved to the folder "
+$FileSaveMessage=$FileSaveMessage + $_quote + "DatabaseTotals" + $_quote +" in the GSAK macro directory in the file "
+
+EndIf
+
+$FileSaveMessage=$FileSaveMessage + $_quote  + $Filename + $_quote
+$FileSaveMessage=$FileSaveMessage + $_NewLine + $_NewLine + "If desired a different folder / file can be selected below."
+$FileSaveMessage=$FileSaveMessage + $_NewLine + $_NewLine + "Tick the checkbox below to open the file for review."
+$FileSaveMessage=$FileSaveMessage + $_NewLine + $_NewLine + "Select Save to proceed or Cancel to return to the main form."
+
+# display the Save File form
+While ShowForm($savefile)
+
+If $Fsubmit
+
+	If $FilePath=$DefaultFilePath 
+
+		## Checks if folder exists and creates it if required
+
+		If Not (FolderExists($_install + "\macros\DatabaseFinds"))
+
+			$Work="edtBabelOut.Text=MD " + Quote($_Install + "\macros\DatabaseFinds")
+
+			$OrgSetting="edtBabelOut.Text="
+
+			$Custom=replace($OrgSetting,$Work,$Custom,true)
+
+			MacroSet Dialog=Custom VarName=$Custom
+
+			Export Type=CUS Settings=<macro>
+
+# DO NOT INDENT <data> statement
+
+<data> VarName=$Custom
+[TfmBabel2]
+edtBabelOut.Text=
+chkDebug.Checked=False
+chkYes.Checked=False
+cbxGPX.Text=<macro>
+<enddata>
+
+		Endif
+
+	EndIf # for $FilePath=$DefaultFilePath
+
+		## Checks if file name already exists and appends data to existing file
+
+		If FileExists($FilePath)
+
+			$Work=AppendFile($FilePath, $_Newline + $DatabaseTotals)
+
+		Else
+
+			$FileHeader="Total Finds for the Database $_Quote$_CurrentDatabase$_Quote by date:"
+
+			$Putresult = PutFile($FilePath, $FileHeader + $_Newline + $_Newline + $DatabaseTotals)
+     
+		Endif
+
+		If $CkbxOpenFile=true
+
+			FileOpen file=$FilePath
+
+		EndIf
+
+Endif  # for $Fsubmit
+
+ExitSub
+
+If $btnFcancel
+
+	ExitSub
+
+EndIf
+
+Endwhile  # Form Display
+
+ENDSUB
+
+#****************************************************************************************
+
+#   +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#   +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+<Data> VarName=$Instructions
+This Macro will Find Geocaches with Two or More Finds Logged by the Same Geocacher(s) and Calculate The Total Finds For Each Geocache and The Database.
+
+Geocache find counts can be recorded to any combination of UserNote, UserData, UserData2, UserData3 or UserData4 and are presented in a summary report along with total finds for the database and a list of geocaches with multiple finds logged by the same geocacher.
+
+Total Finds for the database can also be appended to the database's notes (F3 or Database=>Properties) or saved to file for a record of finds over time.
+
+The current database/filter are searched and Finds are matched by the Geocachers Owner ID # to allow for any name changes.
+
+"Found it", "Attended" and "Webcam Photo Taken" type logs are considered as Finds.
+
+The found count for each cache can be saved to it's UserData, UserData2 and/or User Note field(s) by ticking the desired check boxes.
+
+The found count will be appended to any existing User Notes entries in the format:
+27 (26 adjusted for double dipping) Finds in nnn Days as of 2008-02-25 7:12:15 PM
+
+and will overwrite any existing entries in UserData and UserData2 in an abbreviated format:
+0027 (27) Finds at 20080225.
+
+Leading zeros are prepended to the UserData and UserData2 entries so that the database will correctly sort by the found count.
+
+The totals finds for the database can also be saved to file for a permanent record in the format:
+
+Total Finds for the Database "database name" by date:
+
+Total Finds are 1385 (1380 adjusted for double dipping) as of 20080225
+
+By default the first time the "Save to File" option is selected a folder will be created named "DatabaseTotals" in the GSAK macro directory for saving files. The files will be named in the format "TotalFinds_database name_Database.txt" and subsequent totals for any database will be appended to any existing file.
+
+The file name and folder for the "Total Database Finds by Date" report can also be selected by the user. Automatic creation of a folder in the macros directory will only occur if the defaults are left unchanged.
+
+Optionally this file can be opened for review after saving.
+
+To use this macro select the database and filter from the dropdown lists (or select NONE to cancel all filters) and your desired Finds reporting options then press the Run button.
+
+The summary report including any comments you wish to add (in this blue area) can be spell checked and copied to the clipboard.
+
+The filter in effect when the macro was started will be restored at exit or you can select RESTORE at any time from the macro's dropdown list.
+
+Of course only logs that are in the database can be scanned so you should use the AddLogs.gsk macro to add any missing logs to your caches.
+<EndData>
+
+#-----------------------------------------------------------------------------------------------
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Wed 21-Jan-2009 21:56:20
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Scan For Geocaches For Multi Found It Loggers (More Than One Find Recorded On The Geocache)
+  Color = 16777215
+  Height = 588
+  Width = 628
+
+Name = Label2
+  Type = Label
+  Color = 255
+  Height = 18
+  Left = 28
+  Size = 11
+  Style = bold
+  Top = 3
+  Width = 564
+  Caption = Report Geocaches With Multiple Finds Logged By The Same Geocacher(s)
+
+Name = Label7
+  Type = Label
+  Color = 0
+  Height = 16
+  Left = 93
+  Size = 10
+  Style = bold
+  Top = 25
+  Width = 434
+  Caption = Record Total Finds For Each Geocache and For The Database
+
+Name = DLdatabases
+  Type = Combobox
+  Color = 14483385
+  Display = 16
+  Exitonchange = Yes
+  Height = 21
+  Left = 12
+  Top = 77
+  Values = $dblist
+  Width = 190
+  Taborder = 9
+
+Name = RUN
+  Type = Button
+  Height = 25
+  Left = 549
+  Top = 64
+  Width = 54
+  Taborder = 8
+  Caption = RUN
+
+Name = Memo1
+  Type = Memo
+  Color = 16772955
+  Font = Courier New
+  Height = 369
+  Left = 12
+  Readonly = No
+  Scrollbars = Vertical
+  Size = 10
+  Style = bold
+  Top = 181
+  Width = 596
+  Wrap = Yes
+  Taborder = 10
+
+Name = User
+  Type = Checkbox
+  Height = 17
+  Left = 227
+  Top = 71
+  Width = 15
+  Taborder = 12
+
+Name = Label1
+  Type = Label
+  Color = 4227072
+  Height = 16
+  Left = 49
+  Size = 10
+  Style = bold
+  Top = 58
+  Width = 116
+  Caption = Select Database
+
+Name = ExitButton
+  Type = Button
+  Height = 25
+  Left = 549
+  Top = 114
+  Width = 54
+  Taborder = 11
+  Caption = EXIT
+
+Name = USERNOTE
+  Type = Checkbox
+  Height = 17
+  Left = 440
+  Top = 84
+  Width = 15
+  Taborder = 13
+
+Name = USER2
+  Type = Checkbox
+  Height = 17
+  Left = 328
+  Top = 71
+  Width = 15
+  Taborder = 14
+
+Name = Label5
+  Type = Label
+  Color = 16711680
+  Height = 15
+  Left = 457
+  Size = 9
+  Style = bold
+  Top = 90
+  Width = 67
+  Caption = UserNotes
+
+Name = Label6
+  Type = Label
+  Color = 16711680
+  Height = 15
+  Left = 348
+  Size = 9
+  Style = bold
+  Top = 72
+  Width = 68
+  Caption = UserData2
+
+Name = Label4
+  Type = Label
+  Color = 16711680
+  Height = 15
+  Left = 249
+  Size = 9
+  Style = bold
+  Top = 72
+  Width = 60
+  Caption = UserData
+
+Name = BlueBar
+  Type = Memo
+  Color = 16711680
+  Height = 6
+  Left = 12
+  Readonly = Yes
+  Top = 148
+  Width = 593
+  Taborder = 19
+
+Name = BtnSpell
+  Type = Button
+  Height = 21
+  Left = 275
+  Spellcheck = Memo1
+  Top = 156
+  Width = 75
+  Taborder = 17
+  Caption = Spell Check
+
+Name = CLIP
+  Type = Button
+  Height = 21
+  Left = 380
+  Top = 156
+  Width = 75
+  Taborder = 15
+  Caption = ClipBoard
+
+Name = DatabaseFile
+  Type = Checkbox
+  Height = 17
+  Left = 432
+  Top = 127
+  Width = 15
+  Taborder = 16
+
+Name = Label8
+  Type = Label
+  Color = 0
+  Height = 15
+  Left = 457
+  Size = 9
+  Style = bold
+  Top = 126
+  Width = 44
+  Caption = To File
+
+Name = Label9
+  Type = Label
+  Color = 16711680
+  Height = 16
+  Left = 15
+  Size = 10
+  Style = bold;italic
+  Top = 159
+  Width = 237
+  Caption = Summary Report / Comments Area
+
+Name = CBfilter
+  Type = Combobox
+  Color = 8454143
+  Display = 16
+  Exitonchange = Yes
+  Height = 21
+  Left = 12
+  Top = 121
+  Values = $dblist
+  Width = 190
+  Taborder = 18
+
+Name = Label3
+  Type = Label
+  Color = 4194368
+  Height = 16
+  Left = 66
+  Size = 10
+  Style = bold
+  Top = 102
+  Width = 83
+  Caption = Select Filter
+
+Name = Memo2
+  Type = Memo
+  Color = 255
+  Height = 6
+  Left = 11
+  Readonly = Yes
+  Top = 49
+  Width = 593
+  Taborder = 20
+
+Name = Memo3
+  Type = Memo
+  Color = 4194368
+  Height = 80
+  Left = 216
+  Top = 62
+  Width = 6
+  Taborder = 21
+
+Name = Memo4
+  Type = Memo
+  Color = 4194368
+  Height = 80
+  Left = 532
+  Top = 62
+  Width = 6
+  Taborder = 22
+
+Name = DbNote
+  Type = Checkbox
+  Height = 17
+  Left = 248
+  Top = 127
+  Width = 15
+  Taborder = 23
+
+Name = Label10
+  Type = Label
+  Color = 0
+  Height = 16
+  Left = 234
+  Size = 10
+  Style = bold;underline
+  Top = 107
+  Width = 290
+  Caption = Write / Append Database's Total Finds to:
+
+Name = USER4
+  Type = Checkbox
+  Height = 17
+  Left = 328
+  Top = 89
+  Width = 15
+  Taborder = 24
+
+Name = Label11
+  Type = Label
+  Color = 16711680
+  Height = 15
+  Left = 348
+  Size = 9
+  Style = bold
+  Top = 90
+  Width = 68
+  Caption = UserData4
+
+Name = Label12
+  Type = Label
+  Color = 16711680
+  Height = 15
+  Left = 249
+  Size = 9
+  Style = bold
+  Top = 90
+  Width = 68
+  Caption = UserData3
+
+Name = USER3
+  Type = Checkbox
+  Height = 17
+  Left = 227
+  Top = 89
+  Width = 15
+  Taborder = 25
+
+Name = Label13
+  Type = Label
+  Color = 16711680
+  Height = 16
+  Left = 238
+  Size = 10
+  Style = bold;underline
+  Top = 54
+  Width = 280
+  Caption = Record Each Geocache's Total Finds to:
+
+Name = cbFont
+  Type = Combobox
+  Color = 16772955
+  Exitonchange = Yes
+  Height = 21
+  Left = 553
+  Top = 156
+  Values = 8;9;10;11;12;14
+  Width = 51
+  Taborder = 26
+
+Name = Label14
+  Type = Label
+  Color = 16711680
+  Height = 16
+  Left = 480
+  Size = 10
+  Style = bold;italic
+  Top = 159
+  Width = 64
+  Caption = Text Size
+
+Name = Label15
+  Type = Label
+  Color = 0
+  Height = 15
+  Left = 273
+  Size = 9
+  Style = bold
+  Top = 126
+  Width = 122
+  Caption = To Database Notes
+
+Name = Label16
+  Type = Label
+  Color = 16711680
+  Height = 15
+  Left = 458
+  Size = 9
+  Style = bold
+  Top = 75
+  Width = 64
+  Caption = Append to
+
+<enddata>
+
+###################################################################################
+######### Savefile Form ###########################################################
+###################################################################################
+
+<Data> VarName=$savefile
+#********************************************************************
+# Form generated by GSAK form designer on Tue 25-Mar-2008 22:04:00
+#********************************************************************
+
+Name = Nsavefile
+  Type = Form
+  Caption = Save Database Finds To  File
+  Color = 16777215
+  Height = 293
+  Left = 319
+  Top = 167
+  Width = 393
+
+Name = Fsubmit
+  Type = Button
+  Height = 22
+  Left = 100
+  Top = 230
+  Width = 52
+  Taborder = 8
+  Caption = &Save
+
+Name = FileSaveMessage
+  Type = Memo
+  Height = 137
+  Left = 14
+  Style = bold
+  Top = 16
+  Width = 357
+  Taborder = 9
+
+Name = btnFcancel
+  Type = Button
+  Escape = Yes
+  Height = 22
+  Left = 233
+  Top = 230
+  Width = 52
+  Taborder = 10
+  Caption = &Cancel
+
+Name = CkbxOpenFile
+  Type = Checkbox
+  Height = 17
+  Left = 62
+  Top = 200
+  Width = 15
+  Taborder = 11
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 86
+  Size = 10
+  Style = bold
+  Top = 200
+  Width = 237
+  Caption = Open File For Review After Saving
+
+Name = FilePath
+  Type = File
+  Height = 21
+  Left = 12
+  Top = 167
+  Width = 361
+  Taborder = 12
+
+<enddata>
+
+

@@ -1,0 +1,534 @@
+################################################################################ 
+#             GSAK Macro File Variable Declaration Generator                   # 
+# GSAKVariables.gsk written by Mike Wood (Lignumaqua) 2008, 2009               # 
+# geocaching@mikewoodconsulting.com                                            # 
+#                                                                              # 
+# This script reads a macro file and extract all the variable names and types  #
+# to create variable declaration statements                                    #
+# Writes out a new text file ready to be copied into the original file         #
+#                                                                              #
+# Matches GSAK 7.5.0.173 and later - Now universal and self updating
+#
+# MacVersion = 0.31
+# MacDescription = Variable Declaration Generator
+# MacFileName = GSAKVariables.gsk
+# MacAuthor = Lignumaqua
+################################################################################
+# Version check
+VERCHECK Version=7.5.2.00 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+
+GOSUB Name=DeclareVariables
+
+$Revision = "V0.31"
+
+# ============= Form ==============
+
+	IF ShowForm($form)
+		# Reset the screen position of the menu form to where the user left it
+  	$Form = EditForm($Form,"Form1","Top",$_FormTop)
+  	$Form = EditForm($Form,"Form1","Left",$_FormLeft)
+  	IF $cancelform
+    	cancel msg="Generation cancelled"
+  	ENDIF 
+	ELSE
+  	cancel msg="Macro cancelled"
+	ENDIF
+
+$OutputFile = Extract($DataFile,".",1) +"-variables.dat"
+
+# If we get to here then the user must have clicked on the OK button
+
+# cancel msg="OK pressed"    
+
+# ============= Form ==============
+
+IF $OutputFile = $DataFile
+	CANCEL msg="The input file and output file have the same name."
+ENDIF
+		
+	# Set up the default search strings
+	$Digits = ".,0123456789+-"
+	
+#	$SystemStrings = Upper(",CurrentDatabase,CurrentDataPath,DbNotes,FormLeft,FormTop,Global,GoogleLat,GoogleLon,Install,MacroParms,NewLine,OziColour,Quote,SortBy,Special,SQL,Symbol,Version,")
+#	$SystemNumbers = Upper(",Count,DbCount,Degrees,FilterCount,ImageClickLeft,ImageClickTop,MacroLevel,Pi,SQLRows,Timer,")
+#	$SystemBooleans = Upper(",AltKey,EOL,FilterActive,ShiftKey,CtrlKey,SplitScreen,")
+#	$SystemDates = Upper(",Today,")
+#	
+#	$DatabaseStrings = Upper(",Bearing,CacheID,CacheType,Code,Container,County,Country,Hints,LatOriginal,Latitude,LongDescription,LonOriginal,Longitude,MacroSort,Name,OwnerID,OwnerName,PlacedBy,ShortDescription,SmartName,Source,State,Symbol,TravelBugs,Url,UserData,User2,User3,User4,UserNote,lParent,lType,lText,lBy,lLat,lLon,cParent,cCode,cPrefix,cName,cType,cLat,cLon,cUrl,cComment,kCode,kBeforeLat,kBeforeLon,kBeforeCounty,kBeforeState,kAfterLat,kAfterLon,kAfterCounty,kAfterState,")
+#	$DatabaseNumbers = Upper(",Degrees,Difficulty,Distance,FoundCount,NumberOfLogs,Terrain,UserSort,lLogid,lOwnerid,")
+#	$DatabaseBooleans = Upper(",Archived,DNF,Found,FTF,HasCorrected,HasTravelBug,HasUserNote,Lock,LongHTM,MacroFlag,ShortHTM,SmartOverride,TempDisabled,UserFlag,Watch,lEncoded,lIsOwner,cByUser,cFlag,")
+#	$DatabaseDates = Upper(",Changed,Created,DNFDate,FoundByMeDate,LastFoundDate,LastGPXDate,LastLog,LastUserDate,PlacedDate,UserNoteDate,cDate,lDate,")
+#	
+#	$FunctionStrings = Upper(",Appendfile,Alltrim,Array,BoolToStr,CacheType,ChildType,Chr,Codematch,DateFormat,DateToSql,DateToString,DbToSql,DbToSqlite,Dir,EditForm,EntityDecode,Eval,Extract,Form,GCalc,GeoCalc,GetClipText,GetCountry,GetCounty,GetEnvV,GetFile,GetNear,GetPolygon,GetState,GetUrl,GPSInfo,HTML,HttpEncode,Keep,Left,List,Lower,MimeDecode,MimeEncode,NumToStr,PutFile,Quote,RegExData,RegExEscape,RegExReplace,RegExSub,Remove,Replace,Right,Rot13,SaveFilter,SmartName,Sql,SqlQuote,SQLite,SqlToHtml,Str,Substr,SysInfo,TextOut,Time,Trim,Upper,UTF8,UTF16,ZipFile,")
+#	$FunctionNumbers = Upper(",Abs,Asc,At,Atstart,ArcCos,ArcCosh,ArcSin,ArcSinh,ArcTan,ArcTan2,ArcTanh,Cos,Cosh,DateDiff,DegToRad,Exp,Frac,Int,Len,Ln,Log,RadToDeg,Random,RegExCount,RegExPos,RestoreFilter,RGBColor,Round,Sin,Sinh,Sqr,Sqrt,Tan,Tanh,TotChild,Val,")
+#	$FunctionBooleans = Upper(",DataBaseExists,DriveExists,FileExists,FolderExists,IsEmpty,IsOwner,Not,RegEx,RemoveVar,Seek,ShowForm,StrToBool,VarExists,YesNo,")
+#	$FunctionDates = Upper(",SQLToDate,StringToDate,")
+	
+	
+	# GSAK 7.5.0.173 and later
+	# C = String, N = Numeric, L = Boolean, D = Date
+	
+	# System variables
+	# SELECT vfrom FROM lookup WHERE type='sysvars' AND d2='C' order by vfrom
+	
+	# Database variables
+	# SELECT vfrom FROM lookup WHERE type='dbv' AND d2='C' order by vfrom
+	
+	# Functions
+	# SELECT vfrom FROM lookup WHERE type='functions' AND d2='C' order by vfrom
+	
+	
+	
+		$SQLfile = $_ExePath + "\static.db3"
+		$status = Sqlite("open",$SQLfile)
+		
+		$_sql = "SELECT vfrom FROM lookup WHERE type='sysvars' AND d2='C' order by vfrom"
+		$SystemStrings = "," + Upper(Sqlite("sql",$_sql)) + ","
+		$SystemStrings = Replace("$_","",$SystemStrings)
+		$SystemStrings = Replace($_NewLine,",",$SystemStrings)
+		$_sql = "SELECT vfrom FROM lookup WHERE type='sysvars' AND d2='N' order by vfrom"
+		$SystemNumbers = "," + Upper(Sqlite("sql",$_sql)) + ","
+		$SystemNumbers = Replace("$_","",$SystemNumbers)
+		$SystemNumbers = Replace($_NewLine,",",$SystemNumbers)
+		$_sql = "SELECT vfrom FROM lookup WHERE type='sysvars' AND d2='L' order by vfrom"
+		$SystemBooleans = "," + Upper(Sqlite("sql",$_sql)) + ","
+		$SystemBooleans = Replace("$_","",$SystemBooleans)
+		$SystemBooleans = Replace($_NewLine,",",$SystemBooleans)
+		$_sql = "SELECT vfrom FROM lookup WHERE type='sysvars' AND d2='D' order by vfrom"
+		$SystemDates = "," + Upper(Sqlite("sql",$_sql)) + ","
+		$SystemDates = Replace("$_","",$SystemDates)
+		$SystemDates = Replace($_NewLine,",",$SystemDates)
+		
+		$_sql = "SELECT vfrom FROM lookup WHERE type='dbv' AND d2='C' order by vfrom"
+		$DatabaseStrings = "," + Upper(Sqlite("sql",$_sql)) + ","
+		$DatabaseStrings = Replace("$d_","",$DatabaseStrings)
+		$DatabaseStrings = Replace($_NewLine,",",$DatabaseStrings)
+		$_sql = "SELECT vfrom FROM lookup WHERE type='dbv' AND d2='N' order by vfrom"
+		$DatabaseNumbers = "," + Upper(Sqlite("sql",$_sql)) + ","
+		$DatabaseNumbers = Replace("$d_","",$DatabaseNumbers)
+		$DatabaseNumbers = Replace($_NewLine,",",$DatabaseNumbers)
+		$_sql = "SELECT vfrom FROM lookup WHERE type='dbv' AND d2='L' order by vfrom"
+		$DatabaseBooleans = "," + Upper(Sqlite("sql",$_sql)) + ","
+		$DatabaseBooleans = Replace("$d_","",$DatabaseBooleans)
+		$DatabaseBooleans = Replace($_NewLine,",",$DatabaseBooleans)
+		$_sql = "SELECT vfrom FROM lookup WHERE type='dbv' AND d2='D' order by vfrom"
+		$DatabaseDates = "," + Upper(Sqlite("sql",$_sql)) + ","
+		$DatabaseDates = Replace("$d_","",$DatabaseDates)
+		$DatabaseDates = Replace($_NewLine,",",$DatabaseDates)
+		
+		$_sql = "SELECT vfrom FROM lookup WHERE type='functions' AND d2='C' order by vfrom"
+		$FunctionStrings = "," + Upper(Sqlite("sql",$_sql)) + ","
+		$FunctionStrings = Replace($_NewLine,",",$FunctionStrings)
+		$_sql = "SELECT vfrom FROM lookup WHERE type='functions' AND d2='N' order by vfrom"
+		$FunctionNumbers = "," + Upper(Sqlite("sql",$_sql)) + ","
+		$FunctionNumbers = Replace($_NewLine,",",$FunctionNumbers)
+		$_sql = "SELECT vfrom FROM lookup WHERE type='functions' AND d2='L' order by vfrom"
+		$FunctionBooleans = "," + Upper(Sqlite("sql",$_sql)) + ","
+		$FunctionBooleans = Replace($_NewLine,",",$FunctionBooleans)
+		$_sql = "SELECT vfrom FROM lookup WHERE type='functions' AND d2='D' order by vfrom"
+		$FunctionDates = "," + Upper(Sqlite("sql",$_sql)) + ","
+		$FunctionDates = Replace($_NewLine,",",$FunctionDates)
+		
+		$status = Sqlite("close",$SQLfile)
+
+	
+	
+	
+	# Intialize the list variable used to store the results
+	$Variablesdb = list("vl","create",";")
+	
+	#########################
+	# Main Loop starts here #  
+	#########################
+	
+	IF (FileExists($DataFile))
+		# Need to do two passes		
+		$Pass = 0
+		WHILE $Pass < 2	
+			$Pass = $Pass + 1
+			# If the file exists then read the saved values and assign them to variables
+			# now $line will hold the contents of each line
+			FILEREAD File=$datafile
+	
+				# Strip off leading and trailing white space
+				$codeline = RegExReplace("^\s+|\s+$", $line, "")
+				
+				# Separate the variable name and the rest of the line
+				GOSUB name=Parse
+				
+				#If we found a variable then check it out
+				IF $valid
+					GOSUB name=FindType
+					SHOWSTATUS msg="Pass $Pass: Checking $varname of type $type" Width=350
+					IF NOT($type = "Duplicate")
+						IF NOT($type = "Unknown" AND $Pass = 1)
+							$Variablesdb = list("vl","add","-$varname,$type")
+						ENDIF
+					ENDIF
+				ENDIF			
+			ENDREAD 
+		ENDWHILE	
+		
+		GOSUB name=outputfile
+		
+	ENDIF
+
+	
+
+BEGINSUB name=Parse
+	$valid = FALSE
+	
+	# if the first characters are $_HTML it's a special case string variable so force that result
+	IF Upper(Left($codeline,6)) = "$_HTML"
+		$varname = "_HTML"
+		$codeline = "$_Quote"
+		$valid = TRUE
+		EXITSUB
+	ENDIF
+	
+	# if the first characters are $_ it's a system variable - skip.
+	IF Left($codeline,2) = "$_"
+		EXITSUB
+	ENDIF
+	
+	# if the first characters are $d_ or $D_ it's a database variable - skip.
+	IF Upper(Left($codeline,3)) = "$D_"
+		EXITSUB
+	ENDIF
+	
+	# if the first characters are <data> it's a string variable so force that result
+	IF Upper(Left($codeline,6)) = "<DATA>"
+		$varname = Extract($codeline, "=", 2)
+		$varname = Extract($varname,"$",2)
+		$varname = RegExReplace("^\s+|\s+$", $varname, "")
+		$codeline = "$_Quote"
+		$valid = TRUE
+		EXITSUB
+	ENDIF
+	
+	# if the first character is a $ it's a variable - so extract it.
+	IF Left($codeline,1) = "$" OR Upper(Left($codeline,4)) = "SET "
+		$varname = Extract($codeline, "=", 1)
+		$codeline = Right($codeline,(Len($codeline)-Len($varname)-1))
+		
+		#$codeline = Extract($codeline, "=", 2)
+		#Clean it up again
+		$varname = Extract($varname,"$",2)
+		$varname = RegExReplace("^\s+|\s+$", $varname, "")
+		$codeline = RegExReplace("^\s+|\s+$", $codeline, "")
+		$codeline = Upper($codeline)
+		$valid = TRUE
+	ENDIF
+		
+ENDSUB
+
+BEGINSUB name=FindType
+	$type = "Unknown"
+	
+	#	PAUSE msg="$varname,[\w]*"
+	#Do we already have this one?
+#	$Query = "-" + $varname + "-[\w]*"
+	$Query = "-"+ $varname + ","
+	$Index = list("vl","RegEx",$Query)
+	IF NOT($Index ="0")
+		$type = "Duplicate"
+		EXITSUB
+	ENDIF
+	# Strip off any opening parentheses
+	WHILE Left($codeline,1) = "("
+		$codeline = Extract($codeline,"(",2)
+		$codeline = RegExReplace("^\s+|\s+$", $codeline, "")
+	ENDWHILE
+	
+	# Any boolean tests? Look for extra = or > or < that aren't inside quotes
+	$tmp = $_Quote + "[^" + $_Quote + "]*?" + $_Quote
+	$tmp = RegExReplace($tmp, $codeline, "")
+	IF RegEx("=",$tmp) OR RegEx("<",$tmp) OR RegEx(">",$tmp)
+		$type = "Boolean"
+		EXITSUB
+	ENDIF
+			
+	#Begins with a quote it's a string
+	IF Left($codeline,1) = "$_Quote"
+		$type = "String"
+		EXITSUB
+	ENDIF
+	
+	#Begins with a [ it's a date
+	IF Left($codeline,1) = "["
+		$type = "Date"
+		EXITSUB
+	ENDIF
+	
+	# true or false?
+	IF Left($codeline,4) = "TRUE" OR Left($codeline,5) = "FALSE"
+		$type = "Boolean"
+		EXITSUB
+	ENDIF
+	
+	# first character is a number, +, -, or a decimal point it's numeric
+	$FirstCharacter = Left($codeline,1)
+	IF NOT(At($FirstCharacter,$Digits)=0)
+		$type = "Numeric"
+		EXITSUB
+	ENDIF
+		
+	# System variables
+	IF Left($codeline,2) = "$_"
+		$codeline = Extract($codeline, " ",1)
+		$codeline = Extract($codeline, "_",2)
+		$codeline = RegExData("[\w]*",$codeline,1)
+		$codeline = "," + $codeline + ","
+		IF NOT(At($codeline,$SystemStrings)=0)
+			$type = "String"
+			EXITSUB 
+		ENDIF
+		IF NOT(At($codeline,$SystemNumbers)=0)
+			$type = "Numeric"
+			EXITSUB 
+		ENDIF
+		IF NOT(At($codeline,$SystemBooleans)=0)
+			$type = "Boolean"
+			EXITSUB 
+		ENDIF
+		IF NOT(At($codeline,$SystemDates)=0)
+			$type = "Date"
+			EXITSUB 
+		ENDIF
+	ENDIF
+	
+	# Database Variables
+	
+	IF Left($codeline,3) = "$D_"
+		$codeline = Extract($codeline, " ",1)
+		$codeline = Extract($codeline, "_",2)
+		$codeline = RegExData("[\w]*",$codeline,1)
+		$codeline = "," + $codeline + ","
+		IF NOT(At($codeline,$DatabaseStrings)=0)
+			$type = "String"
+			EXITSUB 
+		ENDIF
+		IF NOT(At($codeline,$DatabaseNumbers)=0)
+			$type = "Numeric"
+			EXITSUB 
+		ENDIF
+		IF NOT(At($codeline,$DatabaseBooleans)=0)
+			$type = "Boolean"
+			EXITSUB 
+		ENDIF
+		IF NOT(At($codeline,$DatabaseDates)=0)
+			$type = "Date"
+			EXITSUB 
+		ENDIF
+	ENDIF
+	
+	
+	#Begins with a $ it's another variable which should already exist so get its type
+	IF Left($codeline,1) = "$"
+		$codeline = Extract($codeline, "$", 2)
+		$codeline = RegExData("[\w]*",$codeline,1)
+		
+		$Index = list("vl","RegEx","-$codeline,")
+		IF NOT($Index ="0")
+			$Item = list("vl","Item",$Index)
+			$type = Extract($Item, ",",2)
+			EXITSUB
+		ENDIF
+	ENDIF			
+	
+	
+	#Begins with a letter it's a function
+	IF RegEx("[a-z]",Left($codeline,1))
+		$codeline = Extract($codeline, "(",1)
+		$codeline = "," + $codeline + ","
+		IF NOT(At($codeline,$FunctionStrings)=0)
+			$type = "String"
+			EXITSUB 
+		ENDIF
+		IF NOT(At($codeline,$FunctionNumbers)=0)
+			$type = "Numeric"
+			EXITSUB 
+		ENDIF
+		IF NOT(At($codeline,$FunctionBooleans)=0)
+			$type = "Boolean"
+			EXITSUB 
+		ENDIF
+		IF NOT(At($codeline,$FunctionDates)=0)
+			$type = "Date"
+			EXITSUB 
+		ENDIF
+	ENDIF
+	
+ENDSUB
+	
+	
+	BEGINSUB name=Outputfile
+		
+		#Sort the list into alphabetical order
+		$Variablesdb = list("vl","sort","")
+		$Variablesdb = list("vl","replace",$Variablesdb)
+		
+		$VarCount = Val(list("vl","count",""))
+		$count = 1
+		
+		$out =        "#*******************************************************" + $_NewLine
+		$out = $out + "#   Variable declarations for" + $_NewLine
+		$out = $out + "#   $DataFile" + $_NewLine
+		$out = $out + "#" + $_NewLine
+		$out = $out + "#   Generated $_Today on GSAKVariables.gsk Rev $Revision" + $_NewLine
+		$out = $out + "#" + $_NewLine
+		$out = $out + "#*******************************************************" + $_NewLine
+		$out = $out + $_NewLine + $_NewLine
+		
+		$out = $out + "Option Explicit=Yes" + $_NewLine + $_NewLine
+		
+		WHILE $count <= $VarCount
+			$Entry = list("vl","item","$count")
+			
+			$Variable = Extract($Entry,",",1)
+			$Variable = Extract($Variable,"-",2)
+			$Type = Extract($Entry,",",2)
+			SHOWSTATUS msg="Writing Output file for $Variable of type $type" Width=350
+			IF $type = "Unknown"
+				$out = $out + "# "
+			ENDIF
+			$out = $out + "Declare Var=$" + $Variable + " Type=" + $Type + $_NewLine
+			$count = $count + 1
+		ENDWHILE
+		
+#		$out = $out + $Variablesdb
+		
+		# Save to clipboard
+		CLIP Data=$out
+		
+		$tmp = PutFile($OutputFile,$out)
+		IF Left($tmp ,4) <> "*OK*"
+			CANCEL Msg="Sorry! For some reason I couldn't generate the outputfile"
+		ENDIF
+				
+	ENDSUB
+		
+BEGINSUB Name=DeclareVariables
+#*******************************************************
+#   Variable declarations for
+#   C:\Program Files\GSAK\Macros\GSAKVariables.gsk
+#
+#   Generated 05-12-07 5:29:55 PM on GSAKVariables.gsk Rev V0.20 B4
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$codeline Type=String
+Declare Var=$count Type=Numeric
+Declare Var=$DatabaseBooleans Type=String
+Declare Var=$DatabaseDates Type=String
+Declare Var=$DatabaseNumbers Type=String
+Declare Var=$DatabaseStrings Type=String
+Declare Var=$Digits Type=String
+Declare Var=$Entry Type=String
+Declare Var=$FirstCharacter Type=String
+Declare Var=$Form Type=String
+Declare Var=$FunctionBooleans Type=String
+Declare Var=$FunctionDates Type=String
+Declare Var=$FunctionNumbers Type=String
+Declare Var=$FunctionStrings Type=String
+Declare Var=$Index Type=String
+Declare Var=$Item Type=String
+Declare Var=$out Type=String
+Declare Var=$OutputFile Type=String
+Declare Var=$Pass Type=Numeric
+Declare Var=$Query Type=String
+Declare Var=$Revision Type=String
+Declare Var=$Status Type=String
+Declare Var=$SQLfile Type=String
+Declare Var=$SystemBooleans Type=String
+Declare Var=$SystemDates Type=String
+Declare Var=$SystemNumbers Type=String
+Declare Var=$SystemStrings Type=String
+Declare Var=$tmp Type=String
+Declare Var=$type Type=String
+Declare Var=$valid Type=Boolean
+Declare Var=$VarCount Type=Numeric
+Declare Var=$Variable Type=String
+Declare Var=$Variablesdb Type=String
+Declare Var=$varname Type=String
+
+ENDSUB
+#############		
+
+		
+<Data> Varname=$form
+#********************************************************************
+# Form generated by GSAK form designer on Tue 03-Apr-2007 23:38:05
+#********************************************************************
+
+Name = Form1
+  type = form
+  height = 234
+  width = 446
+  left = 415
+  top = 407
+
+Name = FrmLbl1
+  type = Label
+  left = 40
+  top = 70
+  height = 13
+  width = 87
+  caption = Macro file to parse
+
+#Name = FrmLbl4
+#  type = Label
+#  left = 40
+#  top = 120
+#  height = 13
+#  width = 48
+#  caption = Output file
+
+Name = FrmLbl6
+  type = Label
+  left = 75
+  top = 17
+  height = 20
+  width = 291
+  caption = Macro File Variable Declaration Tool
+  color = 16744448
+  style = bold
+  size = 13
+
+Name = datafile
+  type = File
+  left = 200
+  top = 65
+  height = 21
+  width = 200
+
+#Name = outputfile
+#  type = File
+#  left = 200
+#  top = 115
+#  height = 21
+#  width = 200
+
+Name = ok
+  type = Button
+  caption = OK
+  left = 95
+  top = 161
+  height = 25
+  width = 75
+  enter = yes
+
+Name = cancelform
+  type = Button
+  left = 265
+  top = 159
+  caption = Cancel
+  height = 25
+  width = 75
+  escape = yes
+
+<EndData>
+

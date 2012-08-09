@@ -1,0 +1,73 @@
+#REMOVE WAYPOINTS WITH DUPLICATE COORDINATES - RemoveDups version 2.1
+
+#Initialize Record variable
+$ThisRecord=0
+
+#Save existing information in UserData2 for later restoration
+DATASAVE Data=$d_User2
+
+#Sort database to insure we're not updating the current sort field
+Sort By=Natural
+
+#Copy Lattitude and Longitdue to UserData2
+GOTO Position=Top
+While not($_EoL)
+    # Show status of macro (every 10 records)
+    $ThisRecord = $ThisRecord + 1
+    IF frac($ThisRecord/10) = 0
+         $status = "Recording Coordinates: " + "$ThisRecord" + " of " + "$_Count"
+         ShowStatus msg="$status" Width=350
+    EndIF
+    $d_User2=$d_Latitude + ";" + $d_Longitude
+    GOTO Position=next
+EndWhile
+
+#Sort by UserData2
+Sort By=User2 
+
+#Clear all macroflags
+MacroFlag Type=Clear Range=All
+
+#Identify and flag waypoints with duplicate coordinates
+GOTO Position=Top
+$ThisRecord=0
+While not($_EoL)
+    # Show status of macro (every 10 records)
+    $ThisRecord = $ThisRecord + 1
+    IF frac($ThisRecord/10) = 0
+        $status = "Comparing Coordinates: " + "$ThisRecord" + " of " + "$_Count"
+        ShowStatus msg="$status" Width=350
+    EndIF
+   $Control=$d_User2
+   GOTO Position=Next
+    IF $_EoL
+         Break
+   Endif
+   $Comparison=$d_User2
+   IF $Comparison=$Control
+      $d_MacroFlag=True
+   EndIF
+EndWhile
+
+#Filter for and delete all flagged waypoints
+MFilter IF=$d_MacroFlag
+IF $_FilterCount>0
+   $status = "Deleting " + "$_FilterCount" + " Duplicate Waypoints" 
+        ShowStatus msg="$status" Width=250
+   MacroSet Dialog=Delete VarName=$Delete
+   Delete Settings=<macro>
+   CancelFilter
+ELSE
+   Pause Msg="There are no duplicate waypoints to delete."
+EndIF
+
+#Restore UserData2
+DATARESTORE Data=$d_User2
+
+<data> VarName=$Delete
+[TfmDelete]
+cbxStop.Checked=False
+rbtFilter.Checked=True
+rbtFlagged.Checked=False
+rbtOnly.Checked=False
+<enddata>

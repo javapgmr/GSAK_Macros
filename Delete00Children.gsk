@@ -1,0 +1,49 @@
+#*******************************************
+# MacDescription = Delete child waypoints with 0,0 coordinates
+# MacFileName = Delete00Children.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.1
+# MacUrl=
+#*******************************************
+
+$_sql="SELECT Distinct cParent FROM waypoints WHERE (cLat='0.0' OR cLat='0.00') AND (cLon='0.0' OR cLon='0.00')"
+$Codes=Sqlite("sql",$_sql)
+
+IF $Codes=""
+    RETURN Msg=There are no childre with 0,0 coordinates in this database.
+ENDIF
+
+$Deleted=0
+$Count=RegExCount($_CrLf,$Codes) + 1
+$x=1
+$ThisRecord=1
+WHILE $x<=$Count
+    # Show status of analysis
+    $ThisRecord = $ThisRecord + 1
+    # only show status every 10 records
+    IF frac($ThisRecord/10) = 0
+        $status = "Analyzing GPX Updates: " + "$ThisRecord" + " of " + "$_Count"
+        ShowStatus msg="$status" Width=400
+    ENDIF
+
+    $ThisCode=Extract($Codes,$_CrLf,$x)
+    IF Seek($ThisCode)
+        TABLE Active=Waypoints Scope=Parent
+        GOTO Position=Top
+        WHILE NOT($_EOL)
+            IF ($d_cLat="0.00" OR $d_cLat="0.0") AND ($d_cLon="0.00" OR $d_cLon="0.0")
+                $Deleted=$Deleted + 1
+                MACRODELETE Action=DelCurrent
+            ENDIF
+            GOTO Position=Next
+        ENDWHILE
+        TABLE Active=Caches
+    ENDIF
+    $x=$x+1
+ENDWHILE
+TABLE  Active=waypoints scope=all
+MACRODELETE Action=commit
+TABLE Active=Caches
+RETURN Msg=$Deleted child waypoints with 0,0 coordinates deleted from the database.
+
+

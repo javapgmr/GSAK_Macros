@@ -1,0 +1,1630 @@
+#*******************************************
+# MacVersion = 2.2.5
+# MacDescription = Get and load Munzees CSV 
+# MacAuthor = baerti
+# MacFileName = MyMunzeesCSV.gsk
+# MacUrl =
+#*******************************************
+# ver 1.2 	- Problem with backslash at the end of the description of http://www.munzee.com/m/Shaggy/16
+# ver 1.3 	- UTF8'd csv to cope with diacritic characters
+# ver 1.4	 	- Some Enhancements
+# ver 1.5 	- Correction Cache Type
+# ver 1.6   - Polygonfilter
+# ver 1.7   - Solved some Bugfixes
+# ver 1.8.0 - Save and restore the actual filter settings
+#							Another logo (Schmuck am Nachthemd / jewels at nightdress) ;-)
+#							Messagebox with info of loaded munzees
+#							Date of last import in field "Last GPX Date" for filter out "undeployed" munzees
+#          		Check if newer version of this macro is available
+# ver 1.8.1 - Fixed error with wrong database path 
+# ver 1.9.0 - Update of Found Date and Found Status
+#             Adding of captured munzees, who are not in CSV, because they are undeployed
+#             Filebox for starting a macro after import of CSV 
+# ver 1.9.1 - Fixed error when scraped coordinates are spaces
+# ver 2.0.0 - Import filter by coordinates
+# ver 2.0.1 - Performance optimization - Thanks to rodz for his support :-) 
+# ver 2.1.0 - Added username filter
+#             Radius filter now with GSAK locations 
+#             Link to GSAK polygon editor
+# ver 2.1.1 - Fixed error with entity decoding  (http://www.munzee.com/m/Leni89/23)
+#							  from "A4 --&gt; FFM; Oberwald" to "A4 --> FFM; Oberwald"
+# ver 2.1.2 - Correction of invalid coordinates to the maximum value
+# ver 2.1.3 - Fixed error with cachetype Project APE
+# ver 2.1.4 - Removed version check 
+#             Removed form field GC Member-ID 
+# ver 2.1.5 - Changes for the new Munzee websites
+#             Hands-free running using "Bypass" Parameter (by TheWinterTrio)
+# ver 2.1.6 - Fixed error with date "Deployed At: N/A"
+# ver 2.1.7 - Fixed error with corrected coordinates
+#             Added "Stop future import" for deleted waypoints
+# ver 2.1.8 - Fixed error with corrected coordinates (AddNewXXX)
+# ver 2.1.9 - Fixed error with Sqlite("close",$UpdDatabase)
+#             Fixed error cause the new website
+# ver 2.2.0   Fixed error with double named munzees
+# ver 2.2.1   Fixed error with "Update my Founds"
+# ver 2.2.2   Fixed error with comma at "Number of Captured"
+# ver 2.2.3   Added capture_type_id from csv in User Data 4
+#             Added special_logo from csv in User Data 3
+#             Added the logo name into Symbol Name
+# ver 2.2.4   Fixed errors because changes on the website
+# ver 2.2.5   Fixed error with date conversion
+#             Added button for "Update my Founds"
+
+VERCHECK Version=8.0.1.26
+
+$sMacroVersion  = "Version " + MacHeader("MacVersion")
+$sCodeSeparator = "/"   # for testing with different separator in field $d_code	
+
+$Parm1 = Extract(Upper($_MacroParms),",",1)
+IF $Parm1 = "BYPASS"
+  $AutoRun = TRUE 
+ELSE
+  $AutoRun = FALSE 
+ENDIF
+
+GOSUB Name=Declarations
+	
+# Loading Settings
+$sSettingsFile = "MyMunzeesCSV_Settings.data"
+MACSETTINGS Type=R File=$sSettingsFile FileCheck=N
+
+GOSUB Name=MainForm
+
+
+#------------------------------------------------------------------------------
+BEGINSUB Name=MainForm
+#------------------------------------------------------------------------------
+
+  $txtGCUserID = Sysinfo("gsakini;TfmConfig;EdtGeoName.Text")
+  
+  IF IsEmpty($txtCoordinates)
+  	$txtCoordinates = Sysinfo("gsakini;LastCenter;Lat") + " " + Sysinfo("gsakini;LastCenter;Lon")
+  ENDIF
+  
+  IF $chkCoordinates = FALSE AND $chkLocations = FALSE
+  	$chkLocationNames = TRUE
+  ENDIF
+  
+  IF IsEmpty($fldImportPath)
+  	$fldImportPath = $_install + "\temp"
+  ENDIF
+
+# Get Databases
+  $DBs  = SysInfo("databases")
+  $Form = EditForm($Form,"cboDatabase","values",$DBs)
+  
+# Get Cache Types
+  $CacheTypes = CacheType("all")
+  $Form = EditForm($Form,"cboCacheTypes","values",$CacheTypes)
+  
+# Get Locations
+	$sSysInfoLocations = sysinfo("locations")
+	$sLocationNames = RegexReplace(",.*?;",$sSysInfoLocations,";")
+#	$Form = editform($form,"cboLocationNames","Values",$sLocationNames)
+  
+  IF $AutoRun
+    $Form = EditForm($Form,"Form1","Delay","1")
+  ELSE
+    $Form = EditForm($Form,"Form1","Delay","")
+  ENDIF
+    
+  $Form = EditForm($Form,"lblVer","caption",$sMacroVersion)
+  
+  BEGINCASE
+  	CASE $_Units = "K"
+  		$sRadiusUnit = "km from"
+  	CASE $_Units = "M"
+  		$sRadiusUnit = "Miles from"
+  ENDCASE
+  $Form = EditForm($Form,"lblRadius","caption",$sRadiusUnit)
+
+  IF $optLoadFromWeb = FALSE and $optLoadFromFile = FALSE
+    $optLoadFromWeb = TRUE
+  ENDIF
+
+  IF $optPolygonFilter = FALSE and $optLocationFilter = FALSE AND $optRadiusFilter = FALSE AND $optUsernameFilter = FALSE
+    $optLocationFilter = TRUE
+  ENDIF
+
+  $bExitLoop = False
+
+  WHILE $bExitLoop = FALSE 
+
+    $FormExit = Form($form,"")
+			
+		$bExitLoop = TRUE	
+		
+		$sMunzeeCode    = $txtMunzeeNickname + $sCodeSeparator
+  	$nLenMunzeeCode = LEN($sMunzeeCode)
+  	
+#   Select database for import
+  	IF $_CurrentDatabase <> $cboDatabase
+	  	DATABASE Name=$cboDatabase Action=Select
+	  ENDIF  	
+	
+		BEGINCASE	
+
+			CASE $FormExit = "btnGetMunzees"
+        GOSUB Name=CheckAndGetMunzees
+
+			CASE $FormExit = "DelayExit"
+        GOSUB Name=CheckAndGetMunzees
+				
+			CASE $FormExit = "btnUpdateMyFounds"
+				CANCELFILTER
+				GOSUB Name=SaveMacSettings
+				GOSUB Name=SetCacheType 
+        GOSUB Name=UpdateCapturedMunzees
+				
+			CASE  $FormExit = "imgDownloadNow"
+				GOSUB Name=DownloadNow
+				
+			CASE  $FormExit = "btnCancel"
+				RETURN 
+			
+			CASE $FormExit = "SystemExit"
+				RETURN 		
+				
+			CASE $FormExit = "chkCoordinates"
+				$bExitLoop = FALSE
+				$chkLocations = FALSE	
+				
+			CASE $FormExit = "chkLocations"
+				$bExitLoop = FALSE
+				$chkCoordinates = FALSE	
+				
+			CASE OTHERWISE	
+				$bExitLoop = FALSE
+
+			ENDCASE 
+
+  ENDWHILE 
+  
+  RESYNC 
+  
+ENDSUB 
+
+#------------------------------------------------------------------------------
+BEGINSUB Name=CheckAndGetMunzees
+#------------------------------------------------------------------------------
+
+	GOSUB Name=CheckGCMemberID        
+        
+  GOSUB Name=CheckMunzeeNickname
+       
+	IF $optLoadFromWeb = TRUE	
+		GOSUB Name=CheckLoadFromWeb 
+	ENDIF
+
+	IF $optLoadFromFile = TRUE	
+		GOSUB Name=CheckLoadFromFile 
+	ENDIF
+					
+	IF $optPolygonFilter = TRUE 
+		GOSUB Name=CheckPolygonFilter
+	ENDIF
+					
+	IF $optRadiusFilter = TRUE 
+		GOSUB Name=CheckRadiusFilter
+	ENDIF
+	
+  IF $chkMacroRun = TRUE 
+  	GOSUB Name=CheckMacroRun
+	ENDIF
+	
+	IF $bExitLoop = TRUE 
+		GOSUB Name=SaveMacSettings
+		GOSUB Name=GetMunzees
+	ENDIF
+
+ENDSUB 
+
+#------------------------------------------------------------------------------
+BEGINSUB Name=SaveMacSettings
+#------------------------------------------------------------------------------
+	
+	MACSETTINGS Type=S Vars=optLoadFromWeb,optLoadFromFile,fldImportPath,cboDatabase,cboCacheTypes,txtMunzeeNickname,txtOnlyCountry,optLocationFilter,optPolygonFilter,lstPolygon,chkUpdFounds,chkMacroRun,txtMacroRun,optRadiusFilter,txtRadius,txtCoordinates,optUsernameFilter,txtUsername,chkCoordinates,chkLocations,cboLocationNames File=$sSettingsFile
+
+ENDSUB
+
+#------------------------------------------------------------------------------
+BEGINSUB Name=GetMunzees
+#------------------------------------------------------------------------------
+
+	TIMER Status=On 
+
+# Save filter
+	$sSavedFilter = SaveFilter()
+
+# Remove filter
+	CANCELFILTER
+
+# Select database for import
+	IF $_CurrentDatabase <> $cboDatabase
+		DATABASE Name=$cboDatabase Action=Select
+	ENDIF
+
+	$sMunzeeCode    = $txtMunzeeNickname + $sCodeSeparator
+	$nLenMunzeeCode = LEN($sMunzeeCode)
+
+  IF $optLocationFilter = TRUE
+		$sCountryList = $txtOnlyCountry
+		$sCountryList = RegExReplace("\r\n",$sCountryList,"|")
+		IF IsEmpty($sCountryList)
+			$sCountryList = "."
+		ENDIF 
+	ENDIF
+	
+  IF $optUsernameFilter = TRUE	
+		$sUsernameList = $txtUsername
+		$sUsernameList = RegExReplace("\r\n",$sUsernameList,"|")
+		IF IsEmpty($sUsernameList)
+			$sUsernameList = "."
+		ENDIF 
+	ENDIF	
+
+ 	$MZmapURL = "http://www.munzee.com/munzees.csv"
+	$MZCSV    = $_AppData + "\temp\munzees.csv"
+	
+	GOSUB Name=SetCacheType
+
+	BEGINCASE 
+
+		CASE $optLoadFromWeb = TRUE 	
+  		SHOWSTATUS MSg="Getting CSV from munzee.com" Width=400 
+			$sData = GetUrl($MZmapURL,"Getting CSV from munzee.com")
+			$sRes  = PutFile($MZCSV, $sData)
+
+		CASE $optLoadFromFile = TRUE	
+			SHOWSTATUS MSg="Loading CSV from directory" Width=400
+			$sData = GetFile($fldImportPath + "\munzees.csv")
+			IF Left($sData,7) = "*Error*"
+				MSGOK Msg="$sData"
+				CANCEL
+			ENDIF
+
+	ENDCASE 
+
+	$sData = UTF8($sData,"d") 
+	$sData = EntityDecode($sData)
+	
+	# bodge to separate backslashes prior to quotes from the quote with a space
+	$sFrom = "\"  + $_quote
+	$sTo   = "\ " + $_quote
+	$sData = Replace($sFrom,$sTo,$sData)
+
+	$nRowsTotal = Val(CsvGet($sData,"rows"))
+
+#	Timer Status=On Msg=Yes
+
+	TRANSACTION Action=Begin
+	
+# Start Processing CSV File --------
+
+	$nRow = 1	
+	
+	REPEAT
+	
+		$nRow = $nRow + 1
+		$x = $nRow
+
+		IF (0 = Frac($nRow/100))
+			SHOWSTATUS Msg="Processing $nRow of $nRowsTotal rows" #Width=400 Title="Reading CSV"
+		ENDIF
+		
+# Breakpoit at row number
+#    IF $nRow >= 42050
+#    	DEBUG Status=On
+#    ENDIF		
+			
+		GOSUB Name=SplitCSV
+
+		BEGINCASE 
+			
+			CASE $optPolygonFilter = TRUE 
+				GOSUB Name=PolygonFilter
+
+			CASE $optLocationFilter = TRUE 
+				GOSUB Name=LocationFilter
+				
+			CASE $optRadiusFilter = TRUE
+				GOSUB Name=RadiusFilter
+
+			CASE $optUsernameFilter = TRUE
+				GOSUB Name=UsernameFilter
+				
+		ENDCASE 
+
+	UNTIL $nRow = $nRowsTotal
+	
+	$sStatus = Sqlite("close",$UpdDatabase)
+	
+	TRANSACTION  Action=End
+
+#	Timer Status=Off Msg=Yes
+
+	SHOWSTATUS Display=Off
+
+# Update FoundByMeDate and Found Status
+  IF $chkUpdFounds = TRUE 
+  	GOSUB Name=UpdateCapturedMunzees
+  ENDIF 		
+
+	$sCountries = GetCountry("cb")
+	$sStates    = GetState("sb")
+	$sCounties  = GetCounty("yb")
+
+#	IF RestoreFilter($sSavedFilter,TRUE) = 0
+#		PAUSE Msg="No records match your restored filter. Filter has been cancelled"
+#	ENDIF 
+	
+	TIMER Status=Off Msg=No
+
+	$sMsgText = NumToStr($nCntLoaded) + " Munzees loaded"
+	IF $nCntAdded <> 0
+		$sMsgText = $sMsgText + $_CrLf + NumToStr($nCntAdded) + " Munzees added"
+	ENDIF
+	IF $nCntCorrectedCoors <> 0
+		$sMsgText = $sMsgText + $_CrLf + NumToStr($nCntCorrectedCoors) + " Coordinates corrected"
+	ENDIF
+	$sMsgText = $sMsgText + $_CrLf + $_CrLf + "in " + NumToStr($_Timer) + " seconds"
+	
+	If not($AutoRun)
+	  MSGOK Msg=$sMsgText Caption=Info
+	ENDIF
+	
+	IF $chkMacroRun = TRUE AND IsEmpty($txtMacroRun) = FALSE
+		SHOWSTATUS Msg="Macro is starting: $txtMacroRun" Width=600
+		DELAY MS=3000
+		MACRO File=$txtMacroRun
+		SHOWSTATUS Display=Off 
+	ENDIF	
+
+ENDSUB 
+
+#------------------------------------------------------------------------------
+BEGINSUB Name=SplitCSV
+#------------------------------------------------------------------------------
+
+	$sLatitude			= CsvGet("*","$nRow,1")
+	$sLongitude			= CsvGet("*","$nRow,2")
+	$sCreatedAt			= CsvGet("*","$nRow,3")
+ 	$sDeployedAt		= CsvGet("*","$nRow,4")
+	$sNotes					= CsvGet("*","$nRow,5")
+	$sFriendlyName	= CsvGet("*","$nRow,6")
+	$sLocation			= CsvGet("*","$nRow,7")
+	$sUsername			= CsvGet("*","$nRow,8")
+	$sMunzeeID			= CsvGet("*","$nRow,9")
+	$sCaptureTypeID = CsvGet("*","$nRow,10")
+	$sSpecialLogo   = CsvGet("*","$nRow,11")
+	
+  $sEspression    = "/images/pins/(.*).png"
+	$sSymbolNameCaptureTypeID = RegExSub($sEspression,$sCaptureTypeID,1,1)
+	
+  $sEspression    = "/images/logo/(.*).png"
+	$sSymbolNameSpecialLogo = RegExSub($sEspression,$sSpecialLogo,1,1)
+
+	$sCreatedAt     = Substr($sCreatedAt,1,10)
+	$sCreatedAt			= Replace("-","",$sCreatedAt)
+
+	$sDeployedAt		= Substr($sDeployedAt,1,10)
+	$sDeployedAt		= Replace("-","",$sDeployedAt)
+	
+	$sLatitude      = NumToStr(Round(Val($sLatitude),10))
+	$sLatitude			= Replace(",",".",$sLatitude)
+	
+	$sLongitude     = NumToStr(Round(Val($sLongitude),10))   
+	$sLongitude     = Replace(",",".",$sLongitude)
+	
+# Correction of invalid coordinates	to the maximum value
+	IF Val($sLatitude) > 90 
+		$sLatitude = "90"
+		$nCntCorrectedCoors = $nCntCorrectedCoors + 1
+  ENDIF		
+  IF Val($sLatitude) < -90 
+		$sLatitude = "-90"
+		$nCntCorrectedCoors = $nCntCorrectedCoors + 1
+  ENDIF	
+  IF Val($sLongitude) > 180 
+		$sLongitude = "180"
+		$nCntCorrectedCoors = $nCntCorrectedCoors + 1
+  ENDIF		
+  IF Val($sLongitude) < -180 
+		$sLongitude = "-180"
+		$nCntCorrectedCoors = $nCntCorrectedCoors + 1
+  ENDIF	
+  
+ENDSUB 
+
+#------------------------------------------------------------------------------
+BEGINSUB Name=ModifyDatabase
+#------------------------------------------------------------------------------
+ 
+	$sOwnerName	= $sUsername                               
+	$sCode = $sOwnerName + $sCodeSeparator + $sMunzeeID     
+
+# Check Ignore Table (stop future import)    
+  $sDatabase = $_DbPath + "\" + $cboDataBase + "\sqlite.db3"  
+	$sStatus = Sqlite("open",$sDatabase)
+	IF IsEmpty($sStatus)	
+		$SQLCommand  = "select count(*) from ignore where iCode = '$sCode'"
+		$sStatus = Sqlite("sql",$SQLCommand)
+ 		IF Val($sStatus) <> 0
+ 			EXITSUB 
+ 		ENDIF
+	ENDIF 	
+								
+	IF Seek($sCode) = FALSE
+		AddNew
+	ENDIF 	 
+	
+	IF $d_Lock = TRUE	
+		EXITSUB	
+	ENDIF 
+
+	$d_code							= $sCode     			                   
+	$d_latitude					= $sLatitude                        
+	$d_longitude 				= $sLongitude                       
+	$d_PlacedDate				= StringToDate($sCreatedAt)
+	$d_ShortDescription	= $sNotes                           
+	$d_Name     				= $sFriendlyName                    
+	$d_PlacedBy					= $sOwnerName
+	$d_url							= "http://www.munzee.com/m/" + $sUsername + "/" + $sMunzeeID
+  $d_OwnerName	 			= $sOwnerName
+  $d_Container				= "Unknown"  
+  $d_Status 					= "A"    # Available
+  $d_CacheType        = $sCacheType
+  $d_User4            = $sCaptureTypeID
+  $d_User3            = $sSpecialLogo
+ 	
+# 	IF $sSymbolNameSpecialLogo <> ""
+   	$d_symbol = $sSymbolNameSpecialLogo
+#  ELSE
+#    $d_symbol = $sSymbolNameCaptureTypeID	
+#  ENDIF
+
+# Only for testing DEBUG
+# $d_UserData         = NumToStr($nRow)
+
+# Corrected Coordinates
+	TABLE Active=Corrected scope=Parent
+	IF Not($_EOL) AND ($d_kAfterLat <> $d_latitude OR $d_kAfterLon <> $d_longitude)
+		$d_latitude  = $d_kAfterLat
+		$d_longitude = $d_kAfterLon
+	ENDIF
+	TABLE Active=Caches
+ 
+#	GC Owner-ID 
+	IF LEFT(Upper($d_code),$nLenMunzeeCode) = Upper($sMunzeeCode)
+		$d_OwnerID = $txtGCUserID
+	ENDIF
+			
+# Update LastGPXDate    
+  $UpdDatabase = $_DbPath + "\" + $cboDataBase + "\sqlite.db3"  
+	$sStatus = Sqlite("open",$UpdDatabase)
+
+	IF IsEmpty($sStatus)	
+		$SQLCommand  = "update caches set LastGPXDate='" + DateToSQL($_Today) + "'" + " where  Code = '$sCode'"
+		$sStatus = Sqlite("sql",$SQLCommand)
+	ENDIF 
+		
+	$nCntLoaded = $nCntLoaded + 1
+	
+ENDSUB 
+
+#------------------------------------------------------------------------------
+BEGINSUB Name=UpdateCapturedMunzees
+#------------------------------------------------------------------------------
+	 
+ 	$sUser = $txtMunzeeNickname
+	$sUserDataURL = "http://www.munzee.com/m/" + $sUser 
+
+  $sUserData = ""
+	$sUserData = GetUrl($sUserDataURL)
+	
+	$sUserData = UTF8($sUserData,"d")
+	$sUserDataLen = len($sUserData)
+		
+# Replace double quote with single quote	
+	$sUserData = RegExReplace("\x22",$sUserData,"'")	
+
+#	$sEspression = "Number of Captured: (.*)<br />"
+	$sEspression = "Captured: <small>(.*)</small>"
+	$sNumberOfCaptured = RegExSub($sEspression,$sUserData,1,1)
+	$sNumberOfCaptured = Replace(",","",$sNumberOfCaptured)
+	$sNumberOfCaptured = Trim($sNumberOfCaptured)
+	$nNumberOfCaptured = Val($sNumberOfCaptured)
+	
+## Symbol Name	
+#  $sEspression = "/images/pins/(.*).png"
+#	 $sSymbolName = RegExSub($sEspression,$sUserData,1,1)
+		
+#	Find begin of captured munzees
+	$sSearchString = "<div id='captures'>"
+	$nPosition = AT($sSearchString,$sUserData)
+	$nFromPos = $nPosition       # + len($sSearchString)
+	$nLength  = len($sUserData) - $nPosition- len($sSearchString) + 1
+	$sUserData = Substr($sUserData,$nFromPos,$nLength)
+	
+## Get Range of Captured Munzees	
+#	$sSearchString = "<div"
+#	$nPosition= AT($sSearchString,$sUserData)
+#	$sUserData = Substr($sUserData,$nPosition,$sUserDataLen)
+	$sSearchString = "</div"
+	$nPosition= AT($sSearchString,$sUserData)
+	$sUserData = Substr($sUserData,1,$nPosition+5)
+	
+	$sStatus = PutFile($_AppData + "\temp\" + $sUser + ".txt",$sUserData)
+  IF Left($sStatus,7) = "*Error*"
+    Pause Msg="$Data"
+#   Cancel
+  ENDIF
+	
+	$nCntUserLoop = 0
+	
+	WHILE $nCntUserLoop < $nNumberOfCaptured
+		
+		$nCntUserLoop = $nCntUserLoop + 1
+		
+# Initialize fields		
+		$sUserCapturedOwnerURL   = ""
+		$sUserCapturedMunzeeID   = ""
+		$sUserCapturedMunzeeName = ""
+		$sUserCapturedOwner      = ""
+		
+#   Bsp.:           <td><a href="http://www.munzee.com/m/Louboey/1/">
+		$sEspression = "<td><a href='http://www.munzee.com/m/(.*)/(.*)/'>"
+		$sUserCapturedOwner      = RegExSub($sEspression,$sUserData,$nCntUserLoop,1)
+		$sUserCapturedMunzeeID   = RegExSub($sEspression,$sUserData,$nCntUserLoop,2)
+
+		$sUserCapturedOwnerURL = "http://www.munzee.com/m/" + $sUserCapturedOwner  + "/" + $sUserCapturedMunzeeID 
+
+  	$sCode = $sUserCapturedOwner + "/" + $sUserCapturedMunzeeID
+  	
+		SHOWSTATUS Msg="Processing $nCntUserLoop of $nNumberOfCaptured captured munzees: $sCode" Width= 400 Title=Updating captured munzees
+ 	  		  	
+  	$bCompleteMunzeeData = FALSE	
+	
+  	IF Seek($sCode)	= FALSE
+			GOSUB Name=CreateDummyMunzee
+			GOSUB Name=ModifyDatabase
+  	ENDIF 	
+  	
+  	$nCntURL = RegExCount($sUserCapturedOwnerURL + "/",$sUserData)  	
+	   	
+  	IF $d_FoundCount <> $nCntURL OR $d_FoundByMeDate = $dInitialDate
+  	  	
+  		IF Seek($sCode)
+	  		GOSUB Name=GetFoundDate	
+   		ENDIF 
+   	
+  	ENDIF 
+ 		
+	ENDWHILE 	
+	
+	RESYNCLOGS
+	
+	SHOWSTATUS Display=Off
+	
+ENDSUB 
+
+#------------------------------------------------------------------------------
+BEGINSUB Name=GetFoundDate
+#------------------------------------------------------------------------------	
+
+  $dFoundByMeDate = $dInitialDate
+	
+#	$sMunzeeData = GetUrl($URL)
+	$sMunzeeData = GetUrl($sUserCapturedOwnerURL)
+	$nMunzeeDataLen = Len($sMunzeeData)
+
+# Replace double quote with single quote	
+	$sMunzeeData = RegExReplace("\x22",$sMunzeeData,"'")
+	$sMunzeeData = UTF8($sMunzeeData,"d")
+
+# Friendly Name	
+# Bsp.: <h1>001-Mirecourt</h1>
+	$sEspression   = "<h1>(.*)</h1>"
+	$sFriendlyName = RegExSub($sEspression,$sMunzeeData,1,1)
+
+# Creator
+# Bsp.: <li><h5>Creator: <small><a href="/m/Louboey/">Louboey</a></small></h5></li>
+  $sEspression = "<li><h5>Creator: <small><a href='(.*)'>(.*)</a></small></h5></li>"
+	$sCreator = RegExSub($sEspression,$sMunzeeData,1,2)
+
+# Deployed (YES / NO)
+# Bsp.: <li><h5>Deployed: <small>YES</small></h5></li>
+	$sEspression = "<li><h5>Deployed: <small>(.*)</small></h5></li>"
+	$sDeployed = RegExSub($sEspression,$sMunzeeData,1,1)
+
+# Deployed At
+# Bsp.: Deployed At: <small>Apr 29, 2012 1:52 AM</small>
+	$sEspression = "Deployed At: <small>(.*) (.*), (.*) (.*) (.*)</small>"
+  $sShortNameMonth  = RegExSub($sEspression,$sMunzeeData,1,1)
+  $sDeployedAt_Day  = RegExSub($sEspression,$sMunzeeData,1,2)
+  $sDeployedAt_Year = RegExSub($sEspression,$sMunzeeData,1,3)
+  $sDeployedAt_Year = Left($sDeployedAt_Year,4)
+  GOSUB Name=ConvertMonth
+  IF $sDeployedAt_Day = "" AND $sDeployedAt_Year = ""
+  	$sDeployedAt_Day  = "00"
+  	$sDeployedAt_Year = "00"
+  	$sConvertedMonth  = "0000"
+  ENDIF
+  $sDeployedAt = $sDeployedAt_Year + "-" + $sConvertedMonth + "-" + $sDeployedAt_Day
+
+# Location
+# Bsp.: <li><h5>Location: <small>Bonn, North Rhine-Westphalia Germany</small></h5></li>
+	$sEspression = "<li><h5>Location: <small>(.*)</small></h5></li>"
+	$sLocation = UTF8(RegExSub($sEspression,$sMunzeeData,1,1),"d")
+
+# Number Of Captures
+# Bsp.: <li><h5>Number of Captures: <small>9</small></h5></li>
+	$sEspression = "<li><h5>Number of Captures: <small>(.*)</small></h5></li>"
+	$nNumberOfCaptures = Val(RegExSub($sEspression,$sMunzeeData,1,1))
+
+# First To Capture
+# Bsp.: <li><h5>First to Capture: <small>
+#       <a href="/m/wxbee/">wxbee</a>      </small></h5></li>
+  $sEspression = "<li><h5>First to Capture: <small>" + $_CrLf + "(.*)<a href='(.*)'>(.*)</a>"
+	$sFirstToCapture = RegExSub($sEspression,$sMunzeeData,1,3)
+
+# Latitude and Longitude
+# Bsp.: <li><h5>Decimal: <small>50.74344 / 7.11896</small></h5></li>
+	$sEspression = "<li><h5>Decimal: <small>(.*) / (.*)</small></h5></li>"
+	$sLatitude  = RegExSub($sEspression,$sMunzeeData,1,1)
+	$sLongitude = RegExSub($sEspression,$sMunzeeData,1,2)
+	IF IsEmpty($sLatitude)
+		$sLatitude = "0.0"
+	ENDIF
+	IF IsEmpty($sLongitude)
+		$sLongitude = "0.0"
+	ENDIF
+
+# Notes
+	$sSearchstring = "<div  id='notes'>"
+	$nPosition = At($sSearchstring,$sMunzeeData) + 2
+	$sNotes = Substr($sMunzeeData,$nPosition + len($sSearchString),$nMunzeeDataLen)
+	$sSearchstring = "</div>"
+	$nPosition = At($sSearchstring,$sNotes)
+	$sNotes = Substr($sNotes,1,$nPosition-1)
+	$sNotes = AllTrim($sNotes)
+	$sNotes = Replace("<br />","",$sNotes)
+
+# Jump to Captures
+	$sSearchstring = "<div id='captures'>"
+	$nPosition = At($sSearchstring,$sMunzeeData)
+	$sMunzeeData = Substr($sMunzeeData,$nPosition + len($sSearchString),$nMunzeeDataLen)
+
+# Get Range Of Captured Munzees	
+	$sSearchString = "<div id='entries'>"
+	$nPosition = AT($sSearchString,$sMunzeeData)
+	$sMunzeeData = Substr($sMunzeeData,1,$nPosition+1)	
+
+	IF $bCompleteMunzeeData = TRUE
+		GOSUB Name=CompleteMunzeeData
+		GOSUB Name=ModifyDatabase
+	ENDIF
+	
+	TABLE Active=Logs Scope=Parent
+	MACRODELETE Action=Delscope
+	MACRODELETE Action=Commit			
+			
+	$nCntLoop = 0
+
+	WHILE $nCntLoop < $nNumberOfCaptures
+
+		$nCntLoop = $nCntLoop + 1
+
+# Bsp.: <p><a href="/m/stantastic/">stantastic</a> captured this munzee at May 3, 2012 7:19 AM</p>
+		$sEspression       = "<p><a href='(.*)'>(.*)</a> captured this munzee at (.*) (.*), (.*) (.*)</p>"
+		$sCaptureURLUser   = RegExSub($sEspression,$sMunzeeData,$nCntLoop,1)
+		$sCaptureUser      = RegExSub($sEspression,$sMunzeeData,$nCntLoop,2)
+		$sShortNameMonth   = RegExSub($sEspression,$sMunzeeData,$nCntLoop,3)
+		$sCaptureDate_Day  = RegExSub($sEspression,$sMunzeeData,$nCntLoop,4)
+		$sCaptureDate_Year = RegExSub($sEspression,$sMunzeeData,$nCntLoop,5)
+		$sCaptureDate_Year = Left($sCaptureDate_Year,4)
+		$sCaptureTime      = RegExSub($sEspression,$sMunzeeData,$nCntLoop,6)
+	  GOSUB Name=ConvertMonth
+	  
+    $sCaptureDate = $sCaptureDate_Year + "-" + $sConvertedMonth + "-" + $sCaptureDate_Day
+
+		IF Upper($sCaptureUser) = Upper($sUser)
+		
+			IF $dFoundByMeDate = $dInitialDate
+				$dFoundByMeDate = StringToDate(Replace("-","",$sCaptureDate))
+			ENDIF 
+		
+		  $sCaptureTime = Replace(":","",$sCaptureTime)
+			$sTimestamp	= $sCaptureDate + " " + $sCaptureTime
+			
+			ADDNEW
+			
+			$d_lType 		= "Found it"
+			$d_lText		= $sTimestamp
+			$d_lBy 			= $sUser
+			$d_lDate		= StringToDate(Replace("-","",$sCaptureDate))		
+	 		$d_lLogId   = $nCntLoop  #Val(Replace(":","",$sCaptureTime))				
+			$d_lOwnerid = Val($txtGCUserID)			
+		
+			RESYNCLOGS
+			
+		ENDIF
+
+	ENDWHILE	
+	
+	TABLE Active=Caches
+	
+	$d_Found = TRUE
+	
+	$d_FoundByMeDate = $dFoundByMeDate
+	
+	IF $sUser = $sFirstToCapture
+		$d_FTF = TRUE 
+	ENDIF		
+		
+	BEGINCASE
+		CASE $sDeployed = "YES"
+			$d_Status = "A"    # Available
+		CASE $sDeployed = "NO"
+			$d_Status = "T"    # Temporary disabled
+	ENDCASE	
+				
+ENDSUB 	
+
+#------------------------------------------------------------------------------	
+BEGINSUB Name=CreateDummyMunzee
+#------------------------------------------------------------------------------	
+
+	$sLatitude			= "0.0"
+	$sLongitude			= "0.0"
+	$sCreatedAt			= DateToSql($_Today)
+	$sDeployedAt		= DateToSql($_Today)
+	$sNotes					= "Dummy"
+	$sFriendlyName	= "Dummy"
+	$Location				= "Dummy"
+	$sUsername			= $sUserCapturedOwner
+	$sMunzeeID			= $sUserCapturedMunzeeID
+
+	$sCreatedAt     = Substr($sCreatedAt,1,10)
+	$sCreatedAt			= Replace("-","",$sCreatedAt)
+
+	$sDeployedAt		= Substr($sDeployedAt,1,10)
+	$sDeployedAt		= Replace("-","",$sDeployedAt)
+	
+	$sCaptureTypeID = ""
+	$sSpecialLogo   = ""
+	$sSymbolNameCaptureTypeID = ""
+	$sSymbolNameSpecialLogo   = ""
+	
+	$nCntAdded 			= $nCntAdded + 1
+	
+	$bCompleteMunzeeData = TRUE	
+	
+ENDSUB 
+
+#------------------------------------------------------------------------------	
+BEGINSUB Name=CompleteMunzeeData
+#------------------------------------------------------------------------------	
+
+#	$sLatitude			= $sLatitude
+#	$sLongitude			= $sLongitude
+#	$sCreatedAt			= DateToSql($_Today)
+#	$sDeployedAt		= $sDeployedAt
+#	$sNotes					= $sNotes
+	$sFriendlyName	= $sFriendlyName
+#	$Location				= "Dummy"
+	$sUsername			= $sUserCapturedOwner
+	$sMunzeeID			= $sUserCapturedMunzeeID
+
+	$bCompleteMunzeeData = FALSE	
+			
+ENDSUB
+
+#------------------------------------------------------------------------------	
+BEGINSUB Name=FileExistCheck
+#------------------------------------------------------------------------------	
+
+	$bStatus = FileExists($sPath)
+	
+	IF $bStatus = FALSE
+		$bExitLoop = FALSE
+		$sMessage = "File does not exist: " + $sPath
+		MSGOK = Msg=$sMessage Caption=Error
+	ENDIF 
+					
+ENDSUB
+
+#------------------------------------------------------------------------------	
+BEGINSUB Name=LocationFilter
+#------------------------------------------------------------------------------	
+
+  $nCntRegEx = RegExCount($sCountryList,$sLocation)            
+	
+	IF RegEx($sCountryList,$sLocation)
+		GOSUB Name=ModifyDatabase   
+	ENDIF
+
+ENDSUB 
+
+#------------------------------------------------------------------------------	
+BEGINSUB Name=PolygonFilter
+#------------------------------------------------------------------------------	
+
+	$sPolygonOptions = "m point=["+$sLatitude+" "+$sLongitude+"]"
+	$sResultPolygon = GetPolygon($sPolygonOptions,$lstPolygon)
+
+	IF $sResultPolygon = "1"
+		GOSUB Name=ModifyDatabase
+	ENDIF
+	
+ENDSUB
+ 
+#------------------------------------------------------------------------------	
+BEGINSUB Name=RadiusFilter
+#------------------------------------------------------------------------------	
+
+	$sRadiusFilterData = $sLatitude + " " + $sLongitude + ";" + $sDegrees
+	$sRadius = GCalc($sRadiusFilterData,"CalcDistance")
+	IF Left($sRadius,1) = "*"
+	  CANCEL msg=$sRadius
+	ENDIF 
+
+	$nRadius = Val($sRadius)
+		
+	IF $nRadius <= Val($txtRadius)
+		GOSUB Name=ModifyDatabase	
+	ENDIF 
+
+ENDSUB 
+
+#------------------------------------------------------------------------------	
+BEGINSUB Name=UsernameFilter
+#------------------------------------------------------------------------------	
+
+  $nCntRegEx = RegExCount($sUsernameList,$sUsername)            
+	
+	IF RegEx($sUsernameList,$sUsername)
+		GOSUB Name=ModifyDatabase   
+	ENDIF
+	
+ENDSUB 
+
+#------------------------------------------------------------------------------	
+BEGINSUB Name=CheckLoadFromWeb
+#------------------------------------------------------------------------------	
+
+	$sStatusSysInfo=SysInfo("Internet")
+	IF $sStatusSysInfo = "No"
+    MSGOK = Msg=No internet connection Caption=Error
+	ENDIF 
+
+ENDSUB
+
+#------------------------------------------------------------------------------	
+BEGINSUB Name=CheckLoadFromFile
+#------------------------------------------------------------------------------	
+
+	$sPath = $fldImportPath + "\munzees.csv"
+	GOSUB name=FileExistCheck
+
+ENDSUB 
+
+#------------------------------------------------------------------------------	
+BEGINSUB Name=CheckRadiusFilter
+#------------------------------------------------------------------------------	
+
+	IF IsEmpty($txtRadius) 
+		$bExitLoop = FALSE
+		$sMessage = "Please enter the Radius"
+		MSGOK Msg=$sMessage	Caption=Error
+		EXITSUB
+	ENDIF
+	
+	IF $chkCoordinates = TRUE 
+		
+		IF IsEmpty($txtCoordinates)
+			$bExitLoop = FALSE
+			$sMessage = "Please enter the coordinates"
+	 		MSGOK Msg=$sMessage	Caption=Error
+	 		EXITSUB
+		ENDIF
+		
+		$sDegrees = GCalc($txtCoordinates,"FormatDegrees")
+		IF Left($sDegrees,1) = "*"
+  		$bExitLoop = FALSE
+  		$sMessage = $sDegrees
+			MSGOK Msg=$sMessage	Caption=Error
+			EXITSUB
+		ELSE
+			$sDegrees = Replace(";"," ",$sDegrees)
+		ENDIF
+		
+	ENDIF
+	
+	IF $chkLocations = TRUE 
+		
+		IF IsEmpty($cboLocationNames)
+			$bExitLoop = FALSE
+			$sMessage = "Please choose a location"
+	 		MSGOK Msg=$sMessage	Caption=Error
+	 		EXITSUB
+		ENDIF
+		
+		$sEspression = "$cboLocationNames,(.*?);"
+		$sCoorsLocationName = RegExSub($sEspression,$sSysInfoLocations,1,1)
+		
+		$sDegrees = GCalc($sCoorsLocationName,"FormatDegrees")
+		IF Left($sDegrees,1) = "*"
+  		$bExitLoop = FALSE
+  		$sMessage = $sDegrees
+			MSGOK Msg=$sMessage	Caption=Error
+			EXITSUB
+		ELSE
+			$sDegrees = Replace(";"," ",$sDegrees)
+		ENDIF		
+		
+		
+	ENDIF
+					
+ENDSUB
+
+#------------------------------------------------------------------------------	
+BEGINSUB Name=CheckPolygonFilter
+#------------------------------------------------------------------------------	
+
+	IF IsEmpty($lstPolygon) = TRUE
+		$bExitLoop = FALSE
+		$sMessage = "Please choose the Polygon File"
+		MSGOK Msg=$sMessage	Caption=Error
+	ENDIF
+				
+	IF IsEmpty($lstPolygon) = FALSE
+		$sPath = $lstPolygon
+		GOSUB Name=FileExistCheck
+	ENDIF
+	
+ENDSUB
+
+#------------------------------------------------------------------------------	
+BEGINSUB Name=CheckGCMemberID
+#------------------------------------------------------------------------------	
+
+	IF IsEmpty($txtGCUserID) = TRUE
+		$bExitLoop = FALSE
+		$sMessage = "Please enter your Owner ID in GSAK:" + $_CrLf + "Tools/Options/Method for matching owned and found caches"
+		MSGOK Msg=$sMessage	Caption=Error
+	ENDIF
+
+ENDSUB 
+
+#------------------------------------------------------------------------------	
+BEGINSUB Name=CheckMunzeeNickname
+#------------------------------------------------------------------------------	
+
+	IF IsEmpty($txtMunzeeNickname) = TRUE
+		$bExitLoop = FALSE
+		$sMessage = "Please enter your Munzee Nickname"
+		MSGOK Msg=$sMessage	Caption=Error
+	ENDIF
+
+ENDSUB 
+
+#------------------------------------------------------------------------------	
+BEGINSUB Name=CheckMacroRun
+#------------------------------------------------------------------------------	
+
+  IF IsEmpty($txtMacroRun) = TRUE
+		$bExitLoop = FALSE
+		$sMessage = "Please choose a Macro File"
+		MSGOK Msg=$sMessage	Caption=Error
+	ENDIF
+				
+	IF IsEmpty($txtMacroRun) = FALSE
+		$sPath = $txtMacroRun
+		GOSUB Name=FileExistCheck
+	ENDIF	
+
+ENDSUB
+
+#------------------------------------------------------------------------------	
+BEGINSUB Name=SetCacheType
+#------------------------------------------------------------------------------	
+
+	BEGINCASE 
+	
+	  CASE $cboCacheTypes="Project APE"
+			$sCacheType = "A"
+				
+	  CASE $cboCacheTypes="Letterbox"
+			$sCacheType = "B"
+			
+	  CASE $cboCacheTypes="CITO"
+			$sCacheType = "C"		
+
+	  CASE $cboCacheTypes="L&F Celebration"
+			$sCacheType = "D"
+
+	  CASE $cboCacheTypes="Event"
+			$sCacheType = "E"
+
+	  CASE $cboCacheTypes="L&F Event"
+			$sCacheType = "F"
+
+	  CASE $cboCacheTypes="Benchmark"
+			$sCacheType = "G"
+
+	  CASE $cboCacheTypes="Groundspeak HQ"
+			$sCacheType = "H"
+
+	  CASE $cboCacheTypes="Wherigo"
+			$sCacheType = "I"
+
+	  CASE $cboCacheTypes="Locationless"
+			$sCacheType = "L"
+
+	  CASE $cboCacheTypes="Multi"
+			$sCacheType = "M"
+
+	  CASE $cboCacheTypes="Other"
+			$sCacheType = "O"
+
+	  CASE $cboCacheTypes="Earth"
+			$sCacheType = "R"
+
+	  CASE $cboCacheTypes="Traditional"
+			$sCacheType = "T"
+
+	  CASE $cboCacheTypes="Mystery"
+			$sCacheType = "U"
+
+		CASE $cboCacheTypes="Virtual"
+			$sCacheType = "V"
+
+	  CASE $cboCacheTypes="Web Cam"
+			$sCacheType = "W"
+
+	  CASE $cboCacheTypes="Maze Exhibit"
+			$sCacheType = "X"
+
+	  CASE $cboCacheTypes="Waymark"
+			$sCacheType = "Y"
+
+	  CASE $cboCacheTypes="Mega Event"
+			$sCacheType = "Z"
+
+		OTHERWISE 
+			$sCacheType = "O" #Other
+
+	ENDCASE 
+	
+ENDSUB 
+
+#------------------------------------------------------------------------------
+BEGINSUB Name=DownloadNow
+#------------------------------------------------------------------------------
+
+	WEB URL="http://baerti61.ba.funpic.de/MyMunzeesCSV/MyMunzeeCSVUpdate.html"
+
+ENDSUB 
+
+#------------------------------------------------------------------------------
+BEGINSUB Name=ConvertMonth
+#------------------------------------------------------------------------------
+
+	BEGINCASE 
+	
+	  CASE $sShortNameMonth = "Jan"
+			$sConvertedMonth = "01"
+				
+	  CASE $sShortNameMonth = "Feb"
+			$sConvertedMonth = "02"
+			
+	  CASE $sShortNameMonth = "Mar"
+			$sConvertedMonth = "03"
+	  
+	  CASE $sShortNameMonth = "Apr"
+			$sConvertedMonth = "04"
+			
+	  CASE $sShortNameMonth = "May"
+			$sConvertedMonth = "05"
+			
+		CASE $sShortNameMonth = "Jun"
+			$sConvertedMonth = "06"
+		
+		CASE $sShortNameMonth = "Jul"
+			$sConvertedMonth = "07"
+			
+		CASE $sShortNameMonth = "Aug"
+			$sConvertedMonth = "08"
+			
+		CASE $sShortNameMonth = "Sep"
+			$sConvertedMonth = "09"
+			
+		CASE $sShortNameMonth = "Oct"
+			$sConvertedMonth = "10"
+			
+		CASE $sShortNameMonth = "Nov"
+			$sConvertedMonth = "11"
+			
+		CASE $sShortNameMonth = "Dec"
+			$sConvertedMonth = "12"
+					
+  ENDCASE
+
+ENDSUB 
+#------------------------------------------------------------------------------
+BEGINSUB Name=Declarations
+#------------------------------------------------------------------------------
+
+	DECLARE Var=$sDBs              	Type=String
+	DECLARE Var=$sCacheTypes       	Type=String
+	DECLARE Var=$fldImportPath			Type=String
+	DECLARE Var=$txtGCUserID				Type=String
+	DECLARE Var=$txtCoordinates			Type=String
+	DECLARE Var=$optLoadFromWeb    	Type=Boolean
+	DECLARE Var=$optLoadFromFile   	Type=Boolean
+	DECLARE Var=$optLocationFilter 	Type=Boolean
+	DECLARE Var=$optPolygonFilter  	Type=Boolean
+	DECLARE Var=$optRadiusFilter   	Type=Boolean
+	DECLARE Var=$optUsernameFilter  Type=Boolean
+	DECLARE var=$chkCoordinates     type=boolean
+	DECLARE var=$chkLocations				type=boolean
+	DECLARE var=$cboLocationNames   Type=String
+	DECLARE Var=$lstPolygon	       	Type=String
+	DECLARE Var=$nCntLoaded        	Type=Numeric
+	DECLARE Var=$nCntAdded				 	Type=Numeric
+	DECLARE Var=$sMsgText          	Type=String
+	DECLARE Var=$nFromPos 					Type=Numeric
+	DECLARE Var=$nLength						Type=Numeric 
+	DECLARE Var=$chkUpdFounds				Type=Boolean
+	DECLARE Var=$dInitialDate			 	Type=Date
+	DECLARE Var=$nCntFounds				 	Type=Numeric
+	DECLARE Var=$sLatitude					Type=String
+	DECLARE Var=$sLongitude					Type=String
+	DECLARE Var=$sCreatedAt					Type=String
+	DECLARE Var=$sDeployedAt				Type=String
+	DECLARE Var=$sNotes							Type=String
+	DECLARE Var=$sFriendlyName			Type=String
+	DECLARE Var=$sLocation					Type=String
+	DECLARE Var=$sUsername					Type=String
+	DECLARE Var=$sMunzeeID					Type=String
+	DECLARE Var=$nCntCorrectedCoors Type=Numeric
+	DECLARE Var=$UpdDatabase        Type=String
+
+ENDSUB 
+
+#------------------------------------------------------------------------------	
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Thu 03-May-2012 13:16:50
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Load Munzees to GSAK
+  Color = 15724527
+  Height = 449
+  Top = 0
+  Width = 778
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Load file from ...
+  Height = 65
+  Left = 8
+  Top = 88
+  Width = 369
+  Taborder = 0
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = Filter Options
+  Height = 281
+  Left = 384
+  Top = 88
+  Width = 369
+  Taborder = 5
+
+Name = Groupbox3
+  Type = Groupbox
+  Caption = GSAK Options
+  Height = 97
+  Left = 8
+  Top = 160
+  Width = 369
+  Taborder = 6
+
+Name = Groupbox4
+  Type = Groupbox
+  Height = 33
+  Left = 8
+  Top = 264
+  Width = 369
+  Taborder = 7
+
+Name = Groupbox5
+  Type = Groupbox
+  Height = 65
+  Left = 8
+  Top = 304
+  Width = 369
+  Taborder = 8
+
+Name = btnCancel
+  Type = Button
+  Height = 25
+  Left = 680
+  Top = 376
+  Width = 73
+  Taborder = 3
+  Caption = Cancel
+
+Name = btnGetMunzees
+  Type = Button
+  Height = 25
+  Left = 8
+  Top = 376
+  Width = 225
+  Taborder = 4
+  Caption = Get Munzees
+
+Name = fldImportPath
+  Type = Folder
+  Container = Groupbox1
+  Height = 21
+  Left = 80
+  Top = 40
+  Width = 281
+  Taborder = 0
+
+Name = optPolygonFilter
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 20
+  Left = 8
+  Top = 80
+  Width = 98
+  Taborder = 0
+  Caption = Polygon
+
+Name = Label2
+  Type = Label
+  Container = Groupbox3
+  Height = 17
+  Left = 8
+  Top = 24
+  Width = 54
+  Caption = Database
+
+Name = cboDataBase
+  Type = Combobox
+  Container = Groupbox3
+  Height = 21
+  Left = 112
+  Top = 16
+  Width = 249
+  Taborder = 0
+
+Name = Label5
+  Type = Label
+  Container = Groupbox3
+  Height = 17
+  Left = 8
+  Top = 47
+  Width = 101
+  Caption = Save as Cachetype
+
+Name = cboCacheTypes
+  Type = Combobox
+  Container = Groupbox3
+  Height = 21
+  Left = 112
+  Top = 40
+  Width = 249
+  Taborder = 1
+
+Name = txtMunzeeNickname
+  Type = Edit
+  Container = Groupbox3
+  Height = 21
+  Left = 112
+  Top = 65
+  Width = 249
+  Taborder = 2
+
+Name = Label9
+  Type = Label
+  Container = Groupbox3
+  Height = 17
+  Left = 8
+  Top = 70
+  Width = 97
+  Caption = Munzee Nickname
+
+Name = MunzeeLogo
+  Type = Image
+  File = MunzeeLogo.gif
+  Height = 73
+  Left = 8
+  Source = Macro
+  Top = 8
+  Width = 361
+
+Name = chkUpdFounds
+  Type = Checkbox
+  Container = Groupbox4
+  Height = 20
+  Left = 8
+  Top = 8
+  Width = 129
+  Taborder = 0
+  Caption = Update my Founds
+
+Name = chkMacroRun
+  Type = Checkbox
+  Container = Groupbox5
+  Height = 20
+  Left = 8
+  Top = 8
+  Width = 241
+  Taborder = 0
+  Caption = Run macro after loading munzees
+
+Name = txtMacroRun
+  Type = File
+  Container = Groupbox5
+  Height = 21
+  Left = 8
+  Top = 32
+  Width = 353
+  Taborder = 1
+
+Name = lblVer
+  Type = Label
+  Height = 17
+  Left = 90
+  Top = 64
+  Width = 34
+
+Name = optRadiusFilter
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 20
+  Left = 8
+  Top = 128
+  Width = 65
+  Taborder = 1
+  Caption = Radius
+
+Name = txtRadius
+  Type = Edit
+  Container = Groupbox2
+  Height = 21
+  Left = 80
+  Top = 128
+  Width = 41
+  Taborder = 2
+
+Name = lblRadius
+  Type = Label
+  Container = Groupbox2
+  Height = 17
+  Left = 128
+  Top = 131
+  Width = 34
+
+Name = optUsernameFilter
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 20
+  Left = 8
+  Top = 184
+  Width = 98
+  Taborder = 3
+  Caption = Username
+
+Name = txtUsername
+  Type = Memo
+  Container = Groupbox2
+  Height = 57
+  Left = 80
+  Top = 184
+  Width = 281
+  Taborder = 4
+
+Name = txtCoordinates
+  Type = Edit
+  Container = Groupbox2
+  Height = 21
+  Left = 200
+  Top = 128
+  Width = 161
+  Taborder = 5
+
+Name = chkCoordinates
+  Type = Checkbox
+  Container = Groupbox2
+  Exitonchange = Yes
+  Height = 20
+  Left = 176
+  Top = 128
+  Width = 17
+  Taborder = 6
+
+Name = chkLocations
+  Type = Checkbox
+  Container = Groupbox2
+  Exitonchange = Yes
+  Height = 20
+  Left = 176
+  Top = 152
+  Width = 17
+  Taborder = 7
+
+Name = cboLocationNames
+  Type = Combobox
+  Container = Groupbox2
+  Height = 21
+  Left = 200
+  Top = 152
+  Values = $sLocationNames
+  Width = 161
+  Taborder = 8
+
+Name = lblPolygonEditor
+  Type = Label
+  Container = Groupbox2
+  Height = 16
+  Left = 80
+  Top = 101
+  Width = 76
+  Caption = <a href= "http://gsak.net/google/polygoneditor.html">Polygon Editor</A>
+
+Name = optLocationFilter
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 20
+  Left = 8
+  Top = 16
+  Width = 98
+  Taborder = 9
+  Caption = Location
+
+Name = lstPolygon
+  Type = File
+  Container = Groupbox2
+  Height = 21
+  Left = 80
+  Top = 80
+  Width = 281
+  Taborder = 10
+
+Name = optLoadFromFile
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 20
+  Left = 8
+  Top = 40
+  Width = 98
+  Taborder = 1
+  Caption = Directory
+
+Name = optLoadFromWeb
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 20
+  Left = 8
+  Top = 16
+  Width = 98
+  Taborder = 2
+  Caption = munzee.com
+
+Name = txtOnlyCountry
+  Type = Memo
+  Container = Groupbox2
+  Height = 57
+  Left = 80
+  Top = 16
+  Width = 281
+  Taborder = 11
+
+Name = btnUpdateMyFounds
+  Type = Button
+  Height = 25
+  Left = 242
+  Top = 376
+  Width = 225
+  Taborder = 17
+  Caption = Update my Founds
+
+<enddata>
+
+
+
+
+
+
+<data> VarName=$MunzeeLogo
+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
+PMIkXMLVGxAAOw==
+<enddata>
+

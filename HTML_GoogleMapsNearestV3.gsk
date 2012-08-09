@@ -1,0 +1,1479 @@
+# MacDescription = GoogleMapsNearest V3 Split Screen display of multiple caches
+# MacFileName = HTML_GoogleMapsNearestV3.gsk
+# MacAuthor = Lignumaqua
+# MacVersion=0.7
+# MacUrl = 
+
+#***************************************
+# HTMLName=Map Nearest 3 V0.7
+# SplitScreen=Yes
+# Export=No
+# Offline=No
+#***************************************
+
+#==============================================================================#
+#   GSAK GoogleMapsNearestV3 Split Screen
+#   Lignumaqua
+#   ONLY runs in GSAK V7.7 or above of GSAK
+#
+#==============================================================================#
+#   GoogleMapsNearest V3 Version History
+# V0.1 12-17-11 First trial release
+# V0.2 12-19-11 Child points case insensitive
+# v0.3 12-28-11 Separation circles for Final Position and Stage of a Multicache child waypoints.
+#               'R Click' box
+# V0.4 1-4-12   Right click menu, new MyTopo maps
+# V0.5 1-5-12   Option for child waypoints for all caches, Options in menu.
+# V0.6 1-8-12   GC links open in current browser, Unavailable/Archived marker, Unavailable/archived in Info Window
+# V0.7 1-9-12   Fix for Info Windows on unavailable caches when labels are shown
+
+
+PREPROCESS Shift=$StartShift
+VERCHECK Version=7.7.4.28 (Note: this macro requires at least  GSAK Version 7.7.4.28, found here:  http://gsak.net/board/index.php?showtopic=17668  Recommended w/ the latest "patch")
+
+$ShowChild = FALSE
+$ShowText = FALSE
+$UseOriginal = FALSE
+$UseScrollWheel = FALSE
+$Silent = FALSE
+$ShowName = TRUE
+$ShowCode = FALSE
+$ShowSmart = FALSE
+$Medium = TRUE
+$Small = FALSE
+$Large = FALSE
+$AdditionalFields = ""
+$ShowCircle = FALSE
+$radius = "0"
+$Limit = "10"
+
+# Load and save necessary to update old xml files
+MACSETTINGS Type=R File=GoogleMapsNearestV3.xml FileCheck=N
+MACSETTINGS Type=S Vars=ShowChild,ShowText,UseOriginal,UseScrollWheel,Silent,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields,ShowCircle,Radius,Limit,ShowAllChild File=GoogleMapsNearestV3.xml
+
+$ShowChild = FALSE
+$ShowText = FALSE
+$UseOriginal = FALSE
+$UseScrollWheel = FALSE
+$Silent = FALSE
+$ShowName = TRUE
+$ShowCode = FALSE
+$ShowSmart = FALSE
+$Medium = TRUE
+$Small = FALSE
+$Large = FALSE
+$AdditionalFields = ""
+$ShowCircle = FALSE
+$radius = "0"
+$Limit = "10"
+
+$versionnumber = MacHeader("macversion")
+$form = Replace("%v%","v" + $versionnumber,$form)
+
+#Check if we're using Miles or Kilometres
+IF SysInfo("Distance") = "K"
+	$conversion = 1000
+ELSE
+	$conversion = 1609.344
+ENDIF
+
+# Read in settings (Options only show if SHIFT is pressed)
+MACSETTINGS Type=R Vars=UseScrollWheel,Silent,ShowChild,ShowText,UseOriginal,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields,ShowCircle,Radius,Limit,ShowAllChild File=GoogleMapsNearestV3.xml FileCheck=N
+
+IF $StartShift OR ($_MacroParms = "options")
+	$errors = TRUE
+	# Get list of valid field names
+	$test = Sqlite("sql","pragma table_info(cachesall)")
+	$x = 1
+	$columnlist = ""
+	WHILE Extract($test,$_NewLine,$x) <> ""
+		$line = Extract($test,$_NewLine,$x)
+		$columnlist = $columnlist +"," + Extract($line,";",2)
+		$x = $x + 1
+	ENDWHILE
+	$columnlist = Lower($columnlist)
+	
+	
+
+	WHILE $errors
+		$errors = FALSE
+		MACSETTINGS Type=R Vars=ShowChild,ShowText,UseOriginal,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields,ShowCircle,Radius,Limit,ShowAllChild File=GoogleMapsNearestV3.xml FileCheck=N
+		IF $ShowChild
+			$Form = EditForm($Form,"ShowAllChild","Enabled","Yes")
+		ELSE
+			$Form = EditForm($Form,"ShowAllChild","Enabled","No")
+		ENDIF
+		$result = Form($form,"")
+		$radius = NumToStr(Abs(Val($radius)))
+		MACSETTINGS Type=S Vars=ShowChild,ShowText,UseOriginal,UseScrollWheel,Silent,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields,ShowCircle,Radius,Limit,ShowAllChild File=GoogleMapsNearestV3.xml
+		IF $result = "SystemExit"
+			RETURN
+		ENDIF
+		
+		IF $result = "ShowChild"
+			$errors = TRUE
+		ENDIF
+
+		# Check field names are valid
+		$y = 1
+		WHILE Extract($AdditionalFields,",",$y) <> ""
+			$test = "," + AllTrim(Lower(Extract($AdditionalFields,",",$y)))
+			IF At($test,$columnlist) = 0
+				$errors = TRUE
+				$errormessage = Extract($AdditionalFields,",",$y) + " is not a valid field name"
+				MSGOK msg=$errormessage
+			ENDIF
+			$y=$y+1
+		ENDWHILE
+		
+	ENDWHILE
+ENDIF
+
+
+IF $Silent
+	$SilentString = ":silent"
+ELSE
+	$SilentString = ""
+ENDIF
+
+IF $UseScrollWheel
+	$UseScrollWheelString = "true"
+ELSE
+	$UseScrollWheelString = "false"
+ENDIF
+
+
+IF $UseOriginal
+	$lat = "LatOriginal"
+	$lon = "LonOriginal"
+ELSE
+	$lat = "latitude"
+	$lon = "longitude"
+ENDIF
+
+
+$flagicon = "http://gsak.net/stats/maps/flagicon.gif"
+$viewicon = "http://gsak.net/stats/maps/viewicon.gif"
+$incsorticon = "http://gsak.net/stats/maps/incsorticon.gif"
+
+# Write out Increment Sort macro
+$tmpS = PutFile($_Install + "\macros\incsort.gsk", $IncSort)
+
+# Write out Get Nearest macro
+$tmpS = PutFile($_Install + "\macros\GetNearestCache.gsk", $GetNearestCache)
+
+$hash = GetUrl("http://gsak.net/stats/maps/MyTopoTileService.php")
+
+IF $ShowText
+	
+	BEGINCASE
+	CASE $ShowName
+		$labeltext = "name"
+	CASE $ShowCode
+		$labeltext = "code"
+	CASE $ShowSmart
+		$labeltext = "smartname"
+	ENDCASE
+	
+	IF Len($AdditionalFields) > 0
+		$AdditionalFields = Replace(",","|| ', ' ||",$AdditionalFields)
+		$labeltext = $labeltext + " || ' - ' || " + "$AdditionalFields"
+	ENDIF
+		
+	
+	
+	BEGINCASE
+	CASE $Small
+		$labelsize = "8px"
+	CASE $Medium
+		$labelsize = "10px"
+	CASE $Large
+		$labelsize = "12px"
+	ENDCASE
+	
+ENDIF
+
+
+IF $ShowText
+
+	#SQLite query for marker line with labels
+
+	$_sql = "SELECT "
+	$_sql = $_sql + "'var latlng = new google.maps.LatLng(' || $lat || ',' || $lon || ');"
+	$_sql = $_sql + "m' || rowid || ' = new MarkerWithLabel({position: latlng"
+	$_sql = $_sql + ", map: map, icon:' || cachetype || CASE WHEN Found = '1' THEN '_f' ELSE '' END || CASE WHEN HasCorrected = '1' THEN '_e' ELSE '' END || '_icon, shadow:shadow, title:" + $_quote + "' || replace(replace(name,'" + $_Quote + "',''''),'\','\\') || '" + $_Quote
+	$_sql = $_sql + ", draggable: false, zindex:100, labelContent:" + $_Quote + "' || replace($labeltext,'" + $_Quote + "','''') || '" + $_Quote + ", labelAnchor: new google.maps.Point(10, 0),labelClass: " + $_Quote + "labels" + $_Quote + "});"
+	$_sql = $_sql + "bounds.extend(latlng);'"
+	$_sql = $_sql + " FROM cachesall WHERE $_Where ORDER BY g_Distance('$d_latitude','$d_longitude',latitude,longitude,'M') LIMIT $Limit"
+
+	$caches = Sqlite("sql",$_sql, "delim=%%delim%%")
+
+ELSE
+
+	#SQLite query for marker line with no labels
+
+	$_sql = "SELECT "
+	$_sql = $_sql + "'var latlng = new google.maps.LatLng(' || $lat || ',' || $lon || ');"
+	$_sql = $_sql + "m' || rowid || ' = new google.maps.Marker({position: latlng"
+	$_sql = $_sql + ", map: map, icon:' || cachetype || CASE WHEN Found = '1' THEN '_f' ELSE '' END || CASE WHEN HasCorrected = '1' THEN '_e' ELSE '' END || '_icon, shadow:shadow, title:" + $_quote + "' || replace(replace(name,'" + $_Quote + "',''''),'\','\\') || '" + $_Quote
+	$_sql = $_sql + ", draggable: false, zindex:100});"
+	$_sql = $_sql + "bounds.extend(latlng);'"
+	$_sql = $_sql + " FROM cachesall WHERE $_Where ORDER BY g_Distance('$d_latitude','$d_longitude',latitude,longitude,'M') LIMIT $Limit"
+
+	$caches = Sqlite("sql",$_sql, "delim=%%delim%%")
+
+ENDIF
+
+#SQLite query for unavailable marker
+
+	$_sql = "SELECT "
+	$_sql = $_sql + "'var latlng = new google.maps.LatLng(' || $lat || ',' || $lon || ');"
+	$_sql = $_sql + "u' || rowid || ' = new google.maps.Marker({position: latlng"
+	$_sql = $_sql + ", map: map, icon:unavailable_icon, title:" + $_quote + "' || replace(replace(name,'" + $_Quote + "',''''),'\','\\') || '" + $_Quote + ", draggable:false, zIndex:1000});'"
+	$_sql = $_sql + " FROM cachesall WHERE (Archived OR TempDisabled) AND code IN(SELECT code from cachesall WHERE $_Where ORDER BY g_Distance('$d_latitude','$d_longitude',latitude,longitude,'M') LIMIT $Limit)"
+
+	$unavailable = Sqlite("sql",$_sql, "delim=%%delim%%")
+
+
+IF Abs(Val($radius)) > 0
+	$radius = Replace(",", ".", NumToStr(Int((Abs(Val($Radius))) * $conversion)), true)
+	$caches = $caches + $_NewLine + "var circleOptions = {strokeColor: '#847B57', strokeOpacity: 0.75, strokeWeight: 1, fillColor: '#BFBCA2', fillOpacity: 0.3, map: map, center: new google.maps.LatLng($d_latitude,$d_longitude), radius: $radius, clickable: false};"
+	$caches = $caches + $_NewLine + "mainCircle = new google.maps.Circle(circleOptions);"
+ENDIF
+
+$caches = $_NewLine + "var latlng = new google.maps.LatLng($d_latitude,$d_longitude);mring = new google.maps.Marker({position: latlng, map: map, icon:ringIcon, draggable: false});" + $caches
+$caches = $caches + $_NewLine + "var latlng = new google.maps.LatLng($d_latitude,$d_longitude); map.setCenter(latlng);"
+
+
+$circles = ""
+
+IF $ShowCircle
+	#SQLite query for separation circles
+	$_sql = "SELECT "
+	$_sql = $_sql + "'var circleOptions = {strokeColor:' ||CASE WHEN code='$d_code' THEN '''#C4FF57''' ELSE '''#847FF7''' END || ',"
+	$_sql = $_sql + " strokeOpacity: 0.75, strokeWeight: 1, fillColor:' ||CASE WHEN code='$d_code' THEN '''#A2A2FF''' ELSE '''#BFBFA2''' END || ', fillOpacity: 0.3, map: map,"
+	$_sql = $_sql + "center: new google.maps.LatLng(' || $lat || ',' || $lon || '), radius: 160.9, clickable: false};"
+	$_sql = $_sql + "sepCircle = new google.maps.Circle(circleOptions);'"
+	$_sql = $_sql + " FROM cachesall WHERE (cachetype in('T','W','A','B','M') OR (cachetype = 'U' AND hascorrected)) AND code IN(SELECT code from cachesall WHERE $_Where ORDER BY g_Distance('$d_latitude','$d_longitude',latitude,longitude,'M') LIMIT $Limit)"
+
+	$circles = Sqlite("sql",$_sql, "delim=%%delim%%")
+ENDIF
+
+
+$child=""
+
+IF $ShowChild
+	
+	IF $ShowAllChild
+		$currentonly = ""
+	ELSE
+		$currentonly = "AND code='$d_code'"
+	ENDIF
+
+	IF $ShowText
+		# SQLite query for child marker line with labels
+
+		$_sql = "SELECT "
+		$_sql = $_sql + "'var latlng = new google.maps.LatLng(' || clat || ',' || clon || ');"
+		$_sql = $_sql + "c' || rowid || ' = new MarkerWithLabel({position: latlng"
+		$_sql = $_sql + ", map: map, icon:' || lower(replace(ctype,' ','_')) || '_icon, shadow:shadow, title:" + $_Quote + "' || "
+		$_sql = $_sql + "replace(replace((SELECT name FROM cachesall WHERE code=cparent),'" + $_Quote + "',''''),'\','\\') || ' - ' ||"
+		$_sql = $_sql + "replace(cName,'" + $_Quote + "','''') || '" + $_Quote
+		$_sql = $_sql + ", draggable: false, labelContent:" + $_Quote + "' || replace(replace((SELECT name FROM cachesall WHERE code=cparent),'" + $_Quote + "',''''),'\','\\') || ' - ' || replace(cName,'" + $_Quote + "','''') || '" + $_Quote + ", labelAnchor: new google.maps.Point(10, 0),labelClass: " + $_Quote + "labels" + $_Quote + "}); "
+		$_sql = $_sql + "bounds.extend(latlng);'"
+		$_sql = $_sql + " FROM Waypoints WHERE NOT(clat='' and clon='') AND NOT(clat+0=0 and clon+0=0) AND cParent IN(SELECT code from cachesall WHERE $_Where $currentonly ORDER BY g_Distance('$d_latitude','$d_longitude',latitude,longitude,'M') LIMIT $Limit)"
+
+		$child = Sqlite("sql",$_sql, "delim=%%delim%%")
+
+	ELSE
+		# SQLite query for child marker line with no labels
+
+		$_sql = "SELECT "
+		$_sql = $_sql + "'var latlng = new google.maps.LatLng(' || clat || ',' || clon || ');"
+		$_sql = $_sql + "c' || rowid || ' = new google.maps.Marker({position: latlng"
+		$_sql = $_sql + ", map: map, icon:' || lower(replace(ctype,' ','_')) || '_icon, shadow:shadow, title:" + $_Quote + "' || "
+		$_sql = $_sql + "replace(replace((SELECT name FROM cachesall WHERE code=cparent),'" + $_Quote + "',''''),'\','\\') || ' - ' ||"
+		$_sql = $_sql + "replace(cName,'" + $_Quote + "','''') || '" + $_Quote
+		$_sql = $_sql + ", draggable: false}); "
+		$_sql = $_sql + "bounds.extend(latlng);'"
+		$_sql = $_sql + " FROM Waypoints WHERE NOT(clat='' and clon='') AND NOT(clat+0=0 and clon+0=0) AND cParent IN(SELECT code from cachesall WHERE $_Where $currentonly ORDER BY g_Distance('$d_latitude','$d_longitude',latitude,longitude,'M') LIMIT $Limit)"
+
+		$child = Sqlite("sql",$_sql, "delim=%%delim%%")
+
+	ENDIF
+		
+	IF $ShowCircle
+		#SQLite query for separation circles
+		$_sql = "SELECT "
+		$_sql = $_sql + "'var circleOptions = {strokeColor:' ||CASE WHEN cParent='$d_code' THEN '''#C4FF57''' ELSE '''#847FF7''' END || ',"
+		$_sql = $_sql + " strokeOpacity: 0.75, strokeWeight: 1, fillColor:' ||CASE WHEN cParent='$d_code' THEN '''#A2A2FF''' ELSE '''#BFBFA2''' END || ', fillOpacity: 0.3, map: map,"
+		$_sql = $_sql + "center: new google.maps.LatLng(' || clat || ',' || clon || '), radius: 160.9, clickable: false};"
+		$_sql = $_sql + "sepCircle = new google.maps.Circle(circleOptions);'"
+		$_sql = $_sql + " FROM Waypoints WHERE lower(cType) in('final location','stages of a multicache') AND NOT(clat='' and clon='') AND NOT(clat+0=0 and clon+0=0) AND cParent IN(SELECT code from cachesall WHERE $_Where ORDER BY g_Distance('$d_latitude','$d_longitude',latitude,longitude,'M') LIMIT $Limit)"
+		$circles = $circles + Sqlite("sql",$_sql, "delim=%%delim%%")
+	ENDIF
+	
+ENDIF
+
+
+$current = HttpEncode($_CurrentDatabase)
+
+# Build SQLite query for Info Windows Use !&! for quotes in javascript
+
+	$info1 = "<div style=!&!width:200px;overflow:hidden;font-family:Verdana;font-size:10px;!&!>"
+		
+	$info1 = $info1 + "<center><b><a href=!&!gsak://%FF/open/' || URL || '!&!>' || code || '</a><br />"
+	$info1 = $info1 + "' || replace(replace(name,'" + $_Quote + "',''''),'\','\\') || ' </b><br />"
+	$info1 = $info1 + "<i>by: ' || replace(replace(ownername,'" + $_Quote + "',''''),'\','\\') || ' </i><br /><br />"
+	$info1 = $info1 + "Difficulty: ' || difficulty || ', Terrain: ' || terrain || '<br />"
+	IF $_Version > "8.0.1.0"
+		$info1 = $info1 + "Size: ' || container || ', Fav Points: ' || favpoints || '<br /><br />"
+	ELSE
+		$info1 = $info1 + "Size: ' || container || '<br /><br />"
+	ENDIF
+	
+	$info1 = $info1 + "' || CASE WHEN cachetype='E' or cachetype='C' or cachetype='Z' THEN '<i>Event on: ' || g_DateFormat(PlacedDate) || '</i><br /><br />' ELSE '' END || '"
+	$info1 = $info1 + "' || CASE WHEN Found=1 THEN '<i>You found this cache on: ' || g_DateFormat(FoundByMeDate) || '</i><br /><br />' ELSE '' END || '"
+	
+	$info1 = $info1 + "' || CASE WHEN Archived THEN '<b><i><font color=!&!ff0000!&!>Archived</font></i></b><br /><br />' ELSE '' END || '"
+	$info1 = $info1 + "' || CASE WHEN TempDisabled THEN '<b><i><font color=!&!ff0000!&!>Temporarily Disabled</font></i></b><br /><br />' ELSE '' END || '"
+
+	$href = "<a href=\" + $_Quote + "gsak://%FF/search/' || code || '/$Current\" + $_Quote + ">"
+	$info1 = $info1 + "<b>View:</b>" + $href + "<img src=!&!$viewicon!&! align=!&!top!&! hspace=!&!4!&!></a>&nbsp;&nbsp;"
+	
+	$href = "<a href=\" + $_Quote + "gsak://%FF/flagtoggle" + $SilentString + "/' || code || '/$Current\" + $_Quote + ">"
+	$info1 = $info1 + "<b>Flag:</b>" + $href + "<img src=!&!$flagicon!&! align=!&!top!&! hspace=!&!4!&!></a>&nbsp;&nbsp;"
+	
+	$href = "<a href=\" + $_Quote + "gsak://%FF/macro" + $SilentString + "/incsort?' || code || '\" + $_Quote + ">"
+	$info1 = $info1 + "<b>Sort:</b>" + $href + "<img src=!&!$incsorticon!&! align=!&!top!&! hspace=!&!4!&!></a><br><br />"
+	$info1 = $info1 + "</center></div>"
+
+
+$_sql = "SELECT "
+$_sql = $_sql + "'google.maps.event.addListener(m' || rowid || ', " + $_Quote + "click" + $_Quote + ", function() "
+$_sql = $_sql + "{ infowindow.setContent(" + $_Quote + $info1 + $_Quote + ");infowindow.open(map,m' || rowid || ');});'"
+$_sql = $_sql + " FROM cachesall WHERE $_Where ORDER BY g_Distance('$d_latitude','$d_longitude',latitude,longitude,'M') LIMIT $Limit"
+
+$info = Sqlite("sql",$_sql, "delim=%%delim%%")
+
+#$info = Replace("!&!","'",$info)
+
+$_sql = "SELECT "
+$_sql = $_sql + "'google.maps.event.addListener(u' || rowid || ', " + $_Quote + "click" + $_Quote + ", function() "
+$_sql = $_sql + "{ infowindow.setContent(" + $_Quote + $info1 + $_Quote + ");infowindow.open(map,u' || rowid || ');});'"
+$_sql = $_sql + " FROM cachesall WHERE (Archived OR TempDisabled) AND code IN(SELECT code from cachesall WHERE $_Where ORDER BY g_Distance('$d_latitude','$d_longitude',latitude,longitude,'M') LIMIT $Limit)"
+
+$info = $info + $_CrLf + Sqlite("sql",$_sql, "delim=%%delim%%")
+
+$info = Replace("!&!","'",$info)
+
+
+
+$html = $MapHtml
+
+$html = Replace("!!CachesGoHere!!",$caches,$html)
+$html = Replace("!!CirclesGoHere!!",$circles,$html)
+$html = Replace("!!InfoHere!!",$info,$html)
+$html = Replace("!!ChildrenGoHere!!",$child,$html)
+$html = Replace("!!ScrollWheel!!",$UseScrollWheelString,$html)
+$html = Replace("!!LabelSize!!",$labelsize,$html)
+$html = Replace("!!HashGoesHere!!",$hash,$html)
+$html = Replace("!!versionGoesHere!!",$versionnumber,$html)
+$html = Replace("!!LimitGoesHere!!",$limit,$html)
+$html = Replace("!!UnavailableGoesHere!!",$unavailable,$html)
+
+$_HTML = $html
+
+
+#Run in Chrome
+#$path = GetEnvV("LOCALAPPDATA") + "\Google\Chrome\application\chrome.exe"
+#$FileName = Quote($fileName)
+#RUNPGM pgm="$path" parms=$FileName
+
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#  HTML Header Data
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+<data> VarName=$MapHtml
+<!DOCTYPE HTML>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" >
+<HTML>
+<head>
+<!-- saved from url=(0016)http://localhost -->
+<title>GSAK Map GMap V3</title>
+<style type="text/css">
+      body {
+      margin: 0;
+      font-family: Verdana;
+      font-size: 10px;
+      }
+
+
+    #map {
+      background-color: #e5e3df;
+      height: 100%;
+    }
+    img{
+      border-style: none;
+    }
+    .labels {
+     color: black;
+     background-color: white;
+     font-family: "Lucida Grande", "Arial", sans-serif;
+     font-size: !!LabelSize!!;
+     font-weight: bold;
+     text-align: center;
+     width: auto;
+     padding-left: 2px;
+     padding-right: 2px;
+     border: 1px solid black;
+     white-space: nowrap;
+     /* IE7 Only */
+     *width: 100px;
+     *white-space: collapse;
+   }
+     #printDiv{
+      position: absolute;
+      top: 7px;
+      left: 80px;
+      width: 55px;
+      /* border: 1px solid black; */
+      background: #60a0FF;
+      display:block;
+      background-image: URL(blueback.gif);
+    }
+    .print{
+      color: #FFFFFF;
+      font-size: 12px;
+      font-weight: bold;
+      height: 17px;
+      cursor: pointer;
+      text-align: center;
+  	  z-index: 5;
+     }
+		div.contextmenu{
+			background:#FFFFFF; 
+			border:1px solid #8888FF;
+		}
+		div.contextmenu ul {list-style-image:none;
+			list-style-position:outside;
+			list-style-type:none;
+			margin:0;
+			padding:0;
+		}
+		div.contextmenu ul li{
+			display:block;
+			padding:1px;
+			line-height:100%;
+			margin:0;
+		}
+		div.contextmenu ul li a {
+			border:none;
+			padding:3px 11px 3px 10px;
+			display:block;
+			text-decoration:none;
+			color:#233D6D;
+			font-size:11px;
+			font-family:tahoma,arial,sans-serif;
+	}
+		div.contextmenu ul li a:hover  {
+			color:#233d6d;
+			background:#c3daf9;
+			border:1px solid #8BB8F3;
+			padding:2px 10px 2px 9px;
+		}   
+   
+</style>
+    
+<!-----external references----->
+
+<script type="text/javascript" src="http://maps.google.com/maps/api/js?v=3&amp;sensor=false"></script>
+<script type="text/javascript" src="http://gsak.net/stats/maps/mytopo.js"></script>
+<script type="text/javascript" src="http://gsak.net/stats/maps/markerwithlabel.js"></script>
+
+<script type="text/javascript">
+
+
+var map = null;
+var markers = [];
+
+
+function writecookie(cookiename,k) { document.cookie=cookiename+'='+k+'; expires=Fri, 31 Dec 2020 00:00:00 UTC' };
+
+function clearcookie(cookiename,k) { document.cookie=cookiename+'='+k+'; expires=Fri, 31 Dec 2000 00:00:00 UTC' };
+
+function readCookie(cookieName){
+	var searchName = cookieName + "="
+	var cookies = document.cookie
+	var start = cookies.indexOf(cookieName)
+	if (start == -1){ // cookie not found
+		return "-1"
+	}
+	start += searchName.length //start of the cookie data
+	var end = cookies.indexOf(";", start)
+	if (end == -1){
+		end = cookies.length
+	}
+	return cookies.substring(start, end)
+}
+
+var revNumber = "!!VersionGoesHere!!";
+
+function ContextMenu(oMap){this.initialize(oMap);}  
+
+    
+ //---- Construct the DOM tree of the menu   ----//
+ ContextMenu.prototype.initLink = function(oMap){  
+     var that=this;
+       
+     a_link = document.createElement("li");  
+     a_link.innerHTML="<a href='javascript: getnearestmacro();'>&raquo;Select Nearest Cache to Here</a>";  
+     	google.maps.event.addDomListener(a_link, 'click', function() {
+     		lat = that.clickedPoint.lat();
+				lon = that.clickedPoint.lng();
+				lat = Math.round(lat*1000000)/1000000; 
+				lon = Math.round(lon*1000000)/1000000;
+				that.contextmenu.style.display="none";  
+     		});  
+     this.ul_container.appendChild(a_link);  
+     
+     a_link = document.createElement("li");  
+     a_link.innerHTML="<a href='javascript:void(0);'>&raquo;Show chosen !!LimitGoesHere!! caches</a>";  
+     google.maps.event.addDomListener(a_link, 'click', function() {  
+         that.map.fitBounds(bounds);
+         that.contextmenu.style.display="none";  
+     });  
+     this.ul_container.appendChild(a_link);  
+         
+     
+     	a_link = document.createElement("li");  
+     	a_link.innerHTML="<a href='javascript: gsakclip();'>&raquo;Copy Coords to Clipboard</a>";  
+     	google.maps.event.addDomListener(a_link, 'click', function() {
+     		lat = that.clickedPoint.lat();
+				lon = that.clickedPoint.lng();
+				lat = Math.round(lat*1000000)/1000000; 
+				lon = Math.round(lon*1000000)/1000000;
+				that.contextmenu.style.display="none";  
+     		});  
+     	this.ul_container.appendChild(a_link);  
+    	    	
+    	a_link = document.createElement("li");  
+     	a_link.innerHTML="<a href='javascript: macrooptions();'>&raquo;Options</a>";  
+     	this.ul_container.appendChild(a_link);  
+    	    	
+    	a_link = document.createElement("li");  
+     	a_link.innerHTML="<br /><i><font color='darkblue'>&nbsp;&nbsp;Version: " + revNumber + "</font><i>";  
+     	this.ul_container.appendChild(a_link);  
+    
+ }  
+ 
+//---- Get lat and long ----//
+function latlon(point) {
+	lat = point.lat();
+	lon = point.lng();
+	lat = Math.round(lat*1000000)/1000000; 
+	lon = Math.round(lon*1000000)/1000000;
+}
+ 
+ 
+ //---- Create URI link for Child ----//
+ function gsakchild() {
+ 	window.location.href = "gsak://%FF/Addchild/" + lat + "/" + lon + "/" + cachecode;
+}
+ 
+ //---- Create URI link for Waypoint ----//
+ function gsakwpt() {
+ 	window.location.href = "gsak://%FF/AddWpt/" + lat + "/" + lon;
+}
+
+ //---- Create URI link for clipboard ----//
+ function gsakclip() {
+ 	window.location.href = "gsak://%FF/ClipBoard/" + lat + " " + lon;
+}
+ 
+ //---- Create URI link for Macro ----//
+ function gsakmacro() {
+ 	window.location.href = "gsak://%FF/MapMacro/" + lat + "/" + lon;
+}
+ 
+ //---- Create URI link for Get Nearest Macro ----//
+ function getnearestmacro() {
+ 	window.location.href = "gsak://%FF/Macro/GetNearestCache?" + lat + " " + lon;
+}
+
+//---- Create URI link for Macro Options----//
+ function macrooptions() {
+ 	window.location.href = "gsak://%FF/Macro/HTML_GoogleMapsNearestV3?options";
+}
+
+  //---- Create URI link for GSAK Center Point ----//
+ function gsakcenter() {
+ 	window.location.href = "gsak://%FF/Center/" + lat + "/" + lon;
+}
+ 
+ ContextMenu.prototype.bind = function(method) {  
+     var self = this;  
+     var opt_args = [].slice.call(arguments, 1);  
+     return function() {  
+         var args = opt_args.concat([].slice.call(arguments));  
+         return method.apply(self, args);  
+     }  
+ }  
+   
+ //---- The object 'constructor'   ----//
+ ContextMenu.prototype.initialize = function(oMap){  
+     this.map = oMap;  
+     var that=this;  
+       
+     this.contextmenu = document.createElement("div");  
+     this.contextmenu.style.display="none";  
+ //CSS class name of the menu  
+     this.contextmenu.className="contextmenu";  
+     this.ul_container = document.createElement("ul");  
+     this.ul_container.id="context_menu_ul";  
+     this.contextmenu.appendChild(this.ul_container);      
+     this.initLink();  
+     //this.map.getContainer().appendChild(this.contextmenu);
+         
+     this.contextmenu.index = 1;
+     map.controls[google.maps.ControlPosition.TOP].push(this.contextmenu);
+     
+   
+ //Event listeners that will interact with our context menu  
+     google.maps.event.addListener(oMap,"rightclick",function(event) {  
+     		that.clickedPoint = event.latLng;
+     		//alert(that.clickedPoint);
+
+     // calculate pixel offsets of clicked point and map bounds
+    var scale = Math.pow(2, oMap.getZoom());
+		var nw = new google.maps.LatLng(
+    oMap.getBounds().getNorthEast().lat(),
+    oMap.getBounds().getSouthWest().lng()
+		);
+		var se = new google.maps.LatLng(
+		oMap.getBounds().getSouthWest().lat(),
+    oMap.getBounds().getNorthEast().lng()
+		);
+				
+		var worldCoordinateNW = map.getProjection().fromLatLngToPoint(nw);
+//		var worldCoordinateSE = map.getProjection().fromLatLngToPoint(se);
+//		var mapx = Math.floor((worldCoordinateSE.x - worldCoordinateNW.x) * scale);
+//		var mapy = Math.floor((worldCoordinateSE.y - worldCoordinateNW.y) * scale);
+		
+				
+		var mapx = document.getElementById('map').offsetWidth;
+		var mapy = document.getElementById('map').offsetHeight;
+				
+		var worldCoordinate = map.getProjection().fromLatLngToPoint(that.clickedPoint);
+		
+		var x = Math.floor((worldCoordinate.x - worldCoordinateNW.x) * scale);
+		var y = Math.floor((worldCoordinate.y - worldCoordinateNW.y) * scale);
+             
+	 //Prevents the menu going out of the map margins, in this case the expected menu size is 190x100  
+    if (x > mapx - 190) { x = mapx - 190 }  
+    if (y > mapy - 100) { y = mapy - 100 }  
+    
+    //that.contextmenu.style.marginLeft = x - 80 + 'px';
+    //that.contextmenu.style.marginTop = y + 'px';
+    
+    that.contextmenu.style.left = x + 8 + 'px';
+    that.contextmenu.style.top = y + 'px';
+
+         that.contextmenu.style.display = "";  
+     });   
+     google.maps.event.addListener(oMap, "zoom_changed", function() {  
+         that.contextmenu.style.display="none";  
+     });  
+     google.maps.event.addListener(oMap, "drag", function() {  
+         that.contextmenu.style.display="none";  
+     });  
+     google.maps.event.addListener(oMap, "click", function(overlay,point) {  
+         that.contextmenu.style.display="none";  
+     });   
+ }
+
+
+
+function initialize() {
+
+	document.getElementById('printDiv').innerHTML = 'R Click';
+	document.getElementById('printDiv').title = 'Right Click for menu';
+
+	//-----icon references----->
+	
+	var iconName = new Array('A','B','C','E','G','I','L','M','O','R','T','U','V','W','X','Y','Z','H','F');
+	var imageName = new Array('ape1','le1','ci1','ev1','be1','wh1','lo1','mu1','other1','ea1','tr1','un1','vi1','we1','maze1','wm1','mega1','hq1','lf1');
+	
+	for (i=0;i<=18;i++)
+		{
+		window[iconName[i] + "_icon"] = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/" + imageName[i] + ".png",
+		new google.maps.Size(27,34),
+		new google.maps.Point(0,0),
+		new google.maps.Point(4,34));
+		
+		window[iconName[i] + "_f_icon"] = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/" + imageName[i] + "_f" + ".png",
+		new google.maps.Size(27,34),
+		new google.maps.Point(0,0),
+		new google.maps.Point(4,34));
+		
+		window[iconName[i] + "_e_icon"] = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/" + imageName[i] + "_e" + ".png",
+		new google.maps.Size(27,34),
+		new google.maps.Point(0,0),
+		new google.maps.Point(4,34));
+		
+		window[iconName[i] + "_f_e_icon"] = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/" + imageName[i] + "_f_e" + ".png",
+		new google.maps.Size(27,34),
+		new google.maps.Point(0,0),
+		new google.maps.Point(4,34));
+		
+		}
+	
+	var iconName = new Array('final_location','stages_of_a_multicache','parking_area','question_to_answer','reference_point','trailhead');
+	var imageName = new Array('final1','multistage1','parking1','question1','reference1','trailhead1');
+	
+	for (i=0;i<=5;i++)
+		{
+		window[iconName[i] + "_icon"] = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/" + imageName[i] + ".png",
+		new google.maps.Size(27,34),
+		new google.maps.Point(0,0),
+		new google.maps.Point(4,34));		
+		}
+	
+
+	var shadow = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/shadow1.png",
+	new google.maps.Size(45,34),
+	new google.maps.Point(0,0),
+	new google.maps.Point(4,34));
+
+	var found_icon = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/found1.png",
+	new google.maps.Size(27,34),
+	new google.maps.Point(0,0),
+	new google.maps.Point(4,34));
+
+	var childicon = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/waypoint1.png",
+	new google.maps.Size(27,34),
+	new google.maps.Point(0,0),
+	new google.maps.Point(4,34));
+
+	var correctedicon = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/traffic_cone.png",
+	new google.maps.Size(16,16),
+	new google.maps.Point(0,0),
+	new google.maps.Point(8,16));
+
+	var ringIcon = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/ring.png",
+	new google.maps.Size(31,20),
+	new google.maps.Point(0,0),
+	new google.maps.Point(15,10));
+	
+	var unavailable_icon = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/unavailable.png",
+	new google.maps.Size(27,34),
+	new google.maps.Point(0,0),
+	new google.maps.Point(4,34));
+	
+
+	var options = {
+		scrollwheel: !!scrollwheel!!,
+		scaleControl: true,
+		streetViewControl: true,
+		mapTypeControlOptions: {style: google.maps.MapTypeControlStyle.DROPDOWN_MENU}
+	};
+	map = new google.maps.Map(document.getElementById("map"), options);
+	
+	
+	map.enableKeyDragZoom({
+          visualEnabled: true,
+          visualPosition: google.maps.ControlPosition.LEFT,
+          visualPositionOffset: new google.maps.Size(35, 0),
+          visualPositionIndex: null,
+          visualSprite: "http://gsak.net/stats/maps/dragzoom_btn.png",
+          visualSize: new google.maps.Size(20, 20),
+          visualTips: {
+            off: "Turn on",
+            on: "Turn off"
+          }
+   });
+	
+	
+	
+	map.setCenter(new google.maps.LatLng(30, -97));
+	//map.setZoom(12);
+	
+	var zoomcookie = readCookie('nearzoomv3');
+	//alert (zoomcookie);
+	if (zoomcookie == "-1") {zoomcookie = '14'};
+	map.setZoom(parseInt(zoomcookie));
+	
+	
+	map.setMapTypeId(google.maps.MapTypeId.ROADMAP);
+
+var is_chrome = navigator.userAgent.toLowerCase().indexOf('chrome') > -1;
+
+//----read cookie and set maptype accordingly. Use local storage for Chrome---
+
+
+if (!is_chrome) {
+			//alert("Not Chrome");
+			var typecookie = readCookie('nearmaptypev3');
+			//alert (typecookie);
+			if (typecookie == "-1") {typecookie = "roadmap"};
+			map.setMapTypeId(typecookie);
+		} else {
+			typecookie = localStorage.getItem('nearmaptypev3');
+			if ((typeof typecookie=="undefined") || (typecookie == null)) {typecookie = "roadmap"};
+			map.setMapTypeId(typecookie);
+	}
+
+
+// Add listener to see if map type changes and store it, use local storage if we can
+  google.maps.event.addListener(map, "maptypeid_changed", function() {
+  		k = map.getMapTypeId();
+  		if (!is_chrome) {
+       writecookie('nearmaptypev3',k);
+			} else {
+				localStorage.setItem('nearmaptypev3', k);
+			}
+			// Update the custom MyTopo copyright if needed
+			if(!(typeof hash=="undefined" || hash == "")) {
+				updateCopyright();
+			}
+    }); 
+
+// Add listener to see if zoom changes and store it, use local storage if we can
+
+  google.maps.event.addListener(map, "zoom_changed", function() {
+  		k = map.getZoom();
+  		if ((!is_chrome) || (typeof(localStorage) == 'undefined' ) ) {
+       writecookie('nearzoomv3',k);
+			} else {
+				localStorage.setItem('nearzoomv3', k);
+			}
+    }); 
+
+
+
+	// add OCM to mapTypes
+//return"http://a.andy.sandbox.cloudmade.com/tiles/cycle/"+b+"/"+a.x%(1<<b)+"/"+a.y+".png"
+	var openCycle = new google.maps.ImageMapType({
+		getTileUrl:function(a,b){
+			return"http://" + ["a","b","c"][Math.floor(Math.random()*3)] + ".tile.opencyclemap.org/cycle/"+b+"/"+a.x%(1<<b)+"/"+a.y+".png"
+		},
+		tileSize:new google.maps.Size(256,256),
+		isPng:true,
+		minZoom:1,
+		maxZoom:18,
+		name:"OCM",
+		alt:"Open Cycle Map"
+	});
+map.mapTypes.set('ocm', openCycle);
+
+
+	// add OSM to mapTypes
+	var openStreet = new google.maps.ImageMapType({
+		getTileUrl: function(ll, z) {
+			var X = ll.x % (1 << z);  // wrap
+			return "http://" + ["a","b","c"][Math.floor(Math.random()*3)] + ".tile.openstreetmap.org/" + z + "/" + X + "/" + ll.y + ".png";
+		},
+		tileSize: new google.maps.Size(256, 256),
+		isPng: true,
+		maxZoom: 18,
+		name: "OSM",
+		alt: "Open Streetmap tiles"
+	});
+map.mapTypes.set('osm', openStreet);
+
+
+// add MapQuest to mapTypes
+var mapQuest = new google.maps.ImageMapType({
+	getTileUrl:function(a,b){
+		return" http://"+["otile1","otile2","otile3","otile4"][Math.floor(Math.random()*4)]+".mqcdn.com/tiles/1.0.0/osm/"+b+"/"+a.x%(1<<b)+"/"+a.y+".png"
+		},
+		tileSize:new google.maps.Size(256,256),
+		isPng:true,
+		minZoom:1,
+		maxZoom:18,
+		name:"MapQuest",
+		alt:"Map Quest"
+	});
+map.mapTypes.set('mpq', mapQuest);
+
+
+	// add Bing to mapTypes
+var bing = new google.maps.ImageMapType({
+		getTileUrl:function(a,b){
+			for(var k=a.x%(1<<b),l=a.y,g=[],e=b;e>0;e--){
+				var d=0,h=1<<e-1;
+				(k&h)!=0&&d++;
+				if((l&h)!=0){
+					d++;d++
+				}
+				g.push(d)
+			}
+			return"http://ecn.t0.tiles.virtualearth.net/tiles/r"+g.join("")+"?g=604&mkt=en-us&lbl=l1&stl=h&shading=hill&n=z";
+		},
+		tileSize:new google.maps.Size(256,256),
+		isPng:true,
+		minZoom:1,
+		maxZoom:18,
+		name:"Bing",
+		alt:"Bing"
+	});
+map.mapTypes.set('bing', bing);
+
+	// add BingOS to mapTypes
+var bingos = new google.maps.ImageMapType({
+		getTileUrl:function(a,b){
+			for(var k=a.x%(1<<b),l=a.y,g=[],e=b;e>0;e--){
+				var d=0,h=1<<e-1;
+				(k&h)!=0&&d++;
+				if((l&h)!=0){
+					d++;d++
+				}
+				g.push(d)
+			}
+			
+			if (b >= 12 && b < 16) 
+			{
+				return"http://ecn.t0.tiles.virtualearth.net/tiles/r"+g.join("")+".png?g=41&productSet=mmOS";
+			} else {
+				return"http://ecn.t0.tiles.virtualearth.net/tiles/r"+g.join("")+"?g=604&mkt=en-us&lbl=l1&stl=h&shading=hill&n=z";
+			}
+			},
+			tileSize:new google.maps.Size(256,256),
+			isPng:true,
+			minZoom:1,
+			maxZoom:18,
+			name:"Ord. Survey",
+			alt:"Ordnance Survey"
+		});
+map.mapTypes.set('bingos', bingos);
+
+
+	// Add MyTopo to mapTypes	// Add MyTopo to mapTypes
+	//hash = '63aeebc1b09f824313e4135865db20c3';
+	hash = '!!HashGoesHere!!';
+	if(!(typeof hash=="undefined" || hash == "")) {
+	var myTopo = new google.maps.ImageMapType({
+		getTileUrl: function(ll, z) {
+			var X = ll.x % (1 << z);  // wrap
+						
+			return "http://tileserver.mytopo.com/SecureTile/TileHandler.ashx?mapType=Topo&partnerID=12355&hash=" + hash + "&x=" + X + "&y=" + ll.y + "&z=" + z;
+		},
+		tileSize: new google.maps.Size(256, 256),
+		isPng: true,
+		maxZoom: 16,
+		name: "MyTopo",
+		alt: "MyTopo tiles"
+	});
+map.mapTypes.set('mytopo', myTopo);
+
+	copyrightDiv = document.createElement('div');
+	copyrightDiv.id = 'mytopo-copyright-control';
+	copyrightDiv.style.fontSize = '11px';
+	copyrightDiv.style.fontFamily = 'Arial, sans-serif';
+	copyrightDiv.style.margin = '0 2px 2px 0';
+	copyrightDiv.style.whiteSpace = 'nowrap';
+	copyrightDiv.style.color = '#FF4500';
+	copyrightDiv.style.textAlign = 'center';
+	copyrightDiv.index = 0;
+	copyrightDiv.innerHTML = getBannerHtml();
+
+	map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(copyrightDiv);
+	updateCopyright();
+
+}
+
+
+ function printMap() {
+   var lat = map.getCenter().lat();
+   var lng = map.getCenter().lng();
+   var printurl = 'http://www.mytopo.com/searchgeo.cfm?lat=' + lat + '&lon=' + lng + '&partnerid=12355';
+   window.open(printurl);
+   return false;
+ }
+
+
+function getBannerHtml() {
+		var scriptBaseUrl = 'http://www.mytopo.com/TileService';
+		return "<a href='#printMap' onclick='printMap();' ><img src='" + scriptBaseUrl + "/Images/button_print.png' alt='Print MyTopo Map' border='0' /></a>" +
+		"<br/><a href='http://get.it/trimbleoutdoors/8pAD' target='_blank'><img src='" + scriptBaseUrl + "/Images/button_get.png' id='Get MyTopo App' border='0' /></a>" +
+		"<br/><a href='http://www.mytopo.com/' target='_blank'><img src='" + scriptBaseUrl + "/Images/SmallMyTopoLogo.png' alt='MyTopo Logo' border='0'/></a><br/>" +
+		"<a href='http://mytopo.com/about/terms.cfm' target='_blank'><b>(Terms of Use)</b></a>";
+
+	}
+
+function updateCopyright() {
+	copyrightDiv.style.display = (map.getMapTypeId() == 'mytopo') ? "inline" : "none";
+}
+
+
+
+  // add HikeBikeMap to mapTypes
+  var openHike = new google.maps.ImageMapType({
+     getTileUrl: function(ll, z) {
+        var X = ll.x % (1 << z);  // wrap
+        return "http://toolserver.org/tiles/hikebike/" + z + "/" + X + "/" + ll.y + ".png";
+     },
+     tileSize: new google.maps.Size(256, 256),
+     isPng: true,
+     maxZoom: 18,
+     name: "HikeBike",
+     alt: "HikeBikeMap"
+  });
+map.mapTypes.set('ohb', openHike);
+
+
+	map.setOptions({
+		mapTypeControlOptions: {
+			mapTypeIds: [
+			'roadmap',
+			google.maps.MapTypeId.TERRAIN,
+			google.maps.MapTypeId.SATELLITE,
+			google.maps.MapTypeId.HYBRID,
+			'osm',
+			'ocm',
+			'ohb',
+			'mytopo',
+			'mpq',
+			'bing',
+			'bingos'
+			],
+			style: google.maps.MapTypeControlStyle.DROPDOWN_MENU
+		},
+		streetViewControl: true
+	});
+
+	bounds = new google.maps.LatLngBounds();
+	
+
+	//	// Add a marker at cache position
+	//	var latlng = new google.maps.LatLng(30, -97);
+	//	marker1 = new google.maps.Marker({position: latlng, map: map, icon: T_icon, shadow: shadow, title: "Cache", draggable: false});
+	//
+	//	bounds.extend(latlng);
+	//	markers.push(marker1);
+	//
+	//	var infomsg = "Cache Title";
+	//
+	//	var infowindow = new google.maps.InfoWindow({content: infomsg});
+	//
+	//	google.maps.event.addListener(marker1, 'click', function() {infowindow.open(map,marker1);});
+
+	!!CachesGoHere!!
+	
+	!!CirclesGoHere!!
+	
+	!!ChildrenGoHere!!
+	
+	!!UnavailableGoesHere!!
+	
+	//Create infowindow instance. This ensures we only have 1 infowindow throughout application
+  
+  var infowindow = new google.maps.InfoWindow();
+  
+  //var infowindow = new google.maps.InfoWindow({zIndex:100000});
+  
+  // Add listener to close it if you click on the map
+  google.maps.event.addListener(map, "click", function() {
+       if (infowindow) {
+            infowindow.close();
+       }
+    }); 
+	
+	!!InfoHere!!
+
+	
+	//map.fitBounds(bounds);
+	
+
+new ContextMenu(map);
+
+} // End of initialize
+
+
+</script>
+
+<script type="text/javascript" src="http://gsak.net/stats/maps/keydragzoom_packed.js"></script>
+
+<style type="text/css">
+
+	html, body {
+	height: 100%;
+	overflow: hidden;
+	font-family: Verdana;
+	font-size: 8pt;
+}
+
+body {
+background-color: white;
+margin: 0;
+}
+</style>
+
+</head>
+
+<body onload="initialize()">
+	<div id="map"></div>
+	<!-----Hole for right click and back function----->
+	<div id='printDiv' class='print' title=''></div>
+</body>
+</html>
+<enddata>
+
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Thu 05-Jan-2012 13:48:20
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Google Maps V3
+  Height = 451
+  Width = 300
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Options
+  Height = 190
+  Left = 20
+  Top = 36
+  Width = 251
+  Taborder = 0
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = Text Labels
+  Height = 134
+  Left = 20
+  Top = 235
+  Width = 251
+  Taborder = 1
+
+Name = Groupbox3
+  Type = Groupbox
+  Container = Groupbox2
+  Height = 65
+  Left = 19
+  Top = 36
+  Width = 95
+  Taborder = 2
+
+Name = GroupBox4
+  Type = Groupbox
+  Container = Groupbox2
+  Height = 65
+  Left = 139
+  Top = 36
+  Width = 95
+  Taborder = 3
+
+Name = ShowChild
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 17
+  Left = 19
+  Top = 37
+  Width = 200
+  Taborder = 0
+  Caption = Show Child Waypoints
+
+Name = ShowText
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox2
+  Height = 17
+  Left = 20
+  Top = 15
+  Width = 200
+  Taborder = 0
+  Caption = Show Text Labels
+
+Name = Label1
+  Type = Label
+  Color = 16744448
+  Height = 20
+  Left = 40
+  Size = 12
+  Style = bold
+  Top = 7
+  Width = 209
+  Caption = Google Maps Nearest V3
+
+Name = Button1
+  Type = Button
+  Height = 25
+  Left = 104
+  Top = 378
+  Width = 75
+  Taborder = 2
+  Caption = <img src="idx:0" align="middle"> OK
+
+Name = UseOriginal
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox1
+  Height = 17
+  Left = 19
+  Top = 75
+  Width = 200
+  Taborder = 1
+  Caption = Use Original Coordinates
+
+Name = UseScrollWheel
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox1
+  Height = 17
+  Left = 19
+  Top = 97
+  Width = 200
+  Taborder = 2
+  Caption = Use Scroll Wheel Zoom
+
+Name = Silent
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox1
+  Height = 17
+  Left = 19
+  Top = 119
+  Width = 200
+  Taborder = 3
+  Caption = Keep Map Focus
+
+Name = ShowName
+  Type = Radiobutton
+  Captionposition = Left
+  Container = Groupbox3
+  Fontstyle = italic
+  Height = 17
+  Left = 7
+  Top = 7
+  Width = 80
+  Taborder = 0
+  Caption = Name:
+
+Name = ShowCode
+  Type = Radiobutton
+  Captionposition = Left
+  Container = Groupbox3
+  Fontstyle = italic
+  Height = 17
+  Left = 7
+  Top = 25
+  Width = 80
+  Taborder = 1
+  Caption = Code:
+
+Name = ShowSmart
+  Type = Radiobutton
+  Captionposition = Left
+  Container = Groupbox3
+  Fontstyle = italic
+  Height = 17
+  Left = 7
+  Top = 42
+  Width = 80
+  Taborder = 2
+  Caption = SmartName:
+
+Name = Small
+  Type = Radiobutton
+  Captionposition = Left
+  Container = GroupBox4
+  Fontstyle = italic
+  Height = 17
+  Left = 7
+  Top = 8
+  Width = 80
+  Taborder = 0
+  Caption = Small:
+
+Name = Medium
+  Type = Radiobutton
+  Captionposition = Left
+  Container = GroupBox4
+  Fontstyle = italic
+  Height = 17
+  Left = 7
+  Top = 25
+  Width = 80
+  Taborder = 1
+  Caption = Medium:
+
+Name = Large
+  Type = Radiobutton
+  Captionposition = Left
+  Container = GroupBox4
+  Fontstyle = italic
+  Height = 17
+  Left = 7
+  Top = 42
+  Width = 80
+  Taborder = 2
+  Caption = Large:
+
+Name = Label2
+  Type = Label
+  Container = Groupbox2
+  Height = 17
+  Left = 17
+  Style = italic
+  Top = 111
+  Width = 84
+  Caption = Additional Fields
+
+Name = additionalFields
+  Type = Edit
+  Container = Groupbox2
+  Height = 21
+  Left = 102
+  Top = 106
+  Width = 130
+  Taborder = 1
+
+Name = versionlabel
+  Type = Label
+  Height = 17
+  Left = 250
+  Top = 395
+  Width = 30
+  Caption = %v%
+
+Name = ShowCircle
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox1
+  Height = 20
+  Left = 19
+  Top = 141
+  Width = 200
+  Taborder = 4
+  Caption = Show Separation Circles
+
+Name = Label3
+  Type = Label
+  Container = Groupbox1
+  Height = 17
+  Left = 19
+  Top = 169
+  Width = 120
+  Caption = Circle Radius (0 to hide)
+
+Name = radius
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 202
+  Top = 167
+  Width = 31
+  Taborder = 5
+
+Name = Label4
+  Type = Label
+  Container = Groupbox1
+  Height = 17
+  Left = 19
+  Top = 18
+  Width = 133
+  Caption = Number of nearest caches
+
+Name = Limit
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 202
+  Top = 15
+  Width = 31
+  Taborder = 6
+
+Name = showallchild
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox1
+  Height = 20
+  Left = 29
+  Top = 54
+  Width = 190
+  Taborder = 7
+  Caption = For all caches
+
+<enddata>
+
+
+
+
+
+<data> VarName=$GetNearestCache
+$move=Seek(Extract(GetNear($_MacroParms,"K",1),";",1))
+<enddata>
+
+
+<data> VarName=$IncSort
+IF Seek($_MacroParms)
+	$SortIncrement = Usersort("I")
+	$SortCurrent = Usersort("C")
+	$SortCurrent = usersort("C",$SortCurrent + $SortIncrement)
+	$d_UserSort = $SortCurrent
+ENDIF
+<enddata>
+
+
+#*******************************************************
+#   Variable declarations for
+#   C:\Users\Mike\AppData\Roaming\gsak\Macros\Google_Map_V3.gsk
+#
+#   Generated 2/19/2011 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$caches Type=String
+Declare Var=$child Type=String
+Declare Var=$circles Type=String
+Declare Var=$clabels Type=String
+Declare Var=$conversion Type=Numeric
+Declare Var=$current Type=String
+Declare Var=$currentonly Type=String
+Declare Var=$Filename Type=String
+Declare Var=$flagicon Type=String
+Declare Var=$form Type=String
+Declare Var=$hash Type=String
+Declare Var=$href Type=String
+Declare Var=$html Type=String
+Declare Var=$IncSort Type=String
+Declare Var=$incsorticon Type=String
+Declare Var=$info Type=String
+Declare Var=$info1 Type=String
+Declare Var=$labels Type=String
+Declare Var=$labelsize Type=String
+Declare Var=$lat Type=String
+Declare Var=$limit Type=String
+Declare Var=$lon Type=String
+Declare Var=$MapHtml Type=String
+Declare Var=$radius Type=String
+Declare Var=$result Type=String
+Declare Var=$ShowAllChild Type=Boolean
+Declare Var=$ShowChild Type=Boolean
+Declare Var=$ShowName Type=Boolean
+Declare Var=$ShowCircle Type=Boolean
+Declare Var=$ShowCode Type=Boolean
+Declare Var=$ShowSmart Type=Boolean
+Declare Var=$ShowText Type=Boolean
+Declare Var=$Small Type=Boolean
+Declare Var=$Medium Type=Boolean
+Declare Var=$Large Type=Boolean
+Declare Var=$Silent Type=Boolean
+Declare Var=$SilentString Type=String
+Declare Var=$SortCurrent Type=Numeric
+Declare Var=$SortIncrement Type=Numeric
+Declare Var=$tmpS Type=String
+Declare Var=$UseOriginal Type=Boolean
+Declare Var=$UseScrollWheel Type=Boolean
+Declare Var=$UseScrollWheelString Type=String
+Declare Var=$viewicon Type=String

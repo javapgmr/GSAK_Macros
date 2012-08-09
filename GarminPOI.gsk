@@ -1,0 +1,81 @@
+#*******************************************
+# MacVersion = 1.4
+# MacDescription =  Export Garmin POI files
+# MacAuthor = clyde
+# MacFileName = GarminPOI.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=1445&view=findpost&p=32594
+# **************************************
+# export Garmin POI files
+#
+# updated 6 Mar, 2006 (Added save of settings and browse for folder)
+# updated 8 Mar, 2006 (Lat and long reversed, 
+#****************************************
+# 1 character cache types
+$Type1 = "TUVEWBLMCGOR"
+# cache types in full
+$TypeFull = "Traditional~Mystery~Virtual~Event~WebCam~Letterbox~Locationless~Multi~CITO~Benchmark~Other~Earth"       
+
+# get the folder saved settings if exists 
+If FileExists($_Install + "\Macros\GarminPOI.dat")
+  $Folder = GetFile($_Install + "\Macros\GarminPOI.dat")
+  # Just in case file permission error or something test for error
+  IF Left($Folder,7) = "*Error*"
+    Pause Msg="$Folder"
+    Cancel
+  EndIf 
+else
+  Set $Folder = " "
+EndIf
+$message = "Enter the folder to generate the poi files" + $_NewLine
+$message = $message + $_Newline + "***Warining*** All files in the destination folder will be deleted before generation"
+Input Msg=$message  Default=$Folder VarName=$Folder Browse=folder
+If .not. (FolderExists($folder))
+  Pause Msg=Folder does not exist, try again
+  cancel
+EndIf  
+# Save the folder name so don't have to key if same next time
+$error = PutFile($_Install + "\Macros\GarminPOI.dat",$folder)  
+# Just in case file permission error or something test for error
+IF Left($Error,7) = "*Error*"
+  Pause Msg="$Error"
+  Cancel
+EndIf   
+$EraseFiles = $folder + "\*.csv"
+Choose Msg="POI Files to generate" Opt1="Cache type" Opt2="Status" Opt3="Cache type and status"
+$Ftype = $Result
+If FileExists($EraseFiles)
+  FileErase File=$EraseFiles
+EndIf  
+$ThisRecord = 0
+Goto Position=Top
+While .not. $_eol
+  $ThisRecord = $ThisRecord + 1
+  $message = "Now processing: " + "$ThisRecord" + " of " + "$_Count"
+  ShowStatus msg="$message"
+  $out = $d_longitude + "," + $d_latitude + "," + quote($d_code) + "," + quote($d_name) + $_NewLine
+  $Ctype = "Unknown"
+  $index = at($d_CacheType,$type1) 
+  If $index > 0
+    $Ctype = Extract($TypeFull,"~",$index)
+  EndIf
+  If $d_Found
+    $status = "Found"
+  else
+    $Status = "NotFound"
+  EndIf
+  If $Ftype = 1
+    $FileName = $Ctype 
+  EndIf
+  If $Ftype = 2
+    $FileName =  $Status 
+  EndIf
+  If $Ftype = 3
+    $FileName = $Ctype + "+" +  $Status
+  EndIf
+  $FileName = "\" + $FileName + ".csv"
+  $error = AppendFile($Folder + $FileName, $out) 
+  Goto Position=Next
+EndWhile
+Goto Position=Top
+
+

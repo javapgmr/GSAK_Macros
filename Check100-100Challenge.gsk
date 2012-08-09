@@ -1,0 +1,36 @@
+#*******************************************
+# MacDescription = Check requirements for 100/100 chalenge (e.g. GC3EPMQ)
+# MacFileName = Check100-100Challenge.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.0
+#*******************************************
+$Limit=20
+$dSum=0
+$tSum=0
+WHILE $dSum<=100 AND $tSum<=100
+    $_sql="Select Sum(Difficulty) from Caches WHERE Code in (Select Code from Caches Where Found Order by FoundbyMeDate DESC Limit $Limit)"
+    $dSum=Val(Sqlite("sql",$_sql))
+
+    $_sql="Select Sum(Terrain) from Caches WHERE Code in (Select Code from Caches Where Found Order by FoundbyMeDate DESC Limit $Limit)"
+    $tSum=Val(Sqlite("sql",$_sql))
+    $Limit=$Limit + 1
+ENDWHILE
+
+$Limit=$Limit-2
+
+$_sql="Select Sum(Difficulty) from Caches WHERE Code in (Select Code from Caches Where Found Order by FoundbyMeDate DESC Limit $Limit)"
+$dSum=Val(Sqlite("sql",$_sql))
+
+$_sql="Select Sum(Terrain) from Caches WHERE Code in (Select Code from Caches Where Found Order by FoundbyMeDate DESC Limit $Limit)"
+$tSum=Val(Sqlite("sql",$_sql))
+
+$_sql="Select Code, FoundbyMeDate,Difficulty,Terrain from Caches Order by FoundbyMeDate DESC Limit $Limit"
+$Out="Code;FoundDate;Dif;Ter" + $_CrLf
+$Out=$Out + "Ter: " + NumToStr($tSum) + " Dif: " + NumToStr($dSum) + $_CrLf + Sqlite("sql",$_sql)
+$Display=SqlToHtml($Out,"Summary","Y")
+
+
+
+
+
+

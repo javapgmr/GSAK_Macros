@@ -1,0 +1,32 @@
+#*******************************************
+# MacDescription = Create a child waypoint with original coordinates
+# MacFileName = OrigToChild.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.1
+# MacUrl=
+#*******************************************
+
+IF $d_HasCorrected
+    $OrigLat=$d_LatOriginal
+    $OrigLon=$d_LonOriginal
+    TABLE Active=waypoints scope=parent
+    GOTO Position=Top
+    WHILE NOT($_EOL)
+        IF ($d_cLat = $OrigLat) AND ($d_cLon = $OrigLon)
+            CANCEL Msg=A child waypoint with the original coordinates already exists
+        ENDIF
+        GOTO Position=Next
+    ENDWHILE
+    ADDNEW
+    $d_cCode = "PK" + Right($d_cParent, Len($d_cParent)-2)
+    $d_cType = "Parking Area"
+    $d_cName="Original Coordinates"
+    $d_cLat = $OrigLat
+    $d_cLon = $OrigLon
+    TABLE Active=Caches
+    MSGOK Msg=New child added with original coordinates!
+ELSE
+    CANCEL Msg=This waypoint doesn't have corrected coordinates.  Macro cancelled.
+ENDIF 
+
+

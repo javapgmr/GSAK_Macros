@@ -1,0 +1,303 @@
+#*******************************************
+#*******************************************
+# MacVersion = 1.0.3
+# MacDescription = Export caches per file by distance for Magellan Explorits
+# MacAuthor = javapgmr
+# MacFileName = exportbydistance.gsk
+# Macurl = http://gsak.net/board/index.php?showtopic=3536&view=getlastpost
+#*******************************************
+# now respects any currently set filters
+#
+  GOSUB Name=Declare
+
+# Get PC User name
+
+#Location to export files to.
+  $Range = 0
+  $RangeStr = "200"
+  SET $ExportDir="C:\"
+  SET $FileName=$_CurrentDatabase
+  SET $currentfilter = SAVEFILTER()
+  SET $user = GetEnvV("USERNAME")
+  SET $count = 0
+  SET $outFileName = ""
+  IF NOT (IsEmpty($p_exporistDrive))
+      SET $exportLoc = "$p_exporistDrive\Geocaches\"
+  ELSE 
+      SET $exportLoc = $exportDir
+  ENDIF 
+
+  IF ShowForm($form)
+      IF $OK
+          GOSUB Name=Main
+      ENDIF 
+  ENDIF 
+
+  BEGINSUB Name=Main
+      $Range = Val($RangeStr)
+      IF $Children
+          $MagellanSd = Replace("{childFlg}","TRUE", $MagellanSd, TRUE)
+      ELSE 
+          $MagellanSd = Replace("{childFlg}","FALSE", $MagellanSd, TRUE)
+      ENDIF 
+
+
+# Delete Exisitng Explorist Files
+# anything is this directory will be removed before the new files are generated.
+      IF $Clear
+          FILEERASE File="$exportLoc\*.*" OnError=Continue
+      ENDIF 
+
+      IF NOT (IsEmpty($FileName))
+          $outFileName = Alltrim($FileName)+ "_"
+      ENDIF 
+
+# Set Database, Clear user and macro Flags, Sort Database By Destination
+      $Database = $_CurrentDatabase
+      $currentfilter = SAVEFILTER()
+
+      USERFLAG type=clear range=all
+      MACROFLAG type=clear range=all
+      SORT By=Distance Sequence=A
+
+# Create Magellen Export Files
+      MACROFLAG type=set range=FILTER
+      USERFLAG  type=clear range=all
+      MFILTER If=$d_MacroFlag
+      WHILE $_FilterCount <> 0
+          GOTO Position=Top
+          USERFLAG type=set range=$Range
+          MFILTER if=$d_MacroFlag .and. $d_UserFlag
+          MACROSET Dialog=MagellanSD VarName=$MagellanSD
+          GOTO Position=Bottom
+          $LastDist = AllTrim(Str($d_Distance,5,0))
+          GOTO Position=Top
+          $FirstDist = AllTrim(Str($d_Distance,5,0))
+          EXPORT Type=MAGSD Settings=<macro> File="$exportLoc\$outFileName$FirstDist-$LastDist-$Database.gs"
+
+# now prepare for your next 200 records
+          MFILTER if=$d_UserFlag
+          MACROFLAG type=clear range=filter
+          MFILTER if=$d_MacroFlag
+      ENDWHILE 
+
+# Reset Database
+      USERFLAG type=clear range=all
+      MACROFLAG type=clear range=all
+      SORT By=Distance Sequence=A
+      IF RestoreFilter($currentfilter, True) = 0
+          PAUSE msg="Current Filter could not be restored."
+      ENDIF 
+  ENDSUB 
+
+#######################################################
+# embeded settings
+
+  <DATA> VarName=$MagellanSD
+      [TfmMagPro]
+      edtFormat.Text=%Smart
+      edtProblem.Text=
+      cbxGps.Checked=False
+      edtMaxGps.Text=20
+      edtWaypoint.Text=%Code
+      cbxFormat.Text=Explorist Geocaches
+      chkMacro.Checked=False
+      File1.Filename=
+      chkChild.Checked={childFlg}
+      chkFlag.Checked=False
+      chkOnlyChild.Checked=False
+      rbtAllChildren.Checked=False
+      rbtOnlyFlagged.Checked={childFlg}
+      rbtOnlyUnFlagged.Checked=False
+      [TfmIcons]
+      rbtBoth.Checked=False
+      rbtStatus.Checked=True
+      rbtType.Checked=False
+      [icons]Archived=aerial
+      CITO+Archived=aerial
+      CITO+Found=aerial
+      CITO+Not Found=aerial
+      CITO+Placed=aerial
+      CITO=aerial
+      Event+Archived=airport
+      Event+Found=airport
+      Event+Not Found=airport
+      Event+Placed=airport
+      Event=airport
+      Found=crossed square
+      LetterBox+Archived=house
+      LetterBox+Found=house
+      LetterBox+Not Found=house
+      LetterBox+Placed=house
+      LetterBox=house
+      Locationless+Archived=amusement park
+      Locationless+Found=amusement park
+      Locationless+Not Found=amusement park
+      Locationless+Placed=amusement park
+      Locationless=amusement park
+      Multi+Archived=box
+      Multi+Found=box
+      Multi+Not Found=box
+      Multi+Placed=box
+      Multi=box
+      Mystery+Archived=boating
+      Mystery+Found=boating
+      Mystery+Not Found=boating
+      Mystery+Placed=boating
+      Mystery=boating
+      Not Found=box
+      Placed=house
+      Traditional+Archived=crossed square
+      Traditional+Found=crossed square
+      Traditional+Not Found=crossed square
+      Traditional+Placed=crossed square
+      Traditional=crossed square
+      Version4.3
+      Virtual+Archived=ATM
+      Virtual+Found=ATM
+      Virtual+Not Found=ATM
+      Virtual+Placed=ATM
+      Virtual=ATM
+      Web Cam+Archived=auto repair
+      Web Cam+Found=auto repair
+      Web Cam+Not Found=auto repair
+      Web Cam+Placed=auto repair
+      Web Cam=auto repair
+
+  <ENDDATA> 
+
+
+
+#*******************************************************
+#   Variable declarations for
+#   export200bydistance.gsk
+#
+#   Generated 08/11/2007 7:21:57 PM on GSAKVariables.gsk Rev V0.20 B11
+#
+#*******************************************************
+
+  BEGINSUB Name=Declare
+      OPTION Explicit=Yes
+
+      DECLARE Var=$count Type=Numeric
+      DECLARE Var=$range Type=Numeric
+      DECLARE Var=$rangeStr Type=String
+      DECLARE Var=$currentfilter Type=String
+      DECLARE Var=$Database Type=String
+      DECLARE Var=$ExportDir Type=String
+      DECLARE Var=$exportLoc Type=String
+      DECLARE Var=$FileName Type=String
+      DECLARE Var=$FirstDist Type=String
+      DECLARE Var=$form Type=String
+      DECLARE Var=$LastDist Type=String
+      DECLARE Var=$MagellanSD Type=String
+      DECLARE Var=$outFileName Type=String
+      DECLARE Var=$user Type=String
+  ENDSUB 
+
+  <DATA> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sat 24-Nov-2007 22:22:15
+#********************************************************************
+
+
+Name = Form1
+  Type = Form
+  Height = 193
+  Width = 193
+
+Name = Lbl1
+  Type = Label
+  Height = 20
+  Left = 13
+  Size = 13
+  Style = bold
+  Top = 5
+  Width = 163
+  Caption = Export By Distance
+
+Name = Lbl2
+  Type = Label
+  Height = 13
+  Left = 5
+  Style = bold
+  Top = 33
+  Width = 50
+  Caption = Filename
+
+Name = FileName
+  Type = Edit
+  Height = 21
+  Left = 60
+  Top = 29
+  Width = 121
+
+Name = Lbl3
+  Type = Label
+  Height = 13
+  Left = 5
+  Style = Bold
+  Top = 59
+  Width = 96
+  Caption = Clear B4 Writing:
+
+Name = Clear
+  Type = Checkbox
+  Height = 17
+  Left = 118
+  Top = 57
+  Width = 15
+
+Name = OK
+  Type = Button
+  Enter = yes
+  Height = 25
+  Left = 6
+  Top = 140
+  Width = 75
+  Caption = OK
+
+Name = CANCEL
+  Type = Button
+  Escape = yes
+  Height = 25
+  Left = 106
+  Top = 140
+  Width = 75
+  Caption = CANCEL
+
+Name = Lb4
+  Type = Label
+  Height = 13
+  Left = 5
+  Style = bold
+  Top = 85
+  Width = 96
+  Caption = Include Children:
+
+Name = Children
+  Type = Checkbox
+  Height = 17
+  Left = 118
+  Top = 83
+  Width = 15
+
+Name = Lb5
+  Type = Label
+  Height = 13
+  Left = 5
+  Style = bold
+  Top = 112
+  Width = 83
+  Caption = Include Count:
+
+Name = RangeStr
+  Type = Edit
+  Height = 21
+  Left = 118
+  Top = 108
+  Width = 51
+
+  <ENDDATA> 
+
+

@@ -1,0 +1,1848 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml">
+<head>
+<!-- saved from url=(0013)about:internet -->
+<meta http-equiv="content-type" content="text/html; charset=ISO 8859-1"/>
+<script> var _mSeeOnGoogleMaps="Google Maps";</script>
+<script src="http://maps.google.com/maps?file=api&v=2.71 &key=ABQIAAAAscfFaPCX2aKmGifEBLfyphR_UGJjR_0_TXhESWeP2yOZi_CZXRTXtP2HI9f6pLqs0mKpAxLb8GtiVA "type="text/javascript"></script>
+
+<style type="text/css">
+
+v\:* {behavior:url(#default#VML);}
+
+html, body {
+   width: 98%;
+   height: 98%;
+   font-family: Verdana;
+   font-size: 10pt;
+   margin-left: 3px;
+}
+
+#mapBanner {
+   position: absolute;
+   top: 5px;
+   width: 100%;
+   height: 20px;
+   background-color:#FFFA73;
+}
+
+#map {
+   position: absolute;
+   top: 27px;
+   width: 100%;
+   height: 96%
+}
+
+#myListHeader{
+   position: absolute;
+   top: 62px;
+   height:18px;
+   right: 3px;
+   width: 280px;
+   padding-top: 2px;
+   cursor: pointer;
+}
+
+#myList{
+   position: absolute;
+   top: 83px;
+   right: 3px;
+   width: 280px;
+   height:80%;
+   overflow: scroll;
+   white-space:nowrap;
+   padding-top: 2px;
+}
+
+#myMenuDiv{
+   position: absolute;
+   top: 30px;
+   left: 7px;
+   width: 50px;
+   height:50px;
+}
+
+#myLegend{
+   position: absolute;
+   bottom: 40px;
+   left: 12px;
+   width: 175px;
+   text-decoration:none;
+   cursor: pointer;
+}
+
+th {
+   font-face: Verdana ;
+   font-size: 2;
+   font-weight: normal;
+   text-decoration: none;
+}
+
+.hidden {
+   width: 280px;
+   height:400px;
+}
+
+.hiddenMenu {
+   width: 140px;
+   height:200px;
+}
+
+.box {
+   border: 2px solid black;
+}
+
+.listHeader {
+   font-align: center;
+   font-size: 11px;
+   background: #FFFA73;
+   border: 1px solid black;
+   z-index: 99;
+   filter:alpha(opacity=85);
+   opacity: 0.85;
+   -moz-opacity:0.85;
+}
+
+.list {
+   font-size: 11px;
+   background: #FFFFFF;
+   border: 1px solid black;
+   z-index: 99;
+   filter:alpha(opacity=85);
+   opacity: 0.85;
+   -moz-opacity:0.85;
+}
+
+.labels {
+   background: #FFFA73;
+   font-family: Verdana;
+   font-size: 10px;
+   border: 1px solid black;
+   padding-left: 2px;
+   padding-right: 2px;
+}
+
+.myMenu {
+   display:block;
+   margin-top: 5px;
+   margin-left:5px;
+   padding-left: 7px;
+   width: 115px;
+   text-decoration: none;
+   color: #000000;
+   background: #FFFA73;
+   height: 17px;
+   border: 1px solid black;
+   filter:alpha(opacity=85);
+   opacity: 0.85;
+   -moz-opacity:0.85;
+   cursor: pointer;
+}
+
+.mySubmenu {
+   display: block;
+   height: 17px;
+   width: 115px;
+   margin-top:-1px;
+   margin-left: 20px;
+   padding-top: 2px;
+   padding-left: 7px;
+   background: #FFFFFF;
+   color: #333333;
+   border: 1px solid black;
+   text-decoration: none;
+   filter:alpha(opacity=85);
+   opacity: 0.85;
+   -moz-opacity:0.85;
+   cursor: pointer;
+}
+
+.show {
+   display: block;
+}
+
+.hide {
+   display: none;
+}
+
+</style>
+
+<!-----IE format patch----->
+<!--[if IE]>
+<style type="text/css">
+   html, body {margin-left: 5px;}
+   #mapBanner {width:100%;}
+   #map {top: 27px;width:100%; height: 94%;}
+   #myListHeader{right: 16px;}
+   #myList{top: 83px; right: 16px;}
+   #myLegend{bottom: 75px; left: 19px; }
+   #myMenuDiv{left: 15px;}
+</style>
+<![endif]-->
+
+<body onload = "loadMap()" onunload="GUnload()">
+   <div id = "mapBanner" class = "box"><center>MyGME - GSAK Google Maps Export</center></div>
+   <div id = "map" class = "box"></div>
+   <div id = "myListHeader" class = "listHeader" onclick = "showHideList()"></div>
+   <div id = "myList" class = "list"><center><br>Loading 182 GeoCaches<br><br>Please wait...<br><br><img src='http://home.comcast.net/~markp99/loading2.gif'></b></center></div>
+   <div id = "myMenuDiv" class = "hidden">
+   <a class="myMenu" onclick="showHide('mymenu1')" onmouseover="this.style.fontWeight='bold'" onmouseout="this.style.fontWeight='Normal'">Zoom</a>
+      <div id="mymenu1" class="Show">
+         <a onclick=map.zoomIn() id="btnZoomIn" onmouseover="this.style.background='#FFFA73'" onmouseout="this.style.background='#FFFFFF' "class="mySubmenu">Zoom In</a>
+         <a onclick=map.zoomOut() id="btnZoomOut" onmouseover="this.style.background='#FFFA73'" onmouseout="this.style.background='#FFFFFF'" class="mySubmenu">Zoom Out</a>
+         <a onclick=zoomRadius() id="btnZoomRadius" onmouseover="this.style.background='#FFFA73'" onmouseout="this.style.background='#FFFFFF'"class="mySubmenu">Zoom to Radius</a>
+         <a onclick=zoomAllCaches() id="btnZoomAll" onmouseover="this.style.background='#FFFA73'" onmouseout="this.style.background='#FFFFFF'"class="mySubmenu">Zoom All Caches</a>
+         <a onclick=relocateCenter() id="btnReCenter" onmouseover="this.style.background='#FFFA73'" onmouseout="this.style.background='#FFFFFF'"class="mySubmenu">ReCenter Radius</a>
+      </div>
+   <a class="myMenu" onclick="showHide('mymenu2')" onmouseover="this.style.fontWeight='bold'" onmouseout="this.style.fontWeight='Normal'">Show/Hide</a>
+      <div id="mymenu2" class="Show">
+         <a onclick = showHideClusters() id="btnCluster" onmouseover="this.style.background='#FFFA73'" onmouseout="this.style.background='#FFFFFF'"class="mySubmenu">Clusters [Off]</a>
+         <a onclick = showHideLabels() id="btnLabels" onmouseover="this.style.background='#FFFA73" onmouseout="this.style.background='#FFFFFF'"class="mySubmenu">Cache Labels</a>
+         <a onclick = showHideList() id="btnCacheList" onmouseover="this.style.background='#FFFA73'" onmouseout="this.style.background='#FFFFFF'" class="mySubmenu">Cache List</a>
+         <a onclick = openWindow() id="btnCachePage" onmouseover="this.style.background='#FFFA73'" onmouseout="this.style.background='#FFFFFF'" class="mySubmenu">Cache Page</a>
+         <a onclick = showHideLegend() id="btnLegend" onmouseover="this.style.background='#FFFA73'" onmouseout="this.style.background='#FFFFFF'" class="mySubmenu">Legend</a>
+      </div>
+   </div>
+   <div id = "myLegend" class = "list" onclick = "showHideLegend()"></div>;
+</body>
+</head>
+
+<script type="text/javascript">
+
+document.getElementById('myLegend').style.display = 'none';
+document.getElementById('myListHeader').style.display = 'block';
+document.getElementById('myList').style.display = 'block';
+
+//-----define globals-----//
+var starttime = new Date();
+
+//-----user config options-----//
+var myClusters = "On";      // "On" | "Off"
+var myUOM = "mi";      // "mi" or "km"
+var myRadius = 5;      // initial radius > 0
+var mySort = "code";
+var caches = 182;        //<<==number of caches from GSAK
+
+//-----init arrays-----//
+var cacheInfo;
+var myLabel = [];
+var oldPoly = [];
+var thisCache = [];
+var geoList;
+var geoList2;
+var geoListHeader;
+var geoCache = new Array(13);     //an array of 13 arrays
+
+//-----circle vars-----//
+var circle;
+var maxLat;
+var maxLng;
+var minLat;
+var minLng;
+var d2r = Math.PI / 180;      // degrees to radians
+var r2d = 180 / Math.PI;      // radians to degrees
+var earthsradius = 3963;      // 3963 is the radius of the earth in miles
+var MarkersPerCluster = 35;
+
+//-----infoWindow vars-----//
+var stars_image = "<img src='http://www.geocaching.com/images/stars/stars";
+var zoom_In  = "<a href=javascript:zoomZoom();>Zoom In</a>"
+var zoom_Out = "<a href=javascript:zoomRadius();>Zoom Radius</a>"
+var found = "<i>You have already found this cache!</i><br><br>";
+var notFound = "";
+
+//-----map vars-----//
+var initialZoom;
+var initialCenter = new GLatLng(38.450666667,-90.21635000);  //<<==GSAK calculated centerpoint
+var labelStatus = "hidden";
+var bounds = new GLatLngBounds();   
+var centerPoint;
+var map = new GMap2(document.getElementById("map"));
+var ovSize=new GSize(150, 150)   
+var ovMap=new GOverviewMapControl(ovSize);
+var mini=ovMap.getOverviewMap();
+var mouselat;
+var mouselng;
+var mapObj = document.getElementById("map");
+var legend_status = "hidden";
+var label_status = "hidden";
+var list_status = "shown";
+
+//-----build the map-----//
+//   map.addControl(new GLargeMapControl());
+//   map.addControl(new GMapTypeControl());
+   map.addControl(ovMap);
+   ovMap.hide();
+   map.addControl(new GScaleControl(300));
+   map.enableContinuousZoom();
+   map.enableDoubleClickZoom();
+   map.setCenter(initialCenter,8);
+
+//-----accomodate miles or kilometers-----//
+switch (myUOM) {
+   case "mi":
+      var meterRadius = myRadius * 1609.344      //miles to meters conversion
+      var mileRadius = myRadius;            //miles to miles conversion
+      _mPreferMetric=false;
+   break;
+   case "km":
+      var meterRadius = myRadius * 1000           //kilometers to meters conversion
+      var mileRadius = myRadius/1.609344;        //kilometers to miles conversion
+      _mPreferMetric=true;
+   break;
+   default:
+      alert("Invalid radius UOM defined ('" + myUOM + "').  Miles are assumed.");
+      myUOM = "mi";
+      var meterRadius = myRadius * 1609.344      //miles to meters conversion
+      var mileRadius = myRadius;            //miles to miles conversion
+      _mPreferMetric=false;
+   break;
+}
+
+//-----define the icons-----//
+var baseIcon = new GIcon();
+   baseIcon.shadow = "http://labs.google.com/ridefinder/images/mm_20_shadow.png";
+   baseIcon.iconSize = new GSize(12, 20);
+   baseIcon.shadowSize = new GSize(22, 20);
+   baseIcon.iconAnchor = new GPoint(6, 20);
+   baseIcon.infoWindowAnchor = new GPoint(5, 1);
+
+   var traditional_icon = new GIcon(baseIcon);
+   var multi_icon = new GIcon(baseIcon);
+   var unknown_icon = new GIcon(baseIcon);
+   var letterbox_icon = new GIcon(baseIcon);
+   var virtual_icon = new GIcon(baseIcon);
+   var earth_icon = new GIcon(baseIcon);
+   var webcam_icon = new GIcon(baseIcon);
+   var event_icon = new GIcon(baseIcon);
+   var cito_icon = new GIcon(baseIcon);
+   var ape_icon = new GIcon(baseIcon);
+   var locationless_icon = new GIcon(baseIcon);
+   var benchmark_icon = new GIcon(baseIcon);
+   var other_icon = new GIcon(baseIcon);
+   var found_icon = new GIcon(baseIcon);
+
+   //-----Google Maps Icons-----//
+   traditional_icon.image = "http://labs.google.com/ridefinder/images/mm_20_green.png";
+   multi_icon.image = "http://labs.google.com/ridefinder/images/mm_20_yellow.png";
+   unknown_icon.image = "http://labs.google.com/ridefinder/images/mm_20_purple.png";
+   letterbox_icon.image = "http://labs.google.com/ridefinder/images/mm_20_blue.png";
+   virtual_icon.image = "http://labs.google.com/ridefinder/images/mm_20_white.png";
+   earth_icon.image = "http://labs.google.com/ridefinder/images/mm_20_brown.png";
+   webcam_icon.image = "http://labs.google.com/ridefinder/images/mm_20_black.png";
+   event_icon.image = "http://labs.google.com/ridefinder/images/mm_20_orange.png";
+   cito_icon.image = "http://labs.google.com/ridefinder/images/mm_20_orange.png";
+   ape_icon.image = "http://labs.google.com/ridefinder/images/mm_20_gray.png";
+   locationless_icon.image = "http://labs.google.com/ridefinder/images/mm_20_gray.png";
+   benchmark_icon.image = "http://labs.google.com/ridefinder/images/mm_20_orange.png";
+   other_icon.image = "http://labs.google.com/ridefinder/images/mm_20_gray.png";
+   found_icon.image = "http://labs.google.com/ridefinder/images/mm_20_red.png";
+
+   //-----Large Images for Info Window-----//
+   var traditional_image = "<img src='http://www.geocaching.com/images/WptTypes/2.gif'>";
+   var multi_image = "<img src='http://www.geocaching.com/images/WptTypes/3.gif'>";
+   var letterbox_image = "<img src='http://www.geocaching.com/images/WptTypes/5.gif'>";
+   var unknown_image = "<img src='http://www.geocaching.com/images/WptTypes/8.gif'>";
+   var virtual_image = "<img src='http://www.geocaching.com/images/WptTypes/4.gif'>";
+   var earth_image = "<img src='http://www.geocaching.com/images/WptTypes/137.gif'>";
+   var webcam_image = "<img src='http://www.geocaching.com/images/WptTypes/11.gif'>";
+   var event_image = "<img src='http://www.geocaching.com/images/WptTypes/6.gif'>";
+   var cito_image = "<img src='http://www.geocaching.com/images/WptTypes/13.gif'>";
+   var ape_image = "<img src='http://www.geocaching.com/images/WptTypes/7.gif'>";
+   var locationless_image = "<img src='http://www.geocaching.com/images/WptTypes/12.gif'>";
+   var benchmark_image = "<img src='http://www.geocaching.com/images/WptTypes/27.gif'>";
+//   var travelBug_image = "<img src='http://www.geocaching.com/images/WptTypes/21.gif'>"
+//   var noTravelBug_image = ""
+   var found_image = "<img src=http://www.geocaching.com/images/icons/icon_smile.gif'>"
+   var TB_image = "<img src='http://www.geocaching.com/images/WptTypes/21.gif'>"
+   var noTB_image = ""
+   var other_image = "<img src='http://labs.google.com/ridefinder/images/mm_20_gray.png'>";
+
+   //-----Small Images for Sidepanel List-----//
+   var traditional_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/2.gif'>";
+   var multi_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/3.gif'>";
+   var unknown_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/8.gif'>";
+   var letterbox_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/5.gif'>";
+   var virtual_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/4.gif'>";
+   var earth_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/earthcache.gif'>";
+   var webcam_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/11.gif'>";
+   var event_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/6.gif'>";
+   var cito_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/13.gif'>";
+   var ape_image_sm = "<img src='http://labs.google.com/ridefinder/images/mm_20_gray.png'>";       // no small Ape cache icon?
+   var locationless_image_sm = "<img src='http://labs.google.com/ridefinder/images/mm_20_gray.png''>";    //no small locationless icon?
+   var benchmark_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/27.gif'>";
+   var other_image_sm = "<img src='http://labs.google.com/ridefinder/images/mm_20_gray.png'>";        //other for types unknown, unsupported
+   var found_image_sm = "<img src='http://home.comcast.net/~markp99/check.gif'>"
+   var notFound_image_sm = ""
+//   var found_image_sm = "<img src='http://www.geocaching.com/images/icons/icon_smile.gif'>"
+   var TB_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/21.gif'>"
+   var noTB_image_sm = ""
+
+//-----Show/Hide Clusters-----//
+function showHideClusters() {
+   if (myClusters=="On") {
+      myClusters = "Off";
+      MarkersPerCluster = 182;
+      document.getElementById("btnCluster").innerHTML = "Clusters [On]";
+   }
+   else {
+      myClusters = "On";
+      MarkersPerCluster = 35;
+      document.getElementById("btnCluster").innerHTML = "Clusters [Off]";
+   }
+   map.zoomIn();
+   map.zoomOut();
+}
+
+//BEGIN SCROLL-WHEEL ZOOM CODE
+
+GMap2.prototype.wheelZoom = function(event) { 
+   if(event.cancelable) { 
+      event.preventDefault(); 
+   } 
+   if((event.detail || -event.wheelDelta) < 0) { 
+      zoom('in'); 
+   } 
+   else { 
+      zoom('out');    
+   } 
+   return false;
+} 
+
+GEvent.addDomListener(mapObj, "DOMMouseScroll", map.wheelZoom); 
+GEvent.addDomListener(mapObj, "mousewheel", map.wheelZoom); 
+GEvent.addListener(map, "mousemove", 
+   function(point) { 
+      mouselat = point.y.toFixed(6); 
+      mouselng = point.x.toFixed(6); 
+   } 
+); 
+
+function zoom(a) { 
+   var m = map.fromLatLngToDivPixel(new GLatLng(mouselat,mouselng)); 
+   var c = map.fromLatLngToDivPixel(map.getCenter()); 
+   if (a == 'in') { 
+      var x = c.x - ((m.x - c.x) * -.5); 
+      var y = c.y - ((m.y - c.y) * -.5); 
+      var n = map.fromDivPixelToLatLng(new GPoint(x,y));    
+      map.setCenter(n); 
+      map.zoomIn(); 
+   } else { 
+      var x = c.x - (m.x - c.x); 
+      var y = c.y - (m.y - c.y); 
+      var n = map.fromDivPixelToLatLng(new GPoint(x,y)); 
+      map.setCenter(n); 
+      map.zoomOut(); 
+   }
+}
+
+//-----hidden div behind the sidepanel list keep infoWIndows from opening behind sidepanel-----//
+function hiddenListDiv() {}
+   hiddenListDiv.prototype = new GControl();
+   hiddenListDiv.prototype.initialize = function(map) {
+   var container = document.createElement("div");
+   container.innerHTML = '<div id="hiddenList" class="hidden"></div>';
+   map.getContainer().appendChild(container);
+   return container;
+}
+
+hiddenListDiv.prototype.getDefaultPosition = function() {
+   return new GControlPosition(G_ANCHOR_TOP_RIGHT, new GSize(5, 7));
+}
+
+map.addControl(new hiddenListDiv());
+
+//-----hidden div behind the Menu list keep infoWIndows from opening behind sidepanel-----//
+function hiddenMenuDiv() {}
+   hiddenMenuDiv.prototype = new GControl();
+   hiddenMenuDiv.prototype.initialize = function(map) {
+   var container = document.createElement("div");
+   container.innerHTML = '<div class="hiddenMenu"></div>';
+   map.getContainer().appendChild(container);
+   return container;
+}
+
+hiddenMenuDiv.prototype.getDefaultPosition = function() {
+   return new GControlPosition(G_ANCHOR_TOP_LEFT, new GSize(5, 7));
+}
+
+map.addControl(new hiddenMenuDiv());
+
+//-----menu control-----//
+menu_status = new Array();
+function showHide(theid){
+   if (document.getElementById) {
+      var switch_id = document.getElementById(theid);
+      if(menu_status[theid] != 'show') {
+         switch_id.className = 'show';
+         menu_status[theid] = 'show';
+      }
+      else {
+         switch_id.className = 'hide';
+         menu_status[theid] = 'hide';
+      }
+   }
+}
+
+//-----find nearby caches-----//
+function nearbyCaches() {
+   var nearestDistance = 999999999;
+   var neatestCache;
+   var n = 0;
+   geoListHeader = "";
+    geoList = "<table width = 100%>";
+   geoList2 = "<table width = 800px>";
+   for (var i = 0; i < thisCache.length; i++) {
+      var thisDistance = thisCache[i].getPoint().distanceFrom(centerMarker.getPoint());
+      if (thisDistance < nearestDistance) {
+         nearestDistance = thisDistance;
+         nearestCache = i;
+      }
+      if (thisDistance < meterRadius) {
+         n++
+         <!-----sidepanel list----->
+         cacheImage_sm = traditional_image_sm;
+         geoList += "<tr><td>" + eval(geoCache[i][6] + "_image_sm")  + "</td>";
+         geoList += "<td><center>" + n + "</center></td>";
+         geoList += "<td>" + eval(geoCache[i][4] + "_image_sm") +"</td>";
+         geoList += "<td>" + eval(geoCache[i][7] + "_image_sm")  + "</td>";
+         geoList += "<td><a href=javascript:gotoGeocache("+ i +")>"
+         if(mySort == "code") {
+            geoList += geoCache[i][0] + " - " + geoCache[i][1];
+         }
+         else {
+            geoList += geoCache[i][1];
+         }
+         geoList += "</a></td></tr>";
+         var point = thisCache[i].getPoint();
+         var label = new ELabel(point, n, "labels", new GSize(8,0), 95, true);
+         map.addOverlay(label);
+         myLabel.push(label);
+
+      //-----geoList2 = print version-----//
+      if (n==1) {
+         geoList2 += "<tr><th width = 1px></th><th width = 1px></th><th width = 1px></th><th width = 1px></th><th width= 35%><font face = Verdana size = 2>CacheName</th><th width = 30px><font face = Verdana size = 2 >Diff</th><th width = 30px><font face = Verdana size = 2>Terr</th><th width = 55px><font face = Verdana size = 2 >Size</th><th width = 1px%><font face = Verdana size = 2>Owner</th></tr>";
+      }
+      geoList2 += "<tr><td>" + eval(geoCache[i][6] + "_image_sm")  + "</td>";
+      geoList2 += "<td><font face = Verdana size = 2><center>" + n + "</center></font></td>";
+      geoList2 += "<td><font face = Verdana size = 2>" + eval(geoCache[i][4] + "_image_sm") +"</font></td>";
+      geoList2 += "<td>" + eval(geoCache[i][7] + "_image_sm")  + "</td>";
+      if(mySort == "code") {
+         geoList2 += "<td><font face = Verdana size = 2>" +geoCache[i][0] + " - " +  geoCache[i][1] + "</td>";
+      }
+      else {
+         geoList2 += "<td><font face = Verdana size = 2>" + geoCache[i][1] + "</td>";
+      }
+      geoList2 += "<td>" + stars_image + geoCache[i][8] + ".gif'></td>";
+      geoList2 += "<td>" + stars_image + geoCache[i][9] + ".gif'></td>";
+      geoList2 += "<td><font face = Verdana size = 2>" + geoCache[i][10] + "</td>";
+      geoList2 += "<td><font face = Verdana size = 2>" + geoCache[i][5] + "</td>";
+      geoList2 += "</font></tr>";
+      }
+   }
+   if (myUOM == "km") {
+      myRadius = myRadius * 1609.344/1000;
+      myRadius = myRadius.toFixed(2);
+   }
+   geoList += "</table>";
+   geoList2 += "</table>";
+   geoListHeader = "<center>Nearby Caches:  (" + n + "/" + i + ") @ " + myRadius + " " + myUOM + "&nbsp&nbsp[-]</center>";
+   geoListHeader2 = "<font face = Verdana size = 2><center><b>Nearby Caches:  (" + n + "/" + i + ") @ " + myRadius + " " + myUOM + "</b></center></font><br>";
+   document.getElementById("myListHeader").innerHTML = geoListHeader;
+   document.getElementById("myList").innerHTML = geoList;
+
+   //-----if the list is empty, then got nearest cache-----//
+   if (n == 0) {
+      var response = confirm("There are no caches within the " + myRadius + " " + myUOM + " radius.\n\nMove to the nearest cache?\n\n[" + geoCache[nearestCache][1] + "]\n\n");
+      if (response) {
+         var newPoint = new GLatLng(geoCache[nearestCache][2],geoCache[nearestCache][3]);;
+         centerMarker.setPoint(newPoint);
+         drawCircle();
+         map.setCenter(newPoint);
+         zoomRadius();
+//         map.zoomOut();
+      }
+   }
+}
+
+//-----goto selected geocache-----//
+function gotoGeocache(num){
+   GEvent.trigger(thisCache[num],"click");
+}
+
+//-----zoomZoom to selected cache-----//
+function zoomZoom(){
+   map.zoomIn();
+   map.zoomIn();
+   map.zoomIn();
+}
+
+//-----zoom to all caches-----//
+function zoomAllCaches() {
+   map.setZoom(initialZoom);
+   map.setCenter(initialCenter);
+}
+
+//-----initial fit the markers in the window-----//
+function fitGeocaches(){
+   initialCenter = bounds.getCenter();
+   initialZoom = map.getBoundsZoomLevel(bounds)
+   map.setZoom(initialZoom);
+   map.setCenter(initialCenter);
+
+   //-----offset map center - future function-----//
+   //var x = map.fromLatLngToDivPixel(initialCenter).x;
+   //var y = map.fromLatLngToDivPixel(initialCenter).y;
+   //x = x + 110;
+   //map.setCenter(map.fromDivPixelToLatLng(new GPoint(x,y)));
+}
+
+//-----find the bounds of the circle-----//
+function findBounds(thisLat, thisLng) {
+   if (thisLat < minLat) { minLat = thisLat};
+   if (thisLat > maxLat) { maxLat = thisLat};
+   if (thisLng < minLng) { minLng = thisLng};
+   if (thisLng > maxLng) { maxLng = thisLng};
+}
+
+//-----zoom to the radius (circle bounds)-----//
+function zoomRadius() {
+   bounds = new GLatLngBounds(new GLatLng(maxLat,minLng), new GLatLng(minLat,maxLng));
+   map.setZoom(map.getBoundsZoomLevel(bounds));
+   map.setCenter(bounds.getCenter());
+   map.closeInfoWindow();
+   showLabels();
+}
+
+//-----remove the labels-----//
+function removeLabels(){
+   for (var r=0; r < myLabel.length; r++) {
+      map.removeOverlay(myLabel[r]);
+   }
+}
+
+//-----relocate radius to map center-----//
+function relocateCenter(){
+   var newPoint = map.getCenter();
+   centerMarker.setPoint(newPoint);      
+   drawCircle();
+}
+
+//-----add markers to the map (Clusters on/off)-----//
+function addMarker(thisMarker,thisInfo,thisName) {
+   clusterer.AddMarker( thisMarker, thisName );
+   GEvent.addListener(thisMarker, "click", function(){
+      thisMarker.openInfoWindowHtml(thisInfo);
+   });
+   bounds.extend(thisMarker.getPoint());
+   return thisMarker;
+}
+
+//-----draw circle functions-----//
+function initCircle() {
+   var theta = .5;
+   centerMarker = new GMarker(initialCenter, {icon:G_DEFAULT_ICON, draggable: true});
+   centerPoint = centerMarker.getPoint() ;
+   map.addOverlay(centerMarker);
+   centerMarker.enableDragging();
+   GEvent.addListener(centerMarker,'dragend',function() {
+      map.closeInfoWindow();
+      drawCircle();
+   });
+
+   centerMarker.oldpoint = null;
+   var rlat = (mileRadius / earthsradius) * r2d;
+   var rlng = rlat / Math.cos(centerPoint.lat() * d2r);
+      ex = centerPoint.lng() + (rlng * Math.cos(theta));
+      ey = centerPoint.lat() + (rlat * Math.sin(theta));
+   radius = new GMarker(new GPoint(ex, ey), {icon:G_DEFAULT_ICON, draggable: true});
+   map.addOverlay(radius);
+   radius.enableDragging();
+   GEvent.addListener(radius,'dragend',function() {
+      map.closeInfoWindow();
+      drawCircle();
+   });
+}
+
+function drawCircle( ) {
+   try {
+   var centerPoint = centerMarker.getPoint() ;
+   if (centerMarker.oldpoint)   {
+      // Move radius when center is moved
+      var radiusPoint = radius.getPoint() ;
+      var deltaX = centerPoint.lat() - centerMarker.oldpoint.lat() ;
+      var deltaY = centerPoint.lng() - centerMarker.oldpoint.lng() ;
+      if (deltaX || deltaY) {
+         radius.setPoint( new GLatLng( radiusPoint.lat() + deltaX, radiusPoint.lng() + deltaY) ) ;
+      }
+   }
+   centerMarker.oldpoint = centerPoint ;
+
+   var points = 36;
+   var Cradius = centerMarker.getPoint().distanceFrom(radius.getPoint()) * 0.000621371192 ;
+   meterRadius = centerMarker.getPoint().distanceFrom(radius.getPoint()) ;
+
+   var Ccolor = '#FF0000';      // color red
+   var Cwidth = 4 ;         // width pixels
+   var d2r = Math.PI/180 ;      // degrees to radians
+   var r2d = 180/Math.PI ;      // radians to degrees
+   var Clat = (Cradius/earthsradius) * r2d ;   // using 3963 as earths radius in miles
+
+   var lat = centerMarker.getPoint().lat();
+   var lng = centerMarker.getPoint().lng();
+
+   //initialize bounds
+   maxLat = lat;
+   minLat = lat;
+   maxLng = lng;
+   minLng = lng;
+
+   var Clng = Clat/Math.cos(lat*d2r);
+   var Cpoints = [] ;
+   for (var i = 0 ; i < points + 1 ; i++) {
+      var theta = Math.PI * (i /(points/2)) ;
+      var Cx = lng + (Clng * Math.cos(theta)) ;
+      var Cy = lat + (Clat * Math.sin(theta)) ;
+      Cpoints.push(new GPoint(Cx,Cy)) ;
+      findBounds(Cy, Cx);    //determine bounds of circle
+   }
+   if ( circle ) {
+      map.removeOverlay(circle) ;
+   }
+   circle = new GPolyline(Cpoints,Ccolor,Cwidth,.5) ;
+   map.addOverlay(circle);
+   myRadius = Cradius.toFixed(2);
+   map.closeInfoWindow();
+   removeLabels();
+   nearbyCaches();
+   checkLabels();
+}
+   catch(e) {
+      GLog.write('Exception in drawCircle:'+e);
+   }
+}
+
+//////////////////////////////////////////////////
+//  ELabels Script            //
+//  by: Mike Williams         //
+//  http://www.econym.demon.co.uk/googlemaps//
+//////////////////////////////////////////////////
+//
+function ELabel(point, html, classname, pixelOffset, percentOpacity, overlap) {
+   // Mandatory parameters
+   this.point = point;
+   this.html = html;
+
+   // Optional parameters
+   this.classname = classname||"";
+   this.pixelOffset = pixelOffset||new GSize(0,0);
+   if (percentOpacity) {
+      if(percentOpacity<0){percentOpacity=0;}
+      if(percentOpacity>100){percentOpacity=100;}
+   }
+   this.percentOpacity = percentOpacity;
+   this.overlap=overlap||false;
+}
+
+ELabel.prototype = new GOverlay();
+
+ELabel.prototype.initialize = function(map) {
+   var div = document.createElement("div");
+   div.style.position = "absolute";
+   div.innerHTML = '<div class="' + this.classname + '">' + this.html + '</div>' ;
+   map.getPane(G_MAP_FLOAT_SHADOW_PANE).appendChild(div);
+   this.map_ = map;
+   this.div_ = div;
+   if (this.percentOpacity) {
+      if(typeof(div.style.filter)=='string'){div.style.filter='alpha(opacity:'+this.percentOpacity+')';}
+         if(typeof(div.style.KHTMLOpacity)=='string'){div.style.KHTMLOpacity=this.percentOpacity/100;}
+         if(typeof(div.style.MozOpacity)=='string'){div.style.MozOpacity=this.percentOpacity/100;}
+         if(typeof(div.style.opacity)=='string'){div.style.opacity=this.percentOpacity/100;}
+      }
+   if (this.overlap) {
+      var z = GOverlay.getZIndex(this.point.lat());
+      this.div_.style.zIndex = z;
+   }
+}
+
+ELabel.prototype.remove = function() {
+   this.div_.parentNode.removeChild(this.div_);
+}
+
+ELabel.prototype.copy = function() {
+   return new ELabel(this.point, this.html, this.classname, this.pixelOffset, this.percentOpacity, this.overlap);
+}
+
+ELabel.prototype.redraw = function(force) {
+   var p = this.map_.fromLatLngToDivPixel(this.point);
+   var h = parseInt(this.div_.clientHeight);
+   this.div_.style.left = (p.x + this.pixelOffset.width) + "px";
+   this.div_.style.top = (p.y +this.pixelOffset.height - h) + "px";
+}
+
+ELabel.prototype.show = function() {
+   this.div_.style.display="";
+}
+
+ELabel.prototype.hide = function() {
+   this.div_.style.display="none";
+}
+
+ELabel.prototype.setContents = function(html) {
+   this.html = html;
+   this.div_.innerHTML = '<div class="' + this.classname + '">' + this.html + '</div>' ;
+   this.redraw(true);
+}
+
+ELabel.prototype.setPoint = function(point) {
+   this.point = point;
+   if (this.overlap) {
+      var z = GOverlay.getZIndex(this.point.lat());
+      this.div_.style.zIndex = z;
+   }
+   this.redraw(true);
+}
+
+ELabel.prototype.setOpacity = function(percentOpacity) {
+   if (percentOpacity) {
+   if(percentOpacity<0){percentOpacity=0;}
+   if(percentOpacity>100){percentOpacity=100;}
+   }
+   this.percentOpacity = percentOpacity;
+   if (this.percentOpacity) {
+      if(typeof(this.div_.style.filter)=='string'){this.div_.style.filter='alpha(opacity:'+this.percentOpacity+')';}
+      if(typeof(this.div_.style.KHTMLOpacity)=='string'){this.div_.style.KHTMLOpacity=this.percentOpacity/100;}
+      if(typeof(this.div_.style.MozOpacity)=='string'){this.div_.style.MozOpacity=this.percentOpacity/100;}
+   if(typeof(this.div_.style.opacity)=='string'){this.div_.style.opacity=this.percentOpacity/100;}
+   }
+}
+///////////////////////////////
+//-----end ELabels script-----   //
+///////////////////////////////
+
+/**************************************************
+ * Custom map layers:
+ * Adapted from Jef Poskanzer's Acme Mapper
+ * (http://mapper.acme.com/)
+ **************************************************/
+   var USGS_TOPO_TILES = WMSCreateMap('Topo','Topo maps by USGS via terraserver-usa.com','Topo maps unavailable',5,17,400,'http://terraservice.net/ogcmap6.ashx?version=1.1.1&request=GetMap&styles=&srs=EPSG:4326&format=image/jpeg&bgcolor=0xCCCCCC&exceptions=INIMAGE&layers=DRG');
+   var USGS_AERIAL_TILES = WMSCreateMap('Aerial','Imagery by USGS via terraserver-usa.com','USGS aerial imagery unavailable',7,18,400,'http://terraservice.net/ogcmap6.ashx?version=1.1.1&request=GetMap&styles=&srs=EPSG:4326&format=image/jpeg&bgcolor=0xCCCCCC&exceptions=INIMAGE&layers=DOQ');
+   var NRCAN_TOPO_TILES = WMSCreateMap('NRCan','Maps by NRCan.gc.ca','NRCan maps unavailable',6,18,600,'http://wms.cits.rncan.gc.ca/cgi-bin/cubeserv.cgi?version=1.1.3&request=GetMap&format=image/png&bgcolor=0xFFFFFF&exceptions=application/vnd.ogc.se_inimage&srs=EPSG:4326&layers=PUB_50K:CARTES_MATRICIELLES/RASTER_MAPS');
+//   var BLUEMARBLE_TILES = WMSCreateMap('BlueMarble','Map by NASA','OnEarth server unavailable',3,8,128,'http://onearth.jpl.nasa.gov/wms.cgi?request=GetMap&styles=&srs=EPSG:4326&format=image/jpeg&layers=modis');
+//   var DAILY_TERRA_TILES = WMSCreateMap('"Terra"','Map by NASA','OnEarth server unavailable',3,10,256,'http://onearth.jpl.nasa.gov/wms.cgi?request=GetMap&styles=&srs=EPSG:4326&format=image/jpeg&layers=daily_terra');
+//   var DAILY_AQUA_TILES = WMSCreateMap('"Aqua"','Map by NASA','OnEarth server unavailable',3,10,256,'http://onearth.jpl.nasa.gov/wms.cgi?request=GetMap&styles=&srs=EPSG:4326&format=image/jpeg&layers=daily_aqua');
+
+function Add_Custom_Layers(map) {
+   map.addMapType(USGS_TOPO_TILES);
+   map.addMapType(USGS_AERIAL_TILES);
+   map.addMapType(NRCAN_TOPO_TILES);
+//   map.addMapType(BLUEMARBLE_TILES);
+//   map.addMapType(DAILY_TERRA_TILES);
+//   map.addMapType(DAILY_AQUA_TILES);
+}
+
+function WMSCreateMap(name,copyright,errorMessage,minResolution,maxResolution,tileSize,baseUrl) {
+   var tileLayer = new GTileLayer(new GCopyrightCollection(copyright),minResolution,maxResolution);
+   tileLayer.baseUrl = baseUrl;
+   tileLayer.tileSize = tileSize;
+   tileLayer.getTileUrl = WMSGetTileUrl;
+   tileLayer.getCopyright = function() { return { prefix:'',copyrightTexts:[copyright]}; };
+   var tileLayers = [tileLayer];
+   return new GMapType(tileLayers,G_SATELLITE_MAP.getProjection(),name,{errorMessage:errorMessage,tileSize:tileSize});
+}
+function WMSGetTileUrl(tile,zoom) {
+   var southWestPixel = new GPoint(tile.x*this.tileSize,(tile.y+1)*this.tileSize);
+   var northEastPixel = new GPoint((tile.x+1)*this.tileSize,tile.y*this.tileSize);
+   var southWestCoords = G_SATELLITE_MAP.getProjection().fromPixelToLatLng(southWestPixel,zoom);
+   var northEastCoords = G_SATELLITE_MAP.getProjection().fromPixelToLatLng(northEastPixel,zoom);
+   var bbox = southWestCoords.lng()+','+southWestCoords.lat()+','+northEastCoords.lng()+','+northEastCoords.lat();
+   return this.baseUrl+'&bbox='+bbox+'&width='+this.tileSize+'&height='+this.tileSize;
+}
+
+/**************************************************
+ * Custom map-type control:
+ * more or less from Google's own documentation
+ **************************************************/
+maptypecontrol_style = (self.maptypecontrol_style) ? maptypecontrol_style : 'menu';
+filter_map_types = (self.filter_map_types!=null) ? filter_map_types : true;
+
+function MapTypeControl() {}
+   MapTypeControl.prototype = new GControl();
+   MapTypeControl.prototype.initialize = function(map) {
+      Add_Custom_Layers(map);
+      var map_types = [
+         { label:'Google Maps - Map',type:'G_NORMAL_MAP',title:'Google street map',bounds:[-180,-90,180,90],excluded:[] }
+         ,{ label:'Google Maps - Satellite',type:'G_SATELLITE_MAP',title:'Google satellite map',bounds:[-180,-90,180,90],excluded:[] }
+         ,{ label:'Google Maps - Hybrid',type:'G_HYBRID_MAP',title:'Google "hybrid" map',bounds:[-180,-90,180,90],excluded:[] }
+         ,{ label:'USGS - Topographic',type:'USGS_TOPO_TILES',title:'USGS topographic map',bounds:[-169,18,-66,72],excluded:[] }
+         ,{ label:'USGS - Aerial',type:'USGS_AERIAL_TILES',title:'USGS aerial photos (black/white)',bounds:[-152,17,-65,65],excluded:[] }
+         ,{ label:'Canada - Topographic',type:'NRCAN_TOPO_TILES',title:'NRCan/Toporama maps with contour lines',bounds:[-141,41.7,-52,85],excluded:[-141,41.7,-86,48] }
+//         ,{ label:'Blue Marble',type:'BLUEMARBLE_TILES',title:'NASA "Visible Earth" image',bounds:[-180,-90,180,90],excluded:[] }
+//         ,{ label:'Daily "Terra"',type:'DAILY_TERRA_TILES',title:'Daily imagery from "Terra" satellite',bounds:[-180,-90,180,90],excluded:[] }
+//         ,{ label:'Daily "Aqua"',type:'DAILY_AQUA_TILES',title:'Daily imagery from "Aqua" satellite',bounds:[-180,-90,180,90],excluded:[] }
+      ];
+      var center_lat = map.getCenter().lat();
+      var center_lng = map.getCenter().lng();
+
+      if (maptypecontrol_style == 'menu') {
+         var map_selector = document.createElement("select");
+         map_selector.id = 'map_selector';
+         map_selector.style.font = '12px Verdana';
+         map_selector.style.backgroundColor = '#FFFFFF';
+         for (j=0; j<map_types.length; j++) {
+            if (!filter_map_types || filter_map_types < 0 || ( (center_lng >= map_types[j]['bounds'][0] && center_lat >= map_types[j]['bounds'][1] && center_lng <= map_types[j]['bounds'][2] && center_lat <= map_types[j]['bounds'][3]) && !(center_lng >= map_types[j]['excluded'][0] && center_lat >= map_types[j]['excluded'][1] && center_lng <= map_types[j]['excluded'][2] && center_lat <= map_types[j]['excluded'][3]) ) ) {
+               var opt = document.createElement("option");
+               opt.value = map_types[j]['type'];
+               opt.appendChild(document.createTextNode(map_types[j]['label']));
+               map_selector.appendChild(opt);
+               if (map.getCurrentMapType() == eval(opt.value)) { map_selector.selectedIndex = map_selector.length - 1; }
+            }
+         }
+         GEvent.addDomListener(map_selector, "change", function(){map.setMapType(eval(this.value));} );
+         map.getContainer().appendChild(map_selector);
+         return map_selector;
+      } else {
+         var map_type_container = document.createElement("div");
+         for (j=0; j<map_types.length; j++) {
+            if (!filter_map_types || filter_map_types < 0 || ( (center_lng >= map_types[j]['bounds'][0] && center_lat >= map_types[j]['bounds'][1] && center_lng <= map_types[j]['bounds'][2] && center_lat <= map_types[j]['bounds'][3]) && !(center_lng >= map_types[j]['excluded'][0] && center_lat >= map_types[j]['excluded'][1] && center_lng <= map_types[j]['excluded'][2] && center_lat <= map_types[j]['excluded'][3]) ) ) {
+               var maplink = document.createElement("div");
+               maplink.className = 'maptypelink';
+               if (self.maptypecontrol && map.getCurrentMapType() == eval(map_types[j]['type'])) {
+                  maplink.className = 'maptypelink maptypelink_selected';
+               }
+               maplink.title = map_types[j]['title'];
+               maplink.type = map_types[j]['type'];
+               map_type_container.appendChild(maplink);
+               maplink.appendChild(document.createTextNode(map_types[j]['label']));
+               GEvent.addDomListener(maplink, "click", function(){
+                  map.setMapType(eval(this.type));
+                  if (self.maptypecontrol) {
+                     map.removeControl(maptypecontrol);
+                     map.addControl(maptypecontrol);
+                  }
+               } );
+            }
+         }
+         map.getContainer().appendChild(map_type_container);
+         return map_type_container;
+      }
+   }
+   MapTypeControl.prototype.getDefaultPosition = function() {
+      return new GControlPosition(G_ANCHOR_TOP_RIGHT, new GSize(115,7));
+}
+
+var api_version = 2;
+function GPSV_MapTypeControl() {}
+//if (api_version >= 2) { GPSV_MapTypeControl.prototype = MapTypeControl.prototype; }
+GPSV_MapTypeControl.prototype = MapTypeControl.prototype;
+//
+//////////////////////
+
+//////////////////////
+// Clusterer.js - marker clustering routines for Google Maps apps
+//
+// The current version of this code is always available at:
+// http://www.acme.com/javascript/
+//
+// Copyright © 2005,2006 by Jef Poskanzer <jef@mail.acme.com>.
+// All rights reserved.
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions
+// are met:
+// 1. Redistributions of source code must retain the above copyright
+//notice, this list of conditions and the following disclaimer.
+// 2. Redistributions in binary form must reproduce the above copyright
+//notice, this list of conditions and the following disclaimer in the
+//documentation and/or other materials provided with the distribution.
+//
+// THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED.IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+// OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+// HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+// LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+// OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+// SUCH DAMAGE.
+//
+// For commentary on this license please see http://www.acme.com/license.html
+//
+// Constructor.
+Clusterer = function (map)
+   {
+   this.map = map;
+   this.markers = [];
+   this.clusters = [];
+   this.timeout = null;
+   this.currentZoomLevel = map.getZoom();
+
+   this.maxVisibleMarkers = Clusterer.defaultMaxVisibleMarkers;
+   this.gridSize = Clusterer.defaultGridSize;
+   this.minMarkersPerCluster = Clusterer.defaultMinMarkersPerCluster;
+   this.maxLinesPerInfoBox = Clusterer.defaultMaxLinesPerInfoBox;
+   this.icon = Clusterer.defaultIcon;
+
+   GEvent.addListener(map, 'zoomend', Clusterer.MakeCaller(Clusterer.Display, this));
+   GEvent.addListener(map, 'moveend', Clusterer.MakeCaller(Clusterer.Display, this));
+   GEvent.addListener(map, 'infowindowclose', Clusterer.MakeCaller(Clusterer.PopDown, this));
+};
+
+Clusterer.defaultMaxVisibleMarkers = 200;
+Clusterer.defaultGridSize = 5;
+Clusterer.defaultMinMarkersPerCluster = 35;
+Clusterer.defaultMaxLinesPerInfoBox = 10;
+
+Clusterer.defaultIcon = new GIcon();
+Clusterer.defaultIcon.image = 'http://www.acme.com/resources/images/markers/blue_large.PNG';
+Clusterer.defaultIcon.shadow = 'http://www.acme.com/resources/images/markers/shadow_large.PNG';
+Clusterer.defaultIcon.iconSize = new GSize(30, 51);
+Clusterer.defaultIcon.shadowSize = new GSize(56, 51);
+Clusterer.defaultIcon.iconAnchor = new GPoint(13, 34);
+Clusterer.defaultIcon.infoWindowAnchor = new GPoint(13, 3);
+Clusterer.defaultIcon.infoShadowAnchor = new GPoint(27, 37);
+
+// Call this to change the cluster icon.
+Clusterer.prototype.SetIcon = function (icon) {
+   this.icon = icon;
+};
+
+// Changes the maximum number of visible markers before clustering kicks in.
+Clusterer.prototype.SetMaxVisibleMarkers = function (n) {
+   this.maxVisibleMarkers = n;
+};
+
+
+// Sets the minumum number of markers for a cluster.
+Clusterer.prototype.SetMinMarkersPerCluster = function (n) {
+   this.minMarkersPerCluster = n;
+};
+
+// Sets the maximum number of lines in an info box.
+Clusterer.prototype.SetMaxLinesPerInfoBox = function (n) {
+   this.maxLinesPerInfoBox = n;
+};
+
+// Call this to add a marker.
+Clusterer.prototype.AddMarker = function (marker, title) {
+   if (marker.setMap != null)
+   marker.setMap(this.map);
+   marker.title = title;
+   marker.onMap = false;
+   this.markers.push(marker);
+   this.DisplayLater();
+};
+
+// Call this to remove a marker.
+Clusterer.prototype.RemoveMarker = function (marker) {
+   for (var i = 0; i < this.markers.length; ++i)
+   if (this.markers[i] == marker) {
+      if (marker.onMap)
+         this.map.removeOverlay(marker);
+         for (var j = 0; j < this.clusters.length; ++j) {
+      var cluster = this.clusters[j];
+      if (cluster != null) {
+      for (var k = 0; k < cluster.markers.length; ++k)
+         if (cluster.markers[k] == marker) {
+            cluster.markers[k] = null;
+            --cluster.markerCount;
+            break;
+         }
+         if (cluster.markerCount == 0) {
+            this.ClearCluster(cluster);
+            this.clusters[j] = null;
+         }
+         else {
+            if (cluster == this.poppedUpCluster) {
+               Clusterer.RePop(this);
+            }
+         }
+      }
+   }
+   this.markers[i] = null;
+   break;
+   }
+   this.DisplayLater();
+};
+
+Clusterer.prototype.DisplayLater = function () {
+    if (this.timeout != null) {
+      clearTimeout(this.timeout);
+      this.timeout = setTimeout(Clusterer.MakeCaller(Clusterer.Display, this), 50);
+   }
+};
+
+Clusterer.Display = function (clusterer) {
+   var i, j, marker, cluster;
+
+   clearTimeout(clusterer.timeout);
+
+   var newZoomLevel = clusterer.map.getZoom();
+      if (newZoomLevel != clusterer.currentZoomLevel) {
+         // When the zoom level changes, we have to remove all the clusters.
+         for (i = 0; i < clusterer.clusters.length; ++i)
+            if (clusterer.clusters[i] != null) {
+               clusterer.ClearCluster(clusterer.clusters[i]);
+               clusterer.clusters[i] = null;
+            }
+            clusterer.clusters.length = 0;
+            clusterer.currentZoomLevel = newZoomLevel;
+      }
+
+   // Get the current bounds of the visible area.
+   var bounds = clusterer.map.getBounds();
+
+   // Expand the bounds a little, so things look smoother when scrolling
+   // by small amounts.
+   var sw = bounds.getSouthWest();
+   var ne = bounds.getNorthEast();
+   var dx = ne.lng() - sw.lng();
+   var dy = ne.lat() - sw.lat();
+   dx *= 0.10;
+   dy *= 0.10;
+   bounds = new GLatLngBounds(
+      new GLatLng(sw.lat() - dy, sw.lng() - dx),
+      new GLatLng(ne.lat() + dy, ne.lng() + dx)
+   );
+
+   // Partition the markers into visible and non-visible lists.
+   var visibleMarkers = [];
+   var nonvisibleMarkers = [];
+   for (i = 0; i < clusterer.markers.length; ++i) {
+      marker = clusterer.markers[i];
+      if (marker != null) {
+         if (bounds.contains(marker.getPoint())) {
+            visibleMarkers.push(marker);
+         }
+         else {
+            nonvisibleMarkers.push(marker);
+         }
+      }
+   }
+
+   // Take down the non-visible markers.
+   for (i = 0; i < nonvisibleMarkers.length; ++i) {
+      marker = nonvisibleMarkers[i];
+      if (marker.onMap) {
+         clusterer.map.removeOverlay(marker);
+         marker.onMap = false;
+      }
+   }
+
+   // Take down the non-visible clusters.
+   for (i = 0; i < clusterer.clusters.length; ++i) {
+      cluster = clusterer.clusters[i];
+      if (cluster != null && ! bounds.contains(cluster.marker.getPoint()) && cluster.onMap) {
+         clusterer.map.removeOverlay(cluster.marker);
+         cluster.onMap = false;
+      }
+   }
+
+   // Clustering!This is some complicated stuff.We have three goals
+   // here.One, limit the number of markers & clusters displayed, so the
+   // maps code doesnt slow to a crawl.Two, when possible keep existing
+   // clusters instead of replacing them with new ones, so that the app pans
+   // better.And three, of course, be CPU and memory efficient.
+
+   if (visibleMarkers.length > clusterer.maxVisibleMarkers) {
+      // Add to the list of clusters by splitting up the current bounds
+      // into a grid.
+      var latRange = bounds.getNorthEast().lat() - bounds.getSouthWest().lat();
+      var latInc = latRange / clusterer.gridSize;
+      var lngInc = latInc / Math.cos((bounds.getNorthEast().lat() + bounds.getSouthWest().lat()) / 2.0 * Math.PI / 180.0);
+      for (var lat = bounds.getSouthWest().lat(); lat <= bounds.getNorthEast().lat(); lat += latInc)
+         for (var lng = bounds.getSouthWest().lng(); lng <= bounds.getNorthEast().lng(); lng += lngInc) {
+            cluster = new Object();
+            cluster.clusterer = clusterer;
+            cluster.bounds = new GLatLngBounds(new GLatLng(lat, lng), new GLatLng(lat + latInc, lng + lngInc));
+            cluster.markers = [];
+            cluster.markerCount = 0;
+            cluster.onMap = false;
+            cluster.marker = null;
+            clusterer.clusters.push(cluster);
+         }
+
+         // Put all the unclustered visible markers into a cluster - the first
+         // one it fits in, which favors pre-existing clusters.
+         for (i = 0; i < visibleMarkers.length; ++i) {
+            marker = visibleMarkers[i];
+            if (marker != null && ! marker.inCluster) {
+               for (j = 0; j < clusterer.clusters.length; ++j) {
+                  cluster = clusterer.clusters[j];
+                  if (cluster != null && cluster.bounds.contains(marker.getPoint())) {
+                     cluster.markers.push(marker);
+                     ++cluster.markerCount;
+                     marker.inCluster = true;
+                  }
+               }
+            }
+         }
+
+         // Get rid of any clusters containing only a few markers.
+         for (i = 0; i < clusterer.clusters.length; ++i)
+            if (clusterer.clusters[i] != null && clusterer.clusters[i].markerCount < clusterer.minMarkersPerCluster) {
+               clusterer.ClearCluster(clusterer.clusters[i]);
+               clusterer.clusters[i] = null;
+            }
+
+            // Shrink the clusters list.
+            for (i = clusterer.clusters.length - 1; i >= 0; --i)
+               if (clusterer.clusters[i] != null)
+                  break;
+               else
+               --clusterer.clusters.length;
+   
+            // Ok, we have our clusters.Go through the markers in each
+            // cluster and remove them from the map if they are currently up.
+            for (i = 0; i < clusterer.clusters.length; ++i) {
+               cluster = clusterer.clusters[i];
+               if (cluster != null) {
+                  for (j = 0; j < cluster.markers.length; ++j) {
+                     marker = cluster.markers[j];
+                     if (marker != null && marker.onMap) {
+                        clusterer.map.removeOverlay(marker);
+                        marker.onMap = false;
+                     }
+                  }
+               }
+            }
+
+            // Now make cluster-markers for any clusters that need one.
+            for (i = 0; i < clusterer.clusters.length; ++i) {
+               cluster = clusterer.clusters[i];
+               if (cluster != null && cluster.marker == null) {
+                  // Figure out the average coordinates of the markers in this
+                  // cluster.
+                  var xTotal = 0.0, yTotal = 0.0;
+                  for (j = 0; j < cluster.markers.length; ++j) {
+                     marker = cluster.markers[j];
+                     if (marker != null){
+                        xTotal += (+ marker.getPoint().lng());
+                        yTotal += (+ marker.getPoint().lat());
+                     }
+                  }
+                  var location = new GLatLng(yTotal / cluster.markerCount, xTotal / cluster.markerCount);
+                  marker = new GMarker(location, { icon: clusterer.icon });
+                  cluster.marker = marker;
+                  GEvent.addListener(marker, 'click', Clusterer.MakeCaller(Clusterer.PopUp, cluster));
+                  }
+               }
+            }
+   
+            // Display the visible markers not already up and not in clusters.
+            for (i = 0; i < visibleMarkers.length; ++i) {
+               marker = visibleMarkers[i];
+               if (marker != null && ! marker.onMap && ! marker.inCluster) {
+                  clusterer.map.addOverlay(marker);
+                  if (marker.addedToMap != null)
+                     marker.addedToMap();
+                     marker.onMap = true;
+               }
+            }
+   
+            // Display the visible clusters not already up.
+            for (i = 0; i < clusterer.clusters.length; ++i) {
+               cluster = clusterer.clusters[i];
+               if (cluster != null && ! cluster.onMap && bounds.contains(cluster.marker.getPoint())) {
+                  clusterer.map.addOverlay(cluster.marker);
+                  cluster.onMap = true;
+               }
+            }
+   
+            // In case a cluster is currently popped-up, re-pop to get any new
+            // markers into the infobox.
+            Clusterer.RePop(clusterer);
+//alert("done");
+   };
+   /////end of clusterer display
+   
+   Clusterer.PopUp = function (cluster) {
+   var clusterer = cluster.clusterer;
+   var html = '<table width="300">';
+   var n = 0;
+   for (var i = 0; i < cluster.markers.length; ++i) {
+      var marker = cluster.markers[i];
+      if (marker != null) {
+         ++n;
+         html += '<tr><td>';
+         if (marker.getIcon().smallImage != null) {
+            html += '<img src="' + marker.getIcon().smallImage + '">';
+         }
+         else {
+            html += '<img src="' + marker.getIcon().image + '" width="' + (marker.getIcon().iconSize.width / 1) + '" height="' + (marker.getIcon().iconSize.height / 1) + '">';
+            html += '</td><td><font family = "Verdana"; size = "2">' + marker.title + '</font></td></tr>';
+            if (n == clusterer.maxLinesPerInfoBox - 1 && cluster.markerCount > clusterer.maxLinesPerInfoBox) {
+               html += '<tr><td colspan="2"><font size = "2">...and ' + (cluster.markerCount - n) + ' more</font></td></tr>';
+            break;
+            }
+         }
+      }
+   }
+   html += '</table>';
+   clusterer.map.closeInfoWindow();
+   cluster.marker.openInfoWindowHtml(html);
+   clusterer.poppedUpCluster = cluster;
+};
+
+Clusterer.RePop = function (clusterer) {
+   if (clusterer.poppedUpCluster != null) {
+      Clusterer.PopUp(clusterer.poppedUpCluster);
+   }
+};
+
+Clusterer.PopDown = function (clusterer) {
+   clusterer.poppedUpCluster = null;
+};
+
+Clusterer.prototype.ClearCluster = function (cluster) {
+   /////////////////////////////////////////////
+   this.minMarkersPerCluster = MarkersPerCluster;
+   /////////////////////////////////////////////
+   var i, marker;
+   for (i = 0; i < cluster.markers.length; ++i) {
+      if (cluster.markers[i] != null) {
+         cluster.markers[i].inCluster = false;
+         cluster.markers[i] = null;
+      }
+   }
+   cluster.markers.length = 0;
+   cluster.markerCount = 0;
+   if (cluster == this.poppedUpCluster)
+      this.map.closeInfoWindow();
+      if (cluster.onMap) {
+         this.map.removeOverlay(cluster.marker);
+         cluster.onMap = false;
+      }
+
+};
+
+// This returns a function closure that calls the given routine with the
+// specified arg.
+
+Clusterer.MakeCaller = function (func, arg) {
+   return function () { func(arg); };
+};
+
+
+// Augment GMarker so it handles markers that have been created but
+// not yet addOverlayed.
+
+GMarker.prototype.setMap = function (map) {
+   this.map = map;
+};
+
+GMarker.prototype.addedToMap = function () {
+   this.map = null;
+};
+
+GMarker.prototype.origOpenInfoWindow = GMarker.prototype.openInfoWindow;
+GMarker.prototype.openInfoWindow = function (node, opts) {
+   if (this.map != null) {
+      return this.map.openInfoWindow(this.getPoint(), node, opts);
+   }
+   else {
+      return this.origOpenInfoWindow(node, opts);
+   }
+};
+
+GMarker.prototype.origOpenInfoWindowHtml = GMarker.prototype.openInfoWindowHtml;
+GMarker.prototype.openInfoWindowHtml = function (html, opts) {
+   if (this.map != null) {
+      return this.map.openInfoWindowHtml(this.getPoint(), html, opts);
+   }
+   else {
+      return this.origOpenInfoWindowHtml(html, opts);
+   }
+};
+
+GMarker.prototype.origOpenInfoWindowTabs = GMarker.prototype.openInfoWindowTabs;
+GMarker.prototype.openInfoWindowTabs = function (tabNodes, opts) {
+   if (this.map != null) {
+      return this.map.openInfoWindowTabs(this.getPoint(), tabNodes, opts);
+   }
+   else {
+      return this.origOpenInfoWindowTabs(tabNodes, opts);
+   }
+};
+
+GMarker.prototype.origOpenInfoWindowTabsHtml = GMarker.prototype.openInfoWindowTabsHtml;
+GMarker.prototype.openInfoWindowTabsHtml = function (tabHtmls, opts) {
+   if (this.map != null) {
+      return this.map.openInfoWindowTabsHtml(this.getPoint(), tabHtmls, opts);
+   }
+   else {
+      return this.origOpenInfoWindowTabsHtml(tabHtmls, opts);
+   }
+};
+
+GMarker.prototype.origShowMapBlowup = GMarker.prototype.showMapBlowup;
+GMarker.prototype.showMapBlowup = function (opts) {
+   if (this.map != null) {
+      return this.map.showMapBlowup(this.getPoint(), opts);
+   }
+   else {
+      return this.origShowMapBlowup(opts);
+   }
+};
+
+///////end of clusterer script/////////
+
+map.addControl(new MapTypeControl()); // add custom map type switcher
+var clusterer = new Clusterer( map );
+
+function buildLegend() {
+   var qtyMulti = 0;
+   var qtyTraditional = 0;   
+   var qtyUnknown = 0;
+   var qtyLetterbox = 0;
+   var qtyVirtual = 0;
+   var qtyEarth = 0;
+   var qtyLetterbox = 0;
+   var qtyEvent = 0;
+   var qtyWebcam = 0;
+   var qtyCito = 0;
+   var qtyBenchmark = 0;
+   var qtyOther = 0;
+   var qtyFound = 0;
+
+   for (var n=0; n < caches; n++) {
+      switch(geoCache[n][4]) {
+         case "traditional":
+            qtyTraditional += 1;
+         break;
+         case "multi":
+            qtyMulti += 1;
+         break;
+         case "unknown":
+            qtyUnknown += 1;
+         break;
+         case "letterbox":
+            qtyLetterbox += 1;
+         break;
+         case "virtual":
+            qtyVirtual += 1;
+         break;
+         case "earth":
+            qtyEarth += 1;
+         break;
+         case "letterbox":
+            qtyLetterbox += 1;
+         break;
+         case "event":
+            qtyEvent += 1;
+         break;
+         case "webcam":
+            qtyWebcam += 1;
+         break;
+         case "cito":
+            qtyCito += 1;
+         break;
+         case "benchmark":
+            qtyBenchmark += 1
+         break;
+         case "other":
+            qtyOther += 1;
+         break;
+         case "ape":
+            qtyOther += 1;
+         break;
+      }
+   }
+   for (var n=0; n < caches; n++) {
+      if (geoCache[n][6] == "found") {
+         qtyFound +=1;
+      }
+   }
+
+   var legend =  "<table width = 175px >";
+   legend += "<tr bgcolor='#FFFA73'><th colspan = 4><center>Legend&nbsp&nbsp[-]</center></tr>";
+   legend += "<tr><td><center>&nbsp<img src = '" + traditional_icon.image + "'></td><td><center>Traditional</td><td>" + traditional_image_sm + "&nbsp</td><td><center>(" + qtyTraditional +  ")</center>";
+   legend += "<tr><td><center>&nbsp<img src = '" + multi_icon.image + "'></td><td><center>Multi</td><td>" + multi_image_sm + "<td><center>(" + qtyMulti +  ")</td>&nbsp</center>";
+   legend += "<tr><td><center>&nbsp<img src = '" + unknown_icon.image + "'></td><td><center>Mystery</td><td>" + unknown_image_sm + "&nbsp</td><td><center>(" + qtyUnknown +  ")</td></center>";
+   legend += "<tr><td><center>&nbsp<img src = '" + letterbox_icon.image + "'></td><td><center>Letterbox</td><td>" + letterbox_image_sm + "&nbsp</td><td><center>(" + qtyLetterbox +  ")</td></center>";
+   legend += "<tr><td><center>&nbsp<img src = '" + virtual_icon.image + "'></td><td><center>Virtual</td><td>" + virtual_image_sm + "&nbsp</td><td><center>(" + qtyVirtual +  ")</td></center>";
+   legend += "<tr><td><center>&nbsp<img src = '" + earth_icon.image + "'></td><td><center>Earth</td><td>" + earth_image_sm + "&nbsp</td><td><center>(" + qtyEarth +  ")</td></center>";
+   legend += "<tr><td><center>&nbsp<img src = '" + webcam_icon.image + "'></td><td><center>Webcam</td><td>" + webcam_image_sm + "&nbsp</td><td><center>(" + qtyWebcam +  ")</td></center>";
+   legend += "<tr><td><center>&nbsp<img src = '" + event_icon.image + "'></td><td><center>Event</td><td>" + event_image_sm + "&nbsp</td><td><center>(" + qtyEvent +  ")</td></center>";
+   legend += "<tr><td><center>&nbsp<img src = '" + cito_icon.image + "'></td><td><center>CITO</td><td>" + cito_image_sm + "&nbsp</td><td><center>(" + qtyCito +  ")</td></center>";
+   legend += "<tr><td><center>&nbsp<img src = '" + benchmark_icon.image + "'></td><td><center>Benchmark</td><td>" + benchmark_image_sm + "&nbsp</td><td><center>(" + qtyBenchmark +  ")</td></center>";
+   legend += "<tr><td><center>&nbsp<img src = '" + other_icon.image + "'></td><td><center>Other</td><td>" + other_image_sm + "&nbsp</td><td><center>(" + qtyOther +  ")</td></td></center>";
+   legend += "<tr><td><center>&nbsp<img src = '" + found_icon.image + "'></td><td><center>Found</center><td></td><td><center>(" + qtyFound +  ")</td>";
+   legend += "</table>"
+
+   document.getElementById("myLegend").innerHTML = legend;
+   document.getElementById('myLegend').style.display = 'none';
+}
+
+
+
+function showHideList(){
+   if (list_status == "hidden") {
+      document.getElementById('myListHeader').style.display = 'block';
+      document.getElementById('myList').style.display = 'block';
+      document.getElementById('hiddenList').style.display = 'block';
+      list_status = "shown";
+   }
+   else {
+      document.getElementById('myListHeader').style.display = 'none';
+      document.getElementById('myList').style.display = 'none';
+      document.getElementById('hiddenList').style.display = 'none';
+      list_status = "hidden";
+   }
+}
+
+function showHideLegend(){
+   if (legend_status == "hidden") {
+      document.getElementById('myLegend').style.display = 'block';
+      legend_status = "shown";
+   }
+   else {
+      document.getElementById('myLegend').style.display = 'none';
+      legend_status = "hidden";
+   }
+}
+
+function showHideLabels(){
+    if (label_status == "hidden") {
+      showLabels();
+   }
+   else {
+      hideLabels();
+   }
+}
+
+//-----hide or show the labels based on zoomlevel-----//
+GEvent.addListener(map, 'zoomend', function(n){
+   checkLabels();
+});
+
+//-----flip the labels-----//
+function checkLabels() {
+   if (map.getZoom() < 12){
+      hideLabels();
+   }
+   else {
+      showLabels();
+   }
+}
+
+//-----show the labels-----//
+function showLabels(){
+   for (var n=0; n < myLabel.length; n++) {
+      myLabel[n].show();
+      label_status = "shown";
+   }
+}
+
+//-----hide the labels-----//
+function hideLabels(){
+   for (var n=0; n < myLabel.length; n++) {
+      myLabel[n].hide();
+      label_status = "hidden";
+   }
+}
+
+function openWindow() {
+   myWindow = window.open ('myGMEv02g.htm', 'newWindow', 'scrollbars, menubar,height=500,width=500,resizable=yes,toolbar,location=no')
+   myWindow.document.write("<!DOCTYPE html PUBLIC '-//W3C//DTD XHTML 1.0 Strict//EN' 'http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd'>");
+   myWindow.document.write("<META HTTP-EQUIV='Refresh' CONTENT='text/html'>");
+   myWindow.document.write("<html>");
+   myWindow.document.write("<head>");
+   myWindow.document.write("<!-- saved from url=(0013)about:internet -->");
+   myWindow.document.write("<table rules = all width =800px>");
+   myWindow.document.write(geoListHeader2);
+   myWindow.document.write(geoList2);
+   myWindow.document.write("</table>");
+   myWindow.document.write("</head></html>");
+   myWindow.document.close();
+}
+
+function buildInfoWindows() {
+
+   //---geoCache Array Structure---//
+   //geoCache[n][0]  - code
+   //geoCache[n][1]  - name
+   //geoCache[n][2]  - lat
+   //geoCache[n][3]  - lon
+   //geoCache[n][4]  - type
+   //geoCache[n][5]  - owner
+   //geoCache[n][6]  - found?
+   //geoCache[n][7]  - tb?
+   //geoCache[n][8]  - difficulty
+   //geoCache[n][9]  - terrain
+   //geoCache[n][10] - container
+   //geoCache[n][11] - geoCalc
+   //geoCache[n][12] - URL
+
+   for (var n=0; n < caches; n++) {
+      cacheInfo  = "<font size = 1.5 face = Verdana><center><a href='"
+      cacheInfo += geoCache[n][12] + "' target='geo'>"            //url
+      cacheInfo += geoCache[n][0] + "</a><br><b>";            //code
+      cacheInfo += geoCache[n][1] + "<br></b><i>by: ";            //name
+      cacheInfo += geoCache[n][5] + "</i><br><br>";            //owner
+      cacheInfo += eval(geoCache[n][4] + "_image");             //type
+      cacheInfo += eval(geoCache[n][7] + "_image") + "<br><br>Difficulty: ";      //tb
+      cacheInfo += stars_image + geoCache[n][8] + ".gif'><br>Terrain: ";      //difficulty
+      cacheInfo += stars_image + geoCache[n][9] + ".gif'><br>Size: ";      //terrain
+      cacheInfo += geoCache[n][10] + "<br><br>";            //container size
+      cacheInfo += eval(geoCache[n][6]);               //found
+      cacheInfo += geoCache[n][11]  + "<br><br>";            //geoCalc coordinates
+      cacheInfo += zoom_In + " | " + zoom_Out + "</font></center>";      //zoom
+//      cacheInfo =+ zoom_In + " | " + zoom_Out + " | <a href='gsak://search/" + geoCache[n][0] + "/Default'>GSAK Detail</font></center>";
+
+      if (geoCache[n][6] == "found") {
+         thisCache[n] = new GMarker(new GPoint(geoCache[n][3], geoCache[n][2]), {icon:eval("found_icon"), title:geoCache[n][1]});
+      }
+      else {
+         thisCache[n] = new GMarker(new GPoint(geoCache[n][3], geoCache[n][2]), {icon:eval(geoCache[n][4]+"_icon"), title:geoCache[n][1]});
+      }
+      addMarker(thisCache[n],cacheInfo,geoCache[n][1]);
+   }
+}
+
+//-----load the array with geoCache info-----//
+
+function arrayLoader() {
+geoCache[0]=["GC103QM","Bridge On The River Kohl",38.7519,-90.42745,"traditional","Wheelinb","notFound","noTB","2","1_5","Micro","(N 38° 45.114;W 90° 25.647)","g"
+     width="350" border="0"></p>
+<p align="center">&nbsp;</p>
+<p>The <b>Jefferson Bar"];
+geoCache[1]=["GC107VE","Ryans-Cache",38.412167,-90.34945,"traditional","labtech2","notFound","noTB","3","2","Small","(N 38° 24.730;W 90° 20.967)"," Handicap Hunt. During off season, you
+must check in at the district office and let them k"];
+geoCache[2]=["GC10E80","Garmin Friendly",38.73695,-90.296783,"traditional","Mean Gene","notFound","noTB","1","1","Micro","(N 38° 44.217;W 90° 17.807)","e that
+is a large ammo box. Hard to miss once you get into the area. Has a
+nice view of t"];
+geoCache[3]=["GC10EW3","ODS Short Avenue Diamond",38.740283,-90.298467,"traditional","roelsch","notFound","noTB","1","1_5","Micro","(N 38° 44.417;W 90° 17.908)","</p>
+<p>Who could forget the White Rabbit that was always always
+running</p>
+<p>around w"];
+geoCache[4]=["GC10FGB","Antonio y Cleopatra",38.5358,-90.5398,"traditional","Utapao72","notFound","noTB","2","2","Micro","(N 38° 32.148;W 90° 32.388)","rashed into an asteroid.
+The assorted lame, sick and stupid were left behind, although it"];
+geoCache[5]=["GC10HJH","Farewell to Carrollton",38.768367,-90.42585,"traditional","bluedaisy","notFound","noTB","2","3","Regular","(N 38° 46.102;W 90° 25.551)","e390-4c8a-845e-aea5ee36281e                                     <p align="center"><img heig"];
+geoCache[6]=["GC10JNQ","Faeried Fable 4",38.637433,-90.301,"multi","Faery_G","notFound","TB","1_5","1_5","Regular","(N 38° 38.246;W 90° 18.060)","ome more. The crew was
+busted by military police down near Sportsman's Park on Grand, but"];
+geoCache[7]=["GC10MTN","Fishing for Cache",38.41505,-90.351633,"traditional","BBD1","notFound","noTB","1_5","1_5","Regular","(N 38° 24.903;W 90° 21.098)","an</font></font></font></font></a> <font face="Arial"
+      size="4">watershed (drained by"];
+geoCache[8]=["GC10MVP","TIRED",38.412083,-90.351767,"traditional","BBD1","notFound","TB","1_5","1_5","Regular","(N 38° 24.725;W 90° 21.106)","(district)" href=
+      "http://en.wikipedia.org/wiki/Freudenstadt_%28district%29"><font f"];
+geoCache[9]=["GC10TAX","Show Me Cache",38.7684,-90.186767,"traditional","DaughterOfCartographers","notFound","TB","1_5","1_5","Small","(N 38° 46.104;W 90° 11.206)","tp://www.waymarking.com/users/profile.aspx?f=1&amp;guid=8975fb5b-0f90-4c39-9250-8899459ba83"];
+geoCache[10]=["GC10YHT","Faeried Fable 5",38.620417,-90.327283,"multi","Faery_G","notFound","noTB","2","2","Small","(N 38° 37.225;W 90° 19.637)","ission.<br>
+- <i>Bonus cache:</i> There is a bonus cache somewhere along in the
+series, b"];
+geoCache[11]=["GC1191D","Glencoe Trail Rest Stop",38.542017,-90.6006,"traditional","Strider","notFound","noTB","1_5","1_5","Micro","(N 38° 32.521;W 90° 36.036)","Pick up some milk while you are out.                            http://www.geocaching.com/s"];
+geoCache[12]=["GC1191E","Sherman T. Glencoe",38.54075,-90.598533,"traditional","Strider","notFound","TB","1_5","1_5","Small","(N 38° 32.445;W 90° 35.912)","http://www.geocaching.com/seek/cache_details.aspx?guid=2f0cf4cb-34ab-4a26-90cc-1908341dc5c6"];
+geoCache[13]=["GC11AQF","Mr. Foster's Nasty Little Nano",38.5445,-90.6061,"traditional","Crowesfeat30","notFound","noTB","2","1_5","Micro","(N 38° 32.670;W 90° 36.366)"," of
+the view from a cache series. These are in no particualr order, and
+there are only re"];
+geoCache[14]=["GC11AQM","Foundations",38.543933,-90.60285,"traditional","Crowesfeat30","notFound","noTB","1_5","2","Regular","(N 38° 32.636;W 90° 36.171)","this is a lock and lock container located in the historic uptown
+Jackson.                 "];
+geoCache[15]=["GC11AQY","Squeeze Play",38.539617,-90.59705,"traditional","Crowesfeat30","notFound","noTB","1_5","2","Small","(N 38° 32.377;W 90° 35.823)","thday.                                                          Standard hide under a pile "];
+geoCache[16]=["GC11AY2","Spring at Zombie Road",38.549833,-90.6067,"traditional","RGS","notFound","noTB","2","2","Regular","(N 38° 32.990;W 90° 36.402)","ve to USFOR and may be
+high-value sources of information, as long as you follow their
+loc"];
+geoCache[17]=["GC11B9A","Math Headache",38.629117,-90.3816,"unknown","dadoo2","notFound","TB","3","1_5","Small","(N 38° 37.747;W 90° 22.896)","The Command Post (final
+cache):</b></i></font><br>
+Pray! and tactically assault the Comma"];
+geoCache[18]=["GC11BZG","Wild Thing",38.5546,-90.608567,"traditional","Didg Guy","notFound","noTB","2","3","Regular","(N 38° 33.276;W 90° 36.514)",""];
+geoCache[19]=["GC11D5Z","Hole in the Wall Cache",38.543083,-90.618917,"traditional","Strider","notFound","TB","1_5","2","Small","(N 38° 32.585;W 90° 37.135)",""];
+geoCache[20]=["GC11DCR","Of Times Gone By (An ODS Cache)",38.547633,-90.60755,"traditional","JanS03","notFound","noTB","1_5","2","Micro","(N 38° 32.858;W 90° 36.453)",""];
+geoCache[21]=["GC11E3","Freddie's  Hide-a-way",38.669833,-90.54635,"traditional","*gln","notFound","TB","1","1","Regular","(N 38° 40.190;W 90° 32.781)","http://www.geocaching.com/seek/cache_details.aspx?guid=4e90b2ef-bf4e-4c94-8b5f-a0d151133142"];
+geoCache[22]=["GC11EGD","Zombie Thrills",38.556533,-90.607367,"traditional","JanS03","notFound","noTB","1_5","2","Regular","(N 38° 33.392;W 90° 36.442)",""];
+geoCache[23]=["GC11EP7","Sports Marathon",38.560317,-90.4502,"traditional","MarbleBoy","notFound","noTB","2","2","Micro","(N 38° 33.619;W 90° 27.012)",""];
+geoCache[24]=["GC11EP8","Pot of Green",38.5617,-90.451017,"traditional","MarbleBoy","notFound","noTB","2_5","2_5","Regular","(N 38° 33.702;W 90° 27.061)",""];
+geoCache[25]=["GC11F3","THE LOCAL NEWS- St. Louis, Mo.",38.635,-90.296667,"unknown","*gln","notFound","noTB","1","1","Regular","(N 38° 38.100;W 90° 17.800)","http://www.geocaching.com/seek/cache_details.aspx?guid=d6b4a5a5-f730-43fe-a0cb-b8f3e000995d"];
+geoCache[26]=["GC11G2M","Stallings Gate",38.731,-90.048167,"traditional","napoleon&debb","notFound","TB","1_5","1","Regular","(N 38° 43.860;W 90° 02.890)",""];
+geoCache[27]=["GC11TQR","Zombie Nation",38.55075,-90.60825,"traditional","widowmaker1127","notFound","noTB","1_5","1_5","Regular","(N 38° 33.045;W 90° 36.495)",""];
+geoCache[28]=["GC11TVB","Carr Creek Cache",38.541033,-90.624867,"traditional","lancelot","notFound","noTB","1_5","1_5","Micro","(N 38° 32.462;W 90° 37.492)",""];
+geoCache[29]=["GC11TZA","By the old homestead",38.545883,-90.627717,"traditional","lancelot","notFound","noTB","1_5","1_5","Micro","(N 38° 32.753;W 90° 37.663)",""];
+geoCache[30]=["GC11TZN","Zombies of Lawlerford Road",38.559017,-90.60805,"traditional","lancelot","notFound","noTB","1_5","1_5","Micro","(N 38° 33.541;W 90° 36.483)",""];
+geoCache[31]=["GC11VV3","I-270 Travel Bug Hotel",38.758717,-90.007867,"traditional","2_cats","notFound","TB","1","1","Regular","(N 38° 45.523;W 90° 00.472)",""];
+geoCache[32]=["GC11ZQQ","Valley Of The Doomed",38.562167,-90.611483,"traditional","Lord of the Zombies","notFound","noTB","2","3","Small","(N 38° 33.730;W 90° 36.689)",""];
+geoCache[33]=["GC1201P","Daryl and Daryl Lite",38.561367,-90.608183,"unknown","RGS","notFound","noTB","2","2","Not chosen","(N 38° 33.682;W 90° 36.491)",""];
+geoCache[34]=["GC12AN0","Dazed and Confused",38.542983,-90.616433,"traditional","TheMadChef","notFound","noTB","2_5","1_5","Micro","(N 38° 32.579;W 90° 36.986)",""];
+geoCache[35]=["GC12BD3","Eggplant and Peanut Butter",38.5614,-90.5085,"multi","Statfinder","notFound","TB","2","2","Small","(N 38° 33.684;W 90° 30.510)",""];
+geoCache[36]=["GC12DFV","Cin Troll 2 A new hide",38.781317,-90.342817,"unknown","Hobbit Taz","notFound","noTB","2","1_5","Small","(N 38° 46.879;W 90° 20.569)",""];
+geoCache[37]=["GC12HFJ","Freedom Crossing",38.675133,-90.189917,"traditional","Didg Guy","notFound","noTB","1_5","1_5","Micro","(N 38° 40.508;W 90° 11.395)",""];
+geoCache[38]=["GC12JWD","The Sound of MOGA",38.669483,-90.538667,"traditional","Justified","notFound","noTB","1","1_5","Micro","(N 38° 40.169;W 90° 32.320)",""];
+geoCache[39]=["GC12QRV","Subway B.M.T. - What's 'B.M.T.' Stand For, Anyway",38.783333,-90.3465,"traditional","roelsch","notFound","noTB","1","1","Micro","(N 38° 47.000;W 90° 20.790)",""];
+geoCache[40]=["GC12Z3A","GOOD GUYS ROCK!!!... extended edition",38.659,-90.30395,"multi","Faery_G","notFound","noTB","1_5","1_5","Small","(N 38° 39.540;W 90° 18.237)",""];
+geoCache[41]=["GC13CT1","Faust Park Playground Fun",38.665767,-90.54145,"traditional","TheHolman5","notFound","TB","1_5","1","Small","(N 38° 39.946;W 90° 32.487)",""];
+geoCache[42]=["GC13EMK","The Wall",38.233383,-90.422717,"multi","L Frank","notFound","noTB","1_5","1_5","Micro","(N 38° 14.003;W 90° 25.363)",""];
+geoCache[43]=["GC13JCR","Cache for the Game",38.624067,-90.19425,"traditional","natesdeal","notFound","noTB","1","1","Micro","(N 38° 37.444;W 90° 11.655)",""];
+geoCache[44]=["GC13QR9","Buder Hanjie",38.545567,-90.475567,"unknown","Statfinder","notFound","noTB","2_5","1_5","Micro","(N 38° 32.734;W 90° 28.534)","orn at New Brunswick, NJ, Dec. 6, 1886 and was killed in action, during World War I, at the"];
+geoCache[45]=["GC13TMR","Répondez S'il Vous Plaît",38.580483,-90.42405,"traditional","Crowesfeat30","notFound","noTB","1_5","1_5","Regular","(N 38° 34.829;W 90° 25.443)","http://www.geocaching.com/seek/cache_details.aspx?guid=2d37e97c-f30b-483d-886e-7d1a83d1462b"];
+geoCache[46]=["GC1859","Walker's Island",38.700367,-90.0803,"traditional","hikerbob","notFound","noTB","1_5","1","Regular","(N 38° 42.022;W 90° 04.818)","http://www.geocaching.com/seek/cache_details.aspx?guid=4ba13e9e-5854-43fe-86b8-28cbdd1f070e"];
+geoCache[47]=["GC1AE9","Tyson Cache DG",38.5113,-90.58905,"traditional","peto_geo","notFound","TB","2","2_5","Regular","(N 38° 30.678;W 90° 35.343)","http://www.geocaching.com/seek/cache_details.aspx?guid=359a9ce4-0a4f-4d2a-a446-a7b7dc067439"];
+geoCache[48]=["GC1C3","Super Bowl Stash",38.5549,-90.53575,"traditional","teq56","notFound","TB","2_5","2_5","Not chosen","(N 38° 33.294;W 90° 32.145)","http://www.geocaching.com/seek/cache_details.aspx?guid=8467253a-5d7e-489b-894b-bae97727c826"];
+geoCache[49]=["GC2258","Above the Trees  Mississippi Cache",38.75985,-90.174083,"virtual","myotis","notFound","noTB","1","1","Virtual","(N 38° 45.591;W 90° 10.445)","http://www.geocaching.com/seek/cache_details.aspx?guid=7a7407ac-d03f-440a-bc3c-abbddad9fc3e"];
+geoCache[50]=["GC266A","Global Cache",38.585867,-90.587367,"multi","Mean Gene","notFound","noTB","3","2","Regular","(N 38° 35.152;W 90° 35.242)","http://www.geocaching.com/seek/cache_details.aspx?guid=4ed5884d-6951-4247-badf-fd22b496be61"];
+geoCache[51]=["GC2E0E","Twin Oaks",38.56365,-90.502083,"traditional","Island-Dave","notFound","noTB","1","1_5","Regular","(N 38° 33.819;W 90° 30.125)","http://www.geocaching.com/seek/cache_details.aspx?guid=81212355-ee9f-44e0-b595-e2cc856b0e32"];
+geoCache[52]=["GC3733","Dollhead",38.563217,-90.50855,"traditional","Island-Dave","notFound","TB","2_5","2_5","Regular","(N 38° 33.793;W 90° 30.513)","http://www.geocaching.com/seek/cache_details.aspx?guid=7393c4d9-5399-4562-9e0b-6b6522ba88bb"];
+geoCache[53]=["GC3973","Treasure Hunt at McDonnell",38.717483,-90.40595,"multi","MO Outdoorfamily","notFound","TB","3","2","Regular","(N 38° 43.049;W 90° 24.357)","http://www.geocaching.com/seek/cache_details.aspx?guid=cf884a38-8ba9-45e2-9289-ebd5c8f1ad21"];
+geoCache[54]=["GC4E60","Bluebird Triangle",38.58295,-90.581833,"multi","Mean Gene","notFound","noTB","2_5","1_5","Regular","(N 38° 34.977;W 90° 34.910)","http://www.geocaching.com/seek/cache_details.aspx?guid=60c09933-0ef4-4e18-9db2-ec23b3f651ef"];
+geoCache[55]=["GC5D35","Memorial Day Cache",38.717017,-90.11055,"virtual","dabba","notFound","noTB","1","1","Not chosen","(N 38° 43.021;W 90° 06.633)","http://www.geocaching.com/seek/cache_details.aspx?guid=de69fcc4-4d29-4221-8edc-a897e844237a"];
+geoCache[56]=["GC61F","'Slices of Quince'",38.714,-89.925167,"letterbox","Mohmers","notFound","TB","1","1","Regular","(N 38° 42.840;W 89° 55.510)","http://www.geocaching.com/seek/cache_details.aspx?guid=afbc16a3-2c23-43fd-830d-eefc2de1251a"];
+geoCache[57]=["GC712","CMPL Box",38.6685,-89.990333,"letterbox","Mohmers","notFound","noTB","2_5","1","Other","(N 38° 40.110;W 89° 59.420)","http://www.geocaching.com/seek/cache_details.aspx?guid=5f6ef81e-f389-4a3e-a73c-3d724004389a"];
+geoCache[58]=["GC7CD6","River View",38.54825,-90.550617,"traditional","peto_geo","notFound","TB","3","2_5","Regular","(N 38° 32.895;W 90° 33.037)","http://www.geocaching.com/seek/cache_details.aspx?guid=09222a7c-bd64-4835-a59b-af02e52bff3d"];
+geoCache[59]=["GC7ED","St. Louis Arch Virtual Cache",38.625017,-90.18475,"virtual","bjbest","notFound","noTB","3","1","Virtual","(N 38° 37.501;W 90° 11.085)","http://www.geocaching.com/seek/cache_details.aspx?guid=a25e6edc-d64c-4bdf-b8e5-c27ad1db0734"];
+geoCache[60]=["GCABF1","The High Road",38.5481,-90.536883,"multi","Mean Gene","notFound","TB","2","2_5","Regular","(N 38° 32.886;W 90° 32.213)","http://www.geocaching.com/seek/cache_details.aspx?guid=d71eff6c-107a-4f1e-9bd9-da7fa885925a"];
+geoCache[61]=["GCCD0A","This Cache Has No Title",38.6086,-90.369783,"traditional","Taisch","notFound","TB","1","1_5","Regular","(N 38° 36.516;W 90° 22.187)","http://www.geocaching.com/seek/cache_details.aspx?guid=c67c9d51-ad38-4072-9dd4-748af6306d9c"];
+geoCache[62]=["GCD88F","abNORMaLEE tuff",38.530567,-90.6661,"traditional","Le-roy","notFound","noTB","2_5","2_5","Regular","(N 38° 31.834;W 90° 39.966)","http://www.geocaching.com/seek/cache_details.aspx?guid=e6cab235-fe54-4825-94d9-9daa0c4870f0"];
+geoCache[63]=["GCE2C1","City Museum Virtual",38.633817,-90.201317,"virtual","Rabid Bunny","notFound","noTB","1_5","1","Virtual","(N 38° 38.029;W 90° 12.079)","http://www.geocaching.com/seek/cache_details.aspx?guid=3feb7879-94ac-420f-b432-6f122568ec29"];
+geoCache[64]=["GCF286","Suburban Oasis",38.7021,-90.38745,"traditional","2wheeljunkie","notFound","TB","1_5","1_5","Regular","(N 38° 42.126;W 90° 23.247)","http://www.geocaching.com/seek/cache_details.aspx?guid=def7a6ea-e374-43f5-9810-4476c86402c6"];
+geoCache[65]=["GCG3F7","Maddog's Mini-Cache #2",38.5208,-90.524033,"traditional","maddogcapt","notFound","noTB","1","3","Regular","(N 38° 31.248;W 90° 31.442)","http://www.geocaching.com/seek/cache_details.aspx?guid=5b2ae737-227f-4a49-aa19-cd8762ce4573"];
+geoCache[66]=["GCG44H","McKinley Bridge",38.663667,-90.186583,"traditional","dogda","notFound","noTB","2","1_5","Regular","(N 38° 39.820;W 90° 11.195)","http://www.geocaching.com/seek/cache_details.aspx?guid=1d487ae6-8163-42fd-934d-7d937bf4c4c9"];
+geoCache[67]=["GCG6E9","Confluence Trail cache",38.790017,-90.120383,"traditional","dogda","notFound","noTB","1_5","1_5","Other","(N 38° 47.401;W 90° 07.223)","http://www.geocaching.com/seek/cache_details.aspx?guid=be1a2200-67dd-49d1-8f22-5b6dd4b97a68"];
+geoCache[68]=["GCG88Z","Slip Slidin' Away",38.716233,-90.415217,"multi","GB-Cacher","notFound","noTB","2","2_5","Regular","(N 38° 42.974;W 90° 24.913)","http://www.geocaching.com/seek/cache_details.aspx?guid=fa6fa4fb-33e6-4c21-86bf-e32af9c2f9c9"];
+geoCache[69]=["GCG89A","Sunfish Lake Cache",38.801217,-90.196767,"traditional","Island-Dave","notFound","noTB","1_5","1_5","Regular","(N 38° 48.073;W 90° 11.806)","http://www.geocaching.com/seek/cache_details.aspx?guid=d7b4ec24-33f8-404e-8e65-1b49b28c8bf9"];
+geoCache[70]=["GCG9FY","Raiders of the Lost Arc",38.54955,-90.540133,"multi","Mean Gene","notFound","noTB","2_5","2_5","Regular","(N 38° 32.973;W 90° 32.408)","http://www.geocaching.com/seek/cache_details.aspx?guid=d59d6c8f-351c-493d-b7c2-838eeabf3661"];
+geoCache[71]=["GCGAHQ","ROLL'M   IV",38.588417,-90.600183,"traditional","Le-roy","notFound","noTB","1_5","1","Micro","(N 38° 35.305;W 90° 36.011)","http://www.geocaching.com/seek/cache_details.aspx?guid=12bf6a14-e1a4-4666-b113-84edd8aa802f"];
+geoCache[72]=["GCGBND","Knobeloch Reloaded",38.47615,-89.881717,"traditional","denali","notFound","noTB","2","2_5","Micro","(N 38° 28.569;W 89° 52.903)","http://www.geocaching.com/seek/cache_details.aspx?guid=1b4fb307-c46a-47bc-a948-30faf92ced84"];
+geoCache[73]=["GCGHN0","MENSA in Town and Country - Redux",38.6245,-90.448433,"multi","GB-Cacher","notFound","noTB","2","1_5","Regular","(N 38° 37.522;W 90° 27.013)","http://www.geocaching.com/seek/cache_details.aspx?guid=d90d4f48-d728-40aa-8c58-f6316b558424"];
+geoCache[74]=["GCGT9H","River Trail Branch Off",38.54385,-90.53745,"multi","GB-Cacher","notFound","noTB","3","2_5","Regular","(N 38° 32.841;W 90° 32.925)","http://www.geocaching.com/seek/cache_details.aspx?guid=058ddfde-25a3-464a-89ad-2fb9d21eba5e"];
+geoCache[75]=["GCH7XX","Jennifer's First",38.6671,-90.450483,"multi","GB-Cacher","notFound","noTB","1_5","1","Micro","(N 38° 40.026;W 90° 27.029)","http://www.geocaching.com/seek/cache_details.aspx?guid=19701631-ed5d-44d0-a9b6-17e8d363c100"];
+geoCache[76]=["GCHE3E","$1500 Cache",38.713567,-90.4038,"multi","SWAseeker","notFound","noTB","2","1_5","Regular","(N 38° 42.814;W 90° 24.228)","http://www.geocaching.com/seek/cache_details.aspx?guid=1add1680-b2a0-4988-80eb-961e78d475c4"];
+geoCache[77]=["GCHQ36","Watch What Steps",38.54825,-90.553617,"traditional","Strider","notFound","noTB","2","2","Regular","(N 38° 32.895;W 90° 33.217)","http://www.geocaching.com/seek/cache_details.aspx?guid=0c455a8c-8346-4dbd-8394-9e7c294380c3"];
+geoCache[78]=["GCHR6F","King's Ransom",38.686333,-90.375683,"traditional","timotab","notFound","noTB","1_5","1","Micro","(N 38° 41.180;W 90° 22.541)","http://www.geocaching.com/seek/cache_details.aspx?guid=a88751ff-145a-47c5-bd8d-5b76418b0d56"];
+geoCache[79]=["GCHRGE","Funny Temperatures!",38.6713,-90.35755,"unknown","timotab","notFound","noTB","3","1_5","Other","(N 38° 40.278;W 90° 21.453)","http://www.geocaching.com/seek/cache_details.aspx?guid=8ca4bdef-9515-46bf-b0de-66c5b1ed0b3d"];
+geoCache[80]=["GCHWY9","Just a Saint This Time",38.7976,-90.334667,"traditional","roelsch","notFound","TB","1_5","1","Regular","(N 38° 47.856;W 90° 20.080)","http://www.geocaching.com/seek/cache_details.aspx?guid=a250922e-88f9-4b19-bb5d-75d2e20e074a"];
+geoCache[81]=["GCJ3M5","St. Vincent's 1st",38.69545,-90.30775,"traditional","Digger Odell","notFound","noTB","1","1_5","Micro","(N 38° 41.727;W 90° 18.465)","http://www.geocaching.com/seek/cache_details.aspx?guid=46bed64a-f394-4bdd-9b8a-1a4ddbc5df5f"];
+geoCache[82]=["GCJ4MR","The China Town Cache",38.726417,-89.949183,"traditional","EFDfirefighter","notFound","TB","2","1_5","Regular","(N 38° 43.585;W 89° 56.951)","http://www.geocaching.com/seek/cache_details.aspx?guid=6d41a424-4f49-43ff-a79c-81e89bfb1988"];
+geoCache[83]=["GCJ53T","SunriseSunset",38.703,-90.457317,"multi","ronimous","notFound","noTB","1_5","1","Regular","(N 38° 42.180;W 90° 27.439)","http://www.geocaching.com/seek/cache_details.aspx?guid=71942133-4ac2-4e3b-a4a5-5d277918725f"];
+geoCache[84]=["GCJA5V","Millennium Park Off Trail",38.670417,-90.466783,"traditional","didgeridooN","notFound","noTB","3","2_5","Micro","(N 38° 40.225;W 90° 28.007)","http://www.geocaching.com/seek/cache_details.aspx?guid=9fa2b648-1b25-48fa-a50b-70fd4bac2da8"];
+geoCache[85]=["GCJNXM","A rock in a hard place",38.715867,-90.487967,"multi","stl_boater_man","notFound","noTB","3","3","Other","(N 38° 42.952;W 90° 29.278)","http://www.geocaching.com/seek/cache_details.aspx?guid=6daa070d-cd71-4ea8-a6d8-327c0dd3e40c"];
+geoCache[86]=["GCJRMJ","Marillac Multi Micro by the Metro",38.705467,-90.306217,"multi","BlueBeadMan","notFound","noTB","2","1","Micro","(N 38° 42.328;W 90° 18.373)","http://www.geocaching.com/seek/cache_details.aspx?guid=cfc3d99c-4455-42a4-8deb-0d1d795f8e94"];
+geoCache[87]=["GCJX9M","Jeske Park",38.751967,-90.30435,"traditional","Mosquito Magnet","notFound","noTB","2","1_5","Regular","(N 38° 45.118;W 90° 18.261)","http://www.geocaching.com/seek/cache_details.aspx?guid=81c1b623-76b4-4b39-8eb8-41aa1975c6ff"];
+geoCache[88]=["GCJY7Z","Hudson Park",38.764383,-90.286067,"traditional","Mosquito Magnet","notFound","noTB","2_5","2_5","Regular","(N 38° 45.863;W 90° 17.164)","http://www.geocaching.com/seek/cache_details.aspx?guid=dacc5bbf-19e2-42ed-b84e-c7181c113181"];
+geoCache[89]=["GCK4AK","My Ding-a-Ling",38.7182,-90.39015,"traditional","deltawinner","notFound","TB","1","1","Regular","(N 38° 43.092;W 90° 23.409)","http://www.geocaching.com/seek/cache_details.aspx?guid=bcc0087d-226f-4b24-b55c-4643c13b6ebd"];
+geoCache[90]=["GCK4AN","House of Cards",38.667467,-90.36365,"traditional","deltawinner","notFound","TB","1","1","Regular","(N 38° 40.048;W 90° 21.819)","http://www.geocaching.com/seek/cache_details.aspx?guid=4d415e6c-c936-4fae-bce8-91e2dc9524f9"];
+geoCache[91]=["GCKC80","Twilight Zone Reloaded",38.6008,-90.574717,"multi","Mean Gene","notFound","noTB","2","2","Regular","(N 38° 36.048;W 90° 34.483)","http://www.geocaching.com/seek/cache_details.aspx?guid=7165900e-095f-45d6-a7ac-574718dfde1b"];
+geoCache[92]=["GCKFM9","Spencer's Cache",38.714767,-90.476083,"traditional","gadaboutgirl","notFound","noTB","1_5","2_5","Regular","(N 38° 42.886;W 90° 28.565)","http://www.geocaching.com/seek/cache_details.aspx?guid=b823c4c9-4b84-4622-95ba-1f38e61c8da9"];
+geoCache[93]=["GCKYCQ","CSI Manchester",38.591133,-90.479833,"multi","Dorkus&Co.","notFound","noTB","3","2_5","Regular","(N 38° 35.468;W 90° 28.790)","http://www.geocaching.com/seek/cache_details.aspx?guid=a53e01b8-6d66-45fc-978b-5c76a42f6c6a"];
+geoCache[94]=["GCKYTZ","DO NOT DISTURB!",38.719483,-90.4202,"multi","GB-Cacher","notFound","noTB","1_5","2","Regular","(N 38° 43.169;W 90° 25.212)","http://www.geocaching.com/seek/cache_details.aspx?guid=cd9756ae-0e4a-4137-8198-446de30cf32a"];
+geoCache[95]=["GCM7ZB","Where's Da Cache",38.6425,-90.5105,"unknown","Tollybrew","notFound","noTB","2","1","Small","(N 38° 38.550;W 90° 30.630)","http://www.geocaching.com/seek/cache_details.aspx?guid=f210c2e0-88d7-468f-ad61-fd1fb834520a"];
+geoCache[96]=["GCM7ZK","Down Governor Bates Trail",38.672717,-90.544,"traditional","Tollybrew","notFound","noTB","1_5","2_5","Small","(N 38° 40.363;W 90° 32.640)","http://www.geocaching.com/seek/cache_details.aspx?guid=41131db0-75a7-47c8-b3b9-99aab5f0157d"];
+geoCache[97]=["GCM8B5","St. Vincent's 2nd",38.698067,-90.308067,"traditional","Digger Odell","notFound","noTB","1","1","Micro","(N 38° 41.884;W 90° 18.484)","http://www.geocaching.com/seek/cache_details.aspx?guid=13994cb0-45f7-4b85-81dd-9f099fb18ad3"];
+geoCache[98]=["GCM8B7","St. Vincent's 3rd",38.698333,-90.304833,"traditional","Digger Odell","notFound","TB","1","1_5","Regular","(N 38° 41.900;W 90° 18.290)","http://www.geocaching.com/seek/cache_details.aspx?guid=79249ce9-f8ca-48fb-ad06-5aa8ea941ec4"];
+geoCache[99]=["GCMBYJ","Never Ever Even ",38.741383,-90.353483,"unknown","Mean Gene","notFound","noTB","2","2","Regular","(N 38° 44.483;W 90° 21.209)","http://www.geocaching.com/seek/cache_details.aspx?guid=c42ed198-d4af-4fb5-89c3-fc82000bdefe"];
+geoCache[100]=["GCMKG2","Think Outside the Box",38.672033,-90.546967,"traditional","Mean Gene","notFound","noTB","2","2","Regular","(N 38° 40.322;W 90° 32.818)","http://www.geocaching.com/seek/cache_details.aspx?guid=142f3d40-2c0f-4bd8-98b5-cacddd49af73"];
+geoCache[101]=["GCMM99","Lunch On A Summer Day",38.750967,-90.472283,"traditional","vineyard20","notFound","noTB","1","1","Micro","(N 38° 45.058;W 90° 28.337)","http://www.geocaching.com/seek/cache_details.aspx?guid=71fca407-66e6-4583-8a0c-e14cd9faa1fe"];
+geoCache[102]=["GCMV3Z","Fruit Salad",38.567117,-90.492033,"unknown","Crowesfeat30","notFound","noTB","2","2_5","Regular","(N 38° 34.027;W 90° 29.522)","http://www.geocaching.com/seek/cache_details.aspx?guid=20b118d2-9caf-4d55-bbe7-02f847069b5c"];
+geoCache[103]=["GCMW83","Tanglewood",38.748633,-90.226917,"traditional","Certified_log-E","notFound","TB","1_5","1_5","Regular","(N 38° 44.918;W 90° 13.615)","ould have a cache.
+ On May 3rd,2001 Mary Lightheart, a 53 year old grandmother from Goshen"];
+geoCache[104]=["GCMYM2","Gems of Wisdom",38.708833,-90.385833,"traditional","xeviel","notFound","noTB","2_5","2","Micro","(N 38° 42.530;W 90° 23.150)","http://www.geocaching.com/seek/cache_details.aspx?guid=3f1c1055-4d05-43c3-96c7-b175abf5a327"];
+geoCache[105]=["GCN2W0","Tour of Creve Coeur Lake Park",38.715533,-90.474517,"multi","gold retriever","notFound","TB","2","2","Regular","(N 38° 42.932;W 90° 28.471)","http://www.geocaching.com/seek/cache_details.aspx?guid=86fcb234-9b8b-426e-8016-e1d4c1776ae9"];
+geoCache[106]=["GCN6DX","Preservation Park",38.640417,-90.467217,"multi","Didg Guy","notFound","noTB","2_5","1_5","Regular","(N 38° 38.425;W 90° 28.033)","http://www.geocaching.com/seek/cache_details.aspx?guid=a652ef92-ae92-479c-afb1-62b8ed2ba733"];
+geoCache[107]=["GCN6Y9","Trees and Tank You",38.784083,-90.3273,"multi","miket777","notFound","noTB","3","1","Micro","(N 38° 47.045;W 90° 19.638)","http://www.geocaching.com/seek/cache_details.aspx?guid=f1eccab4-a0e9-4df2-8e6f-123123c20999"];
+geoCache[108]=["GCNGC3","Patience is a Virtue - Part 3",38.7161,-90.493033,"traditional","vineyard20","notFound","noTB","1","1","Micro","(N 38° 42.966;W 90° 29.582)","http://www.geocaching.com/seek/cache_details.aspx?guid=b09e73e0-5777-4157-a3b9-37a180e999e1"];
+geoCache[109]=["GCNPB5","Creve Coeur Cache",38.64895,-90.432717,"traditional","Backpacker G5","notFound","TB","1","2","Regular","(N 38° 38.937;W 90° 25.963)","http://www.geocaching.com/seek/cache_details.aspx?guid=386f966c-d148-4173-9fe7-de9a3ed991f0"];
+geoCache[110]=["GCP0MK","The Last Whole One",38.550833,-90.546367,"unknown","GB-Cacher","notFound","noTB","1_5","2_5","Regular","(N 38° 33.163;W 90° 32.581)","http://www.geocaching.com/seek/cache_details.aspx?guid=1909b8ec-9579-4de4-a600-f56de7f4ab71"];
+geoCache[111]=["GCP9BN","Missouri Music Box",38.718283,-90.5123,"traditional","TeamJames","notFound","noTB","2_5","1_5","Regular","(N 38° 43.097;W 90° 30.738)","http://www.geocaching.com/seek/cache_details.aspx?guid=97919a27-02fb-48f9-bd31-f4faf8b9e5d0"];
+geoCache[112]=["GCP9PQ","Manchester Crossing",38.584333,-90.617767,"unknown","GB-Cacher","notFound","noTB","1_5","1_5","Micro","(N 38° 35.060;W 90° 37.066)","http://www.geocaching.com/seek/cache_details.aspx?guid=af30562d-2fa7-465e-a22b-dfd6ced7dad0"];
+geoCache[113]=["GCPATN","Walking with critters.",38.382017,-90.38395,"unknown","flatkatz","notFound","TB","2","3","Regular","(N 38° 22.754;W 90° 23.624)","http://www.geocaching.com/seek/cache_details.aspx?guid=85395a7d-3795-4840-885b-af62c1ae073e"];
+geoCache[114]=["GCPFJ5","Back and Forth",38.671833,-90.3709,"traditional","team Norman","notFound","noTB","1_5","1","Micro","(N 38° 40.310;W 90° 22.254)","http://www.geocaching.com/seek/cache_details.aspx?guid=1e5c1440-0118-49dc-8ad8-bf93392569db"];
+geoCache[115]=["GCPFMN","Sammy's cache",38.671917,-90.394117,"traditional","team Norman","notFound","noTB","2","2","Regular","(N 38° 40.315;W 90° 23.647)","http://www.geocaching.com/seek/cache_details.aspx?guid=94a7c1ec-64ef-401b-a718-7827703fd6bc"];
+geoCache[116]=["GCPFN8","'Wheelie' great fun",38.66935,-90.377683,"traditional","team Norman","notFound","noTB","2","2","Small","(N 38° 40.161;W 90° 22.661)","http://www.geocaching.com/seek/cache_details.aspx?guid=29e8b644-09eb-4c2f-a005-5d3cdb422fe5"];
+geoCache[117]=["GCPG7C","Patience is a Virtue - Part Last",38.701117,-90.497033,"unknown","vineyard20","notFound","noTB","1_5","1_5","Small","(N 38° 42.067;W 90° 29.822)","http://www.geocaching.com/seek/cache_details.aspx?guid=4b20c351-33c0-4330-9144-a2c6a39023b6"];
+geoCache[118]=["GCPZJB","Sherman Beach Micro",38.53345,-90.585133,"traditional","Didg Guy","notFound","noTB","2","1_5","Micro","(N 38° 32.007;W 90° 35.108)","http://www.geocaching.com/seek/cache_details.aspx?guid=b865ea90-1151-4d4b-8a8b-5bac23942e07"];
+geoCache[119]=["GCQ19W","Stacy's Mom",38.668733,-90.394167,"traditional","team Norman","notFound","TB","1_5","1_5","Regular","(N 38° 40.124;W 90° 23.650)","http://www.geocaching.com/seek/cache_details.aspx?guid=223de246-61f4-4bed-96b1-f9231fbe7602"];
+geoCache[120]=["GCQ1B6","Industrial Ruins",38.536333,-90.575,"traditional","Didg Guy","notFound","noTB","2","2","Micro","(N 38° 32.180;W 90° 34.500)","http://www.geocaching.com/seek/cache_details.aspx?guid=3eb97e84-e791-466a-8235-90103b1944e5"];
+geoCache[121]=["GCQKEQ","Awesome Power",38.569867,-90.5343,"unknown","dadoo2","notFound","noTB","3","2_5","Micro","(N 38° 34.192;W 90° 32.058)","http://www.geocaching.com/seek/cache_details.aspx?guid=e4922e30-1c92-4938-b225-fbab9982e533"];
+geoCache[122]=["GCQZJZ","Old Bridge #4",38.509883,-90.5889,"multi","Dime-osaur","notFound","noTB","2","1_5","Micro","(N 38° 30.593;W 90° 35.334)","http://www.geocaching.com/seek/cache_details.aspx?guid=6a2bd1e7-d7d0-4d42-a86f-72a084fa4455"];
+geoCache[123]=["GCR1A4","Tenderfoot Cache",38.5719,-90.27755,"multi","Sniper1","notFound","noTB","1","2","Micro","(N 38° 34.314;W 90° 16.653)","http://www.geocaching.com/seek/cache_details.aspx?guid=f35a7748-e168-4512-97ae-97b6e3df2cdd"];
+geoCache[124]=["GCR7E2","Lakeside Trail",38.792433,-90.204733,"traditional","JC_Geo","notFound","noTB","1_5","1_5","Small","(N 38° 47.546;W 90° 12.284)","http://www.geocaching.com/seek/cache_details.aspx?guid=53b41dfd-a479-40e9-ba4d-702259533a34"];
+geoCache[125]=["GCR93E","Star Cache",38.5729,-90.307333,"multi","Sniper1","notFound","noTB","2_5","2","Micro","(N 38° 34.374;W 90° 18.440)","http://www.geocaching.com/seek/cache_details.aspx?guid=2b0cfa7e-37b6-4887-95e9-f4871a36feb9"];
+geoCache[126]=["GCRCJB","Spirit Field Micro",38.795267,-90.202067,"traditional","JC_Geo","notFound","noTB","2_5","1","Micro","(N 38° 47.716;W 90° 12.124)","http://www.geocaching.com/seek/cache_details.aspx?guid=491006ec-380b-4c42-b412-595fa3966ade"];
+geoCache[127]=["GCRE6W","Muggles Haven (St Ferdinand Park)",38.801267,-90.326533,"traditional","JC_Geo","notFound","noTB","1_5","1","Micro","(N 38° 48.076;W 90° 19.592)","http://www.geocaching.com/seek/cache_details.aspx?guid=f5475d7c-c66c-4b7b-abe2-1994c6d85875"];
+geoCache[128]=["GCRF9F","Chinkapin Cache",38.508267,-90.5872,"traditional","Utapao72","notFound","noTB","2","2_5","Small","(N 38° 30.496;W 90° 35.232)","http://www.geocaching.com/seek/cache_details.aspx?guid=d717f455-8036-4609-8303-1d78ae831ec4"];
+geoCache[129]=["GCRM4B","Tie a Yellow Ribbon",38.782533,-90.289,"multi","JC_Geo","notFound","noTB","1","2","Regular","(N 38° 46.952;W 90° 17.340)","http://www.geocaching.com/seek/cache_details.aspx?guid=e1137abe-bbf1-45c3-a483-3d6f197d5ee6"];
+geoCache[130]=["GCRRVT","By the Pond",38.530567,-90.5787,"traditional","konopapw","notFound","noTB","2","3","Regular","(N 38° 31.834;W 90° 34.722)","http://www.geocaching.com/seek/cache_details.aspx?guid=01337ccb-7059-419b-a3f3-01e398923334"];
+geoCache[131]=["GCRZH5","Roman Ruins",38.525633,-90.584617,"traditional","Crowesfeat30","notFound","noTB","1_5","3","Regular","(N 38° 31.538;W 90° 35.077)","http://www.geocaching.com/seek/cache_details.aspx?guid=6e620faa-beee-4297-a36f-de5025dca54d"];
+geoCache[132]=["GCT255","Trek Through Tyson",38.52245,-90.581417,"traditional","JanS03","notFound","noTB","1","3","Regular","(N 38° 31.347;W 90° 34.885)","http://www.geocaching.com/seek/cache_details.aspx?guid=671ddf8f-30da-4bb3-be9b-db0707dd49a5"];
+geoCache[133]=["GCT39N","Magellan Cache Reduxion",38.55555,-90.547317,"traditional","Strider","notFound","noTB","1","2","Regular","(N 38° 33.333;W 90° 32.839)","http://www.geocaching.com/seek/cache_details.aspx?guid=78a1e533-6517-4310-8f15-23728571151b"];
+geoCache[134]=["GCT4EC"," it is what it is!",38.65165,-90.572167,"unknown","GB-Cacher","notFound","noTB","1_5","1_5","Small","(N 38° 39.099;W 90° 34.330)","http://www.geocaching.com/seek/cache_details.aspx?guid=666c735d-e1f4-44b1-a275-b5d3038828f3"];
+geoCache[135]=["GCT5E7","Valley of Shadows",38.524067,-90.582633,"traditional","JanS03","notFound","noTB","1_5","3","Small","(N 38° 31.444;W 90° 34.958)","http://www.geocaching.com/seek/cache_details.aspx?guid=4c3a63c6-05cf-43bf-af85-621037e235b6"];
+geoCache[136]=["GCT7YC","Thorn In The Hand",38.566667,-90.55,"unknown","dadoo2","notFound","noTB","2_5","1","Micro","(N 38° 34.000;W 90° 33.000)","http://www.geocaching.com/seek/cache_details.aspx?guid=183e3293-1216-44b2-b06f-2db58e9757c0"];
+geoCache[137]=["GCT9B8","Journey's End",38.523817,-90.579833,"traditional","JanS03","notFound","noTB","1_5","3","Regular","(N 38° 31.429;W 90° 34.790)","http://www.geocaching.com/seek/cache_details.aspx?guid=cdd2168e-d144-450a-803f-58fc64e79ecf"];
+geoCache[138]=["GCTAFG","A bit out of reach",38.608,-90.615783,"unknown","GB-Cacher","notFound","noTB","2","2","Small","(N 38° 36.480;W 90° 36.947)","http://www.geocaching.com/seek/cache_details.aspx?guid=6ac82030-4817-4e27-a71b-6ebef6689b38"];
+geoCache[139]=["GCTDHJ","WX Guesser Cache",38.475,-89.883217,"unknown","NotNutts","notFound","noTB","3","2","Regular","(N 38° 28.670;W 89° 53.231)","http://www.geocaching.com/seek/cache_details.aspx?guid=609725ae-8db2-401d-ad1d-12f58f57763a"];
+geoCache[140]=["GCTJ49","'Odie's Farm'",38.715783,-90.402033,"traditional","bluedaisy","notFound","noTB","1","1_5","Regular","(N 38° 42.947;W 90° 24.122)","http://www.geocaching.com/seek/cache_details.aspx?guid=5cfece46-9e4b-4e32-a184-cfb7546b6e3a"];
+geoCache[141]=["GCTJD9","Buster's Cache",38.721717,-90.4724,"traditional","bluedaisy","notFound","noTB","1","2_5","Regular","(N 38° 43.303;W 90° 28.344)","http://www.geocaching.com/seek/cache_details.aspx?guid=29c80fcb-2543-443a-ad35-f0fa96e62a48"];
+geoCache[142]=["GCTX9Q","Bridgeton Bushwack",38.748433,-90.402667,"traditional","bluedaisy","notFound","TB","2","3","Regular","(N 38° 44.906;W 90° 24.160)","http://www.geocaching.com/seek/cache_details.aspx?guid=28b46ebe-247c-44f7-8a64-2f73024c5c99"];
+geoCache[143]=["GCTXA2","Lakeside Stroll",38.722533,-90.492383,"traditional","bluedaisy","notFound","noTB","1","1_5","Small","(N 38° 43.352;W 90° 29.543)","http://www.geocaching.com/seek/cache_details.aspx?guid=aefa0bf7-53c3-42c9-a456-aefa177012e8"];
+geoCache[144]=["GCTYV3","Piggie",38.558333,-90.458333,"unknown","dadoo2","notFound","TB","3","2","Regular","(N 38° 33.500;W 90° 27.500)","http://www.geocaching.com/seek/cache_details.aspx?guid=008aadd0-46c3-4c33-b5d5-7f7f3acfd091"];
+geoCache[145]=["GCV0PN","Other Ways of Speaking - A",38.5418,-90.60935,"unknown","Crowesfeat30","notFound","noTB","2_5","2_5","Regular","(N 38° 32.508;W 90° 36.561)","http://www.geocaching.com/seek/cache_details.aspx?guid=78bfbd0e-04da-4997-8b4f-076918e2f5eb"];
+geoCache[146]=["GCV2B8","W1W Ghost Town - Freebourn",38.767267,-90.408417,"traditional","2wheeljunkie","notFound","noTB","2","2_5","Regular","(N 38° 46.036;W 90° 24.505)","http://www.geocaching.com/seek/cache_details.aspx?guid=4a2f75fb-8adf-4176-8834-23226ee141d4"];
+geoCache[147]=["GCV4GM","Buder Park Micro",38.714233,-90.384083,"traditional","bluedaisy","notFound","noTB","2","1_5","Micro","(N 38° 42.854;W 90° 23.045)","http://www.geocaching.com/seek/cache_details.aspx?guid=7ddd334b-b595-4c55-9ce6-3dcd780054c6"];
+geoCache[148]=["GCV4GT","Squirrel's Hideaway",38.75605,-90.410083,"traditional","bluedaisy","notFound","noTB","2","2_5","Small","(N 38° 45.363;W 90° 24.605)","http://www.geocaching.com/seek/cache_details.aspx?guid=7638e021-2028-4377-a5d9-9a1634dc1f5f"];
+geoCache[149]=["GCV89C","Getting Smoked!",38.545217,-90.6118,"traditional","TheMadChef","notFound","noTB","2","2_5","Small","(N 38° 32.713;W 90° 36.708)","http://www.geocaching.com/seek/cache_details.aspx?guid=1f02d9b9-a53c-4962-8f84-0e5ba346ec4d"];
+geoCache[150]=["GCVBE9","Geocacher's Delight",38.756683,-90.447583,"traditional","bluedaisy","notFound","noTB","2","2","Small","(N 38° 45.401;W 90° 26.855)","http://www.geocaching.com/seek/cache_details.aspx?guid=b62ed783-c4fe-4cbe-93a7-8d3474c1ab8b"];
+geoCache[151]=["GCVH62","Woodchuck's River View",38.53855,-90.595883,"traditional","Crowesfeat30","notFound","noTB","2","2_5","Regular","(N 38° 32.313;W 90° 35.753)","http://www.geocaching.com/seek/cache_details.aspx?guid=489f67fe-93e0-438d-aeba-ded8c616ca5b"];
+geoCache[152]=["GCVH6V","Al Foster Trail Cache - Sherman Beach Trailhead",38.535867,-90.5881,"traditional","Crowesfeat30","notFound","noTB","1_5","1","Small","(N 38° 32.152;W 90° 35.286)","http://www.geocaching.com/seek/cache_details.aspx?guid=ac553960-b922-473f-988d-c698be629e6d"];
+geoCache[153]=["GCVNPV","MY PAIN",38.7087,-90.312983,"traditional","rocksusan","notFound","noTB","2","1","Micro","(N 38° 42.522;W 90° 18.779)","http://www.geocaching.com/seek/cache_details.aspx?guid=69ee42e0-e1f7-4f68-b90b-5a20a0e83b30"];
+geoCache[154]=["GCVVBM","Simply Micro",38.739033,-90.3822,"traditional","bluedaisy","notFound","noTB","1","1_5","Micro","(N 38° 44.342;W 90° 22.932)","http://www.geocaching.com/seek/cache_details.aspx?guid=adb942c8-544a-4ba1-8c92-1fae1a9ef689"];
+geoCache[155]=["GCVWE7","Under Water Cache",38.543,-90.612783,"traditional","Didg Guy","notFound","noTB","2","2","Micro","(N 38° 32.580;W 90° 36.767)","http://www.geocaching.com/seek/cache_details.aspx?guid=43f02b18-1bd0-4606-94e6-7e31511c3bfb"];
+geoCache[156]=["GCVX07","Bike Hike",38.513867,-90.435083,"multi","DizzyD","notFound","TB","2","2","Regular","(N 38° 30.832;W 90° 26.105)","http://www.geocaching.com/seek/cache_details.aspx?guid=af232015-f36c-4eb5-aa40-ab22e7b9876a"];
+geoCache[157]=["GCWHTA","Louis Louis Series 3",38.267067,-90.374317,"traditional","Pika Wants Cake","notFound","noTB","1","1_5","Small","(N 38° 16.024;W 90° 22.459)","http://www.geocaching.com/seek/cache_details.aspx?guid=bf054dad-0af7-4cf5-96a0-57d80799f36e"];
+geoCache[158]=["GCWJBR","Vance Road Nanocache",38.552017,-90.499417,"traditional","Statfinder","notFound","noTB","2","1","Micro","(N 38° 33.121;W 90° 29.965)","f0a1-452e-9bc9-5bf9b944c5dc                                     A quick grab in the South F"];
+geoCache[159]=["GCWZT9","Independence via Metro",38.606767,-90.350067,"multi","Faery_G","notFound","noTB","2","1_5","Micro","(N 38° 36.406;W 90° 21.004)","th him in the winter- when conditions are right the air
+will be buzzing with snowballs!). "];
+geoCache[160]=["GCX1WE","One Degree of Separation CHUBB  8)",38.528333,-90.586333,"traditional","xeviel","notFound","noTB","1_5","1_5","Micro","(N 38° 31.700;W 90° 35.180)","http://www.geocaching.com/seek/cache_details.aspx?guid=fe21e24c-08f4-41bb-8e90-91835bd27caa"];
+geoCache[161]=["GCX42K","Schoolteacher's picnic",38.730717,-90.36025,"traditional","team Norman","notFound","noTB","1_5","1_5","Micro","(N 38° 43.843;W 90° 21.615)","bbae-48a0-8a9e-034adfbf23bbu Chris Wren's Mom (id = 785656, ref <BR>VFW VIETNAM WALL (id = "];
+geoCache[162]=["GCXP93","Miner League 1",38.75065,-89.9822,"traditional","CacheRcheck","notFound","TB","1","1_5","Micro","(N 38° 45.039;W 89° 58.932)","b][/red]                                                        <BR>The Great Pumpkin (id ="];
+geoCache[163]=["GCXP98","Miner League 2",38.751883,-89.979983,"traditional","CacheRcheck","notFound","noTB","1","1","Micro","(N 38° 45.113;W 89° 58.799)"," (id = 782686, ref = TB1927W)
+<BR>Home Town Travel Bug (id = 499528, ref = TBZHJQ)
+<BR>Te"];
+geoCache[164]=["GCXP9A","Miner League 3",38.749367,-89.98345,"traditional","CacheRcheck","notFound","noTB","1","1_5","Micro","(N 38° 44.962;W 89° 59.007)","http://www.geocaching.com/seek/cache_details.aspx?guid=9d312793-f92e-41b9-9e9f-15ea9211bbc1"];
+geoCache[165]=["GCXP9D","Miner League 4",38.75505,-89.980733,"traditional","CacheRcheck","notFound","noTB","1","2_5","Micro","(N 38° 45.303;W 89° 58.844)","h necklaces,  and a couple of lighthouse pins.ats
+6/6/07
+0:00 <BR>beany bank (id = 68282,"];
+geoCache[166]=["GCXR4J","Cache I'm still looking for the clues...",38.635833,-90.346683,"unknown","vineyard20","notFound","noTB","1_5","1","Micro","(N 38° 38.150;W 90° 20.801)","Simple Park & Grab.  Rural roads will be traveled to get to the cache.                     "];
+geoCache[167]=["GCXWE0","Mascoutah Toy Box",38.46815,-89.827633,"traditional","NotNutts","notFound","noTB","1_5","1_5","Regular","(N 38° 28.089;W 89° 49.658)","ight have to feel for this one " if you dair" if you go at night you will defnetly need a l"];
+geoCache[168]=["GCXWKQ","Faeried Fable #2",38.639833,-90.29405,"unknown","Faery_G","notFound","noTB","2_5","2_5","Micro","(N 38° 38.390;W 90° 17.643)","caution if the river is above flood stage.
+ 
+Placed with permission from the Village of P"];
+geoCache[169]=["GCY1RA","90th Meridian",38.743083,-90,"traditional","2_cats","notFound","noTB","1","1_5","Small","(N 38° 44.585;W 90° 00.000)","Just Playing ..is a Nursery Rhythm puzzle.  You will have to read into the words or read be"];
+geoCache[170]=["GCY64G","Magpie Nest",38.418517,-90.346667,"unknown","flatkatz","notFound","noTB","3","2","Small","(N 38° 25.111;W 90° 20.800)","a14d-42a7-af51-da2f9da2af37                                     <b>The above coordinates ar"];
+geoCache[171]=["GCYDCW","PRIMAL",38.588983,-90.5823,"traditional","Didg Guy","notFound","noTB","2_5","1_5","Small","(N 38° 35.339;W 90° 34.938)","ding like a fishes’ tail." Later records describe only one image of the monster.
+
+Please "];
+geoCache[172]=["GCYE19","Wildwood Cache",38.586517,-90.641233,"traditional","widowmaker1127","notFound","noTB","1","1_5","Regular","(N 38° 35.191;W 90° 38.474)","er, The St. Louis Observer, and began to advocate the abolition of slavery. Despite the bit"];
+geoCache[173]=["GCYHFW","Take a Break",38.75005,-89.979417,"traditional","2_cats","notFound","noTB","1","1","Micro","(N 38° 45.003;W 89° 58.765)","You will be coming up the hollow when you get near the cache. The trail turns North and goe"];
+geoCache[174]=["GCYT6C","Summer Songs",38.735383,-90.294967,"traditional","Frostygreg","notFound","TB","1","1","Regular","(N 38° 44.123;W 90° 17.698)","9.jpg"
+     border="0" alt=
+     "HOME PAGE - St. Louis Area Geocachers Association. Memb"];
+geoCache[175]=["GCZ10P","Bridgeway Cache",38.7351,-90.424783,"traditional","bluedaisy","notFound","noTB","1","2_5","Small","(N 38° 44.106;W 90° 25.487)","amp;bg=1"
+     border="0" title="Profile for smilingsteeles" alt=
+     "Profile for smili"];
+geoCache[176]=["GCZ1EN","A Penny for Maliha",38.6347,-90.290117,"letterbox","puttze","notFound","TB","1","1_5","Small","(N 38° 38.082;W 90° 17.407)","geocaching.com/stats/img.aspx?txt=SLAGA+Member&amp;uid=08058cd6-d067-4e45-a372-7a709112d644"];
+geoCache[177]=["GCZ4BE","Sandy Creek Covered Bridge",38.291683,-90.526033,"traditional","ibew ret","notFound","TB","2","2","Regular","(N 38° 17.501;W 90° 31.562)","d in 1882 having four different names over time. The above names where names of this cemete"];
+geoCache[178]=["GCZ7TP","The Cat's Airport Travel Bug Inn",38.749,-90.40055,"traditional","THE CAT","notFound","TB","2","2","Regular","(N 38° 44.940;W 90° 24.033)","nce
+respectively. Here’s a very brief amount of info regarding both
+Louis’. Hope you’ll e"];
+geoCache[179]=["GCZN80","Magical Latitude",38.73,-90.294817,"multi","Mean Gene","notFound","noTB","2","1_5","Micro","(N 38° 43.800;W 90° 17.689)","font face="Arial" size="2">In the latter part of 1979, at the
+request of a friend (Dana St"];
+geoCache[180]=["GCZQ9F","Horace Greeley Meets Santa Claus",38.73005,-90.2982,"multi","Mean Gene","notFound","noTB","1_5","2","Micro","(N 38° 43.803;W 90° 17.892)","This is a replacement cache for my original Patience is a Virtue -
+Part 2. It survived ver"];
+geoCache[181]=["GCZVG7","Aidan 1",38.2944,-90.526917,"traditional","ibew ret","notFound","noTB","1_5","1_5","Micro","(N 38° 17.664;W 90° 31.615)","6; text-decoration: none;">
+provided by <a rel="nofollow" href=
+"http://www.website-hit-c"];
+
+}
+
+function loadMap() {
+   arrayLoader();
+   buildInfoWindows();
+   initCircle();
+   drawCircle();
+   fitGeocaches();
+   buildLegend();
+}
+
+var endtime = new Date();
+var elapsed = endtime.getTime() - starttime.getTime();
+//alert('Elapsed: ' + elapsed);
+</script>
+</html>

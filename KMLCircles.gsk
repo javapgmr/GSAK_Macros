@@ -1,0 +1,72 @@
+#*******************************************
+# MacDescription = create a kml file with a 161m (528 ft) radius circle around each cache
+# MacFileName = KMLCircles.gsk
+# MacAuthor = rutson
+# MacVersion=1.0
+# MacUrl=
+#*******************************************
+
+#This macro was written by rutson and posted at http://gsak.net/board/index.php?showtopic=4961&view=findpost&p=28392
+#moved tot he macro library at user request.
+
+$KMLFile=$_Install + "\temp\gsak.kml"
+
+$out = $head
+
+GOTO position=top
+
+WHILE not($_EoL)
+	$out = $out + Replace("circle",$d_Code,$circhead,TRUE)
+	$lat1 = $d_latitude
+	$lon1 = $d_longitude
+	
+	$angle =0
+	$step  = 10
+	
+	$coords = ""
+
+	WHILE $angle <=360
+		$data = $lat1 + " " + $lon1 + ";" + "$angle;161;T"
+		$text = GCalc($data,"Project")
+		$coords = $coords + Extract($text,";",2) + "," +  Extract($text,";",1)  + ",0" + "$_Newline"
+		$angle=$angle + $step
+	ENDWHILE
+	
+	$out = $out + $coords + $_NewLine + $circtail
+	GOTO position=next
+ENDWHILE
+
+$out = $out + $tail
+
+$tmp = PutFile($kmlfile,$out)
+
+FILEOPEN file=$kmlfile
+
+<Data> Varname=$Head
+<Folder>
+<name>KML Circle Generator Output</name>
+<visibility>1</visibility>
+<EndData>
+
+<data> Varname=$circHead
+<Placemark>
+<name>circle</name>
+<visibility>1</visibility>
+<Style>
+<geomColor>ff0000ff</geomColor>
+<geomScale>1</geomScale></Style>
+<LineString>
+<coordinates>
+<EndData>
+
+<data> Varname=$circTail
+</coordinates>
+</LineString>
+</Placemark>
+<enddata>
+
+<data> Varname=$tail
+</Folder>
+<enddata>
+
+

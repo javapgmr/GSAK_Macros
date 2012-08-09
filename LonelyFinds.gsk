@@ -1,0 +1,204 @@
+################################################################################
+#        Report on Lonely Finds
+#        by Edward Reid (paleolith) 2012
+#          license granted to use for any purpose at no charge,
+#            provided you do not charge or claim authorship
+
+# Adds fields to the current database for the date of the previous find and
+# number of months since the previous find.
+
+# The purpose is for analyzing one's "my finds" database to determine whether
+# one meets requirements for a "lonely/forgotten caches" challenge cache. This
+# version is specifically designed for GC26395 but may be usable for other
+# challenge caches, and may be extended in the future.
+
+# Versions prior to 1.0 consisted of a SQL statement to be executed in SQLite
+# Spy. This worked but was prone to various errors due to the difficulty of
+# getting all the pieces in place. This macro basically bundles the procedure.
+
+# MacDescription = Locate finds vs months since previous find
+# MacAuthor = Edward Reid / paleolith
+# MacVersion = 1.1
+# MacFileName = LonelyFinds.gsk
+
+# Change log:
+#   1.1: improve description
+#   1.0: initial release as a macro. Previously just the SQL was distributed.
+
+################################################################################
+
+# DOCUMENTATION AND NOTES
+
+# To get anything useful from this macro, you MUST first load ALL logs for the
+# caches you want to analyze, which is usually all the caches you've found. Note
+# that GSAK version 8 is essential, as previously there was no supported method
+# of loading all logs for your found caches into GSAK.
+
+# Currently the macro will generate the new fields ONLY for the user whose ID is
+# stored by GSAK as the "owner". There's nothing essential about this, but I
+# haven't found a reason to go to the trouble of enabling anything else (such as
+# allowing an option).
+
+# Steps to get useful results:
+
+# Step 1: install GSAK version 8 if you haven't done so already. Version 8 is
+# important because it had the geocaching.com direct access features.
+
+# Step 2: If you don't already have an up to date GSAK database of your finds,
+# make one. Create a new GSAK database if necessary. Run the My Finds PQ and
+# load it into that DB. (If you are using GSAK direct access to PQ results, note
+# that the My Finds PQ cannot be downloaded that way as of October 2011. It just
+# doesn't show up. You must download it from the web page or get it by email.)
+
+# Step 3: In GSAK, with your My Finds database open, do "geocaching.com access
+# -> Get Logs". If this is your first time using direct access, you'll need to
+# log on via GSAK. Pick "All in current filter" and set "Max logs per cache" to
+# 99999. Click OK. Wait ... possibly a long time. See additional notes below.
+
+#*# More notes on "Get logs": If you've found more than a few dozen caches,
+#*# go for coffee. If you've found thousands, make sure your computer isn't
+#*# configured to go to sleep overnight. Getting logs does not count against
+#*# your direct access limits, but the rate is throttled and amounts to about
+#*# 500 logs per minute, so if you've found thousands of caches, it will take
+#*# a while--one user with 7200 finds reports that it took 20 hours.
+#*# 
+#*# If you are doing an update run, it's worth setting a filter to include
+#*# just the caches you've found since the last time you did this "get all
+#*# logs". After all, logs made to caches you've already analyzed are not
+#*# relevant to the challenge unless they are "late logs", log date changes,
+#*# log deletions, or other unusual events which invalidate your "lonely
+#*# months" claim. The easy way to set such a filter is to enter in the
+#*# "Mfilter (where)" box something like
+#*# 
+#*# foundbymedate>='2011-12-01'
+#*# 
+#*# of course replacing the date with the cutoff date you want to use.
+
+# Step 4: Run this macro.
+
+# Step 5: Use View->Add/Remove Columns to display the custom data fields
+# MonthsSincePreviousFind and DateOfPreviousFind. These are the fields added by
+# the macro. You will very likely want to order by MonthsSincePreviousFind.
+
+# You can do various things in GSAK. Other than just browsing the generated data,
+# one important thing you can do is to filter the list and then create a
+# bookmark list from within GSAK, using Geocaching.com access -> Add to bookmark
+# list. (You must first create an empty bookmark list using the gc.com web
+# site.)
+
+# When the macro cannot calculate the loneliness numbers, it does not alter the
+# contents of the two custom fields (described in step 5). This enables you to 
+# enter those manually if appropriate, and your entries will remain.
+
+# LIMITATIONS AND EXPLANATIONS
+
+# The limitations are minor, but some of them did confuse me, so I'll list them
+# here.
+
+# -- Event caches are not considered. This makes sense since normally all event
+# finds ("Attended") are on the same date and would never be useful for the
+# challenge.
+
+# -- If you've logged more than one find on a cache (rare, but can occur in
+# valid situations), the report will show both finds, with the loneliness figure
+# for each. ******************* NOT SURE WHAT THE MACRO IS GOING TO DO
+
+# -- If you were FTF and there is no Publish Listing log (caches published
+# before August 2005), the macro will skip it. This is because it looks for a
+# previous "Found it" or "Publish Listing" log, and in this case your log is the
+# first for the cache. In this case the log data is insufficient to determine
+# the lonely time, and the Placed date is unreliable because it's under the
+# control of the hider. If you think this is relevant to you, there's a
+# technique using SQLite Spy which I've not incorporated into a macro. If you
+# know how to use SQLite Spy, the query is
+
+# select myc.name 'Cache name',myl.lparent 'GC code',myl.ldate 'log date'
+# from (caches myc join logs myl on myc.code = myl.lparent)
+#     left join logs other on myl.lparent=other.lparent and myl.ldate>
+#     other.ldate
+# where myl.ltype='Found it' and myl.ldate<'2005-08-01' and myl.lby like
+#        'YOUR GC.COM NAME HERE'
+#     and other.ltype is null
+# order by name;
+
+# -- If there were other finders on the same day as your qualifying find, my
+# method cannot determine whether your find should be considered as a qualifying
+# find or not. GSAK and gc.com just don't have that information. In other words,
+# if you were the first finder of the day, or in a group that found it together,
+# you should get credit, but not if you found it later. The lonely months and
+# previous find date for these caches will be calculated as though you were the
+# first finder of the day, so you have to check them.
+
+# -- If you find a cache on the day of publication, the loneliness fields are
+# not calculated. I don't consider this a problem since it would be a zero-
+# lonely-month find. If you found it before publication, it's also not shown;
+# this is usually a test find (you accompanied the hider).
+
+# -- Sometimes if you find a cache the day after it is published, the macro will
+# not calculate the loneliness fields. This has to do with time zones and the
+# way log dates and times are recorded in the database. I could probably figure
+# this out and fix it, but it's irrelevant for the challenge because it would be
+# a 0-month (or rarely a 1-month) find anyway.
+
+################################################################################
+
+# Version check (might run on earlier builds of v8 but not tested)
+VERCHECK Version=8.0.1.72 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+
+Option Explicit=Yes
+declare var=$rslt               type=string
+declare var=$DBpath             type=string
+declare var=$CtrlKey            type=boolean
+declare var=$ownerID            type=numeric
+declare var=$CustomDateExists   type=boolean
+declare var=$CustomMonthsExists type=boolean
+
+# Not using ctrl right now but leave the code for possible use
+
+PreProcess Ctrl=$CtrlKey
+
+# determine who we are analyzing
+
+$ownerID = val(sysinfo("gsakini;TfmConfig;EdtGeoName.Text"))
+
+# See if the custom fields are already present in the database.
+# Add them if not.
+# Don't delete and re-add, since the user might have manual entries.
+# If one field is present and not the other, we don't know what to do.
+
+$rslt = SQLite("SQL","SELECT fname FROM CustomLocal where fname='DateOfPreviousFind'")
+$CustomDateExists = $rslt = "DateOfPreviousFind"
+$rslt = SQLite("SQL","SELECT fname FROM CustomLocal where fname='MonthsSincePreviousFind'")
+$CustomMonthsExists = $rslt = "MonthsSincePreviousFind"
+
+BeginCase
+  Case $CustomMonthsExists and $CustomDateExists
+    # Do nothing. In particular, do NOT delete and recreate the fields, as we want
+    # to leave alone any manually entered figures that we can't compute.
+  Case not($CustomMonthsExists) and not($CustomDateExists)
+    # create the custom fields
+    $rslt=CustomConfig("Add","DateOfPreviousFind,date,local,,")
+    $rslt=CustomConfig("Add","MonthsSincePreviousFind,integer,local,,")
+  OtherWise
+    cancel msg="Custom fields inconsistent in database"
+endcase
+
+# set up a temporary DB and create a table
+
+$rslt=SQLite("SQL","DETACH DATABASE workdb","error=Trap")
+$rslt=SQLite("SQL","ATTACH DATABASE '' AS workdb","")
+$rslt=SQLite("SQL","CREATE TABLE workdb.months (cachecode string, mydate date, prevdate date, prevmonths integer)","")
+
+# Collect stats into temporary table
+
+$rslt=SQLite("SQL","insert into workdb.months SELECT myl.lparent, myl.ldate,max(other.ldate), strftime('%Y',myl.ldate)*12+strftime('%m',myl.ldate)- (strftime('%Y',max(other.ldate))*12+strftime('%m',max(other.ldate))) from logs myl join logs other on myl.lparent=other.lparent and myl.ldate>other.ldate where (myl.ltype='Found it' or myl.ltype='Webcam Photo Taken') and myl.lownerid=$ownerID and (other.ltype='Found it' or other.ltype='Publish Listing' or other.ltype='Webcam Photo Taken') group by myl.lparent,myl.ldate","")
+
+# Delete stats for all but the first find on each cache.
+
+$rslt=SQLite("SQL","DELETE from months where cachecode in (select min(cachecode) from months t2 where t2.cachecode=months.cachecode and t2.mydate>months.mydate)","")
+
+# Move the stats into the caches table
+
+$rslt=SQLite("SQL","UPDATE custom set MonthsSincePreviousFind=(select prevmonths from months where cachecode=ccode),DateOfPreviousFind=(select prevdate from months where cachecode=ccode) where exists (select * from months where cachecode=ccode)","")
+
+RETURN

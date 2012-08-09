@@ -1,0 +1,109 @@
+############################################
+# MacVersion = 1.00
+# MacDescription = load New Delorme GPX
+# MacFileName = loadNewDelorme.gpx
+# MacAuthor = javapgmr
+############################################
+
+
+GOSUB Name=DeclareVar
+DEBUG Status=ON
+
+GOSUB Name=AutoDetect
+
+
+BEGINSUB Name=AutoDetect
+	$Model = "GPS"
+	$Make = "Garmin and DeLorme"
+
+	# Searching for a Colorado or Oregon
+	# Use the new GPSInfo("GarminPath") function which returns path to GarminDevice.xml
+
+	$result=GPSInfo("GarminPath")
+
+	IF FileExists($result)
+			$Drive = Extract($result,":",1)
+	$Model = GPSInfo("GarminModel")
+		$SWversion = GPSInfo("GarminVersion")
+		$SWver = Val($SWversion) / 100
+		$Make = "Garmin"
+		MSGOK msg="Found $Make $Model running software version $SWver on Drive $Drive:\"
+	ELSE
+		# Search for a DeLorme
+		$result = GPSinfo("DelormeSdCard")
+		IF $result <> ""
+			$Drive = Extract($result,":",1)
+
+			$Model = "PN-40"
+			$SWversion = ""
+			$SWver = 0
+			$Make = "DeLorme"
+			MSGOK msg="Found $Make $Model on Drive $Drive:\"
+		ELSE
+			# Nothing found
+			MSGOK msg="GPSr not detected - please check connection or enter file path manually"
+		ENDIF
+	ENDIF
+	SHOWSTATUS msg="$status" Display=Off
+ENDSUB
+
+BEGINSUB Name=DeclareVar
+#*******************************************************
+#   Variable declarations for
+#   loadNewDelorme.gsk
+#
+#   Generated 07/17/2010 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+DECLARE Var=$Drive Type=String
+Declare Var=$Make Type=String
+Declare Var=$Model Type=String
+Declare Var=$result Type=String
+Declare Var=$SWver Type=Numeric
+Declare Var=$SWversion Type=String
+ENDSUB
+
+
+<data> VarName=$GPX
+[TfmExportGpx]
+fnmTo.Text=c:\apps\gps\work_gpz.gpx
+cbxLimit.Text=10
+cbxUserNotes.Checked=False
+chkActual.Checked=False
+chkDefault.Checked=False
+chkExtra.Checked=False
+chkMyLogs.Checked=True
+chkSymbol.Checked=False
+edtFormat.Text=%Name by %By (%Dif/%Ter)
+edtMax.Text=
+edtMaxGps.Text=31
+edtWaypoint.Text=%code %children %smart  %c_Type=6 %c_Prefix
+rbtGpx.Checked=True
+rbtLoc.Checked=False
+edtProblem.Text=
+edtExtra.Text=
+chkChild.Checked=True
+chkOnlyChild.Checked=False
+rbtAllChildren.Checked=True
+rbtOnlyFlagged.Checked=False
+rbtOnlyUnFlagged.Checked=False
+chkApplyName.Checked=False
+chkForce.Checked=True
+cbxVersion.Text=Ver 1.0
+chkLogAlternate.Checked=True
+[TfmExportGpx.cbxRecent.Items]
+Count=10
+Item0=File=work_gpz.gpx Path=c:\apps\gps
+Item1=File=temp_DeLorme.gpx Path=c:\gsak\temp
+Item2=File=work.gpx Path=C:\apps\gsakout
+Item3=File=delorme.gpx Path=C:\apps\gsakout
+Item4=File=geocaches.gpx Path=c:\gsak\DeLormeSendtoPN40PlugIn
+Item5=File=wodrich.gpx Path=c:\apps\gsakout
+Item6=File=marktwainlake.gpx Path=C:\apps\gsakout
+Item7=File=myfinds.gpx Path=C:\apps\gsakout
+Item8=File=FromGSAK.gpx Path=C:\Program Files\USAPhotoMaps
+Item9=File=edwardsville.gpx Path=C:\apps\gsakout
+<enddata>

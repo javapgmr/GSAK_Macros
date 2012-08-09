@@ -1,0 +1,554 @@
+#================================================================================================#
+# MacVersion = 1.0.0
+# MacDescription = Directions to USort
+# MacAuthor = javapgmr
+# MacFileName = directions2USort.gsk
+# MacUrl = http://gsak.net/board/index.php?act=ST&f=15&t=14623
+#================================================================================================#
+
+Option Explicit=Yes
+
+Declare Var=$Code Type=String
+Declare Var=$Count Type=Numeric
+Declare Var=$Data Type=String
+Declare Var=$expression Type=String
+Declare Var=$Form Type=String
+Declare Var=$formexit Type=String
+Declare Var=$formexit2 Type=String
+Declare Var=$GPX Type=String
+Declare Var=$Left Type=String
+Declare Var=$Memo Type=String
+Declare Var=$RBAll Type=Boolean
+Declare Var=$SAT Type=String
+Declare Var=$Top Type=String
+Declare Var=$USortCount Type=Numeric
+Declare Var=$WorkFile Type=String
+DECLARE Var=$FStartSeq Type=String
+DECLARE Var=$FIncrement Type=String
+DECLARE Var=$Increment Type=Numeric
+DECLARE Var=$FClearUSort Type=Boolean
+
+$FStartSeq="0"
+$FIncrement="10"
+$FClearUSort=TRUE
+
+$RBAll=TRUE
+MACSETTINGS Type=R FileCheck=N
+ $Form = EditForm($Form,"Form1","Top",$Top)
+ $Form = EditForm($Form,"Form1","Left",$Left)
+ $Form2 = EditForm($Form2,"Form2","Top",$Top)
+ $Form2 = EditForm($Form2,"Form2","Left",$Left)
+ 
+$expression="\bGC[\S]*?[a-zA-Z0-9]\b"
+$USortCount=0
+$WorkFile = SlashAdd($_AppData) + "temp_dir2usort.txt"
+
+WHILE TRUE 	
+$formexit = form($form, "")
+	BEGINCASE
+  CASE $FormExit = "DelayExit"
+			GOSUB Name=Main
+      BREAK
+	CASE $FormExit = "SystemExit"
+  		RETURN
+			BREAK 
+	CASE $FormExit = "ExportGPX"
+			GOSUB Name=SaveSettings
+  		GOSUB Name=EXPORTGPX
+	CASE $FormExit = "ExportST"
+			GOSUB Name=SaveSettings
+  		GOSUB Name=EXPORTST
+	CASE $FormExit = "Load"
+  		GOSUB Name=LOAD
+	CASE $FormExit = "Save"
+  		GOSUB Name=Save 
+	CASE $FormExit = "Ok"			
+			GOSUB Name=SaveSettings
+			GOSUB Name=Main
+			BREAK
+	CASE $FormExit = "Cancel"
+			RETURN
+			BREAK
+	CASE $FormExit = "Setup"
+			GOSUB Name=Setup
+	OTHERWISE
+	ENDCASE
+ENDWHILE
+
+BEGINSUB Name=LOAD
+  IF isEmpty($File)
+    MSGOK MSG="Directions file must not be blank."
+  ELSE 
+	$Memo = GetFile($File)
+  IF Left($Memo,7) = "*Error*"
+	 MSGOK MSG="Error on loading file."
+	ENDIF
+ENDIF
+ENDSUB
+
+BEGINSUB Name=SAVE
+  IF isEmpty($File)
+    MSGOK MSG="Directions file must not be blank."
+  ELSE 
+	$Data = PutFile($File,$Memo)
+  IF Left($Data,7) = "*Error*"
+	 MSGOK MSG="Error on saving file."
+	ENDIF
+ENDIF
+ENDSUB
+
+BEGINSUB Name=ExportGPX
+  SHOWSTATUS msg="Exporting GPXFile" Width=350
+  IF IsEmpty($GPXFile)
+    MSGOK MSG="GPX File Name cannot be blank."
+  ELSE 
+    GOSUB Name=FILTER  
+    $GPX=Replace("%output%",$GPXFile,$GPX,TRUE)
+    MACROSET Dialog=GPX VarName=$GPX
+    EXPORT Type=GPX  Settings=<MACRO>
+  ENDIF 
+ENDSUB
+
+
+BEGINSUB Name=ExportST
+SHOWSTATUS msg="Exporting SATFile" Width=350
+  DEBUG status=off
+  IF IsEmpty($SATFile)
+    MSGOK MSG="S&T File Name cannot be blank."
+  ELSE 
+   GOSUB Name=FILTER   
+    $SAT=Replace("%output%",$SATFile,$SAT,TRUE)
+    MACROSET Dialog=S&T VarName=$SAT
+    EXPORT Type=SNT  Settings=<MACRO>
+  ENDIF 
+ENDSUB
+
+BEGINSUB Name=SaveSettings
+  $Top = $_FormTop
+	$Left = $_FormLeft	
+  MACSETTINGS Type=S  Vars=File,GPXFile,SATFile,RBUserFlagged,RBExistingFilter,RBAll,FStartSeq,FIncrement,FClearUSort,Top,Left
+ENDSUB
+
+BEGINSUB Name=FILTER
+  SHOWSTATUS msg="Filtering" Width=350
+  DEBUG Status=off
+    BEGINCASE
+      CASE $RBUserFlagged
+        MFILTER Where=USERFLAG
+    CASE $RBExistingFilter
+    CASE $RBAll
+      CANCELFILTER
+    OTHERWISE
+      BREAK
+    ENDCASE  
+ENDSUB
+
+
+BEGINSUB Name=Main
+SHOWSTATUS msg="Saving temp work file" Width=350
+$Data = PutFile($Workfile,$Memo)
+IF Left($Data,7) = "*Error*"
+  Pause Msg="$Data"
+  Cancel
+ENDIF
+
+IF $FClearUSort
+SHOWSTATUS msg="Clearing existing USort information" Width=350
+
+TRANSACTION Action=Begin
+# only include caches with a USort filter.
+MFILTER Expression=$d_UserSort <> 0
+TABLE Active=Caches
+GOTO Position=top
+WHILE NOT($_EOL)
+	$d_UserSort = 0
+  GOTO Position=Next
+ENDWHILE
+
+USERFLAG Type=Clear Range=All
+TRANSACTION Action=End
+ENDIF
+
+
+$USortCount=Val($FStartSeq)
+$Increment=Val($FIncrement)
+  IF ($Increment < 1)
+    $Increment = 1
+  ENDIF 
+$Count = 0
+TRANSACTION Action=Begin
+FILEREAD File=$Workfile
+$Code = RegExData($expression,$line,0)
+IF Not (IsEmpty($Code))
+
+	IF Seek($Code)
+		$USortCount = $USortCount + $Increment
+		$d_UserSort = $USortCount
+		$d_UserFlag = TRUE
+		$Count=$Count+1
+		SHOWSTATUS msg="Tagging cache: $Count" Width=350
+	ENDIF
+
+ENDIF
+ENDREAD
+TRANSACTION Action=End
+
+FILEERASE File=$Workfile OnError=Continue
+
+MFILTER expression=$d_UserFlag
+SQLSORT OrderBy=Usersort
+ENDSUB
+
+
+BEGINSUB Name=Setup
+  WHILE TRUE 	
+$formexit2 = form($form2, "")
+	BEGINCASE
+  CASE $FormExit2 = "DelayExit"
+      EXITSUB
+	CASE $FormExit2 = "SystemExit"
+			EXITSUB
+	CASE $FormExit2 = "FOK"
+			GOSUB Name=SaveSettings
+  		EXITSUB
+	CASE $FormExit2 = "FCancel"
+			EXITSUB 
+		OTHERWISE
+		  EXITSUB
+	ENDCASE
+ENDWHILE
+ENDSUB
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Thu 18-Feb-2010 20:17:58
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 442
+  Width = 484
+
+Name = Groupbox1
+  Type = Groupbox
+  Height = 29
+  Left = 116
+  Top = 108
+  Width = 253
+  Taborder = 4
+
+Name = Label1
+  Type = Label
+  Height = 29
+  Left = 124
+  Size = 18
+  Style = Bold
+  Top = 8
+  Width = 198
+  Caption = Directions2USort
+
+Name = Label5
+  Type = Label
+  Height = 13
+  Left = 28
+  Style = bold
+  Top = 42
+  Width = 356
+  Caption = Generate S andT GPX file for routing from userflagged caches:
+
+Name = ExportGPX
+  Type = Button
+  Height = 25
+  Left = 28
+  Top = 59
+  Width = 75
+  Taborder = 0
+  Caption = Export GPX
+
+Name = GPXFile
+  Type = File
+  Height = 21
+  Left = 116
+  Top = 61
+  Width = 253
+  Taborder = 1
+
+Name = ExportST
+  Type = Button
+  Height = 25
+  Left = 28
+  Top = 86
+  Width = 75
+  Taborder = 2
+  Caption = Export S/T
+
+Name = SATFile
+  Type = File
+  Height = 21
+  Left = 116
+  Top = 88
+  Width = 253
+  Taborder = 3
+
+Name = RBUserFlagged
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 4
+  Top = 8
+  Width = 85
+  Taborder = 0
+  Caption = User Flagged
+
+Name = RBExistingFilter
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 100
+  Top = 8
+  Width = 85
+  Taborder = 1
+  Caption = Existing Filter
+
+Name = RBAll
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 196
+  Top = 8
+  Width = 45
+  Taborder = 2
+  Caption = All
+
+Name = Label3
+  Type = Label
+  Height = 13
+  Left = 24
+  Style = bold
+  Top = 141
+  Width = 253
+  Caption = Paste your Streets and Trips directions here:
+
+Name = Memo
+  Type = Memo
+  Font = Courier New
+  Height = 140
+  Left = 24
+  Scrollbars = Both
+  Size = 8
+  Top = 161
+  Width = 417
+  Wrap = No
+  Taborder = 5
+
+Name = Label4
+  Type = Label
+  Height = 13
+  Left = 24
+  Style = bold
+  Top = 311
+  Width = 197
+  Caption = Or load or save existing directions.
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 209
+  Width = 94
+  Caption = Select directions file
+
+Name = Load
+  Type = Button
+  Height = 25
+  Left = 24
+  Top = 334
+  Width = 85
+  Taborder = 6
+  Caption = Load Directions:
+
+Name = File
+  Type = File
+  Height = 21
+  Left = 116
+  Top = 336
+  Width = 217
+  Taborder = 7
+
+Name = Save
+  Type = Button
+  Height = 25
+  Left = 352
+  Top = 334
+  Width = 85
+  Taborder = 8
+  Caption = Save Directions
+
+Name = Ok
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 106
+  Top = 379
+  Width = 75
+  Taborder = 9
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Escape = Yes
+  Height = 25
+  Left = 238
+  Top = 379
+  Width = 75
+  Taborder = 10
+  Caption = Cancel
+
+Name = Setup
+  Type = Button
+  Height = 25
+  Left = 376
+  Top = 380
+  Width = 75
+  Taborder = 11
+  Caption = Setup
+
+<enddata>
+
+
+
+<Data> VarName=$form2
+#********************************************************************
+# Form generated by GSAK form designer on Sat 27-Feb-2010 08:26:44
+#********************************************************************
+
+Name = Form2
+  Type = Form
+  Caption = Setup Directions2USort
+  Exitonclick = No
+  Height = 155
+  Width = 241
+
+Name = FStartSeq
+  Type = Edit
+  Height = 21
+  Left = 145
+  Top = 15
+  Width = 73
+  Taborder = 8
+
+Name = Label1
+  Type = Label
+  Height = 13
+  Left = 16
+  Style = bold
+  Top = 19
+  Width = 95
+  Caption = Starting Number:
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 16
+  Style = bold
+  Top = 46
+  Width = 60
+  Caption = Increment:
+
+Name = FIncrement
+  Type = Edit
+  Height = 21
+  Left = 145
+  Top = 42
+  Width = 73
+  Taborder = 9
+
+Name = FOk
+  Type = Button
+  Height = 25
+  Left = 28
+  Top = 94
+  Width = 75
+  Taborder = 10
+  Caption = OK
+
+Name = FCancel
+  Type = Button
+  Height = 25
+  Left = 131
+  Top = 94
+  Width = 75
+  Taborder = 11
+  Caption = Cancel
+
+Name = FClearUSort
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 17
+  Left = 16
+  Top = 71
+  Width = 201
+  Taborder = 12
+  Caption = Clear USort before run:
+
+<enddata>
+
+
+
+
+
+
+
+
+<data> VarName=$GPX
+[TfmExportGpx]
+fnmTo.Text=%output%
+cbxLimit.Text=No Limit
+cbxUserNotes.Checked=True
+chkActual.Checked=False
+chkDefault.Checked=True
+chkExtra.Checked=True
+chkMyLogs.Checked=False
+chkSymbol.Checked=False
+edtFormat.Text=%Name by %By (%Dif/%Ter)
+edtMax.Text=
+edtMaxGps.Text=15
+edtWaypoint.Text=%code %smartname
+rbtGpx.Checked=True
+rbtLoc.Checked=False
+edtProblem.Text=
+edtExtra.Text=
+chkChild.Checked=True
+chkOnlyChild.Checked=False
+rbtAllChildren.Checked=True
+rbtOnlyFlagged.Checked=False
+rbtOnlyUnFlagged.Checked=False
+chkApplyName.Checked=False
+chkForce.Checked=True
+cbxVersion.Text=Ver 1.1
+[TfmExportGpx.cbxRecent.Items]
+Count=0
+<enddata>
+
+
+<data> VarName=$SAT
+[TfmStreets]
+fnmTo.Text=%output%
+chkChild.Checked=False
+chkDefault.Checked=False
+edtFormat.Text=[%Code] %Name by %By (%Dif/%Ter)  %con (%Last4)    HINT IS- %hint
+edtMax.Text=
+edtMaxGps.Text=25
+edtProblem.Text=
+edtWaypoint.Text=%Code %Shortname=14
+cbxLink.Text=http://coord.info/%code
+chkOnlyChild.Checked=False
+rbtAllChildren.Checked=True
+rbtOnlyFlagged.Checked=False
+rbtOnlyUnFlagged.Checked=False
+<enddata>
+
+
+
+

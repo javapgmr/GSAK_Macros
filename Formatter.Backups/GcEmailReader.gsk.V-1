@@ -1,0 +1,2213 @@
+###################################################################################
+# MacVersion     = 1.5.4
+# MacDescription = Read and process eNotify emails direct from your mail server.
+# MacAuthor      = Wayne (Team Red Roo) with some very useful suggestions from
+#                  Jurgen and Co
+# MacFileName    = GcEmailReader.gsk
+# MacUrl         = http://gsak.net/board/index.php?showtopic=7604
+# MacUsage       * Reads and summarises gc.com Instanotify, Watchlist & Owner emails
+#                * Incoming data is summarised for the user.
+# New Options      Published caches can be Gpx'd if you are a premium member of GC.COM.
+#                  Coordinate updates can be Gpx'd if you are a premium member of GC.COM.
+#                  You can still download these Gpx files manually through your
+#                  default browser.
+#
+# Database       * This macro will Archive, Disable or Enable caches in the current
+# Updating         database (if the exist), according to the Notify email.
+#                  If the cache does not exist, it can be created automatically and
+#                  updated by Gpx file.
+#
+#                * No database changes occur when reading Owner or Watchlist emails.
+#
+# User Notes     * Before running, you will need to save two 'Getmail' settings to
+#                  access your mail server/s. If you save the settings under
+#                  different names than those below, you will need to update the
+#                  lines below with those new setting names.
+  $NotifySetting = "GeoNotify"
+  $LogSetting    = "GeoLog"
+#                * You will also need to ensure that $NotifyDirName and $LogDirName
+#                  are the same as the directory names in your settings above.
+#                  The directories do not need to exist - they will be created if
+#                  they don't exist. Note: They can be the same directory.
+  $NotifyDirName = "L:\gsakwork\EmailLog"
+  $LogDirName    = "L:\gsakwork\EmailLog"
+#
+#  >>>>>>>>>>>>    No user changes are required below this line ...
+#
+###################################################################################
+
+  VERCHECK version=7.2.0.114 (Please go to http://gsak.net and update your version of GSAK)
+  
+  GOSUB Name=CheckSettings
+  GOSUB Name=Initialise
+  GOSUB Name=GetConfiguration
+
+  $Image=MimeDecode($Mailbox)
+  $ResultStr=Putfile ($_Install+"\Temp\mailbox.png",$Image)
+
+  $NewFile=$_Install + "\Temp\mailbox.Png"
+  $Form=EditForm($Form,"Image1","File","$NewFile")
+
+  $MacroName=Left(SysInfo("Macrofile"),AT(".",SysInfo("Macrofile"))-1)
+  $MacroVers=" v"+AllTrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath") + "\" + SysInfo("Macrofile")),1,1))
+  $Form=EditForm($Form,"Form1","Caption","$MacroName $MacroVers")
+###
+  GOSUB Name=GetFileRecordCnts
+
+  MFILTER Expression=$d_UserFlag
+  SPLITSCREEN Display=Off
+
+  WHILE TRUE
+      $FormExit = Form($form,"")
+      IF $CurrentDb <> $_CurrentDatabase
+          DATABASE Name=$CurrentDb Action=Select
+      ENDIF 
+      BEGINCASE 
+              $Data=""
+          CASE $FormExit="ExitF1"
+              CANCEL 
+          CASE $FormExit="Go"
+              BEGINCASE 
+                  CASE $FMaint
+                      GOSUB Name=FileMaintenance
+                      $FMaint=False
+                  CASE $SetConfig
+                      GOSUB Name=SetConfiguration
+                      $SetConfig=FALSE
+                  CASE $ChkNotifySvr OR $ReadNotifyCf OR $ReadNotifyHf
+                      GOSUB Name=NotifyProcess1
+                      $ChkNotifySvr=FALSE
+                      $ReadNotifyCf=FALSE
+                      $ReadNotifyHf=FALSE
+                      $NotifyDoNothing=TRUE
+                      GOSUB Name=ClearNOTIFYLogs
+                      GOSUB Name=GetFileRecordCnts
+                  CASE $ChkLogSvr OR $ReadLogCf OR $ReadLogHf
+                      GOSUB Name=LogProcess1
+                      $ChkLogSvr=FALSE
+                      $ReadLogCf=FALSE
+                      $ReadLogHf=FALSE
+                      $LogDoNothing=TRUE
+                      GOSUB Name=ClearLOGLogs
+                      GOSUB Name=GetFileRecordCnts
+                  OTHERWISE 
+                      MSGOK Msg="You need to select a task option before anything happens"
+              ENDCASE 
+      ENDCASE 
+  ENDWHILE 
+  RETURN 
+###################################################################################
+###############################  End of Macro  ####################################
+###################################################################################
+  BEGINSUB Name=LogProcess1
+      BEGINCASE 
+          CASE $ChkLogSvr
+              $FileName=$LogCurrentFile
+              IF FileExists($LogCurrentFile)
+                  FILEERASE File=$LogCurrentFile
+              ENDIF 
+              GETMAIL Settings="$LogSetting" OnError=Prompt
+          CASE $ReadLogCf
+              $FileName=$LogCurrentFile
+          CASE $ReadLogHf
+              $FileName=$LogHistoryFile
+      ENDCASE 
+      GOSUB Name=LogProcess2
+      GOSUB Name=DisplayLogActivity
+      GOSUB Name=SqlHistBuild
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=NotifyProcess1
+      MACROFLAG Type=Clear Range=All
+      GOSUB Name=ClearUserFlag
+      BEGINCASE 
+          CASE $ChkNotifySvr
+              $UseBrowser=True
+              $FileName=$NotifyCurrentFile
+              IF FileExists($NotifyCurrentFile)
+                  FILEERASE File=$NotifyCurrentFile
+              ENDIF 
+              GETMAIL Settings="$NotifySetting" OnError=Prompt
+          CASE $ReadNotifyCf
+              $FileName=$NotifyCurrentFile
+          CASE $ReadNotifyHf
+              $FileName=$NotifyHistoryFile
+      ENDCASE 
+      GOSUB Name=NotifyProcess2
+      SHOWSTATUS Msg=x Display=Off
+      MFILTER Expression=$d_MacroFlag
+      GOSUB Name=DisplayNotifyActivity
+      GOSUB Name=SqlHistBuild
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=LogProcess2
+      IF FileExists($FileName)
+          $Data = GetFile($FileName)
+          $NumberOfMessages = RegExCount(RegExEscape("$GSAKMSG$"),$data)
+          $mCount = 0
+          WHILE $mCount < $NumberOfMessages
+              $LogCode=0
+              $LogType=""
+              $mCount = $mCount + 1
+              $Message = Extract($Data,"$GSAKMSG$",$mCount)
+              $Header  = Extract($Message,"$GSAKBODY$",1)
+              $Body    = Extract($Message,"$GSAKBODY$",2)
+              $Body=RegexReplace("$_NewLine",$Body,";")
+              $Body=RegexReplace($Lf,$Body,";")
+              $BodyLst=List("bl","replace","$Body")
+              $Num=Val(List("bl","RegEx","Location:"))
+              $Faulty=$Num=0
+              IF Not($Faulty)
+                  $Summary=Extract($Body,";",$Num+1)+" "
+                  $HdrList=List("hl","replace","$Header")
+                  $Num=Val(List("hl","RegEx","DecodedSubject"))
+                  $SubjectLine=Extract($Header,"$_NewLine",$Num)
+                  $Faulty=$Num=0
+              ENDIF 
+              IF Not($Faulty)		# Don't combine with the test above.
+                  $Cntr=0
+                  $LogType=""
+                  $LogCode=0
+                  WHILE $Cntr < $LtCnt
+                      $Cntr=$Cntr+1
+                      $LogStr=Extract($LogTypes,";",$Cntr)
+                      IF Regex($LogStr,$SubjectLine)
+                          $LogType=Extract($LogTypes,";",$Cntr)
+                          $LogCode=$Cntr
+                          $Cntr=$LtCnt+1
+                          $X=Len($SubjectLine)
+                          $SubjectLine=Right($Subjectline,$X-29)
+                          $Date=Extract($Summary," ",RegexCount(" ",$Summary))
+                      ENDIF 
+                  ENDWHILE 
+              ELSE 
+                  $ErrLog=$ErrLog+"Msg #$mCount: Unable to locate the Subject line $_NewLine"
+                  $LogErrs=$LogErrs+1
+              ENDIF 
+              SHOWSTATUS Msg="($mCount of $NumberOfMessages) $SubjectLine" Top=0 Width=450 Left=285
+              BEGINCASE 
+                  CASE $LogType="watchlist"			# $LogCode=1
+                      $WlCnt=$WlCnt+1
+                      $SubjectLine=Right($SubjectLine,Len($SubjectLine)-3)
+                      $WatchLog=$WatchLog+"$Date ==> $SubjectLine"+$_NewLine
+                  CASE $LogType="owner"					# $LogCode=2
+                      $OwnerCnt=$OwnerCnt+1
+                      $OwnerLog=$OwnerLog+"$Date ==> $SubjectLine"+$_NewLine
+                      $OwnerSqlLst=$OwnerSqlLst+"$Date;$SubjectLine"+$_NewLine
+              ENDCASE 
+          ENDWHILE 
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=NotifyProcess2
+      IF $GetNewGpx
+          TIMER Status=On Msg=No
+      ENDIF
+      IF FileExists($FileName)
+          $Data = GetFile($FileName)
+          $NumberOfMessages = RegExCount(RegExEscape("$GSAKMSG$"),$data)
+          $mCount = 0
+
+          WHILE $mCount < $NumberOfMessages
+              $LogCode=0
+              $mCount = $mCount + 1
+              $Message = Extract($Data,"$GSAKMSG$",$mCount)
+              $Header  = Extract($Message,"$GSAKBODY$",1)
+              $Body    = Extract($Message,"$GSAKBODY$",2)
+              $Body=RegexReplace("$_NewLine",$Body,";")
+              $Body=RegexReplace($Lf,$Body,";")
+              $BodyLst=List("bl","replace","$Body")
+              $Num=Val(List("bl","RegEx","For"))
+              $Faulty=$Num=0
+              IF Not($Faulty)
+                  $SummaryLine=Extract($Body,";",$Num)
+                  $X=At("For","$SummaryLine")
+                  $Summary=Right("$SummaryLine",Len("$SummaryLine")-$X+1)
+                  $CacheId=Extract(Extract($Summary," ",2),":",1)
+                  $LogLine=Extract($Body,";",$Num+3)
+                  $HdrList=List("hl","replace","$Header")
+                  $Num=Val(List("hl","RegEx","DecodedSubject"))
+                  $SubjectLine=Extract($Header,"$_NewLine",$Num)
+                  $Faulty=$Num=0
+              ENDIF 
+              IF Not($Faulty)	# Don't combine with the test above.
+                  $Cntr=0
+                  WHILE $Cntr < $NTcnt
+                      $Cntr=$Cntr+1
+                      IF Regex(Extract($NotifyList,";",$Cntr),$LogLine)
+                          $LogType=Extract($NotifyList,";",$Cntr)
+                          $LogCode=$Cntr
+                          $Cntr=$NTcnt
+                          $X=At($LogType,$LogLine)
+                          $Author=Alltrim(Left($LogLine,$X-1))
+                          $CacheName=Right($LogLine,Len($LogLine)-($X+Len($LogType)))
+                          $X=At("(",$CacheName)
+                          $CacheName=Alltrim(Left($CacheName,$X-1))
+                          $LogLine=$LogLine+" "
+                          $X=RegexCount(" ",$LogLine)
+                          $Date=Extract($LogLine," ",$X)
+                          $SqlLst=$SqlLst+"$Date;$Author;$LogType;$CacheId;$CacheName;$_NewLine"
+                      ENDIF 
+                  ENDWHILE 
+              ELSE 
+                  $Msg="***  Error  *** " + $_NewLine + $_NewLine
+                  $Msg=$Msg+"Unable to process $SubjectLine $_NewLine"
+                  $Msg=$Msg+"I cannot locate the correct Subject Line $_NewLine"
+                  $Msg=$Msg+"Message #$mCount"
+                  $ErrLog=$ErrLog+"Msg #$mCount has unknown errors $_NewLine"
+                  PAUSE Msg=$Msg
+              ENDIF 
+              SHOWSTATUS Msg="($mCount of $NumberOfMessages) $CacheId - $CacheName : $LogType by $Author " Top=0 Width=450 Left=285
+              MFILTER Expression=$d_Code=$CacheId
+              IF $_FilterCount=1
+                  MACROFLAG Type=Set Range=1
+              ELSE 
+                  GOSUB Name=AddNewCacheRecord
+              ENDIF 
+              GOSUB Name=ProcessNotifyLog
+          ENDWHILE 
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=AddNewCacheRecord
+#      MSGOK Msg="Adding $CacheId - The cache is not in this Database"
+#      DEBUG Status=On
+       
+      IF $ChkNotifySvr OR $ReReadAutomation
+          IF $CreateDummyRecord OR $GetNewGpx
+              $Prefix=Upper(Left($CacheId,2))
+              BEGINCASE 
+                  CASE $Prefix="GC"
+                      TABLE Active=Caches
+                      ADDNEW 
+                      $d_Code=$CacheId
+                      $d_Name=$CacheName
+                      $d_Source="RR"
+                      $d_UserFlag=TRUE
+                      $d_OwnerName="Added by EmailReader"
+                      MFILTER Expression=$d_Code=$CacheId
+                      MACROFLAG Type=Set Range=1
+                      $NewCaches=$NewCaches+1
+                      IF $GetNewGpx AND $GpxDlMacro <> ""
+                          $TimeIn=$_Timer
+                          WHILE $TimeIn < $TimeOut + 7000
+                              $TimeIn=$_Timer
+                          ENDWHILE    
+                          MACRO File=$GpxDlMacro
+                          $TimeOut=$_Timer
+                      ENDIF 
+                  OTHERWISE 
+                      $ErrorFlag=TRUE
+              ENDCASE 
+          ELSE 
+              $ErrorFlag=TRUE
+          ENDIF 
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=ProcessNotifyLog
+      $Url=$GcUrl
+      IF ($LogCode=0) Or $ErrorFlag
+          IF $LogType <> "published"
+              $ErrLog=$ErrLog+"$SubjectLine $_NewLine"
+              $Msg1="An Error has occurred with this cache. $_NewLine"
+              $Msg2="Please check your browser for details"
+              GOSUB Name=OpenBrowser
+          ENDIF 
+          $ErrorFlag=False
+      ENDIF 
+      BEGINCASE 
+          CASE $LogType="found"							# $LogCode=1
+              $FndMsg=$FndMsg+"$Date $Author found $CacheName $_NewLine"
+              $FndCnt=$FndCnt+1
+              IF $d_Archived or $d_TempDisabled
+                  $Msg1="This Cache has been Found but is marked as Archived $_NewLine"
+                  $Msg2="or Disabled. Please check your browser for details"
+                  GOSUB Name=OpenBrowser
+                  IF $_FilterCount=1
+                      $d_UserFlag=True
+                  ENDIF 
+              ENDIF 
+
+          CASE $LogType="couldn't find"			# $LogCode=2
+              $DnfMsg=$DnfMsg+"$Date $Author didn't find $CacheName$_NewLine"
+
+          CASE $LogType="archived"					# $LogCode=3
+              IF $_FilterCount=1
+                  $d_TempDisabled=True
+                  $d_Archived=True
+              ENDIF 
+              $ArcMsg=$ArcMsg+"$Date $Author archived $d_Code - $CacheName $_NewLine"
+
+          CASE $LogType="disabled"					# $LogCode=5
+              IF $_FilterCount=1
+                  $d_TempDisabled=True
+              ENDIF 
+              $DisMsg=$DisMsg+"$Date $Author disabled $CacheName$_NewLine"
+
+          CASE $LogType="unarchived"				# $LogCode=4
+              IF $_FilterCount=1
+                  $d_Archived=False
+                  $d_TempDisabled=True
+              ENDIF 
+              $UnALog=$UnALog+"$Date $Author unarchived $CacheName$_NewLine"
+
+          CASE $LogType="enabled"						# $LogCode=6
+              IF $_FilterCount=1
+                  $d_TempDisabled=False
+                  $d_Archived=False
+              ENDIF 
+              $EnaMsg=$EnaMsg+"$Date $Author Enabled $CacheName$_NewLine"
+
+          CASE $LogType="reported"					# $LogCode=7
+              $MntLog=$MntLog+"$LogLine $_NewLine"
+
+          CASE $LogType="updated"						# $LogCode=8
+              $UpdLog=$UpdLog+"$Date by $Author: $SummaryLine $_NewLine"
+              IF NOT($d_UserFlag)
+                  $d_UserFlag=True
+                  IF $GetNewGpx
+                      MACRO File=$GpxDlMacro
+                      $UpdatedCaches=$UpdatedCaches+1
+#                      MSGOK Msg="Download a Gpx file for this cache? $CacheId - $Cachename"
+                  ELSE 
+                      $Msg1="This Cache has been Updated $_NewLine"
+                      $Msg2="Please check your browser for details"
+                      GOSUB Name=OpenBrowser
+                  ENDIF 
+              ENDIF 
+          CASE $LogType="published"					# $LogCode=9
+              $PubLog=$PubLog+"$Date $Author published $CacheName $_NewLine"
+              IF $GetNewGpx
+
+              ELSE 
+                  $Msg1="A New Cache has been Published $_NewLine"
+                  $Msg2="Please check your browser for details"
+                  GOSUB Name=OpenBrowser
+              ENDIF 
+
+          CASE $LogType="retracted"					# $LogCode=10
+              $RetLog=$retLog+"$Date $Author retracted $CacheName $_NewLine"
+              IF $_FilterCount=1
+                  $d_TempDisabled=True
+                  $d_Archived=True
+                  $d_UserFlag=True
+              ENDIF 
+      ENDCASE 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=OpenBrowser
+      $Delay=7000
+      IF $ChkNotifySvr
+          IF NOT($NoBrowserDR)
+              WEB URL="$Url$CacheId"
+              IF $BrowserNP
+                  DELAY MS=$Delay
+              ELSE 
+                  MSGOK Msg=$Msg1$Msg2
+              ENDIF 
+          ENDIF 
+      ENDIF 
+      IF $ReadNotifyCf OR $ReadNotifyHf
+          IF NOT($NoBrowserRR)
+              WEB URL="$Url$CacheId"
+              IF $BrowserNP
+                  DELAY MS=$Delay
+              ELSE 
+                  MSGOK Msg=$Msg1$Msg2
+              ENDIF 
+          ENDIF 
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=DisplayLogActivity
+      IF $OwnerLog<>""
+          $FormB=EditForm($FormB,"Form2","Color","13434828")
+          $FormB=EditForm($FormB,"DisplayLabel","Caption","Owner Logs")
+          $MemoBox="Owner Logs in this download - $OwnerCnt logs $_NewLine $_NewLine$OwnerLog"
+          GOSUB Name=DisplayForm2
+      ENDIF 
+      IF $WatchLog<>""
+          $FormB=EditForm($FormB,"DisplayLabel","Caption","Watchlist Logs")
+          $MemoBox="Watchlist logs in this download - $WlCnt logs $_NewLine $_NewLine$WatchLog"
+          GOSUB Name=DisplayForm2
+      ENDIF 
+      IF $ErrLog<>""
+          $FormB=EditForm($FormB,"Form2","Caption","Unknown Error Listing(s)")
+          $Msg0="$LogErrs errors found processing this download $_NewLine$_NewLine$ErrLog"
+          $MemoBox="$Msg0"
+          GOSUB Name=DisplayForm2
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=DisplayNotifyActivity
+      $FormB=EditForm($FormB,"Form2","Caption","eMail Reader - Results")
+      $FormB=EditForm($FormB,"Form2","Color","13434828")					# Light Green
+      IF $FndMsg<>""
+          $FormB=EditForm($FormB,"DisplayLabel","Caption","Found Logs")
+          $MemoBox="Caches Found in this eNotify - $FndCnt logs $_NewLine $_NewLine$FndMsg"
+          $NewMsgs=$FndMsg
+          GOSUB Name=DisplayForm2
+      ENDIF 
+      IF $DnfMsg<>""
+          $FormB=EditForm($FormB,"Form2","Color","14014207")			# Pink
+          $FormB=EditForm($FormB,"DisplayLabel","Caption","DNF logs")
+          $MemoBox="Dnf's in this eNotify: $_NewLine $_NewLine$DnfMsg"
+          $NewMsgs=$DnfMsg
+          GOSUB Name=DisplayForm2
+      ENDIF 
+      IF $UpdLog<>""
+          $FormB=EditForm($FormB,"Form2","Color","13500157")			# Yellow
+          $FormB=EditForm($FormB,"DisplayLabel","Caption","Coordinate Update Logs")
+          $MemoBox="Coordinate Updates in this eNotify: $_NewLine $_NewLine$UpdLog"
+          IF $UpdatedCaches > 0
+              $MemoBox=$MemoBox+"$_NewLine$_NewLine Note: The cache records have been updated"
+          ELSE 
+              $MemoBox=$MemoBox+"$_NewLine$_NewLine Note: Database coordinates have not been changed"
+          ENDIF 
+          $NewMsgs=$UpdLog
+          GOSUB Name=DisplayForm2
+      ENDIF 
+      IF $ArcMsg<>""
+          $FormB=EditForm($FormB,"Form2","Color","14014207")			# Pink
+          $FormB=EditForm($FormB,"DisplayLabel","Caption","Archive Logs")
+          $MemoBox="Caches Archived in this eNotify: $_NewLine $_NewLine$ArcMsg"
+          $NewMsgs=$ArcMsg
+          GOSUB Name=DisplayForm2
+      ENDIF 
+      IF $UnALog<>""
+          $FormB=EditForm($FormB,"Form2","Color","6872801")				# Brown/Yellow
+          $FormB=EditForm($FormB,"DisplayLabel","Caption","Unarchived Logs")
+          $MemoBox="Caches Unarchived in this eNotify: $_NewLine $_NewLine$UnaLog"
+          $NewMsgs=$UnALog
+          GOSUB Name=DisplayForm2
+      ENDIF 
+      IF $DisMsg<>""
+          $FormB=EditForm($FormB,"Form2","Color","14014207")			# Pink
+          $FormB=EditForm($FormB,"DisplayLabel","Caption","Disabled Cache Logs")
+          $MemoBox="Caches Disabled in this eNotify: $_NewLine $_NewLine$DisMsg"
+          $NewMsgs=$DisMsg
+          GOSUB Name=DisplayForm2
+      ENDIF 
+      IF $EnaMsg<>""
+          $FormB=EditForm($FormB,"Form2","Color","6872801")				# Brown/Yellow
+          $FormB=EditForm($FormB,"DisplayLabel","Caption","Enabled Cache Logs")
+          $MemoBox="Caches Enabled in this eNotify: $_NewLine $_NewLine$EnaMsg"
+          $NewMsgs=$EnaMsg
+          GOSUB Name=DisplayForm2
+      ENDIF 
+      IF $MntLog<>""
+          $FormB=EditForm($FormB,"Form2","Color","14014207")			# Pink
+          $FormB=EditForm($FormB,"DisplayLabel","Caption","Maintenance Request Logs")
+          $MemoBox="Maintenance Requests in this eNotify: $_NewLine $_NewLine$Mntlog"
+          $NewMsgs=$MntLog
+          GOSUB Name=DisplayForm2
+      ENDIF 
+      IF $PubLog<>""
+          $FormB=EditForm($FormB,"Form2","Color","13500157")			# Yellow
+          $FormB=EditForm($FormB,"DisplayLabel","Caption","Published (New) Cache Logs")
+          $Msg0="New Caches Published in this eNotify: $_NewLine $_NewLine$PubLog"
+          IF $NewCaches > 0
+              $Msg0=$Msg0+"$_NewLine $_NewLine $NewCaches cache(s) have added to your database"
+          ELSE 
+              $Msg0=$Msg0+"$_NewLine $_NewLine Note that these cache(s) have not been automatically added to your database"
+          ENDIF 
+          $MemoBox="$Msg0"
+          $NewMsgs=$PubLog
+          GOSUB Name=DisplayForm2
+      ENDIF 
+      IF $RetLog<>""
+          $FormB=EditForm($FormB,"Form2","Color","14014207")			# Pink
+          $FormB=EditForm($FormB,"DisplayLabel","Caption","Retracted Cache Logs")
+          $MemoBox="Retracted Caches in this eNotify: $_NewLine $_NewLine$Retlog"
+          $NewMsgs=$RetLog
+          GOSUB Name=DisplayForm2
+      ENDIF 
+      IF $ErrLog<>""
+          $FormB=EditForm($FormB,"Form2","Color","2633471")				# Bright Red
+          $FormB=EditForm($FormB,"DisplayLabel","Caption","Error Listing(s)")
+          $Msg0="Unknown Errors Listing $_NewLine $_NewLine"
+          $Msg0=$Msg0+"The following logs flagged an error - the cache(s) most likely don't exist in this database."
+          $Msg0=$Msg0+"$_NewLine$_NewLine$ErrLog"
+          $MemoBox="$Msg0"
+          $NewMsgs=$ErrLog
+          GOSUB Name=DisplayForm2
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=DisplayForm2
+      WHILE True
+          $FormExit=Form($FormB,"")
+          BEGINCASE 
+              CASE $FormExit="ExitF2"
+                  BREAK 
+          ENDCASE 
+      ENDWHILE 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=ClearUserFlag
+      CANCELFILTER 
+      $Cnt=$_Count
+      MFILTER Expression=$d_UserFlag
+      IF ($_FilterCount <> $Cnt)
+          USERFLAG Type=Clear Range=All
+      ENDIF 
+      CANCELFILTER 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=Initialise
+
+      $BatchFile   = $_Install + "\Temp\DosCmd.bat"
+
+      $NotifyCurrentFile = $NotifyDirName + "\Notify.Gpx"
+      $NotifyHistoryFile = $NotifyDirName + "\NotifyHistory.Gpx"
+      $NotifySqlFile     = $NotifyDirName + "\NotifySql.Txt"
+
+      $LogCurrentFile    = $LogDirName + "\Log.Gpx"
+      $LogHistoryFile    = $LogDirName + "\LogHistory.Gpx"
+      $OwnerSqlFile      = $LogDirName + "\OwnerSql.Txt"
+
+      $GcUrl="http://www.geocaching.com/seek/cache_details.aspx?wp="
+
+#     Initialise lists
+      $BodyLst = List("bl","create",";")
+      $HdrList = List("hl","create","$_NewLine")
+
+#     Initialise Form variables
+      $NotifyDoNothing=TRUE
+      $LogDoNothing=TRUE
+
+#     Other variables
+      $FndCnt=0					# number of Found Notification emails
+      $NewCaches=0
+      $UpdatedCaches=0
+
+      $Data=""
+      $Lf=Chr(10)
+      $Cr=Chr(13)
+      $ErrorFlag=False
+      $UseBrowser=False
+      GOSUB Name=ClearLOGLogs
+      GOSUB Name=ClearNOTIFYLogs
+
+#     Other variables
+      $OwnerCnt=0				# Owner LOG count
+      $WlCnt=0					# Watchlist LOG count
+      $LogErrs=0				# LOG error count
+      $Data=""
+      $Lf=Chr(10)
+      $Cr=Chr(13)
+
+      $NTcnt=RegexCount(";",$NotifyList)
+      $LtCnt=RegexCount(";",$LogTypes)
+
+#     Ensure that the Directories are available
+      IF Not (FolderExists($NotifyDirName))
+          $ResultStr=PutFile("$_Install\Temp\Temp.Bat","MD "+ Quote("$NotifyDirName"))
+          FILEOPEN File="$_Install\Temp\Temp.Bat" Wait=yes
+      ENDIF 
+      IF Not (FolderExists($LogDirName))
+          $ResultStr=PutFile("$_Install\Temp\Temp.Bat","MD "+ Quote("$LogDirName"))
+          FILEOPEN File="$_Install\Temp\Temp.Bat" Wait=yes
+      ENDIF 
+      $DbList=Sysinfo("databases")
+      $CurrentDb=$_CurrentDatabase
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=ClearLOGlogs
+      $Log=FALSE
+      $WatchLog=""
+      $WlCnt=0
+      $OwnerLog=""
+      $OwnerCnt=0
+      $ErrLog=""
+      $LogErrs=0
+      $OwnerSqlLst=""
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=ClearNOTIFYlogs
+      $Notify=FALSE
+      $SqlLst=""
+      $FndMsg=""
+      $FndCnt=0					# number of Found Notifies
+      $DnfMsg=""
+      $ArcMsg=""
+      $UnAlog=""
+      $DisMsg=""
+      $EnaMsg=""
+      $MntLog=""
+      $UpdLog=""
+      $PubLog=""
+      $Retlog=""
+      $ErrLog=""
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=GetFileRecordCnts
+      IF FileExists($NotifyCurrentFile)
+          $FileData = GetFile($NotifyCurrentFile)
+          $Cnt = RegExCount(RegExEscape("$GSAKMSG$"),$FileData)
+          $Form=EditForm($Form,"NcfCnt","Caption","($Cnt logs)")
+      ELSE 
+          $ChkSvr=True
+          $ReadCurrentFile=False
+          $Form=EditForm($Form,"NcfCnt","Caption","None")
+      ENDIF 
+      IF FileExists($NotifyHistoryFile)
+          $FileData = GetFile($NotifyHistoryFile)
+          $Cnt = RegExCount(RegExEscape("$GSAKMSG$"),$FileData)
+          $Form=EditForm($Form,"NhfCnt","Caption","($Cnt logs)")
+      ELSE 
+          $Form=EditForm($Form,"NhfCnt","Caption","None")
+      ENDIF 
+      IF FileExists($LogCurrentFile)
+          $FileData = GetFile($LogCurrentFile)
+          $Cnt = RegExCount(RegExEscape("$GSAKMSG$"),$FileData)
+          $Form=EditForm($Form,"LcfCnt","Caption","($Cnt logs)")
+      ELSE 
+          $ChkLogs=True
+          $ReadLogFile=False
+          $Form=EditForm($Form,"LcfCnt","Caption","None")
+      ENDIF 
+      IF FileExists($LogHistoryFile)
+          $FileData = GetFile($LogHistoryFile)
+          $Cnt = RegExCount(RegExEscape("$GSAKMSG$"),$FileData)
+          $Form=EditForm($Form,"LhfCnt","Caption","($Cnt logs)")
+      ELSE 
+          $Form=EditForm($Form,"LhfCnt","Caption","None")
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=GetConfiguration
+      $CfgFolder=Sysinfo("MacroPath")+"\Data"				# No need to change this
+      IF Not (FolderExists($CfgFolder))
+          $ResultStr=PutFile("$_Install\Temp\Temp.Bat","MD "+ Quote("$CfgFolder"))
+          FILEOPEN File="$_Install\Temp\Temp.Bat" Wait=yes
+          IF NOT(RegEx("OK",$ResultStr))
+              MSGOK Msg="Error creating the Configuration folder"
+              RETURN 
+          ENDIF 
+      ENDIF 
+      $CfgFile="$CfgFolder\MacroCfg.Txt"						# No need to change this
+      $CfgLst = List("Cf","create","$_NewLine")
+      $MacName=Sysinfo("Macrofile")
+      IF FileExists($CfgFile)
+          $CfgData=GetFile($CfgFile)
+      ELSE 
+          $CfgData=""
+      ENDIF 
+      $CfgLst=List("Cf","replace","$CfgData")
+      $CfgLoc=Val(List("Cf","RegEx","$MacName"))
+      $CfgLine=""
+      IF $CfgLoc <> 0
+          $CfgLine=Extract($CfgLst,"$_NewLine",$CfgLoc)
+          IF Extract($CfgLine,";",1)<> $MacName
+              $CfgMax=RegExCount($_NewLine,$CfgLst)
+              WHILE $CfgLoc < $CfgMax
+                  $CfgLoc=$CfgLoc+1
+                  IF Extract(Extract($CfgLst,"$_NewLine",$CfgLoc),";",1)=$MacName
+                      $CfgLine=Extract($CfgLst,"$_NewLine",$CfgLoc)
+                      BREAK 
+                  ENDIF 
+              ENDWHILE 
+          ENDIF 
+      ENDIF 
+      IF $CfgLine <> ""
+          $BrowserNP=Extract($CfgLine,";",2)="True"
+          $NoBrowserDR=Extract($CfgLine,";",3)="True"
+          $NoBrowserRR=Extract($CfgLine,";",4)="True"
+          $KeepNotifyHistory=Extract($CfgLine,";",5)="True"
+          $KeepNotifySql=Extract($CfgLine,";",6)="True"
+          $KeepLogHistory=Extract($CfgLine,";",7)="True"
+          $KeepLogSql=Extract($CfgLine,";",8)="True"
+          $CreateDummyRecord=Extract($CfgLine,";",9)="True"
+          $GetNewGpx=Extract($CfgLine,";",10)="True"
+          $GpxDlMacro=Extract($CfgLine,";",11)
+      ELSE 
+          $BrowserNP=FALSE
+          $NoBrowserDR=FALSE
+          $NoBrowserRR=FALSE
+          $KeepNotifyHistory=FALSE
+          $KeepNotifySql=FALSE
+          $KeepLogHistory=FALSE
+          $KeepLogSql=FALSE
+          $CreateDummyRecord=FALSE
+          $GetNewGpx=FALSE
+          $GpxDlMacro=""
+      ENDIF 
+      $OldCfgLine="$MacName;$BrowserNP;$NoBrowserDR;$NoBrowserRR;$KeepNotifyHistory;$KeepNotifySql;"
+      $OldCfgLine=$OldCfgLine+"$KeepLogHistory;$KeepLogSql;$CreateDummyRecord;$GetNewGpx;$GpxDlMacro;"
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=SetConfiguration
+      WHILE TRUE
+          $FormExit=Form($formC,"")
+          BEGINCASE 
+              CASE $FormExit="ExitF3"
+                  BREAK 
+              CASE $FormExit="CfgSave"
+                  $CfgLine="$MacName;$BrowserNP;$NoBrowserDR;$NoBrowserRR;$KeepNotifyHistory;$KeepNotifySql;"
+                  $CfgLine=$CfgLine+"$KeepLogHistory;$KeepLogSql;$CreateDummyRecord;$GetNewGpx;$GpxDlMacro;"
+                  IF $CfgLoc > 0 AND $OldCfgLine <> ""
+                      IF ($OldCfgLine <> $CfgLine)
+                          $CfgLst=List("Cf","Edit:$CfgLoc",$CfgLine)
+                          $ResultStr=PutFile($CfgFile,$CfgLst)
+                      ENDIF 
+                  ELSE 
+                      $CfgLst=$CfgLst+$CfgLine+$_NewLine
+                      $ResultStr=PutFile($CfgFile,$CfgLst)
+                  ENDIF 
+                  BREAK 
+          ENDCASE 
+      ENDWHILE 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=FileMaintenance
+      $RenNhf = False
+      $DelNhf = False
+      $RenNsf = False
+      $DelNsf = False
+
+      $RenLhf = FALSE
+      $DelLhf = FALSE
+      $RenLsf = FALSE
+      $DelLsf = FALSE
+
+      IF FileExists($NotifyHistoryFile)
+          $FileData = GetFile($NotifyHistoryFile)
+          $Cnt = RegExCount(RegExEscape("$GSAKMSG$"),$FileData)
+          $Formd=EditForm($Formd,"NhfCnt","Caption","($Cnt logs)")
+      ELSE 
+          $FormD=EditForm($FormD,"NhfCnt","Caption","None")
+      ENDIF 
+
+      IF FileExists($NotifySqlFile)
+          $FileData = GetFile($NotifySqlFile)
+          $Cnt = RegExCount(RegExEscape("$_NewLine"),$FileData)
+          $FormD=EditForm($FormD,"NsfCnt","Caption","$Cnt entries")
+      ELSE 
+          $FormD=EditForm($FormD,"NsfCnt","Caption","None")
+      ENDIF 
+
+      IF FileExists($LogHistoryFile)
+          $FileData = GetFile($LogHistoryFile)
+          $Cnt = RegExCount(RegExEscape("$GSAKMSG$"),$FileData)
+          $FormD=EditForm($FormD,"LhfCnt","Caption","($Cnt logs)")
+      ELSE 
+          $FormD=EditForm($FormD,"LhfCnt","Caption","None")
+      ENDIF 
+
+      IF FileExists($OwnerSqlFile)
+          $FileData = GetFile($OwnerSqlFile)
+          $Cnt = RegExCount(RegExEscape("$_NewLine"),$FileData)
+          $FormD=EditForm($FormD,"LsfCnt","Caption","$Cnt entries")
+      ELSE 
+          $FormD=EditForm($FormD,"LsfCnt","Caption","None")
+      ENDIF 
+
+      WHILE True
+          $FormExit=Form($FormD,"")
+          BEGINCASE 
+              CASE $FormExit="MaintBtn"
+                  BREAK 
+              CASE $FormExit="ExitF4"
+                  EXITSUB 
+          ENDCASE 
+      ENDWHILE 
+      $BatchData=""
+
+      IF $RenNotifyHist
+          $Msg0="NotifyHistory.Gpx"
+          $Msg1="Input a new file name for the current Notify History File."
+          INPUT Msg=$Msg1 VarName=$NewHf Default=$Msg0
+          $BatchData=$BatchData+"Ren $_Quote$NotifyHistoryFile$_Quote $_Quote$NewHf$_Quote"+$_NewLine
+      ENDIF 
+      IF $DelNotifyHist
+          $BatchData=$BatchData+"Del $_Quote$NotifyHistoryFile$_Quote "+$_NewLine
+      ENDIF 
+      IF $RenNotifySql
+          $Msg0="NotifySql.Txt"
+          $Msg1="Input a new file name for the current Notify Sql File."
+          INPUT Msg=$Msg1 VarName=$NewSql Default=$Msg0
+          $BatchData=$BatchData+"Ren $_Quote$NotifySqlFile$_Quote $_Quote$NewSql$_Quote"+$_NewLine
+      ENDIF 
+      IF $DelNotifySql
+          $BatchData=$BatchData+"Del $_Quote$NotifySqlFile$_Quote "+$_NewLine
+      ENDIF 
+
+      IF $RenLogHist
+          $Msg0="LogHistory.Gpx"
+          $Msg1="Input a new file name for the current Log History File."
+          INPUT Msg=$Msg1 VarName=$NewHf Default=$Msg0
+          $BatchData=$BatchData+"Ren $_Quote$LogHistoryFile$_Quote $_Quote$NewHf$_Quote"+$_NewLine
+      ENDIF 
+      IF $DelLogHist
+          $BatchData=$BatchData+"Del $_Quote$LogHistoryFile$_Quote "+$_NewLine
+      ENDIF 
+      IF $RenLogSql
+          $Msg0="LogSql.Txt"
+          $Msg1="Input a new file name for the current Log Sql File."
+          INPUT Msg=$Msg1 VarName=$NewSql Default=$Msg0
+          $BatchData=$BatchData+"Ren $_Quote$OwnerSqlFile$_Quote $_Quote$NewSql$_Quote"+$_NewLine
+      ENDIF 
+      IF $DelLogSql
+          $BatchData=$BatchData+"Del $_Quote$OwnerSqlFile$_Quote "+$_NewLine
+      ENDIF 
+      IF $BatchData <> ""
+          $Msg0="Rename / Delete files - are you sure ?"
+          CHOOSE Msg=$Msg0 Opt1=No Opt2=Yes
+          IF $Result=2
+              $ResultStr = PutFile($BatchFile, $BatchData)
+              FILEOPEN File="$BatchFile" Wait=yes
+          ENDIF 
+      ENDIF 
+      GOSUB Name=GetFileRecordCnts
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=SqlHistBuild
+# 		Build the History and SQL files if required.
+      IF $ChkNotifySvr
+          IF $KeepNotifyHistory
+              $FileParms=$NotifyHistoryFile
+              $NewData = $Data
+              GOSUB Name=BuildFile
+          ENDIF 
+          IF $KeepNotifySql
+              $FileParms=$NotifySqlFile
+              $NewData = $SqlLst
+              GOSUB Name=BuildFile
+          ENDIF 
+      ENDIF 
+      IF $ChkLogSvr
+          IF $KeepLogHistory
+              $FileParms=$LogHistoryFile
+              $NewData = $Data
+              GOSUB Name=BuildFile
+          ENDIF 
+          IF $KeepLogSql
+              $FileParms=$OwnerSqlFile
+              $NewData = $OwnerSqlLst
+              GOSUB Name=BuildFile
+          ENDIF 
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=BuildFile
+# Entry conditions: $FileParms is the name of the file to build.
+#                 : $NewData is the data to add to it.
+      IF $NewData <> ""
+          IF FileExists($FileParms)
+              $OldData=GetFile($FileParms)
+          ELSE 
+              $OldData=""
+          ENDIF 
+          $FileData=$OldData+$NewData
+          $ResultStr=PutFile($FileParms,$FileData)
+          $NewData=""
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=CheckSettings
+      $TmpSet = SysInfo("S_getmail")
+      IF NOT(RegEx($NotifySetting,$TmpSet)) OR NOT(RegEx($LogSetting,$TmpSet))
+          $Msg1="One or both of your GetMail settings are missing."+$_NewLine+$_NewLine
+          $Msg1=$Msg1+"Check and create the missing setting(s) before continuing."
+          MSGOK Msg=$Msg1 Caption="Oh Noooo...."
+          CANCEL 
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  <DATA> Varname=$LogTypes
+watchlist;owner;
+  <ENDDATA> 
+###################################################################################
+  <DATA> Varname=$NotifyList
+found;couldn't find;updated;unarchived;archived;disabled;enabled;reported;published;retracted;unknown;
+  <ENDDATA> 
+###################################################################################
+  <DATA> VarName=$mailbox
+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
+/GMzLdsAAAAEZ0FNQQAAsY58+1GTAAAAIGNIUk0AAHolAACAgwAA+f8AAIDpAAB1MAAA6mAAADqYAAAX
+b5JfxUYAAAMAUExURf////X5+vP3+PT19vv59e7y9Oju8eXt8ezt7eLp7uTl5uzq5fDy7//82vr10f36
+1/Ltzdzl7Nbg6d/l5dLe6NHd587a48nX4N7e3dXW1dHa3cnV3sXS3MXR1sLM1MTP1szNzcTFxcnIxdza
+wO7iv+3lturfvObbuufatuPXpdXLq83HrtrLl9TEh97RmuHUmvShmPOclPCKhsO8o9CSiMe3jb/O2L3L
+1LbG0LvFzLLDzLfAx67Ayqy+yKm7xqa5xKS3wrS9w729vbW1tbi4ta21u6S0vqmxtqSuta2traSkpKWp
+qry0nbSxnK2nlJGwup+wupK0qpittpWjq5qhpo+uuIyrtoamsYunsIKirYqlqo6wpo6bop6enpWVlZKY
+nYyVm4uRlIeSmY2OjoSEhIKIjJCTjZafjtC+c827dMa1dMW0a8GseMGvYcCuX72sc7ajdb6tYrelVqeX
+aK6XcqmXQKeVRauZT5mLZ42HcpmKV5KBSo6CW9PCfe1yeelEZ+tUccx4cuUsWeQdU+IAT+MPUcwoUNwp
+WYl8WIt8TJJ4bawkS4wGMZUhPYB0PHyeqXGWo3iapG+VoXqFimSLmWqOmmyPklqEk16BjlyPg1+RhX2h
+pEaBdE2FeFaLf3d+gWh8hFx7h35+fXR0dHJ4e2txdGVzemlzeWJudGlvdG5ubmVlZGNobHd2bnVqSWlm
+WnFnSGtSRl1rcVRsdFBmcFtlalpkaUZ+cUxxcFNeY1tfYk5cY15eXlVaXFNUVFdYV0lYXUtVWkhRVkNN
+UklPUUtLS0NJTEJHSUNDQ0tKQ1dPRlRNOlRKNUxFNUVDPUtFNltUPGZbOkQ8NEwwKmcOJzRkVz5JTjxF
+SjxBRDVERy9bTjVNTj5zZjU+Qjg+QS88Qzw8PTQ6PDI2ODIzNDg2MjczKi0yNCw2OCsuMSwsLCwqJCok
+ISUpLCMkJCMmKC8vKTIgHigjHR4hIh0rJx81Lx4fIBsbGx0aFxkWFBMTExYZGQsLCwAAAA8PECMeGi5F
+PrOVxckAAAABdFJOUwBA5thmAAASf0lEQVR42syceXxU1b3Av+fem5nJRgJJgJAggQQFxE8roogLIAGR
+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
+  <ENDDATA> 
+###################################################################################
+## Main form
+#
+  <DATA> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Fri 01-Feb-2008 20:35:39
+#********************************************************************
+Name = Form1
+  Type = Form
+  Color = 14412274
+  Height = 332
+  Top = 85
+  Width = 550
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = [GEO] Notify:
+  Height = 89
+  Left = 271
+  Top = 24
+  Width = 245
+  Taborder = 0
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = [LOG] Owner and Watchlist
+  Height = 89
+  Left = 272
+  Top = 130
+  Width = 245
+  Taborder = 3
+
+Name = Groupbox3
+  Type = Groupbox
+  Height = 58
+  Left = 13
+  Top = 161
+  Width = 245
+  Taborder = 4
+
+Name = Label1
+  Type = Label
+  Color = 16744576
+  Font = Comic Sans MS
+  Height = 27
+  Left = 134
+  Size = 14
+  Style = bold
+  Top = 37
+  Width = 101
+  Caption = Geocaching
+
+Name = Go
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 139
+  Top = 242
+  Width = 91
+  Taborder = 1
+  Caption = Continue
+
+Name = ExitF1
+  Type = Button
+  Escape = Yes
+  Height = 25
+  Left = 291
+  Top = 242
+  Width = 90
+  Taborder = 2
+  Caption = Exit
+
+Name = ChkNotifySvr
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 20
+  Top = 15
+  Width = 15
+  Taborder = 0
+
+Name = ReadNotifyCf
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 20
+  Top = 31
+  Width = 15
+  Taborder = 1
+
+Name = ReadNotifyHf
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 20
+  Top = 47
+  Width = 15
+  Taborder = 2
+
+Name = Label2
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 40
+  Top = 16
+  Width = 70
+  Caption = Read new mail
+
+Name = Label3
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 40
+  Top = 33
+  Width = 108
+  Caption = Re-read the current file
+
+Name = Label4
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 40
+  Top = 48
+  Width = 95
+  Caption = Read the History file
+
+Name = NcfCnt
+  Type = Label
+  Color = 16711680
+  Container = Groupbox1
+  Height = 13
+  Left = 160
+  Top = 33
+  Width = 33
+
+Name = NhfCnt
+  Type = Label
+  Color = 16711680
+  Container = Groupbox1
+  Height = 13
+  Left = 160
+  Top = 48
+  Width = 33
+
+Name = NotifyDoNothing
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 20
+  Top = 63
+  Width = 15
+  Taborder = 3
+
+Name = Label6
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 40
+  Top = 64
+  Width = 52
+  Caption = Do nothing
+
+Name = ChkLogSvr
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 17
+  Left = 20
+  Top = 15
+  Width = 15
+  Taborder = 0
+
+Name = FMaint
+  Type = Radiobutton
+  Container = Groupbox3
+  Height = 17
+  Left = 20
+  Top = 15
+  Width = 15
+  Taborder = 0
+
+Name = Label5
+  Type = Label
+  Color = 32896
+  Container = Groupbox3
+  Height = 13
+  Left = 40
+  Top = 15
+  Width = 81
+  Caption = File Maintenance
+
+Name = SetConfig
+  Type = Radiobutton
+  Container = Groupbox3
+  Height = 17
+  Left = 20
+  Top = 31
+  Width = 15
+  Taborder = 1
+
+Name = Label7
+  Type = Label
+  Color = 32896
+  Container = Groupbox3
+  Height = 13
+  Left = 39
+  Top = 33
+  Width = 117
+  Caption = Check/Set Configuration
+
+Name = Label8
+  Type = Label
+  Color = 32896
+  Container = Groupbox2
+  Height = 13
+  Left = 40
+  Top = 17
+  Width = 70
+  Caption = Read new mail
+
+Name = ReadLogCf
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 17
+  Left = 20
+  Top = 31
+  Width = 15
+  Taborder = 1
+
+Name = Label9
+  Type = Label
+  Color = 32896
+  Container = Groupbox2
+  Height = 13
+  Left = 40
+  Top = 33
+  Width = 108
+  Caption = Re-read the current file
+
+Name = ReadLogHf
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 17
+  Left = 20
+  Top = 47
+  Width = 15
+  Taborder = 2
+
+Name = Label10
+  Type = Label
+  Color = 32896
+  Container = Groupbox2
+  Height = 13
+  Left = 40
+  Top = 49
+  Width = 95
+  Caption = Read the History file
+
+Name = LogDoNothing
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 17
+  Left = 20
+  Top = 63
+  Width = 15
+  Taborder = 3
+
+Name = Label11
+  Type = Label
+  Color = 32896
+  Container = Groupbox2
+  Height = 13
+  Left = 40
+  Top = 65
+  Width = 52
+  Caption = Do nothing
+
+Name = LcfCnt
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 159
+  Top = 34
+  Width = 31
+
+Name = LhfCnt
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 160
+  Top = 51
+  Width = 31
+
+Name = CurrentDb
+  Type = Combobox
+  Height = 21
+  Left = 82
+  Top = 132
+  Values = $DbList
+  Width = 174
+  Taborder = 5
+
+Name = Label12
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 12
+  Style = bold
+  Top = 136
+  Width = 55
+  Caption = DataBase
+
+Name = Image1
+  Type = Image
+  File = C:\User Programs\Gsak\temp\mailbox.png
+  Height = 79
+  Left = 23
+  Resize = Yes
+  Source = File
+  Top = 20
+  Width = 83
+
+Name = Label13
+  Type = Label
+  Color = 16744576
+  Font = Comic Sans MS
+  Height = 27
+  Left = 121
+  Size = 14
+  Style = bold
+  Top = 62
+  Width = 122
+  Caption = eMail Reader
+
+  <ENDDATA> 
+###################################################################################
+## Display form
+#
+  <DATA> VarName=$FormB
+#********************************************************************
+# Form generated by GSAK form designer on Mon 10-Dec-2007 15:19:04
+#********************************************************************
+Name = Form2
+  Type = Form
+  Height = 602
+  Color=12577476
+  Width = 770
+  Top=80
+
+Name = MemoBox
+  Type = Memo
+  Height = 436
+  Left = 39
+  Top = 50
+  Width = 677
+  Taborder = 8
+  Scrollbars = Both
+
+Name = ExitF2
+  Type = Button
+  Height = 25
+  Left = 260
+  Top = 521
+  Width = 247
+  Taborder = 9
+  Caption = Continue
+  Enter=Yes
+
+Name = DisplayLabel
+  Type = Label
+  Color = 16711680
+  Height = 20
+  Left = 42
+  Size = 12
+  Style = bold
+  Top = 18
+  Width = 61
+  Caption = Results
+
+  <ENDDATA> 
+###################################################################################
+## Configuration form
+#
+  <DATA> VarName=$FormC
+#********************************************************************
+# Form generated by GSAK form designer on Sat 15-Mar-2008 10:39:54
+#********************************************************************
+Name = Form3
+  Type = Form
+  Color = 16642768
+  Height = 512
+  Top = 74
+  Width = 619
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = [NOTIFY] emails
+  Height = 66
+  Left = 55
+  Top = 44
+  Width = 240
+  Taborder = 0
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = [LOG] emails
+  Height = 68
+  Left = 55
+  Top = 124
+  Width = 240
+  Taborder = 1
+
+Name = Groupbox3
+  Type = Groupbox
+  Caption = General options
+  Height = 82
+  Left = 55
+  Top = 205
+  Width = 240
+  Taborder = 2
+
+Name = Groupbox4
+  Type = Groupbox
+  Caption = Automation
+  Height = 148
+  Left = 320
+  Top = 44
+  Width = 240
+  Taborder = 3
+
+Name = CfgSave
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 84
+  Top = 311
+  Width = 158
+  Taborder = 4
+  Caption = Save and Exit
+
+Name = ExitF3
+  Type = Button
+  Escape = Yes
+  Height = 25
+  Left = 366
+  Top = 313
+  Width = 137
+  Taborder = 5
+  Caption = Exit (Without Saving)
+
+Name = KeepNotifyHistory
+  Type = Checkbox
+  Container = Groupbox1
+  Height = 17
+  Left = 15
+  Top = 20
+  Width = 15
+  Taborder = 1
+
+Name = Label4
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 40
+  Top = 21
+  Width = 107
+  Caption = Keep a Gpx History file
+
+Name = KeepNotifySql
+  Type = Checkbox
+  Container = Groupbox1
+  Height = 17
+  Left = 15
+  Top = 40
+  Width = 15
+  Taborder = 0
+
+Name = Label3
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 40
+  Top = 41
+  Width = 149
+  Caption = Write incoming data to a Sql file
+
+Name = Label2
+  Type = Label
+  Color = 255
+  Font = Arial
+  Height = 19
+  Left = 91
+  Size = 12
+  Style = bold
+  Top = 14
+  Width = 169
+  Caption = Configuration Options
+
+Name = KeepLogHistory
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 17
+  Left = 15
+  Top = 20
+  Width = 15
+  Taborder = 0
+
+Name = Label5
+  Type = Label
+  Color = 32896
+  Container = Groupbox2
+  Height = 13
+  Left = 40
+  Top = 22
+  Width = 107
+  Caption = Keep a Gpx History file
+
+Name = KeepLogSql
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 17
+  Left = 15
+  Top = 40
+  Width = 15
+  Taborder = 1
+
+Name = Label6
+  Type = Label
+  Color = 32896
+  Container = Groupbox2
+  Height = 13
+  Left = 40
+  Top = 42
+  Width = 149
+  Caption = Write incoming data to a Sql file
+
+Name = NoBrowserRR
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 16
+  Top = 57
+  Width = 15
+  Taborder = 1
+
+Name = Label77
+  Type = Label
+  Color = 32896
+  Container = Groupbox3
+  Height = 13
+  Left = 40
+  Top = 59
+  Width = 167
+  Caption = Don't load browser when re-reading
+
+Name = NoBrowserDR
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 15
+  Top = 37
+  Width = 15
+  Taborder = 0
+
+Name = Label7
+  Type = Label
+  Color = 32896
+  Container = Groupbox3
+  Height = 13
+  Left = 40
+  Top = 38
+  Width = 178
+  Caption = Don't load browser during Server read
+
+Name = BrowserNP
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 15
+  Top = 16
+  Width = 15
+  Taborder = 2
+
+Name = Label8
+  Type = Label
+  Color = 32896
+  Container = Groupbox3
+  Height = 13
+  Left = 40
+  Top = 18
+  Width = 191
+  Caption = No pause message during browser loads
+
+Name = Label1
+  Type = Label
+  Color = 32896
+  Container = Groupbox4
+  Height = 13
+  Left = 40
+  Size = 8
+  Top = 20
+  Width = 187
+  Caption = Create a Dummy record for new caches
+
+Name = Label9
+  Type = Label
+  Color = 32896
+  Container = Groupbox4
+  Height = 13
+  Left = 40
+  Top = 39
+  Width = 164
+  Caption = Download Gpx file for New caches
+
+Name = Label10
+  Type = Label
+  Color = 16711680
+  Container = Groupbox4
+  Height = 13
+  Left = 14
+  Top = 100
+  Width = 103
+  Caption = Gpx Download Macro
+
+Name = GpxDlMacro
+  Type = File
+  Container = Groupbox4
+  Height = 21
+  Left = 14
+  Top = 116
+  Width = 214
+  Taborder = 0
+
+Name = CreateDummyRecord
+  Type = Radiobutton
+  Container = Groupbox4
+  Height = 17
+  Left = 14
+  Top = 18
+  Width = 15
+  Taborder = 1
+
+Name = GetNewGpx
+  Type = Radiobutton
+  Container = Groupbox4
+  Height = 17
+  Left = 14
+  Top = 38
+  Width = 15
+  Taborder = 2
+
+Name = Null
+  Type = Radiobutton
+  Container = Groupbox4
+  Height = 17
+  Left = 14
+  Top = 58
+  Width = 15
+  Taborder = 3
+
+Name = Label11
+  Type = Label
+  Color = 32896
+  Container = Groupbox4
+  Height = 13
+  Left = 40
+  Top = 58
+  Width = 54
+  Caption = Do Nothing
+
+Name = ReReadAutomation
+  Type = Checkbox
+  Container = Groupbox4
+  Height = 17
+  Left = 15
+  Top = 78
+  Width = 15
+  Taborder = 4
+
+Name = Label12
+  Type = Label
+  Color = 32896
+  Container = Groupbox4
+  Height = 13
+  Left = 40
+  Top = 80
+  Width = 180
+  Caption = Allow automation when re-reading files
+
+<enddata>
+ 
+
+###################################################################################
+## File Maintenance form
+#
+  <DATA> VarName=$FormD
+#********************************************************************
+# Form generated by GSAK form designer on Fri 01-Feb-2008 08:40:59
+#********************************************************************
+Name = Form4
+  Type = Form
+  Color = 14087134
+  Height = 353
+  Top = 85
+  Width = 545
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Notify log history
+  Height = 86
+  Left = 32
+  Top = 49
+  Width = 472
+  Taborder = 0
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = Log Owner history
+  Height = 85
+  Left = 31
+  Top = 148
+  Width = 472
+  Taborder = 1
+
+Name = Label1
+  Type = Label
+  Color = 16744576
+  Font = Comic Sans MS
+  Height = 23
+  Left = 200
+  Size = 12
+  Style = bold
+  Top = 8
+  Width = 128
+  Caption = File Maintenance
+
+Name = MaintBtn
+  Type = Button
+  Height = 25
+  Left = 79
+  Top = 260
+  Width = 111
+  Taborder = 2
+  Caption = Execute
+
+Name = ExitF4
+  Type = Button
+  Height = 25
+  Left = 341
+  Top = 260
+  Width = 99
+  Taborder = 3
+  Caption = Exit
+
+Name = Label2
+  Type = Label
+  Color = 8421631
+  Container = Groupbox1
+  Height = 13
+  Left = 15
+  Style = bold
+  Top = 24
+  Width = 98
+  Caption = NotifyHistory.Gpx
+
+Name = RenNotifyHist
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 265
+  Top = 22
+  Width = 15
+  Taborder = 0
+
+Name = DelNotifyHist
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 355
+  Top = 22
+  Width = 15
+  Taborder = 1
+
+Name = Label3
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 288
+  Top = 24
+  Width = 40
+  Caption = Rename
+
+Name = Label4
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 376
+  Top = 24
+  Width = 31
+  Caption = Delete
+
+Name = Label5
+  Type = Label
+  Color = 8421631
+  Container = Groupbox2
+  Height = 13
+  Left = 15
+  Style = bold
+  Top = 24
+  Width = 86
+  Caption = LogHistory.Gpx
+
+Name = Label6
+  Type = Label
+  Color = 32896
+  Container = Groupbox2
+  Height = 13
+  Left = 286
+  Top = 24
+  Width = 40
+  Caption = Rename
+
+Name = Label7
+  Type = Label
+  Color = 32896
+  Container = Groupbox2
+  Height = 13
+  Left = 389
+  Top = 24
+  Width = 31
+  Caption = Delete
+
+Name = NhfCnt
+  Type = Label
+  Color = 16711680
+  Container = Groupbox1
+  Height = 13
+  Left = 140
+  Top = 24
+  Width = 60
+
+Name = Label8
+  Type = Label
+  Color = 8421631
+  Container = Groupbox1
+  Height = 13
+  Left = 15
+  Style = bold
+  Top = 50
+  Width = 73
+  Caption = NotifySql.Txt
+
+Name = NsfCnt
+  Type = Label
+  Color = 16711680
+  Container = Groupbox1
+  Height = 13
+  Left = 140
+  Top = 50
+  Width = 32
+
+Name = RenNotifySql
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 265
+  Top = 49
+  Width = 15
+  Taborder = 2
+
+Name = DelNotifySql
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 355
+  Top = 49
+  Width = 15
+  Taborder = 3
+
+Name = Label9
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 378
+  Top = 50
+  Width = 31
+  Caption = Delete
+
+Name = Label10
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 287
+  Top = 50
+  Width = 40
+  Caption = Rename
+
+Name = RenLogHist
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 17
+  Left = 265
+  Top = 22
+  Width = 15
+  Taborder = 0
+
+Name = DelLogHist
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 17
+  Left = 355
+  Top = 22
+  Width = 15
+  Taborder = 1
+
+Name = LhfCnt
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 140
+  Top = 24
+  Width = 38
+
+Name = Label12
+  Type = Label
+  Color = 8421631
+  Container = Groupbox2
+  Height = 13
+  Left = 15
+  Style = bold
+  Top = 50
+  Width = 61
+  Caption = LogSql.Txt
+
+Name = LsfCnt
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 140
+  Top = 50
+  Width = 38
+
+Name = RenLogSql
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 17
+  Left = 265
+  Top = 48
+  Width = 15
+  Taborder = 2
+
+Name = Label14
+  Type = Label
+  Color = 32896
+  Container = Groupbox2
+  Height = 13
+  Left = 287
+  Top = 50
+  Width = 40
+  Caption = Rename
+
+Name = DelLogSql
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 17
+  Left = 355
+  Top = 49
+  Width = 15
+  Taborder = 3
+
+Name = Label15
+  Type = Label
+  Color = 32896
+  Container = Groupbox2
+  Height = 13
+  Left = 386
+  Top = 50
+  Width = 31
+  Caption = Delete
+
+  <ENDDATA> 
+#*******************************************************
+#   Variable declarations for
+#   C:\apps\pgms\GSAK\macros\GcEmailReader.gsk
+#
+#   Generated 03/22/2008 7:11:36 PM on GSAKVariables.gsk Rev V0.20 B11
+#
+#*******************************************************
+
+
+BEGINSUB Name=Declare
+Option Explicit=Yes
+
+Declare Var=$ArcMsg Type=String
+Declare Var=$Author Type=String
+Declare Var=$BatchData Type=String
+Declare Var=$BatchFile Type=String
+Declare Var=$Body Type=String
+Declare Var=$BodyLst Type=String
+Declare Var=$BrowserNP Type=String
+Declare Var=$CacheId Type=String
+Declare Var=$CacheName Type=String
+Declare Var=$CfgData Type=String
+Declare Var=$CfgFile Type=String
+Declare Var=$CfgFolder Type=String
+Declare Var=$CfgLine Type=String
+Declare Var=$CfgLoc Type=Numeric
+Declare Var=$CfgLst Type=String
+Declare Var=$CfgMax Type=Numeric
+Declare Var=$ChkLogs Type=Boolean
+Declare Var=$ChkLogSvr Type=Boolean
+Declare Var=$ChkNotifySvr Type=Boolean
+Declare Var=$ChkSvr Type=Boolean
+Declare Var=$Cnt Type=Numeric
+Declare Var=$Cntr Type=Numeric
+Declare Var=$Cr Type=String
+Declare Var=$CreateDummyRecord Type=String
+Declare Var=$CurrentDb Type=String
+Declare Var=$Data Type=String
+Declare Var=$Date Type=String
+Declare Var=$DbList Type=String
+Declare Var=$Delay Type=Numeric
+Declare Var=$DelLhf Type=Boolean
+Declare Var=$DelLsf Type=Boolean
+Declare Var=$DelNhf Type=Boolean
+Declare Var=$DelNsf Type=Boolean
+Declare Var=$DisMsg Type=String
+Declare Var=$DnfMsg Type=String
+Declare Var=$EnaMsg Type=String
+Declare Var=$ErrLog Type=String
+Declare Var=$ErrorFlag Type=Boolean
+Declare Var=$Faulty Type=Numeric
+Declare Var=$FileData Type=String
+Declare Var=$FileName Type=String
+Declare Var=$FileParms Type=String
+Declare Var=$FMaint Type=Boolean
+Declare Var=$FndCnt Type=Numeric
+Declare Var=$FndMsg Type=String
+Declare Var=$Form Type=String
+Declare Var=$FormB Type=String
+Declare Var=$FormC Type=String
+Declare Var=$Formd Type=String
+Declare Var=$FormExit Type=String
+Declare Var=$GcUrl Type=String
+Declare Var=$GetNewGpx Type=String
+Declare Var=$GpxDlMacro Type=String
+Declare Var=$HdrList Type=String
+Declare Var=$Header Type=String
+Declare Var=$Image Type=String
+Declare Var=$KeepLogHistory Type=String
+Declare Var=$KeepLogSql Type=String
+Declare Var=$KeepNotifyHistory Type=String
+Declare Var=$KeepNotifySql Type=String
+Declare Var=$Lf Type=String
+Declare Var=$Log Type=Boolean
+Declare Var=$LogCode Type=Numeric
+Declare Var=$LogCurrentFile Type=String
+Declare Var=$LogDirName Type=String
+Declare Var=$LogDoNothing Type=Boolean
+Declare Var=$LogErrs Type=Numeric
+Declare Var=$LogHistoryFile Type=String
+Declare Var=$LogLine Type=String
+Declare Var=$LogSetting Type=String
+Declare Var=$LogStr Type=String
+Declare Var=$LogType Type=String
+Declare Var=$LogTypes Type=String
+Declare Var=$LtCnt Type=Numeric
+Declare Var=$MacName Type=String
+Declare Var=$MacroName Type=String
+Declare Var=$MacroVers Type=String
+Declare Var=$mailbox Type=String
+Declare Var=$mCount Type=Numeric
+Declare Var=$MemoBox Type=String
+Declare Var=$Message Type=String
+Declare Var=$MntLog Type=String
+Declare Var=$Msg Type=String
+Declare Var=$Msg0 Type=String
+Declare Var=$Msg1 Type=String
+Declare Var=$Msg2 Type=String
+Declare Var=$NewCaches Type=Numeric
+Declare Var=$NewData Type=String
+Declare Var=$NewFile Type=String
+Declare Var=$NewMsgs Type=String
+Declare Var=$NoBrowserDR Type=String
+Declare Var=$NoBrowserRR Type=String
+Declare Var=$Notify Type=Boolean
+Declare Var=$NotifyCurrentFile Type=String
+Declare Var=$NotifyDirName Type=String
+Declare Var=$NotifyDoNothing Type=Boolean
+Declare Var=$NotifyHistoryFile Type=String
+Declare Var=$NotifyList Type=String
+Declare Var=$NotifySetting Type=String
+Declare Var=$NotifySqlFile Type=String
+Declare Var=$NTcnt Type=Numeric
+Declare Var=$Num Type=Numeric
+Declare Var=$NumberOfMessages Type=Numeric
+Declare Var=$OldCfgLine Type=String
+Declare Var=$OldData Type=String
+Declare Var=$OwnerCnt Type=Numeric
+Declare Var=$OwnerLog Type=String
+Declare Var=$OwnerSqlFile Type=String
+Declare Var=$OwnerSqlLst Type=String
+Declare Var=$Prefix Type=String
+Declare Var=$PubLog Type=String
+Declare Var=$ReadCurrentFile Type=Boolean
+Declare Var=$ReadLogCf Type=Boolean
+Declare Var=$ReadLogFile Type=Boolean
+Declare Var=$ReadLogHf Type=Boolean
+Declare Var=$ReadNotifyCf Type=Boolean
+Declare Var=$ReadNotifyHf Type=Boolean
+Declare Var=$RenLhf Type=Boolean
+Declare Var=$RenLsf Type=Boolean
+Declare Var=$RenNhf Type=Boolean
+Declare Var=$RenNsf Type=Boolean
+Declare Var=$ResultStr Type=String
+Declare Var=$Retlog Type=String
+Declare Var=$SetConfig Type=Boolean
+Declare Var=$SqlLst Type=String
+Declare Var=$SubjectLine Type=String
+Declare Var=$Summary Type=String
+Declare Var=$SummaryLine Type=String
+Declare Var=$TimeIn Type=Numeric
+Declare Var=$TimeOut Type=Numeric
+Declare Var=$TmpSet Type=String
+Declare Var=$UnAlog Type=String
+Declare Var=$UpdatedCaches Type=Numeric
+Declare Var=$UpdLog Type=String
+Declare Var=$Url Type=String
+Declare Var=$UseBrowser Type=Boolean
+Declare Var=$WatchLog Type=String
+Declare Var=$WlCnt Type=Numeric
+Declare Var=$X Type=Numeric
+ENDSUB

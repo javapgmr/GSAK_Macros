@@ -1,0 +1,64 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Intersection of 2 GSAK databases
+# MacAuthor = Big Wolf
+# MacFileName = SQLaamTest.gsk
+#*******************************************
+
+VerCheck Version=7.1.0.54 (please update GSAK to the latest version to run this macro - see http://gsak.net)  
+  
+#Set $GetFieldsTablename to the table name you want to get the fields for.  
+$GetFieldsTablename="edn"
+  
+# This populates $AllFields with the list of field names so that it can be 
+# inserted into an sql statement.  It returns the fields in the form of 
+# <tablename>.<fieldname1> as <fieldname1>, <tablename>.<fieldname2> as <fieldname2> etc
+# so that the resulting table can be imported back into GSAK with the correct field names 
+  GoSub Name=GetFields
+  
+ 
+# select all fields from first table where the GCXXX code is the same in both tables i.e.
+# this will give you the subset of waypoints that occur in both files.
+  $SQLinstructions="Select " + $AllFields + " from " + $GetFieldsTablename + ", gla where edn.code=gla.code"
+  
+# do the sql query
+  $dbdata = Sql($SQLinstructions,"H")
+  
+  
+# load the headings and the first 3 lines into a string   
+  $mydata = extract($dbdata,$_NewLine,1)+ $_NewLine + $_NewLine
+  $mydata = $mydata + extract($dbdata,$_NewLine,2) + $_NewLine + $_NewLine
+  $mydata = $mydata + extract($dbdata,$_NewLine,3) + $_NewLine + $_NewLine
+  $mydata = $mydata + extract($dbdata,$_NewLine,4) + $_NewLine + $_NewLine
+
+#Display the first 4 lines out of the SQL output  
+  MsgOk Msg=$mydata
+  
+  
+  
+  
+# *****************************************************************
+BeginSub Name=GetFields
+# *****************************************************************  
+  $SQLinstructions="Select * from " + $GetFieldsTablename
+  
+  $dbdata = Sql($SQLinstructions,"H")
+  $headings = extract($dbdata,$_NewLine,1)
+  $TotalCols = RegExCount(";",$headings) + 1
+  
+  $y = 0
+  $AllFields=""
+  While $y < ($TotalCols - 1)
+    $y = $y + 1
+    $field = extract($headings,";",$y)
+    $AllFields=$AllFields + $GetFieldsTablename + "." + $field + " as " + $field + " , " 
+  Endwhile
+  
+  $y = $y + 1
+  $field = extract($headings,";",$y)
+  $AllFields=$AllFields + $GetFieldsTablename + "." + $field + " as " + $field
+  
+endsub  
+    
+
+  

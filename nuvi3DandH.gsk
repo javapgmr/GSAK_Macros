@@ -1,0 +1,109 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Nuvi 3xx Return Combined Description, Hint and Logs!!
+# MacAuthor = clyde (edited by pilotsnipes)
+# MacFileName = nuvi3DandH.gsk
+# MacUrl = http://gsak.net/board/index.php?act=ST&f=6&t=7732
+#*******************************************
+
+# Only tested with a Nuvi 360T.
+# My Experience has shown that anything over 20,000 for the stringlength makes the Nuvi slow reading that POI...
+# Based on code from IpodNotes.gsk by Clyde too.
+
+Beginsub Name=Declare
+Option Explicit=Yes
+
+  Declare Var=$HintLen Type=Numeric
+  Declare Var=$LogsLen Type=Numeric
+  Declare Var=$hints Type=String
+  Declare Var=$cachestat Type=String
+  Declare Var=$combdesc Type=String
+  Declare Var=$_special Type=String
+  Declare Var=$lcount Type=Numeric
+  Declare Var=$logs Type=String
+  Declare Var=$crlf Type=String
+  $crlf = $_NewLine
+  $_special = ""
+  $hints = ""
+  $combdesc = ""
+
+EndSub
+
+
+$hints = " ****************************** Hint: " + $d_hints + " ****************************** "
+$combdesc = " Description: " + $d_shortDescription + $d_LongDescription + " [END] "
+
+
+
+  # now output the logs
+  Table Active=Logs scope=parent
+  $lcount = 0
+  While not($_eol)
+    $lcount = $lcount + 1
+    $logs = $logs + " ___________________________ " + $d_ltype + " by " + $d_lby + " " + DateFormat($d_ldate) + " - " + $d_ltext 
+    # only output a max of 10 logs 
+    if $lcount = 10
+       break
+    Endif
+    goto position=next 
+  EndWhile
+
+
+
+
+# remove characters that may "upset" the nuvi in the hints
+
+$hints = Replace($_Quote,"'",$hints,true)
+$hints = Replace(","," ",$hints,true)
+$hints = Replace($_NewLine," ",$hints,true)
+
+# strip out any HTML tags
+$hints = RegExReplace("</?[a-z][a-z0-9]*[^<>]*>",$hints,"")
+
+
+# remove characters that may "upset" the nuvi in the Description
+
+$combdesc = Replace($_Quote,"'",$combdesc,true)
+$combdesc = Replace(","," ",$combdesc,true)
+$combdesc = Replace($_NewLine," ",$combdesc,true)
+
+# strip out any HTML tags
+$combdesc = RegExReplace("</?[a-z][a-z0-9]*[^<>]*>",$combdesc,"")
+
+
+# remove characters that may "upset" the nuvi in the Logs
+
+$logs = Replace($_Quote,"'",$logs,true)
+$logs = Replace(","," ",$logs,true)
+$logs = Replace($_NewLine," ",$logs,true)
+
+# strip out any HTML tags
+$logs = RegExReplace("</?[a-z][a-z0-9]*[^<>]*>",$logs,"")
+
+
+#Cache Status
+If $d_Archived = True
+Set $cachestat = " ****************************** Archived ****************************** "
+Else
+If $d_TempDisabled = True
+Set $cachestat = " ****************************** Temp Unavailable ****************************** "
+Else
+Set $cachestat = ""
+EndIF
+EndIf 
+
+$combdesc = $cachestat + $combdesc
+
+
+
+$_special = $combdesc
+
+# Nuvi contact section only supports 20000 bytes 
+  $HintLen = Len($hints)
+  $LogsLen = Len($logs)
+  if len($combdesc) + $HintLen + $LogsLen > 20000
+#If total string too large, dump the logs.
+     $_special = left($_special, 20000 - $HintLen) + $hints
+  else
+     $_special = $combdesc + $hints + $logs
+  endif

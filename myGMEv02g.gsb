@@ -1,0 +1,1882 @@
+################################################################################
+# MacVersion = .02g
+# MacDescription = myGME - GSAK Google Maps Export
+# MacAuthor = Mark Pelletier (String Theory)
+# MacFileName = myGMEv02g.gsk
+################################################################################
+#===========================================================================#
+#   myGME - GSAK Google Maps Export
+#   v0.2  12/28/06
+#   Mark Pelletier (String Theory)
+#===========================================================================#
+#   myGME Change History
+#  
+#   v02g    05/25/07   Added user configurable option to choose between centering the map at the current center point, or at
+#                                 the geographic center of the caches.
+# + v02f    01/28/07   Added Cluster On/Off In-Map function, Re-Center circle, Move to nearest cache, Scroll Wheel Zoom, 
+#                                 Legend Qtys, Intelligent ELabel overlap    
+#    v02e   01/25/07   Added support for western european characters, fixed initial coords, added "code"
+#                                 to cachename when sorting by code, fixed marker clicks behind hidden cachelist pane           
+#    v0.2d  01/17/07   Added support to Benchmark, Locationless, MegaEvent and Ape cache types
+#    v0.2c  01/17/07   Fixed IE7 nag messages when opening the Google Map
+#    v0.2b  01/16/07   Added: arrayLoader(). Legend, Cache Page, Toggle List & Legend, Extended Sidepanel, Expanding Menu
+#    v0.2a  01/05/07   Added:  Clusters, USGS Topo Map Tiles
+#    v0.2    12/28/06   Initial release
+#===========================================================================#
+#
+#   This GSAK (V6) macro exports the content of the current filtered GSAK dataset
+#   to a Google Maps HTML file.  
+#  
+#=====User Configuration (vaules are case-sensitive)=================================#
+#	
+
+	$myRadius = "5"			# Radius > 0
+	$myUOM = "mi"			# Values: mi | km	
+	$myColor = "#FFFA73"		# Color: i.e., HTML: FFFA73 = Yellow, 99B3CC = Blue, F2BF24 = Orange, etc., or Web Safe: "Yellow", "Green", etc.
+	$mySort = "code"			# GSAK Column Sort - Values:  "name", "code" 
+	$myClusters = "On"			# "On" | "Off"
+	$myMenu = "Show"			# "Show | Hide"				
+	$myCenter = "Current"		# "Current" | "Calulate"
+	
+	#-----Google Maps API Key:-----#	# Your Google Maps Key
+	
+	$myKey = "ABQIAAAAscfFaPCX2aKmGifEBLfyphR_UGJjR_0_TXhESWeP2yOZi_CZXRTXtP2HI9f6pLqs0mKpAxLb8GtiVA" 
+	
+	$useFoundIcon = "Y"		# Values: Y | N
+	$launch_google_maps = "Y"		# Values: Y | N
+#
+#=====End User Config=========================================#
+#
+	$thisVersion = "myGMEv02g"
+	$Filename = $_install + "\macros\" + $thisVersion + ".htm"
+
+	#-----sort the collection-----#
+	sort by=$mySort
+
+	#-----start at first record-----#
+	$thisRecord = -1
+	$cacheList = ""
+	goto position=top
+
+	#----initialize center coordinates @ first point-----#
+	$max_lat = val($d_latitude)
+	$max_lon = val($d_longitude)
+	$min_lat = val($d_latitude)
+	$min_lon = val($d_longitude)
+
+	#----loop thru the collection-----#
+	while .not. $_EOL
+		$thisRecord = $thisRecord + 1
+		$message = "Now processing: " + "$thisRecord" + " of " + "$_Count"
+		ShowStatus msg="$message"
+
+		#-----determine center coordinates of collection-----#
+		if val($d_latitude) > $max_lat
+			$max_lat = val($d_latitude)
+		else
+			if val($d_latitude) < $min_lat        
+				$min_lat = val($d_latitude)
+			endif
+		endif
+ 
+		if val($d_longitude) > $max_lon
+			$max_lon = val($d_longitude)
+		else
+			if val($d_longitude) < $min_lon 
+				$min_lon = val($d_longitude)
+			endif
+		endif
+
+		#-----remove bad characters-----#
+		$validchars = "[°€{}\w\s\x21-\x25\x27-\x2E\xBA-\xFF]*"
+		$cacheName = $d_Name
+		$count = RegExCount($validChars, $cacheName)
+		$cleaned = ""
+		$int = 1
+		while $int <= $count
+			$good = RegExData($validChars,$cacheName,$int)
+			$cleaned = $cleaned + $good
+			$int = $int + 1
+		endwhile
+		$cacheName = replace($_Quote,"'",$cleaned,true)
+		$ownerName = replace($_Quote,"'",$d_OwnerName,true)
+
+		#-----apply the correct difficulty & terrain graphics-----#
+		$s_diff = str($d_difficulty,3,1) 
+		$s_diff = replace(",",".",$s_diff,true)      # Some regions use [,] decimal separator vs [.]
+		$s_diff = replace(".0","",$s_diff,true)
+		$s_diff = replace(".5","_5",$s_diff,true)
+
+		$s_terr = str($d_terrain,3,1) 
+		$s_terr = replace(",",".",$s_terr,true)      # Some regions [,] decimal separator vs [.]
+		$s_terr = replace(".0","",$s_terr,true)
+		$s_terr = replace(".5","_5",$s_terr,true)
+
+		#-----determine cache type-----#
+		# Key   Cache Type    
+		# ====  ============  
+		# "B"   LetterBox     
+		# "C"   CITO          
+		# "E"   Event         
+		# "G"   Benchmark     
+		# "L"    Locationless  
+		# "M"   Multi         
+		# "O"   Other         
+		# "R"   Earth         
+		# "T"   Traditional   
+		# "U"   Unknown       
+		# "V"   Virtual       
+		# "W"  Webcam        
+		# "A"   Ape        
+     
+		$cacheType = $d_CacheType
+		
+		$cacheTypeKeys = "_BCEGLMORTUVWA"
+		$cacheTypeDesc = "other;letterbox;cito;event;benchmark;locationless;multi;other;earth;traditional;unknown;virtual;webcam;ape;"
+		$index = at($cacheType,$cacheTypeKeys)
+		$thisCacheType = Extract($cacheTypeDesc, ";", $index)
+
+		#-----geoCalc function-----#
+		$LatLon = GeoCalc(($d_LatOriginal + "; " + $d_LonOriginal),"FormatMinutes")
+
+		#-----found | not found-----#
+		if $d_found 
+			$s_found ="found"
+			if $useFoundIcon = "Y"
+				$cacheIcon = "found_icon"
+			else
+				$cacheIcon = $thisCacheType + "_icon"
+			endif
+		else
+			$s_found ="notFound"
+			$cacheIcon = $thisCacheType + "_icon"
+		endif
+
+		#-----TB | no TB-----#
+		if $d_HasTravelBug
+			$bug = "TB"   
+		else
+			$bug = "noTB"
+		endif
+
+		#-----build the geoCache list for arrayLoader()-----#
+		$cacheList = $cacheList + "geoCache[" + "$thisRecord" + "]=[" + Quote($d_code) + "," +  Quote($cacheName) +  "," + $d_latitude +  ","  + $d_longitude + ","  + Quote($thisCacheType) + "," + Quote($ownerName) + "," + Quote($s_Found) + "," + Quote($bug) + "," + Quote($s_diff)  + "," + Quote($s_terr) + "," + Quote($d_Container) + "," +  Quote("(" + $LatLon + ")") + "," + Quote($d_URL) + "];" +  $_newLine
+		goto position=next
+	endwhile
+
+	#-----number of records in this collection-----#
+	$myCaches = NumtoStr($_Count)         
+
+	#-----compute the center coordinates & optimal zoom-----#
+	if $myCenter = "Calculate"
+		$center_lat = allTrim(NumToStr(($max_lat + $min_lat)/2))
+		$center_lon = allTrim(NumToStr(($max_lon + $min_lon)/2))
+	else
+		$center_lat = allTrim(Sysinfo("gsakini;LastCenter;Lat"))
+		$center_lon = allTrim(Sysinfo("gsakini;LastCenter;Lon"))
+	endif
+
+	#-----convert "," to "." for some regions-----#
+	$center_lat = replace(",",".",$center_lat,true) 
+	$center_lon = replace(",",".",$center_lon,true) 
+
+	#---- finish the $cacheList string--------------#
+	$cacheList = $header + $cacheList  + $_newLine
+	$cacheList = $cacheList +  "}"  + $_newLine
+	$cacheList = $cacheList +   $_newLine
+	$cacheList = $cacheList +  "function loadMap() {" + $_newLine
+	$cacheList = $cacheList +  "	arrayLoader();" + $_newLine
+	$cacheList = $cacheList +  "	buildInfoWindows();" + $_newLine
+	$cacheList = $cacheList +  "	initCircle();" + $_newLine
+	$cacheList = $cacheList +  "	drawCircle();" + $_newLine
+	$cacheList = $cacheList +  "	fitGeocaches();" + $_newLine
+	$cacheList = $cacheList +  "	buildLegend();" + $_newLine
+	$cacheList = $cacheList +  "}" + $_newLine
+	$cacheList = $cacheList +  $_newLine
+	$cacheList = $cacheList +  "var endtime = new Date();" + $_newLine
+	$cacheList = $cacheList +  "var elapsed = endtime.getTime() - starttime.getTime();" + $_newLine
+	$cacheList = $cacheList +  "//alert('Elapsed: ' + elapsed);" + $_newLine
+	$cacheList = $cacheList +  "</script>" + $_newLine
+	$cacheList = $cacheList +  "</html>"
+
+	#-----Search and replace variables in the final $cacheList string-----#
+	$cacheList = replace("my_centerLat",$center_lat,$cacheList,true)
+	$cacheList = replace("my_centerLon",$center_lon,$cacheList,true)
+	$cacheList = replace("my_sort",quote($mySort),$cacheList,true)
+	$cacheList = replace("my_radius",$myRadius,$cacheList,true)
+	$cacheList = replace("my_uom",quote($myUOM),$cacheList,true)
+	$cacheList = replace("my_color",$myColor,$cacheList,true)
+	$cacheList = replace("my_key",$myKey,$cacheList,true)
+	$cacheList = replace("my_clusters",quote($myClusters),$cacheList,true)
+	$cacheList = replace("my_caches",$myCaches,$cacheList,true)
+	$cacheList = replace("my_version",$thisVersion + ".htm",$cacheList,true)
+	$cacheList = replace("my_menu",$myMenu,$cacheList,true)
+
+	if $myClusters = "On"
+		$cacheList = replace("markers_per_cluster","35",$cacheList,true)
+		$cacheList = replace("cluster_status","Clusters [Off]",$cacheList,true)
+	else
+		$cacheList = replace("markers_per_cluster",quote($myCaches),$cacheList,true)
+		$cacheList = replace("cluster_status","Clusters [On]",$cacheList,true)
+	endif		
+
+	#-----Create the HTML File-----#
+	$error = Putfile($filename,$cacheList)
+
+	#-----Launch GoogleMaps??-----#
+   	if $launch_google_maps = "Y"
+		openfile file=$filename
+	endif
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#  HTML Header Data
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+<data> VarName=$header
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml">
+<head>
+<!-- saved from url=(0013)about:internet -->
+<meta http-equiv="content-type" content="text/html; charset=ISO 8859-1"/>
+<script> var _mSeeOnGoogleMaps="Google Maps";</script>
+<script src="http://maps.google.com/maps?file=api&v=2.71 &key=my_key "type="text/javascript"></script>
+
+<style type="text/css">
+
+v\:* {behavior:url(#default#VML);}
+
+html, body {
+	width: 98%;
+	height: 98%;
+	font-family: Verdana;
+	font-size: 10pt;
+	margin-left: 3px;
+}
+
+#mapBanner {
+	position: absolute;
+	top: 5px;
+	width: 100%;
+	height: 20px;
+	background-color:my_color;
+}
+
+#map {
+	position: absolute;
+	top: 27px;
+	width: 100%;
+	height: 96%
+}
+
+#myListHeader{
+	position: absolute;
+	top: 62px;
+	height:18px;
+	right: 3px;
+	width: 280px;
+	padding-top: 2px;
+	cursor: pointer;
+}
+
+#myList{
+	position: absolute;
+	top: 83px;
+	right: 3px;
+	width: 280px;
+	height:80%;
+	overflow: scroll;
+	white-space:nowrap;
+	padding-top: 2px;
+}
+
+#myMenuDiv{
+	position: absolute;
+	top: 30px;
+	left: 7px;
+	width: 50px;
+	height:50px;
+}
+
+#myLegend{
+	position: absolute;
+	bottom: 40px;
+	left: 12px;
+	width: 175px;
+	text-decoration:none;
+	cursor: pointer;
+}
+
+th {
+	font-face: Verdana ;
+	font-size: 2;
+	font-weight: normal;
+	text-decoration: none;
+}
+
+.hidden {
+	width: 280px;
+	height:400px;
+}
+
+.hiddenMenu {
+	width: 140px;
+	height:200px;
+}
+
+.box {
+	border: 2px solid black;
+}
+
+.listHeader {
+	font-align: center;
+	font-size: 11px;
+	background: my_color;
+	border: 1px solid black;
+	z-index: 99;
+	filter:alpha(opacity=85);
+	opacity: 0.85;
+	-moz-opacity:0.85;
+}
+
+.list {
+	font-size: 11px;
+	background: #FFFFFF;
+	border: 1px solid black;
+	z-index: 99;
+	filter:alpha(opacity=85);
+	opacity: 0.85;
+	-moz-opacity:0.85;
+}
+
+.labels {
+	background: my_color;
+	font-family: Verdana;
+	font-size: 10px;
+	border: 1px solid black;
+	padding-left: 2px;
+	padding-right: 2px;
+}
+
+.myMenu {
+	display:block;
+	margin-top: 5px;
+	margin-left:5px;
+	padding-left: 7px;
+	width: 115px;
+	text-decoration: none;
+	color: #000000;
+	background: my_color;
+	height: 17px;
+	border: 1px solid black;
+	filter:alpha(opacity=85);
+	opacity: 0.85;
+	-moz-opacity:0.85;
+	cursor: pointer;
+}
+
+.mySubmenu {
+	display: block;
+	height: 17px;
+	width: 115px;
+	margin-top:-1px;
+	margin-left: 20px;
+	padding-top: 2px;
+	padding-left: 7px;
+	background: #FFFFFF;
+	color: #333333;
+	border: 1px solid black;
+	text-decoration: none;
+	filter:alpha(opacity=85);
+	opacity: 0.85;
+	-moz-opacity:0.85;
+	cursor: pointer;
+}
+
+.show {
+	display: block;
+}
+
+.hide {
+	display: none;
+}
+
+</style>
+
+<!-----IE format patch----->
+<!--[if IE]>
+<style type="text/css">
+	html, body {margin-left: 5px;}
+	#mapBanner {width:100%;}
+	#map {top: 27px;width:100%; height: 94%;}
+	#myListHeader{right: 16px;}
+	#myList{top: 83px; right: 16px;}
+	#myLegend{bottom: 75px; left: 19px; }
+	#myMenuDiv{left: 15px;}
+</style>
+<![endif]-->
+
+<body onload = "loadMap()" onunload="GUnload()">
+	<div id = "mapBanner" class = "box"><center>MyGME - GSAK Google Maps Export</center></div>
+	<div id = "map" class = "box"></div>
+	<div id = "myListHeader" class = "listHeader" onclick = "showHideList()"></div>
+	<div id = "myList" class = "list"><center><br>Loading my_caches GeoCaches<br><br>Please wait...<br><br><img src='http://home.comcast.net/~markp99/loading2.gif'></b></center></div>
+	<div id = "myMenuDiv" class = "hidden">
+	<a class="myMenu" onclick="showHide('mymenu1')" onmouseover="this.style.fontWeight='bold'" onmouseout="this.style.fontWeight='Normal'">Zoom</a>
+		<div id="mymenu1" class="my_menu">
+			<a onclick=map.zoomIn() id="btnZoomIn" onmouseover="this.style.background='my_color'" onmouseout="this.style.background='#FFFFFF' "class="mySubmenu">Zoom In</a>
+			<a onclick=map.zoomOut() id="btnZoomOut" onmouseover="this.style.background='my_color'" onmouseout="this.style.background='#FFFFFF'" class="mySubmenu">Zoom Out</a>
+			<a onclick=zoomRadius() id="btnZoomRadius" onmouseover="this.style.background='my_color'" onmouseout="this.style.background='#FFFFFF'"class="mySubmenu">Zoom to Radius</a>
+			<a onclick=zoomAllCaches() id="btnZoomAll" onmouseover="this.style.background='my_color'" onmouseout="this.style.background='#FFFFFF'"class="mySubmenu">Zoom All Caches</a>
+			<a onclick=relocateCenter() id="btnReCenter" onmouseover="this.style.background='my_color'" onmouseout="this.style.background='#FFFFFF'"class="mySubmenu">ReCenter Radius</a>
+		</div>
+	<a class="myMenu" onclick="showHide('mymenu2')" onmouseover="this.style.fontWeight='bold'" onmouseout="this.style.fontWeight='Normal'">Show/Hide</a>
+		<div id="mymenu2" class="my_menu">
+			<a onclick = showHideClusters() id="btnCluster" onmouseover="this.style.background='my_color'" onmouseout="this.style.background='#FFFFFF'"class="mySubmenu">cluster_status</a>
+			<a onclick = showHideLabels() id="btnLabels" onmouseover="this.style.background='my_color" onmouseout="this.style.background='#FFFFFF'"class="mySubmenu">Cache Labels</a>
+			<a onclick = showHideList() id="btnCacheList" onmouseover="this.style.background='my_color'" onmouseout="this.style.background='#FFFFFF'" class="mySubmenu">Cache List</a>
+			<a onclick = openWindow() id="btnCachePage" onmouseover="this.style.background='my_color'" onmouseout="this.style.background='#FFFFFF'" class="mySubmenu">Cache Page</a>
+			<a onclick = showHideLegend() id="btnLegend" onmouseover="this.style.background='my_color'" onmouseout="this.style.background='#FFFFFF'" class="mySubmenu">Legend</a>
+		</div>
+	</div>
+	<div id = "myLegend" class = "list" onclick = "showHideLegend()"></div>;
+</body>
+</head>
+
+<script type="text/javascript">
+
+document.getElementById('myLegend').style.display = 'none';
+document.getElementById('myListHeader').style.display = 'block';
+document.getElementById('myList').style.display = 'block';
+
+//-----define globals-----//
+var starttime = new Date();
+
+//-----user config options-----//
+var myClusters = my_clusters;		// "On" | "Off"
+var myUOM = my_uom;		// "mi" or "km"
+var myRadius = my_radius;		// initial radius > 0
+var mySort = my_sort;
+var caches = my_caches;  		//<<==number of caches from GSAK
+
+//-----init arrays-----//
+var cacheInfo;
+var myLabel = [];
+var oldPoly = [];
+var thisCache = [];
+var geoList;
+var geoList2;
+var geoListHeader;
+var geoCache = new Array(13);  	//an array of 13 arrays
+
+//-----circle vars-----//
+var circle;
+var maxLat;
+var maxLng;
+var minLat;
+var minLng;
+var d2r = Math.PI / 180;   	// degrees to radians
+var r2d = 180 / Math.PI;   	// radians to degrees
+var earthsradius = 3963;   	// 3963 is the radius of the earth in miles
+var MarkersPerCluster = markers_per_cluster;
+
+//-----infoWindow vars-----//
+var stars_image = "<img src='http://www.geocaching.com/images/stars/stars";
+var zoom_In  = "<a href=javascript:zoomZoom();>Zoom In</a>"
+var zoom_Out = "<a href=javascript:zoomRadius();>Zoom Radius</a>"
+var found = "<i>You have already found this cache!</i><br><br>";
+var notFound = "";
+
+//-----map vars-----//
+var initialZoom;
+var initialCenter = new GLatLng(my_centerLat,my_centerLon);  //<<==GSAK calculated centerpoint
+var labelStatus = "hidden";
+var bounds = new GLatLngBounds();   
+var centerPoint;
+var map = new GMap2(document.getElementById("map"));
+var ovSize=new GSize(150, 150)   
+var ovMap=new GOverviewMapControl(ovSize);
+var mini=ovMap.getOverviewMap();
+var mouselat;
+var mouselng;
+var mapObj = document.getElementById("map");
+var legend_status = "hidden";
+var label_status = "hidden";
+var list_status = "shown";
+
+//-----build the map-----//
+//	map.addControl(new GLargeMapControl());
+//	map.addControl(new GMapTypeControl());
+	map.addControl(ovMap);
+	ovMap.hide();
+	map.addControl(new GScaleControl(300));
+	map.enableContinuousZoom();
+	map.enableDoubleClickZoom();
+	map.setCenter(initialCenter,8);
+
+//-----accomodate miles or kilometers-----//
+switch (myUOM) {
+	case "mi":
+		var meterRadius = myRadius * 1609.344   	//miles to meters conversion
+		var mileRadius = myRadius;      		//miles to miles conversion
+		_mPreferMetric=false;
+	break;
+	case "km":
+		var meterRadius = myRadius * 1000     		//kilometers to meters conversion
+		var mileRadius = myRadius/1.609344;  		//kilometers to miles conversion
+		_mPreferMetric=true;
+	break;
+	default:
+		alert("Invalid radius UOM defined ('" + myUOM + "').  Miles are assumed.");
+		myUOM = "mi";
+		var meterRadius = myRadius * 1609.344   	//miles to meters conversion
+		var mileRadius = myRadius;      		//miles to miles conversion
+		_mPreferMetric=false;
+	break;
+}
+
+//-----define the icons-----//
+var baseIcon = new GIcon();
+	baseIcon.shadow = "http://labs.google.com/ridefinder/images/mm_20_shadow.png";
+	baseIcon.iconSize = new GSize(12, 20);
+	baseIcon.shadowSize = new GSize(22, 20);
+	baseIcon.iconAnchor = new GPoint(6, 20);
+	baseIcon.infoWindowAnchor = new GPoint(5, 1);
+
+	var traditional_icon = new GIcon(baseIcon);
+	var multi_icon = new GIcon(baseIcon);
+	var unknown_icon = new GIcon(baseIcon);
+	var letterbox_icon = new GIcon(baseIcon);
+	var virtual_icon = new GIcon(baseIcon);
+	var earth_icon = new GIcon(baseIcon);
+	var webcam_icon = new GIcon(baseIcon);
+	var event_icon = new GIcon(baseIcon);
+	var cito_icon = new GIcon(baseIcon);
+	var ape_icon = new GIcon(baseIcon);
+	var locationless_icon = new GIcon(baseIcon);
+	var benchmark_icon = new GIcon(baseIcon);
+	var other_icon = new GIcon(baseIcon);
+	var found_icon = new GIcon(baseIcon);
+
+	//-----Google Maps Icons-----//
+	traditional_icon.image = "http://labs.google.com/ridefinder/images/mm_20_green.png";
+	multi_icon.image = "http://labs.google.com/ridefinder/images/mm_20_yellow.png";
+	unknown_icon.image = "http://labs.google.com/ridefinder/images/mm_20_purple.png";
+	letterbox_icon.image = "http://labs.google.com/ridefinder/images/mm_20_blue.png";
+	virtual_icon.image = "http://labs.google.com/ridefinder/images/mm_20_white.png";
+	earth_icon.image = "http://labs.google.com/ridefinder/images/mm_20_brown.png";
+	webcam_icon.image = "http://labs.google.com/ridefinder/images/mm_20_black.png";
+	event_icon.image = "http://labs.google.com/ridefinder/images/mm_20_orange.png";
+	cito_icon.image = "http://labs.google.com/ridefinder/images/mm_20_orange.png";
+	ape_icon.image = "http://labs.google.com/ridefinder/images/mm_20_gray.png";
+	locationless_icon.image = "http://labs.google.com/ridefinder/images/mm_20_gray.png";
+	benchmark_icon.image = "http://labs.google.com/ridefinder/images/mm_20_orange.png";
+	other_icon.image = "http://labs.google.com/ridefinder/images/mm_20_gray.png";
+	found_icon.image = "http://labs.google.com/ridefinder/images/mm_20_red.png";
+
+	//-----Large Images for Info Window-----//
+	var traditional_image = "<img src='http://www.geocaching.com/images/WptTypes/2.gif'>";
+	var multi_image = "<img src='http://www.geocaching.com/images/WptTypes/3.gif'>";
+	var letterbox_image = "<img src='http://www.geocaching.com/images/WptTypes/5.gif'>";
+	var unknown_image = "<img src='http://www.geocaching.com/images/WptTypes/8.gif'>";
+	var virtual_image = "<img src='http://www.geocaching.com/images/WptTypes/4.gif'>";
+	var earth_image = "<img src='http://www.geocaching.com/images/WptTypes/137.gif'>";
+	var webcam_image = "<img src='http://www.geocaching.com/images/WptTypes/11.gif'>";
+	var event_image = "<img src='http://www.geocaching.com/images/WptTypes/6.gif'>";
+	var cito_image = "<img src='http://www.geocaching.com/images/WptTypes/13.gif'>";
+	var ape_image = "<img src='http://www.geocaching.com/images/WptTypes/7.gif'>";
+	var locationless_image = "<img src='http://www.geocaching.com/images/WptTypes/12.gif'>";
+	var benchmark_image = "<img src='http://www.geocaching.com/images/WptTypes/27.gif'>";
+//	var travelBug_image = "<img src='http://www.geocaching.com/images/WptTypes/21.gif'>"
+//	var noTravelBug_image = ""
+	var found_image = "<img src=http://www.geocaching.com/images/icons/icon_smile.gif'>"
+	var TB_image = "<img src='http://www.geocaching.com/images/WptTypes/21.gif'>"
+	var noTB_image = ""
+	var other_image = "<img src='http://labs.google.com/ridefinder/images/mm_20_gray.png'>";
+
+	//-----Small Images for Sidepanel List-----//
+	var traditional_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/2.gif'>";
+	var multi_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/3.gif'>";
+	var unknown_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/8.gif'>";
+	var letterbox_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/5.gif'>";
+	var virtual_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/4.gif'>";
+	var earth_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/earthcache.gif'>";
+	var webcam_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/11.gif'>";
+	var event_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/6.gif'>";
+	var cito_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/13.gif'>";
+	var ape_image_sm = "<img src='http://labs.google.com/ridefinder/images/mm_20_gray.png'>"; 		// no small Ape cache icon?
+	var locationless_image_sm = "<img src='http://labs.google.com/ridefinder/images/mm_20_gray.png''>"; 	//no small locationless icon?
+	var benchmark_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/27.gif'>";
+	var other_image_sm = "<img src='http://labs.google.com/ridefinder/images/mm_20_gray.png'>";  		//other for types unknown, unsupported
+	var found_image_sm = "<img src='http://home.comcast.net/~markp99/check.gif'>"
+	var notFound_image_sm = ""
+//	var found_image_sm = "<img src='http://www.geocaching.com/images/icons/icon_smile.gif'>"
+	var TB_image_sm = "<img src='http://www.geocaching.com/images/WptTypes/sm/21.gif'>"
+	var noTB_image_sm = ""
+
+//-----Show/Hide Clusters-----//
+function showHideClusters() {
+	if (myClusters=="On") {
+		myClusters = "Off";
+		MarkersPerCluster = my_caches;
+		document.getElementById("btnCluster").innerHTML = "Clusters [On]";
+	}
+	else {
+		myClusters = "On";
+		MarkersPerCluster = 35;
+		document.getElementById("btnCluster").innerHTML = "Clusters [Off]";
+	}
+	map.zoomIn();
+	map.zoomOut();
+}
+
+//BEGIN SCROLL-WHEEL ZOOM CODE
+
+GMap2.prototype.wheelZoom = function(event) { 
+	if(event.cancelable) { 
+		event.preventDefault(); 
+	} 
+	if((event.detail || -event.wheelDelta) < 0) { 
+		zoom('in'); 
+	} 
+	else { 
+		zoom('out'); 	
+	} 
+	return false;
+} 
+
+GEvent.addDomListener(mapObj, "DOMMouseScroll", map.wheelZoom); 
+GEvent.addDomListener(mapObj, "mousewheel", map.wheelZoom); 
+GEvent.addListener(map, "mousemove", 
+	function(point) { 
+		mouselat = point.y.toFixed(6); 
+		mouselng = point.x.toFixed(6); 
+	} 
+); 
+
+function zoom(a) { 
+	var m = map.fromLatLngToDivPixel(new GLatLng(mouselat,mouselng)); 
+	var c = map.fromLatLngToDivPixel(map.getCenter()); 
+	if (a == 'in') { 
+		var x = c.x - ((m.x - c.x) * -.5); 
+		var y = c.y - ((m.y - c.y) * -.5); 
+		var n = map.fromDivPixelToLatLng(new GPoint(x,y)); 	
+		map.setCenter(n); 
+		map.zoomIn(); 
+	} else { 
+		var x = c.x - (m.x - c.x); 
+		var y = c.y - (m.y - c.y); 
+		var n = map.fromDivPixelToLatLng(new GPoint(x,y)); 
+		map.setCenter(n); 
+		map.zoomOut(); 
+	}
+}
+
+//-----hidden div behind the sidepanel list keep infoWIndows from opening behind sidepanel-----//
+function hiddenListDiv() {}
+	hiddenListDiv.prototype = new GControl();
+	hiddenListDiv.prototype.initialize = function(map) {
+	var container = document.createElement("div");
+	container.innerHTML = '<div id="hiddenList" class="hidden"></div>';
+	map.getContainer().appendChild(container);
+	return container;
+}
+
+hiddenListDiv.prototype.getDefaultPosition = function() {
+	return new GControlPosition(G_ANCHOR_TOP_RIGHT, new GSize(5, 7));
+}
+
+map.addControl(new hiddenListDiv());
+
+//-----hidden div behind the Menu list keep infoWIndows from opening behind sidepanel-----//
+function hiddenMenuDiv() {}
+	hiddenMenuDiv.prototype = new GControl();
+	hiddenMenuDiv.prototype.initialize = function(map) {
+	var container = document.createElement("div");
+	container.innerHTML = '<div class="hiddenMenu"></div>';
+	map.getContainer().appendChild(container);
+	return container;
+}
+
+hiddenMenuDiv.prototype.getDefaultPosition = function() {
+	return new GControlPosition(G_ANCHOR_TOP_LEFT, new GSize(5, 7));
+}
+
+map.addControl(new hiddenMenuDiv());
+
+//-----menu control-----//
+menu_status = new Array();
+function showHide(theid){
+	if (document.getElementById) {
+		var switch_id = document.getElementById(theid);
+		if(menu_status[theid] != 'show') {
+			switch_id.className = 'show';
+			menu_status[theid] = 'show';
+		}
+		else {
+			switch_id.className = 'hide';
+			menu_status[theid] = 'hide';
+		}
+	}
+}
+
+//-----find nearby caches-----//
+function nearbyCaches() {
+	var nearestDistance = 999999999;
+	var neatestCache;
+	var n = 0;
+	geoListHeader = "";
+ 	geoList = "<table width = 100%>";
+	geoList2 = "<table width = 800px>";
+	for (var i = 0; i < thisCache.length; i++) {
+		var thisDistance = thisCache[i].getPoint().distanceFrom(centerMarker.getPoint());
+		if (thisDistance < nearestDistance) {
+			nearestDistance = thisDistance;
+			nearestCache = i;
+		}
+		if (thisDistance < meterRadius) {
+			n++
+			<!-----sidepanel list----->
+			cacheImage_sm = traditional_image_sm;
+			geoList += "<tr><td>" + eval(geoCache[i][6] + "_image_sm")  + "</td>";
+			geoList += "<td><center>" + n + "</center></td>";
+			geoList += "<td>" + eval(geoCache[i][4] + "_image_sm") +"</td>";
+			geoList += "<td>" + eval(geoCache[i][7] + "_image_sm")  + "</td>";
+			geoList += "<td><a href=javascript:gotoGeocache("+ i +")>"
+			if(mySort == "code") {
+				geoList += geoCache[i][0] + " - " + geoCache[i][1];
+			}
+			else {
+				geoList += geoCache[i][1];
+			}
+			geoList += "</a></td></tr>";
+			var point = thisCache[i].getPoint();
+			var label = new ELabel(point, n, "labels", new GSize(8,0), 95, true);
+			map.addOverlay(label);
+			myLabel.push(label);
+
+		//-----geoList2 = print version-----//
+		if (n==1) {
+			geoList2 += "<tr><th width = 1px></th><th width = 1px></th><th width = 1px></th><th width = 1px></th><th width= 35%><font face = Verdana size = 2>CacheName</th><th width = 30px><font face = Verdana size = 2 >Diff</th><th width = 30px><font face = Verdana size = 2>Terr</th><th width = 55px><font face = Verdana size = 2 >Size</th><th width = 1px%><font face = Verdana size = 2>Owner</th></tr>";
+		}
+		geoList2 += "<tr><td>" + eval(geoCache[i][6] + "_image_sm")  + "</td>";
+		geoList2 += "<td><font face = Verdana size = 2><center>" + n + "</center></font></td>";
+		geoList2 += "<td><font face = Verdana size = 2>" + eval(geoCache[i][4] + "_image_sm") +"</font></td>";
+		geoList2 += "<td>" + eval(geoCache[i][7] + "_image_sm")  + "</td>";
+		if(mySort == "code") {
+			geoList2 += "<td><font face = Verdana size = 2>" +geoCache[i][0] + " - " +  geoCache[i][1] + "</td>";
+		}
+		else {
+			geoList2 += "<td><font face = Verdana size = 2>" + geoCache[i][1] + "</td>";
+		}
+		geoList2 += "<td>" + stars_image + geoCache[i][8] + ".gif'></td>";
+		geoList2 += "<td>" + stars_image + geoCache[i][9] + ".gif'></td>";
+		geoList2 += "<td><font face = Verdana size = 2>" + geoCache[i][10] + "</td>";
+		geoList2 += "<td><font face = Verdana size = 2>" + geoCache[i][5] + "</td>";
+		geoList2 += "</font></tr>";
+		}
+	}
+	if (myUOM == "km") {
+		myRadius = myRadius * 1609.344/1000;
+		myRadius = myRadius.toFixed(2);
+	}
+	geoList += "</table>";
+	geoList2 += "</table>";
+	geoListHeader = "<center>Nearby Caches:  (" + n + "/" + i + ") @ " + myRadius + " " + myUOM + "&nbsp&nbsp[-]</center>";
+	geoListHeader2 = "<font face = Verdana size = 2><center><b>Nearby Caches:  (" + n + "/" + i + ") @ " + myRadius + " " + myUOM + "</b></center></font><br>";
+	document.getElementById("myListHeader").innerHTML = geoListHeader;
+	document.getElementById("myList").innerHTML = geoList;
+
+	//-----if the list is empty, then got nearest cache-----//
+	if (n == 0) {
+		var response = confirm("There are no caches within the " + myRadius + " " + myUOM + " radius.\n\nMove to the nearest cache?\n\n[" + geoCache[nearestCache][1] + "]\n\n");
+		if (response) {
+			var newPoint = new GLatLng(geoCache[nearestCache][2],geoCache[nearestCache][3]);;
+			centerMarker.setPoint(newPoint);
+			drawCircle();
+			map.setCenter(newPoint);
+			zoomRadius();
+//			map.zoomOut();
+		}
+	}
+}
+
+//-----goto selected geocache-----//
+function gotoGeocache(num){
+	GEvent.trigger(thisCache[num],"click");
+}
+
+//-----zoomZoom to selected cache-----//
+function zoomZoom(){
+	map.zoomIn();
+	map.zoomIn();
+	map.zoomIn();
+}
+
+//-----zoom to all caches-----//
+function zoomAllCaches() {
+	map.setZoom(initialZoom);
+	map.setCenter(initialCenter);
+}
+
+//-----initial fit the markers in the window-----//
+function fitGeocaches(){
+	initialCenter = bounds.getCenter();
+	initialZoom = map.getBoundsZoomLevel(bounds)
+	map.setZoom(initialZoom);
+	map.setCenter(initialCenter);
+
+	//-----offset map center - future function-----//
+	//var x = map.fromLatLngToDivPixel(initialCenter).x;
+	//var y = map.fromLatLngToDivPixel(initialCenter).y;
+	//x = x + 110;
+	//map.setCenter(map.fromDivPixelToLatLng(new GPoint(x,y)));
+}
+
+//-----find the bounds of the circle-----//
+function findBounds(thisLat, thisLng) {
+	if (thisLat < minLat) { minLat = thisLat};
+	if (thisLat > maxLat) { maxLat = thisLat};
+	if (thisLng < minLng) { minLng = thisLng};
+	if (thisLng > maxLng) { maxLng = thisLng};
+}
+
+//-----zoom to the radius (circle bounds)-----//
+function zoomRadius() {
+	bounds = new GLatLngBounds(new GLatLng(maxLat,minLng), new GLatLng(minLat,maxLng));
+	map.setZoom(map.getBoundsZoomLevel(bounds));
+	map.setCenter(bounds.getCenter());
+	map.closeInfoWindow();
+	showLabels();
+}
+
+//-----remove the labels-----//
+function removeLabels(){
+	for (var r=0; r < myLabel.length; r++) {
+		map.removeOverlay(myLabel[r]);
+	}
+}
+
+//-----relocate radius to map center-----//
+function relocateCenter(){
+	var newPoint = map.getCenter();
+	centerMarker.setPoint(newPoint);      
+	drawCircle();
+}
+
+//-----add markers to the map (Clusters on/off)-----//
+function addMarker(thisMarker,thisInfo,thisName) {
+	clusterer.AddMarker( thisMarker, thisName );
+	GEvent.addListener(thisMarker, "click", function(){
+		thisMarker.openInfoWindowHtml(thisInfo);
+	});
+	bounds.extend(thisMarker.getPoint());
+	return thisMarker;
+}
+
+//-----draw circle functions-----//
+function initCircle() {
+	var theta = .5;
+	centerMarker = new GMarker(initialCenter, {icon:G_DEFAULT_ICON, draggable: true});
+	centerPoint = centerMarker.getPoint() ;
+	map.addOverlay(centerMarker);
+	centerMarker.enableDragging();
+	GEvent.addListener(centerMarker,'dragend',function() {
+		map.closeInfoWindow();
+		drawCircle();
+	});
+
+	centerMarker.oldpoint = null;
+	var rlat = (mileRadius / earthsradius) * r2d;
+	var rlng = rlat / Math.cos(centerPoint.lat() * d2r);
+		ex = centerPoint.lng() + (rlng * Math.cos(theta));
+		ey = centerPoint.lat() + (rlat * Math.sin(theta));
+	radius = new GMarker(new GPoint(ex, ey), {icon:G_DEFAULT_ICON, draggable: true});
+	map.addOverlay(radius);
+	radius.enableDragging();
+	GEvent.addListener(radius,'dragend',function() {
+		map.closeInfoWindow();
+		drawCircle();
+	});
+}
+
+function drawCircle( ) {
+	try {
+	var centerPoint = centerMarker.getPoint() ;
+	if (centerMarker.oldpoint)   {
+		// Move radius when center is moved
+		var radiusPoint = radius.getPoint() ;
+		var deltaX = centerPoint.lat() - centerMarker.oldpoint.lat() ;
+		var deltaY = centerPoint.lng() - centerMarker.oldpoint.lng() ;
+		if (deltaX || deltaY) {
+			radius.setPoint( new GLatLng( radiusPoint.lat() + deltaX, radiusPoint.lng() + deltaY) ) ;
+		}
+	}
+	centerMarker.oldpoint = centerPoint ;
+
+	var points = 36;
+	var Cradius = centerMarker.getPoint().distanceFrom(radius.getPoint()) * 0.000621371192 ;
+	meterRadius = centerMarker.getPoint().distanceFrom(radius.getPoint()) ;
+
+	var Ccolor = '#FF0000';		// color red
+	var Cwidth = 4 ;			// width pixels
+	var d2r = Math.PI/180 ;		// degrees to radians
+	var r2d = 180/Math.PI ;		// radians to degrees
+	var Clat = (Cradius/earthsradius) * r2d ;	// using 3963 as earths radius in miles
+
+	var lat = centerMarker.getPoint().lat();
+	var lng = centerMarker.getPoint().lng();
+
+	//initialize bounds
+	maxLat = lat;
+	minLat = lat;
+	maxLng = lng;
+	minLng = lng;
+
+	var Clng = Clat/Math.cos(lat*d2r);
+	var Cpoints = [] ;
+	for (var i = 0 ; i < points + 1 ; i++) {
+		var theta = Math.PI * (i /(points/2)) ;
+		var Cx = lng + (Clng * Math.cos(theta)) ;
+		var Cy = lat + (Clat * Math.sin(theta)) ;
+		Cpoints.push(new GPoint(Cx,Cy)) ;
+		findBounds(Cy, Cx);    //determine bounds of circle
+	}
+	if ( circle ) {
+		map.removeOverlay(circle) ;
+	}
+	circle = new GPolyline(Cpoints,Ccolor,Cwidth,.5) ;
+	map.addOverlay(circle);
+	myRadius = Cradius.toFixed(2);
+	map.closeInfoWindow();
+	removeLabels();
+	nearbyCaches();
+	checkLabels();
+}
+	catch(e) {
+		GLog.write('Exception in drawCircle:'+e);
+	}
+}
+
+//////////////////////////////////////////////////
+//  ELabels Script				//
+//  by: Mike Williams			//
+//  http://www.econym.demon.co.uk/googlemaps//
+//////////////////////////////////////////////////
+//
+function ELabel(point, html, classname, pixelOffset, percentOpacity, overlap) {
+	// Mandatory parameters
+	this.point = point;
+	this.html = html;
+
+	// Optional parameters
+	this.classname = classname||"";
+	this.pixelOffset = pixelOffset||new GSize(0,0);
+	if (percentOpacity) {
+		if(percentOpacity<0){percentOpacity=0;}
+		if(percentOpacity>100){percentOpacity=100;}
+	}
+	this.percentOpacity = percentOpacity;
+	this.overlap=overlap||false;
+}
+
+ELabel.prototype = new GOverlay();
+
+ELabel.prototype.initialize = function(map) {
+	var div = document.createElement("div");
+	div.style.position = "absolute";
+	div.innerHTML = '<div class="' + this.classname + '">' + this.html + '</div>' ;
+	map.getPane(G_MAP_FLOAT_SHADOW_PANE).appendChild(div);
+	this.map_ = map;
+	this.div_ = div;
+	if (this.percentOpacity) {
+		if(typeof(div.style.filter)=='string'){div.style.filter='alpha(opacity:'+this.percentOpacity+')';}
+			if(typeof(div.style.KHTMLOpacity)=='string'){div.style.KHTMLOpacity=this.percentOpacity/100;}
+			if(typeof(div.style.MozOpacity)=='string'){div.style.MozOpacity=this.percentOpacity/100;}
+			if(typeof(div.style.opacity)=='string'){div.style.opacity=this.percentOpacity/100;}
+		}
+	if (this.overlap) {
+		var z = GOverlay.getZIndex(this.point.lat());
+		this.div_.style.zIndex = z;
+	}
+}
+
+ELabel.prototype.remove = function() {
+	this.div_.parentNode.removeChild(this.div_);
+}
+
+ELabel.prototype.copy = function() {
+	return new ELabel(this.point, this.html, this.classname, this.pixelOffset, this.percentOpacity, this.overlap);
+}
+
+ELabel.prototype.redraw = function(force) {
+	var p = this.map_.fromLatLngToDivPixel(this.point);
+	var h = parseInt(this.div_.clientHeight);
+	this.div_.style.left = (p.x + this.pixelOffset.width) + "px";
+	this.div_.style.top = (p.y +this.pixelOffset.height - h) + "px";
+}
+
+ELabel.prototype.show = function() {
+	this.div_.style.display="";
+}
+
+ELabel.prototype.hide = function() {
+	this.div_.style.display="none";
+}
+
+ELabel.prototype.setContents = function(html) {
+	this.html = html;
+	this.div_.innerHTML = '<div class="' + this.classname + '">' + this.html + '</div>' ;
+	this.redraw(true);
+}
+
+ELabel.prototype.setPoint = function(point) {
+	this.point = point;
+	if (this.overlap) {
+		var z = GOverlay.getZIndex(this.point.lat());
+		this.div_.style.zIndex = z;
+	}
+	this.redraw(true);
+}
+
+ELabel.prototype.setOpacity = function(percentOpacity) {
+	if (percentOpacity) {
+	if(percentOpacity<0){percentOpacity=0;}
+	if(percentOpacity>100){percentOpacity=100;}
+	}
+	this.percentOpacity = percentOpacity;
+	if (this.percentOpacity) {
+		if(typeof(this.div_.style.filter)=='string'){this.div_.style.filter='alpha(opacity:'+this.percentOpacity+')';}
+		if(typeof(this.div_.style.KHTMLOpacity)=='string'){this.div_.style.KHTMLOpacity=this.percentOpacity/100;}
+		if(typeof(this.div_.style.MozOpacity)=='string'){this.div_.style.MozOpacity=this.percentOpacity/100;}
+	if(typeof(this.div_.style.opacity)=='string'){this.div_.style.opacity=this.percentOpacity/100;}
+	}
+}
+///////////////////////////////
+//-----end ELabels script-----	//
+///////////////////////////////
+
+/**************************************************
+ * Custom map layers:
+ * Adapted from Jef Poskanzer's Acme Mapper
+ * (http://mapper.acme.com/)
+ **************************************************/
+	var USGS_TOPO_TILES = WMSCreateMap('Topo','Topo maps by USGS via terraserver-usa.com','Topo maps unavailable',5,17,400,'http://terraservice.net/ogcmap6.ashx?version=1.1.1&request=GetMap&styles=&srs=EPSG:4326&format=image/jpeg&bgcolor=0xCCCCCC&exceptions=INIMAGE&layers=DRG');
+	var USGS_AERIAL_TILES = WMSCreateMap('Aerial','Imagery by USGS via terraserver-usa.com','USGS aerial imagery unavailable',7,18,400,'http://terraservice.net/ogcmap6.ashx?version=1.1.1&request=GetMap&styles=&srs=EPSG:4326&format=image/jpeg&bgcolor=0xCCCCCC&exceptions=INIMAGE&layers=DOQ');
+	var NRCAN_TOPO_TILES = WMSCreateMap('NRCan','Maps by NRCan.gc.ca','NRCan maps unavailable',6,18,600,'http://wms.cits.rncan.gc.ca/cgi-bin/cubeserv.cgi?version=1.1.3&request=GetMap&format=image/png&bgcolor=0xFFFFFF&exceptions=application/vnd.ogc.se_inimage&srs=EPSG:4326&layers=PUB_50K:CARTES_MATRICIELLES/RASTER_MAPS');
+//	var BLUEMARBLE_TILES = WMSCreateMap('BlueMarble','Map by NASA','OnEarth server unavailable',3,8,128,'http://onearth.jpl.nasa.gov/wms.cgi?request=GetMap&styles=&srs=EPSG:4326&format=image/jpeg&layers=modis');
+//	var DAILY_TERRA_TILES = WMSCreateMap('"Terra"','Map by NASA','OnEarth server unavailable',3,10,256,'http://onearth.jpl.nasa.gov/wms.cgi?request=GetMap&styles=&srs=EPSG:4326&format=image/jpeg&layers=daily_terra');
+//	var DAILY_AQUA_TILES = WMSCreateMap('"Aqua"','Map by NASA','OnEarth server unavailable',3,10,256,'http://onearth.jpl.nasa.gov/wms.cgi?request=GetMap&styles=&srs=EPSG:4326&format=image/jpeg&layers=daily_aqua');
+
+function Add_Custom_Layers(map) {
+	map.addMapType(USGS_TOPO_TILES);
+	map.addMapType(USGS_AERIAL_TILES);
+	map.addMapType(NRCAN_TOPO_TILES);
+//	map.addMapType(BLUEMARBLE_TILES);
+//	map.addMapType(DAILY_TERRA_TILES);
+//	map.addMapType(DAILY_AQUA_TILES);
+}
+
+function WMSCreateMap(name,copyright,errorMessage,minResolution,maxResolution,tileSize,baseUrl) {
+	var tileLayer = new GTileLayer(new GCopyrightCollection(copyright),minResolution,maxResolution);
+	tileLayer.baseUrl = baseUrl;
+	tileLayer.tileSize = tileSize;
+	tileLayer.getTileUrl = WMSGetTileUrl;
+	tileLayer.getCopyright = function() { return { prefix:'',copyrightTexts:[copyright]}; };
+	var tileLayers = [tileLayer];
+	return new GMapType(tileLayers,G_SATELLITE_MAP.getProjection(),name,{errorMessage:errorMessage,tileSize:tileSize});
+}
+function WMSGetTileUrl(tile,zoom) {
+	var southWestPixel = new GPoint(tile.x*this.tileSize,(tile.y+1)*this.tileSize);
+	var northEastPixel = new GPoint((tile.x+1)*this.tileSize,tile.y*this.tileSize);
+	var southWestCoords = G_SATELLITE_MAP.getProjection().fromPixelToLatLng(southWestPixel,zoom);
+	var northEastCoords = G_SATELLITE_MAP.getProjection().fromPixelToLatLng(northEastPixel,zoom);
+	var bbox = southWestCoords.lng()+','+southWestCoords.lat()+','+northEastCoords.lng()+','+northEastCoords.lat();
+	return this.baseUrl+'&bbox='+bbox+'&width='+this.tileSize+'&height='+this.tileSize;
+}
+
+/**************************************************
+ * Custom map-type control:
+ * more or less from Google's own documentation
+ **************************************************/
+maptypecontrol_style = (self.maptypecontrol_style) ? maptypecontrol_style : 'menu';
+filter_map_types = (self.filter_map_types!=null) ? filter_map_types : true;
+
+function MapTypeControl() {}
+	MapTypeControl.prototype = new GControl();
+	MapTypeControl.prototype.initialize = function(map) {
+		Add_Custom_Layers(map);
+		var map_types = [
+			{ label:'Google Maps - Map',type:'G_NORMAL_MAP',title:'Google street map',bounds:[-180,-90,180,90],excluded:[] }
+			,{ label:'Google Maps - Satellite',type:'G_SATELLITE_MAP',title:'Google satellite map',bounds:[-180,-90,180,90],excluded:[] }
+			,{ label:'Google Maps - Hybrid',type:'G_HYBRID_MAP',title:'Google "hybrid" map',bounds:[-180,-90,180,90],excluded:[] }
+			,{ label:'USGS - Topographic',type:'USGS_TOPO_TILES',title:'USGS topographic map',bounds:[-169,18,-66,72],excluded:[] }
+			,{ label:'USGS - Aerial',type:'USGS_AERIAL_TILES',title:'USGS aerial photos (black/white)',bounds:[-152,17,-65,65],excluded:[] }
+			,{ label:'Canada - Topographic',type:'NRCAN_TOPO_TILES',title:'NRCan/Toporama maps with contour lines',bounds:[-141,41.7,-52,85],excluded:[-141,41.7,-86,48] }
+//			,{ label:'Blue Marble',type:'BLUEMARBLE_TILES',title:'NASA "Visible Earth" image',bounds:[-180,-90,180,90],excluded:[] }
+//			,{ label:'Daily "Terra"',type:'DAILY_TERRA_TILES',title:'Daily imagery from "Terra" satellite',bounds:[-180,-90,180,90],excluded:[] }
+//			,{ label:'Daily "Aqua"',type:'DAILY_AQUA_TILES',title:'Daily imagery from "Aqua" satellite',bounds:[-180,-90,180,90],excluded:[] }
+		];
+		var center_lat = map.getCenter().lat();
+		var center_lng = map.getCenter().lng();
+
+		if (maptypecontrol_style == 'menu') {
+			var map_selector = document.createElement("select");
+			map_selector.id = 'map_selector';
+			map_selector.style.font = '12px Verdana';
+			map_selector.style.backgroundColor = '#FFFFFF';
+			for (j=0; j<map_types.length; j++) {
+				if (!filter_map_types || filter_map_types < 0 || ( (center_lng >= map_types[j]['bounds'][0] && center_lat >= map_types[j]['bounds'][1] && center_lng <= map_types[j]['bounds'][2] && center_lat <= map_types[j]['bounds'][3]) && !(center_lng >= map_types[j]['excluded'][0] && center_lat >= map_types[j]['excluded'][1] && center_lng <= map_types[j]['excluded'][2] && center_lat <= map_types[j]['excluded'][3]) ) ) {
+					var opt = document.createElement("option");
+					opt.value = map_types[j]['type'];
+					opt.appendChild(document.createTextNode(map_types[j]['label']));
+					map_selector.appendChild(opt);
+					if (map.getCurrentMapType() == eval(opt.value)) { map_selector.selectedIndex = map_selector.length - 1; }
+				}
+			}
+			GEvent.addDomListener(map_selector, "change", function(){map.setMapType(eval(this.value));} );
+			map.getContainer().appendChild(map_selector);
+			return map_selector;
+		} else {
+			var map_type_container = document.createElement("div");
+			for (j=0; j<map_types.length; j++) {
+				if (!filter_map_types || filter_map_types < 0 || ( (center_lng >= map_types[j]['bounds'][0] && center_lat >= map_types[j]['bounds'][1] && center_lng <= map_types[j]['bounds'][2] && center_lat <= map_types[j]['bounds'][3]) && !(center_lng >= map_types[j]['excluded'][0] && center_lat >= map_types[j]['excluded'][1] && center_lng <= map_types[j]['excluded'][2] && center_lat <= map_types[j]['excluded'][3]) ) ) {
+					var maplink = document.createElement("div");
+					maplink.className = 'maptypelink';
+					if (self.maptypecontrol && map.getCurrentMapType() == eval(map_types[j]['type'])) {
+						maplink.className = 'maptypelink maptypelink_selected';
+					}
+					maplink.title = map_types[j]['title'];
+					maplink.type = map_types[j]['type'];
+					map_type_container.appendChild(maplink);
+					maplink.appendChild(document.createTextNode(map_types[j]['label']));
+					GEvent.addDomListener(maplink, "click", function(){
+						map.setMapType(eval(this.type));
+						if (self.maptypecontrol) {
+							map.removeControl(maptypecontrol);
+							map.addControl(maptypecontrol);
+						}
+					} );
+				}
+			}
+			map.getContainer().appendChild(map_type_container);
+			return map_type_container;
+		}
+	}
+	MapTypeControl.prototype.getDefaultPosition = function() {
+		return new GControlPosition(G_ANCHOR_TOP_RIGHT, new GSize(115,7));
+}
+
+var api_version = 2;
+function GPSV_MapTypeControl() {}
+//if (api_version >= 2) { GPSV_MapTypeControl.prototype = MapTypeControl.prototype; }
+GPSV_MapTypeControl.prototype = MapTypeControl.prototype;
+//
+//////////////////////
+
+//////////////////////
+// Clusterer.js - marker clustering routines for Google Maps apps
+//
+// The current version of this code is always available at:
+// http://www.acme.com/javascript/
+//
+// Copyright © 2005,2006 by Jef Poskanzer <jef@mail.acme.com>.
+// All rights reserved.
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions
+// are met:
+// 1. Redistributions of source code must retain the above copyright
+//notice, this list of conditions and the following disclaimer.
+// 2. Redistributions in binary form must reproduce the above copyright
+//notice, this list of conditions and the following disclaimer in the
+//documentation and/or other materials provided with the distribution.
+//
+// THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED.IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+// OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+// HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+// LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+// OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+// SUCH DAMAGE.
+//
+// For commentary on this license please see http://www.acme.com/license.html
+//
+// Constructor.
+Clusterer = function (map)
+	{
+	this.map = map;
+	this.markers = [];
+	this.clusters = [];
+	this.timeout = null;
+	this.currentZoomLevel = map.getZoom();
+
+	this.maxVisibleMarkers = Clusterer.defaultMaxVisibleMarkers;
+	this.gridSize = Clusterer.defaultGridSize;
+	this.minMarkersPerCluster = Clusterer.defaultMinMarkersPerCluster;
+	this.maxLinesPerInfoBox = Clusterer.defaultMaxLinesPerInfoBox;
+	this.icon = Clusterer.defaultIcon;
+
+	GEvent.addListener(map, 'zoomend', Clusterer.MakeCaller(Clusterer.Display, this));
+	GEvent.addListener(map, 'moveend', Clusterer.MakeCaller(Clusterer.Display, this));
+	GEvent.addListener(map, 'infowindowclose', Clusterer.MakeCaller(Clusterer.PopDown, this));
+};
+
+Clusterer.defaultMaxVisibleMarkers = 200;
+Clusterer.defaultGridSize = 5;
+Clusterer.defaultMinMarkersPerCluster = 35;
+Clusterer.defaultMaxLinesPerInfoBox = 10;
+
+Clusterer.defaultIcon = new GIcon();
+Clusterer.defaultIcon.image = 'http://www.acme.com/resources/images/markers/blue_large.PNG';
+Clusterer.defaultIcon.shadow = 'http://www.acme.com/resources/images/markers/shadow_large.PNG';
+Clusterer.defaultIcon.iconSize = new GSize(30, 51);
+Clusterer.defaultIcon.shadowSize = new GSize(56, 51);
+Clusterer.defaultIcon.iconAnchor = new GPoint(13, 34);
+Clusterer.defaultIcon.infoWindowAnchor = new GPoint(13, 3);
+Clusterer.defaultIcon.infoShadowAnchor = new GPoint(27, 37);
+
+// Call this to change the cluster icon.
+Clusterer.prototype.SetIcon = function (icon) {
+	this.icon = icon;
+};
+
+// Changes the maximum number of visible markers before clustering kicks in.
+Clusterer.prototype.SetMaxVisibleMarkers = function (n) {
+	this.maxVisibleMarkers = n;
+};
+
+
+// Sets the minumum number of markers for a cluster.
+Clusterer.prototype.SetMinMarkersPerCluster = function (n) {
+	this.minMarkersPerCluster = n;
+};
+
+// Sets the maximum number of lines in an info box.
+Clusterer.prototype.SetMaxLinesPerInfoBox = function (n) {
+	this.maxLinesPerInfoBox = n;
+};
+
+// Call this to add a marker.
+Clusterer.prototype.AddMarker = function (marker, title) {
+	if (marker.setMap != null)
+	marker.setMap(this.map);
+	marker.title = title;
+	marker.onMap = false;
+	this.markers.push(marker);
+	this.DisplayLater();
+};
+
+// Call this to remove a marker.
+Clusterer.prototype.RemoveMarker = function (marker) {
+	for (var i = 0; i < this.markers.length; ++i)
+	if (this.markers[i] == marker) {
+		if (marker.onMap)
+			this.map.removeOverlay(marker);
+			for (var j = 0; j < this.clusters.length; ++j) {
+		var cluster = this.clusters[j];
+		if (cluster != null) {
+		for (var k = 0; k < cluster.markers.length; ++k)
+			if (cluster.markers[k] == marker) {
+				cluster.markers[k] = null;
+				--cluster.markerCount;
+				break;
+			}
+			if (cluster.markerCount == 0) {
+				this.ClearCluster(cluster);
+				this.clusters[j] = null;
+			}
+			else {
+				if (cluster == this.poppedUpCluster) {
+					Clusterer.RePop(this);
+				}
+			}
+		}
+	}
+	this.markers[i] = null;
+	break;
+	}
+	this.DisplayLater();
+};
+
+Clusterer.prototype.DisplayLater = function () {
+	 if (this.timeout != null) {
+		clearTimeout(this.timeout);
+		this.timeout = setTimeout(Clusterer.MakeCaller(Clusterer.Display, this), 50);
+	}
+};
+
+Clusterer.Display = function (clusterer) {
+	var i, j, marker, cluster;
+
+	clearTimeout(clusterer.timeout);
+
+	var newZoomLevel = clusterer.map.getZoom();
+		if (newZoomLevel != clusterer.currentZoomLevel) {
+			// When the zoom level changes, we have to remove all the clusters.
+			for (i = 0; i < clusterer.clusters.length; ++i)
+				if (clusterer.clusters[i] != null) {
+					clusterer.ClearCluster(clusterer.clusters[i]);
+					clusterer.clusters[i] = null;
+				}
+				clusterer.clusters.length = 0;
+				clusterer.currentZoomLevel = newZoomLevel;
+		}
+
+	// Get the current bounds of the visible area.
+	var bounds = clusterer.map.getBounds();
+
+	// Expand the bounds a little, so things look smoother when scrolling
+	// by small amounts.
+	var sw = bounds.getSouthWest();
+	var ne = bounds.getNorthEast();
+	var dx = ne.lng() - sw.lng();
+	var dy = ne.lat() - sw.lat();
+	dx *= 0.10;
+	dy *= 0.10;
+	bounds = new GLatLngBounds(
+		new GLatLng(sw.lat() - dy, sw.lng() - dx),
+		new GLatLng(ne.lat() + dy, ne.lng() + dx)
+	);
+
+	// Partition the markers into visible and non-visible lists.
+	var visibleMarkers = [];
+	var nonvisibleMarkers = [];
+	for (i = 0; i < clusterer.markers.length; ++i) {
+		marker = clusterer.markers[i];
+		if (marker != null) {
+			if (bounds.contains(marker.getPoint())) {
+				visibleMarkers.push(marker);
+			}
+			else {
+				nonvisibleMarkers.push(marker);
+			}
+		}
+	}
+
+	// Take down the non-visible markers.
+	for (i = 0; i < nonvisibleMarkers.length; ++i) {
+		marker = nonvisibleMarkers[i];
+		if (marker.onMap) {
+			clusterer.map.removeOverlay(marker);
+			marker.onMap = false;
+		}
+	}
+
+	// Take down the non-visible clusters.
+	for (i = 0; i < clusterer.clusters.length; ++i) {
+		cluster = clusterer.clusters[i];
+		if (cluster != null && ! bounds.contains(cluster.marker.getPoint()) && cluster.onMap) {
+			clusterer.map.removeOverlay(cluster.marker);
+			cluster.onMap = false;
+		}
+	}
+
+	// Clustering!This is some complicated stuff.We have three goals
+	// here.One, limit the number of markers & clusters displayed, so the
+	// maps code doesnt slow to a crawl.Two, when possible keep existing
+	// clusters instead of replacing them with new ones, so that the app pans
+	// better.And three, of course, be CPU and memory efficient.
+
+	if (visibleMarkers.length > clusterer.maxVisibleMarkers) {
+		// Add to the list of clusters by splitting up the current bounds
+		// into a grid.
+		var latRange = bounds.getNorthEast().lat() - bounds.getSouthWest().lat();
+		var latInc = latRange / clusterer.gridSize;
+		var lngInc = latInc / Math.cos((bounds.getNorthEast().lat() + bounds.getSouthWest().lat()) / 2.0 * Math.PI / 180.0);
+		for (var lat = bounds.getSouthWest().lat(); lat <= bounds.getNorthEast().lat(); lat += latInc)
+			for (var lng = bounds.getSouthWest().lng(); lng <= bounds.getNorthEast().lng(); lng += lngInc) {
+				cluster = new Object();
+				cluster.clusterer = clusterer;
+				cluster.bounds = new GLatLngBounds(new GLatLng(lat, lng), new GLatLng(lat + latInc, lng + lngInc));
+				cluster.markers = [];
+				cluster.markerCount = 0;
+				cluster.onMap = false;
+				cluster.marker = null;
+				clusterer.clusters.push(cluster);
+			}
+
+			// Put all the unclustered visible markers into a cluster - the first
+			// one it fits in, which favors pre-existing clusters.
+			for (i = 0; i < visibleMarkers.length; ++i) {
+				marker = visibleMarkers[i];
+				if (marker != null && ! marker.inCluster) {
+					for (j = 0; j < clusterer.clusters.length; ++j) {
+						cluster = clusterer.clusters[j];
+						if (cluster != null && cluster.bounds.contains(marker.getPoint())) {
+							cluster.markers.push(marker);
+							++cluster.markerCount;
+							marker.inCluster = true;
+						}
+					}
+				}
+			}
+
+			// Get rid of any clusters containing only a few markers.
+			for (i = 0; i < clusterer.clusters.length; ++i)
+				if (clusterer.clusters[i] != null && clusterer.clusters[i].markerCount < clusterer.minMarkersPerCluster) {
+					clusterer.ClearCluster(clusterer.clusters[i]);
+					clusterer.clusters[i] = null;
+				}
+
+				// Shrink the clusters list.
+				for (i = clusterer.clusters.length - 1; i >= 0; --i)
+					if (clusterer.clusters[i] != null)
+						break;
+					else
+					--clusterer.clusters.length;
+	
+				// Ok, we have our clusters.Go through the markers in each
+				// cluster and remove them from the map if they are currently up.
+				for (i = 0; i < clusterer.clusters.length; ++i) {
+					cluster = clusterer.clusters[i];
+					if (cluster != null) {
+						for (j = 0; j < cluster.markers.length; ++j) {
+							marker = cluster.markers[j];
+							if (marker != null && marker.onMap) {
+								clusterer.map.removeOverlay(marker);
+								marker.onMap = false;
+							}
+						}
+					}
+				}
+
+				// Now make cluster-markers for any clusters that need one.
+				for (i = 0; i < clusterer.clusters.length; ++i) {
+					cluster = clusterer.clusters[i];
+					if (cluster != null && cluster.marker == null) {
+						// Figure out the average coordinates of the markers in this
+						// cluster.
+						var xTotal = 0.0, yTotal = 0.0;
+						for (j = 0; j < cluster.markers.length; ++j) {
+							marker = cluster.markers[j];
+							if (marker != null){
+								xTotal += (+ marker.getPoint().lng());
+								yTotal += (+ marker.getPoint().lat());
+							}
+						}
+						var location = new GLatLng(yTotal / cluster.markerCount, xTotal / cluster.markerCount);
+						marker = new GMarker(location, { icon: clusterer.icon });
+						cluster.marker = marker;
+						GEvent.addListener(marker, 'click', Clusterer.MakeCaller(Clusterer.PopUp, cluster));
+						}
+					}
+				}
+	
+				// Display the visible markers not already up and not in clusters.
+				for (i = 0; i < visibleMarkers.length; ++i) {
+					marker = visibleMarkers[i];
+					if (marker != null && ! marker.onMap && ! marker.inCluster) {
+						clusterer.map.addOverlay(marker);
+						if (marker.addedToMap != null)
+							marker.addedToMap();
+							marker.onMap = true;
+					}
+				}
+	
+				// Display the visible clusters not already up.
+				for (i = 0; i < clusterer.clusters.length; ++i) {
+					cluster = clusterer.clusters[i];
+					if (cluster != null && ! cluster.onMap && bounds.contains(cluster.marker.getPoint())) {
+						clusterer.map.addOverlay(cluster.marker);
+						cluster.onMap = true;
+					}
+				}
+	
+				// In case a cluster is currently popped-up, re-pop to get any new
+				// markers into the infobox.
+				Clusterer.RePop(clusterer);
+//alert("done");
+	};
+	/////end of clusterer display
+	
+	Clusterer.PopUp = function (cluster) {
+	var clusterer = cluster.clusterer;
+	var html = '<table width="300">';
+	var n = 0;
+	for (var i = 0; i < cluster.markers.length; ++i) {
+		var marker = cluster.markers[i];
+		if (marker != null) {
+			++n;
+			html += '<tr><td>';
+			if (marker.getIcon().smallImage != null) {
+				html += '<img src="' + marker.getIcon().smallImage + '">';
+			}
+			else {
+				html += '<img src="' + marker.getIcon().image + '" width="' + (marker.getIcon().iconSize.width / 1) + '" height="' + (marker.getIcon().iconSize.height / 1) + '">';
+				html += '</td><td><font family = "Verdana"; size = "2">' + marker.title + '</font></td></tr>';
+				if (n == clusterer.maxLinesPerInfoBox - 1 && cluster.markerCount > clusterer.maxLinesPerInfoBox) {
+					html += '<tr><td colspan="2"><font size = "2">...and ' + (cluster.markerCount - n) + ' more</font></td></tr>';
+				break;
+				}
+			}
+		}
+	}
+	html += '</table>';
+	clusterer.map.closeInfoWindow();
+	cluster.marker.openInfoWindowHtml(html);
+	clusterer.poppedUpCluster = cluster;
+};
+
+Clusterer.RePop = function (clusterer) {
+	if (clusterer.poppedUpCluster != null) {
+		Clusterer.PopUp(clusterer.poppedUpCluster);
+	}
+};
+
+Clusterer.PopDown = function (clusterer) {
+	clusterer.poppedUpCluster = null;
+};
+
+Clusterer.prototype.ClearCluster = function (cluster) {
+	/////////////////////////////////////////////
+	this.minMarkersPerCluster = MarkersPerCluster;
+	/////////////////////////////////////////////
+	var i, marker;
+	for (i = 0; i < cluster.markers.length; ++i) {
+		if (cluster.markers[i] != null) {
+			cluster.markers[i].inCluster = false;
+			cluster.markers[i] = null;
+		}
+	}
+	cluster.markers.length = 0;
+	cluster.markerCount = 0;
+	if (cluster == this.poppedUpCluster)
+		this.map.closeInfoWindow();
+		if (cluster.onMap) {
+			this.map.removeOverlay(cluster.marker);
+			cluster.onMap = false;
+		}
+
+};
+
+// This returns a function closure that calls the given routine with the
+// specified arg.
+
+Clusterer.MakeCaller = function (func, arg) {
+	return function () { func(arg); };
+};
+
+
+// Augment GMarker so it handles markers that have been created but
+// not yet addOverlayed.
+
+GMarker.prototype.setMap = function (map) {
+	this.map = map;
+};
+
+GMarker.prototype.addedToMap = function () {
+	this.map = null;
+};
+
+GMarker.prototype.origOpenInfoWindow = GMarker.prototype.openInfoWindow;
+GMarker.prototype.openInfoWindow = function (node, opts) {
+	if (this.map != null) {
+		return this.map.openInfoWindow(this.getPoint(), node, opts);
+	}
+	else {
+		return this.origOpenInfoWindow(node, opts);
+	}
+};
+
+GMarker.prototype.origOpenInfoWindowHtml = GMarker.prototype.openInfoWindowHtml;
+GMarker.prototype.openInfoWindowHtml = function (html, opts) {
+	if (this.map != null) {
+		return this.map.openInfoWindowHtml(this.getPoint(), html, opts);
+	}
+	else {
+		return this.origOpenInfoWindowHtml(html, opts);
+	}
+};
+
+GMarker.prototype.origOpenInfoWindowTabs = GMarker.prototype.openInfoWindowTabs;
+GMarker.prototype.openInfoWindowTabs = function (tabNodes, opts) {
+	if (this.map != null) {
+		return this.map.openInfoWindowTabs(this.getPoint(), tabNodes, opts);
+	}
+	else {
+		return this.origOpenInfoWindowTabs(tabNodes, opts);
+	}
+};
+
+GMarker.prototype.origOpenInfoWindowTabsHtml = GMarker.prototype.openInfoWindowTabsHtml;
+GMarker.prototype.openInfoWindowTabsHtml = function (tabHtmls, opts) {
+	if (this.map != null) {
+		return this.map.openInfoWindowTabsHtml(this.getPoint(), tabHtmls, opts);
+	}
+	else {
+		return this.origOpenInfoWindowTabsHtml(tabHtmls, opts);
+	}
+};
+
+GMarker.prototype.origShowMapBlowup = GMarker.prototype.showMapBlowup;
+GMarker.prototype.showMapBlowup = function (opts) {
+	if (this.map != null) {
+		return this.map.showMapBlowup(this.getPoint(), opts);
+	}
+	else {
+		return this.origShowMapBlowup(opts);
+	}
+};
+
+///////end of clusterer script/////////
+
+map.addControl(new MapTypeControl()); // add custom map type switcher
+var clusterer = new Clusterer( map );
+
+function buildLegend() {
+	var qtyMulti = 0;
+	var qtyTraditional = 0;	
+	var qtyUnknown = 0;
+	var qtyLetterbox = 0;
+	var qtyVirtual = 0;
+	var qtyEarth = 0;
+	var qtyLetterbox = 0;
+	var qtyEvent = 0;
+	var qtyWebcam = 0;
+	var qtyCito = 0;
+	var qtyBenchmark = 0;
+	var qtyOther = 0;
+	var qtyFound = 0;
+
+	for (var n=0; n < caches; n++) {
+		switch(geoCache[n][4]) {
+			case "traditional":
+				qtyTraditional += 1;
+			break;
+			case "multi":
+				qtyMulti += 1;
+			break;
+			case "unknown":
+				qtyUnknown += 1;
+			break;
+			case "letterbox":
+				qtyLetterbox += 1;
+			break;
+			case "virtual":
+				qtyVirtual += 1;
+			break;
+			case "earth":
+				qtyEarth += 1;
+			break;
+			case "letterbox":
+				qtyLetterbox += 1;
+			break;
+			case "event":
+				qtyEvent += 1;
+			break;
+			case "webcam":
+				qtyWebcam += 1;
+			break;
+			case "cito":
+				qtyCito += 1;
+			break;
+			case "benchmark":
+				qtyBenchmark += 1
+			break;
+			case "other":
+				qtyOther += 1;
+			break;
+			case "ape":
+				qtyOther += 1;
+			break;
+		}
+	}
+	for (var n=0; n < caches; n++) {
+		if (geoCache[n][6] == "found") {
+			qtyFound +=1;
+		}
+	}
+
+	var legend =  "<table width = 175px >";
+	legend += "<tr bgcolor='my_color'><th colspan = 4><center>Legend&nbsp&nbsp[-]</center></tr>";
+	legend += "<tr><td><center>&nbsp<img src = '" + traditional_icon.image + "'></td><td><center>Traditional</td><td>" + traditional_image_sm + "&nbsp</td><td><center>(" + qtyTraditional +  ")</center>";
+	legend += "<tr><td><center>&nbsp<img src = '" + multi_icon.image + "'></td><td><center>Multi</td><td>" + multi_image_sm + "<td><center>(" + qtyMulti +  ")</td>&nbsp</center>";
+	legend += "<tr><td><center>&nbsp<img src = '" + unknown_icon.image + "'></td><td><center>Mystery</td><td>" + unknown_image_sm + "&nbsp</td><td><center>(" + qtyUnknown +  ")</td></center>";
+	legend += "<tr><td><center>&nbsp<img src = '" + letterbox_icon.image + "'></td><td><center>Letterbox</td><td>" + letterbox_image_sm + "&nbsp</td><td><center>(" + qtyLetterbox +  ")</td></center>";
+	legend += "<tr><td><center>&nbsp<img src = '" + virtual_icon.image + "'></td><td><center>Virtual</td><td>" + virtual_image_sm + "&nbsp</td><td><center>(" + qtyVirtual +  ")</td></center>";
+	legend += "<tr><td><center>&nbsp<img src = '" + earth_icon.image + "'></td><td><center>Earth</td><td>" + earth_image_sm + "&nbsp</td><td><center>(" + qtyEarth +  ")</td></center>";
+	legend += "<tr><td><center>&nbsp<img src = '" + webcam_icon.image + "'></td><td><center>Webcam</td><td>" + webcam_image_sm + "&nbsp</td><td><center>(" + qtyWebcam +  ")</td></center>";
+	legend += "<tr><td><center>&nbsp<img src = '" + event_icon.image + "'></td><td><center>Event</td><td>" + event_image_sm + "&nbsp</td><td><center>(" + qtyEvent +  ")</td></center>";
+	legend += "<tr><td><center>&nbsp<img src = '" + cito_icon.image + "'></td><td><center>CITO</td><td>" + cito_image_sm + "&nbsp</td><td><center>(" + qtyCito +  ")</td></center>";
+	legend += "<tr><td><center>&nbsp<img src = '" + benchmark_icon.image + "'></td><td><center>Benchmark</td><td>" + benchmark_image_sm + "&nbsp</td><td><center>(" + qtyBenchmark +  ")</td></center>";
+	legend += "<tr><td><center>&nbsp<img src = '" + other_icon.image + "'></td><td><center>Other</td><td>" + other_image_sm + "&nbsp</td><td><center>(" + qtyOther +  ")</td></td></center>";
+	legend += "<tr><td><center>&nbsp<img src = '" + found_icon.image + "'></td><td><center>Found</center><td></td><td><center>(" + qtyFound +  ")</td>";
+	legend += "</table>"
+
+	document.getElementById("myLegend").innerHTML = legend;
+	document.getElementById('myLegend').style.display = 'none';
+}
+
+
+
+function showHideList(){
+	if (list_status == "hidden") {
+		document.getElementById('myListHeader').style.display = 'block';
+		document.getElementById('myList').style.display = 'block';
+		document.getElementById('hiddenList').style.display = 'block';
+		list_status = "shown";
+	}
+	else {
+		document.getElementById('myListHeader').style.display = 'none';
+		document.getElementById('myList').style.display = 'none';
+		document.getElementById('hiddenList').style.display = 'none';
+		list_status = "hidden";
+	}
+}
+
+function showHideLegend(){
+	if (legend_status == "hidden") {
+		document.getElementById('myLegend').style.display = 'block';
+		legend_status = "shown";
+	}
+	else {
+		document.getElementById('myLegend').style.display = 'none';
+		legend_status = "hidden";
+	}
+}
+
+function showHideLabels(){
+    if (label_status == "hidden") {
+		showLabels();
+	}
+	else {
+		hideLabels();
+	}
+}
+
+//-----hide or show the labels based on zoomlevel-----//
+GEvent.addListener(map, 'zoomend', function(n){
+	checkLabels();
+});
+
+//-----flip the labels-----//
+function checkLabels() {
+	if (map.getZoom() < 12){
+		hideLabels();
+	}
+	else {
+		showLabels();
+	}
+}
+
+//-----show the labels-----//
+function showLabels(){
+	for (var n=0; n < myLabel.length; n++) {
+		myLabel[n].show();
+		label_status = "shown";
+	}
+}
+
+//-----hide the labels-----//
+function hideLabels(){
+	for (var n=0; n < myLabel.length; n++) {
+		myLabel[n].hide();
+		label_status = "hidden";
+	}
+}
+
+function openWindow() {
+	myWindow = window.open ('my_version', 'newWindow', 'scrollbars, menubar,height=500,width=500,resizable=yes,toolbar,location=no')
+	myWindow.document.write("<!DOCTYPE html PUBLIC '-//W3C//DTD XHTML 1.0 Strict//EN' 'http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd'>");
+	myWindow.document.write("<META HTTP-EQUIV='Refresh' CONTENT='text/html'>");
+	myWindow.document.write("<html>");
+	myWindow.document.write("<head>");
+	myWindow.document.write("<!-- saved from url=(0013)about:internet -->");
+	myWindow.document.write("<table rules = all width =800px>");
+	myWindow.document.write(geoListHeader2);
+	myWindow.document.write(geoList2);
+	myWindow.document.write("</table>");
+	myWindow.document.write("</head></html>");
+	myWindow.document.close();
+}
+
+function buildInfoWindows() {
+
+	//---geoCache Array Structure---//
+	//geoCache[n][0]  - code
+	//geoCache[n][1]  - name
+	//geoCache[n][2]  - lat
+	//geoCache[n][3]  - lon
+	//geoCache[n][4]  - type
+	//geoCache[n][5]  - owner
+	//geoCache[n][6]  - found?
+	//geoCache[n][7]  - tb?
+	//geoCache[n][8]  - difficulty
+	//geoCache[n][9]  - terrain
+	//geoCache[n][10] - container
+	//geoCache[n][11] - geoCalc
+	//geoCache[n][12] - URL
+
+	for (var n=0; n < caches; n++) {
+		cacheInfo  = "<font size = 1.5 face = Verdana><center><a href='"
+		cacheInfo += geoCache[n][12] + "' target='geo'>"				//url
+		cacheInfo += geoCache[n][0] + "</a><br><b>";				//code
+		cacheInfo += geoCache[n][1] + "<br></b><i>by: ";				//name
+		cacheInfo += geoCache[n][5] + "</i><br><br>";				//owner
+		cacheInfo += eval(geoCache[n][4] + "_image"); 				//type
+		cacheInfo += eval(geoCache[n][7] + "_image") + "<br><br>Difficulty: ";		//tb
+		cacheInfo += stars_image + geoCache[n][8] + ".gif'><br>Terrain: ";		//difficulty
+		cacheInfo += stars_image + geoCache[n][9] + ".gif'><br>Size: ";		//terrain
+		cacheInfo += geoCache[n][10] + "<br><br>";				//container size
+		cacheInfo += eval(geoCache[n][6]);					//found
+		cacheInfo += geoCache[n][11]  + "<br><br>";				//geoCalc coordinates
+		cacheInfo += zoom_In + " | " + zoom_Out + "</font></center>";		//zoom
+//		cacheInfo =+ zoom_In + " | " + zoom_Out + " | <a href='gsak://search/" + geoCache[n][0] + "/Default'>GSAK Detail</font></center>";
+
+		if (geoCache[n][6] == "found") {
+			thisCache[n] = new GMarker(new GPoint(geoCache[n][3], geoCache[n][2]), {icon:eval("found_icon"), title:geoCache[n][1]});
+		}
+		else {
+			thisCache[n] = new GMarker(new GPoint(geoCache[n][3], geoCache[n][2]), {icon:eval(geoCache[n][4]+"_icon"), title:geoCache[n][1]});
+		}
+		addMarker(thisCache[n],cacheInfo,geoCache[n][1]);
+	}
+}
+
+//-----load the array with geoCache info-----//
+
+function arrayLoader() {
+<enddata>
+#============================================================================#
+#   v0.2 Features:
+
+#   - Draggable & resizable radius to define "nearby caches"
+#   - Zoom All Caches - Fits all the caches within the viewport
+#   - Zoom Radius - Fits the radius to the viewport
+#   - Bounded caches within the radius are listed in the indexed sidepanel list
+#   - Bounded caches within the radius have index labels attached
+#   - Index labels can be shown/hidden (toggle)
+#   - Index labels are automatically shows with Zoom level < 12 (avoids clutter)
+#   - Radius and number of bound caches are noted in the sidepanel list header
+#   - Clusters (initial implementation)
+#   - USGS Topo Map / CAN Topo Map  
+#   + Rebuilt the cache loader as ArraryLoader() using compund arrays (performance & functionality improvement)
+#   + Replaced control buttons with an expanding menu (extendable)
+#   + Corrected sidepanel list format issues by using a table structure inside the <div>
+#   + Found & TB status added to cache sidepanel listing
+#   + Map legend added, can be toggled on/off
+#   + Sidepanel listing can be toggled on/off
+#   + Optional Cache page for large collections to be printed separately (includes: difficulty/terrain/size/owner info)
+#   + Tested using in IE 6 & 7, FF 2.0 & Opera 9.1
+#   + Fully compliant with  XHTML 1.0 "Strict" standards
+#
+#   v0.2 Limitations:
+#   - Load performance for large geocache collection in Firefox is excellent, while:
+#   - Load performance in Internet Explorer v6 & v7 is slower
+#   - Google Maps printing of icon & radius overlays can be problemmatic in Firefox
+#   - Very large collections (>500) will load, but may trigger a script timeout warning (click "continue")
+#   - Degrees symbol in the GeoCalc coordinates in ifoWindow are replaced with a bogus character
+#   - Checkmark image is hosted on my ISPs site.  Need to make special images local.
+#
+#   v0.2 Wishlist
+#   - Add "Map Loading, Please Wait" msg & progress meter (for large collections)
+#   - Show the radius dynamically as the size marker is dragged
+#  + Add cache qty's to Legend
+#  + Performance benchmarking with cluster parameters
+#  + Facilitate the replacement of icon and image sets
+#  + Make image files and scripts "local" files
+#
+#============================================================================#

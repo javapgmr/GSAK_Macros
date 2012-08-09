@@ -1,0 +1,50 @@
+#*******************************************
+# MacDescription = Print a diary of all finds with logs
+# MacFileName = PrintDiary.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.5
+# MacUrl=http://gsak.net/board/index.php?showtopic=8146&view=findpost&p=50756
+#*******************************************
+$File=$_Install + "\Macros\PrintDiary.txt"
+$Out=""
+$Log=""
+$ThisRecord=0
+
+GOTO position=top
+WHILE NOT($_EOL)
+    $ThisRecord = $ThisRecord + 1
+    IF frac($ThisRecord/10) = 0
+        $status = "Gathering Find: " + "$ThisRecord" + " of " + "$_Count"
+        ShowStatus msg="$status" Width=350
+    ENDIF
+    GOSUB Name=ExtractLog
+    $Out=$Out+ "Name: " + $d_Name + Chr(32) + Chr(32) + "Code: " + $d_Code + Chr(32) + Chr(32)
+    $Out= $Out + "Ter: " + NumToStr($d_Terrain) + Chr(32) + Chr(32) + "Dif: " + NumToStr($d_Difficulty) + Chr(32)+ Chr(32)
+    $Out= $Out + "Coordinates: " + $d_Latitude + ", " + $d_Longitude + Chr(32) + Chr(32) + Chr(32)
+    $Out=$Out + "State: " + $d_State + $_NewLine
+    $Out = $Out + "Log: " + $Log + $_NewLine + $_NewLine
+    GOTO position=next
+ENDWHILE
+
+GOTO Position=Top 
+$SavedFile=PUTFILE($File, $Out)
+IF Left($File, 7) = "*Error*"
+    CANCEL Msg="Unable to write to $file!"
+ENDIF
+
+#Display in Notepad:
+RUNPGM pgm=notepad parms="$File" 
+
+BEGINSUB Name=ExtractLog
+    TABLE Active=Logs Scope=Parent
+    WHILE NOT($_EOL)
+        IF IsOwner() AND ($d_lType="Found it" OR $d_lType="Attended" OR $d_lType="Webcam Photo Taken")
+            $Log=DateFormat($d_lDate) + ": " + $d_lText
+            $Log=RegExReplace("(s?)</?[a-z][a-z0-9]*[^<>]*>",$Log,"")
+            BREAK
+        ELSE
+            GOTO Position=next
+        ENDIF
+    ENDWHILE
+    TABLE Active=Caches
+ENDSUB

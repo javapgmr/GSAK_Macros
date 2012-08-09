@@ -1,0 +1,126 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Move found caches to Archived DATABASE
+# MacAuthor = javapgmr
+# MacFileName = moveToArchived.gsk
+#*******************************************
+
+GOSUB Name=Declare
+SpeedMode Status=on
+$ownerID = NumToStr($p_ownerid)
+$macrohome=Sysinfo("MacroPath")
+$homeID = $p_homeid
+
+$ArchivedDB = "Archived"
+$OwnDB = "Own"
+
+$MoveCopy = Replace("@ArchivedDB@",$ArchivedDB, $Movecopy, TRUE)
+$MoveCopy2 = Replace("@ArchivedDB@",$ArchivedDB, $Movecopy2, TRUE)
+$MoveCopy3 = Replace("@owndb@",$OwnDB, $Movecopy3, TRUE)
+
+$currentDB = $_CurrentDatabase 
+
+MFILTER IF=$d_Archived
+	IF $_FilterCount < 1
+		RETURN
+	ENDIF
+
+#Clear existing User Flags
+DATABASE Name=$ArchivedDB Action=Select
+USERFLAG Type=Clear Range=All
+
+DATABASE Name=$currentDB Action=Select
+
+MFILTER IF=$d_Archived
+If $_FilterCount > 0
+MacroSet Dialog=MoveCopy VarName=$MoveCopy
+MoveCopy Settings=<Macro>
+ENDIF
+
+DATABASE Name=$currentDB Action=Select
+
+<data> VarName=$MoveCopy
+[TfmMove]
+cbxDestination.Text=@ArchivedDB@
+rbtAdd.Checked=True
+rbtAddFlag.Checked=TRUE
+rbtAddIgnore.Checked=False
+rbtCopy.Checked=False
+rbtExistIgnore.Checked=False
+rbtFlagOnly.Checked=True
+rbtMove.Checked=True
+rbtReplace.Checked=False
+rbtReplaceFlag.Checked=False
+chkDisplay.Checked=False
+<enddata>
+
+<data> VarName=$MoveCopy2
+[TfmMove]
+cbxDestination.Text=@ArchivedDB@
+rbtAdd.Checked=True
+rbtAddFlag.Checked=False
+rbtAddIgnore.Checked=False
+rbtCopy.Checked=False
+rbtExistIgnore.Checked=False
+rbtFlagOnly.Checked=True
+rbtMove.Checked=True
+rbtReplace.Checked=False
+rbtReplaceFlag.Checked=False
+chkDisplay.Checked=False
+<enddata>
+
+
+<data> VarName=$MoveCopy3
+[TfmMove]
+cbxDestination.Text=@owndb@
+rbtAdd.Checked=True
+rbtAddFlag.Checked=False
+rbtAddIgnore.Checked=False
+rbtCopy.Checked=False
+rbtExistIgnore.Checked=False
+rbtFlagOnly.Checked=True
+rbtMove.Checked=True
+rbtReplace.Checked=False
+rbtReplaceFlag.Checked=False
+chkDisplay.Checked=False
+<enddata>
+
+<data> VarName=$MoveCopy4
+[TfmMove]
+cbxDestination.Text=@oosdb@
+rbtAdd.Checked=True
+rbtAddFlag.Checked=False
+rbtAddIgnore.Checked=False
+rbtCopy.Checked=False
+rbtExistIgnore.Checked=False
+rbtFlagOnly.Checked=True
+rbtMove.Checked=True
+rbtReplace.Checked=False
+rbtReplaceFlag.Checked=False
+chkDisplay.Checked=False
+<enddata>
+
+#*******************************************************
+#   Variable declarations for
+#   moveToFound.gsk
+#
+#   Generated 02/09/2008 4:37:33 PM on GSAKVariables.gsk Rev V0.20 B11
+#
+#*******************************************************
+
+BEGINSUB Name=Declare
+Option Explicit=Yes
+
+Declare Var=$ArchivedDB Type=String
+Declare Var=$currentDB Type=String
+DECLARE Var=$homeID Type=String
+Declare Var=$macrohome Type=String
+DECLARE Var=$MoveCopy Type=String
+Declare Var=$MoveCopy2 Type=String
+Declare Var=$MoveCopy3 Type=String
+Declare Var=$MoveCopy4 Type=String
+Declare Var=$OwnDB Type=String
+Declare Var=$ownerID Type=String
+ENDSUB
+
+

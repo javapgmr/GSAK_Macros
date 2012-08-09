@@ -1,0 +1,85 @@
+#*******************************************
+# MacDescription = Verify you have all logs for BadgeGen
+# MacFileName = VerifyBadgeGenLogs.gsk
+# MacAuthor = The CEO
+# MacVersion=1.1
+# MacUrl=
+#*******************************************
+
+
+	$BadgenTradLogs = Val(Sqlite("sql","select count(*) from Logs where g_foundlog(ltype) AND lParent in (Select code from caches where found ) and lIsOwner"))
+	$GSAKTradFoundCaches = Val(Sqlite("sql","select count(code) from caches where found "))
+	If $BadgenTradLogs < $GSAKTradFoundCaches 
+		$text = "You are missing one or more found logs. $_NewLine Please load a MyFinds pocket Query and try again $_NewLine A page will open in your browser indicating for which caches you are missing logs. $_NewLine Once you have all logs, the macro will check for possible logdates errors."
+		MSGOK msg= Number of your found Logs in current database: $BadgenTradLogs $_NewLine Caches marked as found in current database: $GSAKTradFoundCaches $_NewLine $_NewLine $text		
+			# ##############################################
+
+		$_sql="SELECT code,name FROM caches WHERE found AND code not in (select lparent from Logs where g_foundlog(ltype) and lIsOwner) "
+
+		$result = sqlite("sql",$_sql,"Headings=Yes")
+
+		$html = sqltohtml($result,"Table with caches that have missing logs (and thus BadgeGen will not recognize these caches)","y")
+
+		# ############################################
+	else
+		$text = "You probably have all your found logs in this database. $_NewLine The macro will now check for possible logdates errors. $_NewLine It will use information from the last time you ran FSG"
+		
+		MSGOK msg= Number of your found Logs in current database: $BadgenTradLogs $_NewLine Caches marked as found n current database: $GSAKTradFoundCaches $_NewLine $_NewLine $text
+
+			$sqlinputfile = SqlQuote($_AppData  + "\macros\FoundStatsSQLLite.db3")
+			$_sql = "ATTACH $sqlinputfile AS FSGdb"
+			$status = Sqlite("sql",$_sql)
+
+			# ##############################################
+
+			$_sql="SELECT a.lparent,b.Name,a.ltype ,a.lby ,a.ldate,a.ltime,g_gcdate(a.ldate,a.ltime) as GcDate_BadgeGenDate, b.lDate AS FSGdate FROM logs a INNER JOIN FSGdb.Allfinds b ON a.lparent=b.Code WHERE GcDate_BadgeGenDate<>b.lDate AND a.lisowner AND g_foundlog(a.ltype) "
+			# $_sql="SELECT Code, FoundByMeDate FROM FSGdb.Allfinds"
+			# $_sql="select lparent,ltype ,lby ,ldate,ltime,g_gcdate(ldate,ltime) as GcDate,  from logs where ldate <> gcdate and lisowner"
+
+			# get the sql data to display
+
+			$result = sqlite("sql",$_sql,"Headings=Yes")
+			# Msgok msg=$result
+			# display the data
+			IF $_SqlRows > 0
+				Msgok msg=Differences found in logdates between FSG and BadgeGen! $_NewLine A page will open in your browser indicating for which caches you are missing logs.
+				$html = sqltohtml($result,"Table with all logs that have a difference between GcDate (=BadgeGenDate) and the FSGdate","y")
+			ELSE
+				Msgok msg=No differences found in logdates between FSG and BadgeGen 
+			ENDIF
+
+			# ############################################
+			if 1=0
+				$_sql="SELECT a.lparent,b.Name,a.ltype ,a.lby ,a.ldate,a.ltime,g_gcdate(a.ldate,a.ltime) as GcDate_BadgeGenDate, b.lDate AS FSGdate FROM logs a INNER JOIN FSGdb.Allfinds b ON a.lparent=b.Code WHERE GcDate_BadgeGenDate=b.lDate AND a.lisowner AND g_foundlog(a.ltype) "
+				# $_sql="SELECT Code, FoundByMeDate FROM FSGdb.Allfinds"
+				# $_sql="select lparent,ltype ,lby ,ldate,ltime,g_gcdate(ldate,ltime) as GcDate,  from logs where ldate <> gcdate and lisowner"
+
+				# get the sql data to display
+
+				$result = sqlite("sql",$_sql,"Headings=Yes")
+				# Msgok msg=$result
+				# display the data
+
+				$html = sqltohtml($result,"Table with all logs that have NO difference between GcDate (=BadgeGenDate) and the FSGdate","y")
+			endif
+			# ############################################
+
+			$_sql = "DETACH FSGdb"
+			$status = Sqlite("sql",$_sql)
+
+
+	endif
+	
+# ##############################################
+
+# $_sql="select lparent,ltype ,lby ,ldate,ltime,g_gcdate(ldate,ltime) as GcDate from logs where ldate <> gcdate and lisowner"
+# $_sql="SELECT lBy, NumberFoundCaches FROM (SELECT lBy, count(*) as NumberFoundCaches, lownerid FROM Logs WHERE g_foundlog(ltype) GROUP BY lownerid) ORDER BY NumberFoundCaches DESC LIMIT 100"
+
+# get the sql data to display
+
+# $result = sqlite("sql",$_sql,"Headings=Yes")
+# Msgok msg=$result
+# display the data
+
+# $html = sqltohtml($result,"...............","y")
+

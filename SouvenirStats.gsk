@@ -1,0 +1,1675 @@
+#*******************************************
+# MacDescription = Create Souvenir statistics in html file, ready to be imported by FSG
+# MacFileName = SouvenirStats.gsk
+# MacAuthor = sbeelis
+# MacVersion = 1.08
+# MacUrl = http://gsak.net/board/index.php?act=ST&f=7&t=21575
+#          http://gsak.net/board/index.php?showtopic=21575&view=getnewpost
+#*******************************************
+#
+# This macro will create an html file containing all souvenirs you have obtained.
+# This file can then be included in FSG using the <file></file> mechanism.
+#
+# I might turn this into an FSG_Plugin in the future.
+#
+#*******************************************
+#
+# Version history
+# 1.00  2012-03-01  first release
+# 1.01  2012-03-05  auto run now allows immediate or delayed auto-run
+#                   now offers choice of either using thumbnails or "real" image
+# 1.02  2012-03-05  fixed wrong text (scale to height instead of width) in form
+# 1.03  2012-03-05  using different method to force scaled height to be used
+# 1.04  2012-03-06  added more scaling possibilities
+#                   added possibility to ignore souvenirs
+# 1.05  2012-03-07  fixing missing utf-8 decoding
+# 1.06  2012-03-07  making clearer that ignore list *excludes*
+#                   added possibility to force square images
+# 1.07  2012-03-07  added support for different profiles
+# 1.08  2012-03-08  changed profile support to be more in line with FSG
+#
+#*******************************************
+VERCHECK Version=8.1.1.10 (please update GSAK to version 8.1.1.10 or later to run this macro)
+
+GOSUB Name=DeclareVariables
+
+# turn this on for debugging
+$chkLog = FALSE
+
+# variable initialisation
+$TotalAPICalls = 0
+$ApiCount = 0
+$logfile=""
+$log=""
+$htmlfile=""
+$html=""
+$chkShow = FALSE
+$chkFull = FALSE
+$chkAutoRun = FALSE
+$edtDelay = "5"
+$edtHeight = "160"
+$edtWidth = "100"
+$edtSquare = "100"
+$edtFilename = $_AppData + "\Macros\SouvenirStats.txt"
+$edtOutputFilename = $_AppData + "\html\souvenirs.html"
+$btnThumbs = TRUE
+$btnBigImage = FALSE
+$btnHeight = TRUE
+$btnWidth = FALSE
+$btnSquare = FALSE
+$lstIgnore = ""
+$ignoreList = ""
+$total = 0
+$souvenirsGotten = FALSE
+# populate default profiles
+$maxProfile = 5
+$currentProfile = 0
+$silent = TRUE
+WHILE $currentProfile < $maxProfile
+  $currentProfile = $currentProfile + 1
+  $edtProfile = ""
+  GOSUB Name=SaveProfile
+ENDWHILE
+$edtProfile = ""
+$currentProfile = 1
+$silent = FALSE
+GOSUB Name=RefreshOwnerData
+
+# read saved vars (if any)
+MACSETTINGS Type=R Filecheck=N
+
+# Show form if needed
+$showForm = Not($chkAutoRun) OR ($edtDelay <> "0")
+$delay = $edtDelay
+IF $_CtrlKey
+  $showForm = TRUE
+  $delay = "0"
+ENDIF
+
+IF $_MacroParms <> ""
+  $count = RegExCount("&",$_MacroParms) + 1
+  WHILE $count > 0
+    $Parameter = Extract($_MacroParms,"&",$count)
+    $ParamName = Upper(Extract($Parameter,"=",1))
+    $ParamValue = Extract($Parameter,"=",2)
+    BEGINCASE
+    CASE $ParamName="PROFILE"
+      IF Val($ParamValue) >= 1 And Val($ParamValue) <= $maxProfile
+        # profile given as parameter -> autorun without form
+        $currentProfile = Val($ParamValue)
+        $showForm = FALSE
+        $silent = TRUE
+        GOSUB Name=LoadProfile
+        $log = "Auto-running profile $currentProfile from command line"
+        GOSUB Name=Log
+      ELSE
+        $log = "Not auto-running from command line, profile number [$ParamValue] out of range"
+        GOSUB Name=Log
+      ENDIF
+      
+    OTHERWISE
+      $log = "Unexpected parameter [$ParamName=$ParamValue]"
+      GOSUB Name=Log
+    ENDCASE
+    $count = $count - 1
+  ENDWHILE
+ENDIF
+
+IF $showForm
+  GOSUB Name=UpdateDelay
+  GOSUB Name=UpdateScaling
+  GOSUB Name=UpdateStale
+  GOSUB Name=UpdateProfileList
+  IF $chkAutoRun AND $delay <> "0"
+    $Form1 = EditForm($Form1, "form1", "Delay", $delay)
+    $Form1 = EditForm($Form1, "lblDelay", "Visible", "Yes")
+  ELSE
+    $Form1 = EditForm($Form1, "lblDelay", "Visible", "No")
+  ENDIF
+  $Form1 = EditForm($Form1, "lblVersion", "Caption", "V" + MacHeader("MacVersion"))
+  WHILE TRUE
+    $Form1 = EditForm($Form1, "lstIgnore", "Values", $ignoreList)
+    $FormExit = form($Form1,"")
+    BEGINCASE
+      CASE $FormExit = "SystemExit"
+        RETURN
+
+      CASE $FormExit = "btnCancel"
+        RETURN
+
+      CASE $FormExit = "DelayExit"
+        BREAK
+
+      CASE $FormExit = "chkAutoRun"
+        GOSUB Name=UpdateDelay
+
+      CASE $FormExit = "btnThumbs"
+        GOSUB Name=UpdateScaling
+
+      CASE $FormExit = "btnBigImage"
+        GOSUB Name=UpdateScaling
+        
+      CASE $FormExit = "btnWidth"
+        GOSUB Name=UpdateScaling
+
+      CASE $FormExit = "btnHeight"
+        GOSUB Name=UpdateScaling
+
+      CASE $FormExit = "btnSquare"
+        GOSUB Name=UpdateScaling
+
+      CASE $FormExit = "btnFromApi"
+        GcUpdateUserInfo UpdateHome=N UpdateMatching=N
+        GOSUB Name=RefreshOwnerData
+        
+      CASE $FormExit = "btnPopulate"
+        GOSUB Name=GetSouvenirData
+        GOSUB Name=UpdateStale
+        GOSUB Name=PopulateList
+        
+      CASE $FormExit = "btnAll"
+        $lstIgnore = $ignoreList
+        
+      CASE $FormExit = "btnNone"
+        $lstIgnore = ""
+        
+      CASE $FormExit = "btn1"
+        $currentProfile = 1
+        GOSUB Name=Load
+
+      CASE $FormExit = "btn2"
+        $currentProfile = 2
+        GOSUB Name=Load
+
+      CASE $FormExit = "btn3"
+        $currentProfile = 3
+        GOSUB Name=Load
+
+      CASE $FormExit = "btn4"
+        $currentProfile = 4
+        GOSUB Name=Load
+
+      CASE $FormExit = "btn5"
+        $currentProfile = 5
+        GOSUB Name=Load
+
+      CASE $FormExit = "btnSave"
+        IF ($lstIgnore = $ignoreList) AND ($lstIgnore <> "")
+          $status = "Your ignore list contains all currently known souvenirs." + $_CrLf + "This would result in an empty output file!" + $_CrLf + $_CrLf + "Macro will not run."
+          MSGOK Msg=$status Caption="Watch out"
+        ELSE
+          GOSUB Name=GetProfileName
+          IF $edtProfile <> ""
+            GOSUB Name=SaveProfile
+            GOSUB Name=SaveSettings
+            GOSUB Name=UpdateProfileList
+          ELSE
+            MSGOK Msg="Saving of profile cancelled" Caption="Profile not saved"
+          ENDIF
+        ENDIF
+
+      CASE $FormExit = "btnOk"
+        IF ($lstIgnore = $ignoreList) AND ($lstIgnore <> "")
+          $status = "Your ignore list contains all currently known souvenirs." + $_CrLf + "This would result in an empty output file!" + $_CrLf + $_CrLf + "Macro will not run."
+          MSGOK Msg=$status Caption="Watch out"
+        ELSE
+          GOSUB Name=SaveProfile
+          GOSUB Name=SaveSettings
+          BREAK
+        ENDIF
+
+    ENDCASE
+    $Form1 = EditForm($Form1, "form1", "Delay", "0")
+  ENDWHILE
+ENDIF
+
+# do the work
+IF Not($souvenirsGotten)
+  GOSUB Name=GetSouvenirData
+ENDIF
+GOSUB Name=SortSouvenirs
+GOSUB Name=WriteHtmlFile
+IF $chkShow AND ($htmlfile <> "")
+  OPENFILE File=$htmlfile
+ENDIF
+
+# show debugging output
+IF $chkLog
+  OPENFILE File=$logfile
+ENDIF
+
+RETURN
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=SaveSettings
+# ------------------------------------------------------------------------------
+  MACSETTINGS Type=S Vars=chkShow,chkFull,chkAutorun,btnThumbs,btnBigImage,btnHeight,btnWidth,btnSquare,edtDelay,edtHeight,edtWidth,edtSquare,edtOutputFilename,lstIgnore,ignoreList,chkShow_1,chkFull_1,chkAutorun_1,btnThumbs_1,btnBigImage_1,btnHeight_1,btnWidth_1,btnSquare_1,edtDelay_1,edtHeight_1,edtWidth_1,edtSquare_1,edtOutputFilename_1,lstIgnore_1,profileName_1,chkShow_2,chkFull_2,chkAutorun_2,btnThumbs_2,btnBigImage_2,btnHeight_2,btnWidth_2,btnSquare_2,edtDelay_2,edtHeight_2,edtWidth_2,edtSquare_2,edtOutputFilename_2,lstIgnore_2,profileName_2,chkShow_3,chkFull_3,chkAutorun_3,btnThumbs_3,btnBigImage_3,btnHeight_3,btnWidth_3,btnSquare_3,edtDelay_3,edtHeight_3,edtWidth_3,edtSquare_3,edtOutputFilename_3,lstIgnore_3,profileName_3,chkShow_4,chkFull_4,chkAutorun_4,btnThumbs_4,btnBigImage_4,btnHeight_4,btnWidth_4,btnSquare_4,edtDelay_4,edtHeight_4,edtWidth_4,edtSquare_4,edtOutputFilename_4,lstIgnore_4,profileName_4,chkShow_5,chkFull_5,chkAutorun_5,btnThumbs_5,btnBigImage_5,btnHeight_5,btnWidth_5,btnSquare_5,edtDelay_5,edtHeight_5,edtWidth_5,edtSquare_5,edtOutputFilename_5,lstIgnore_5,profileName_5,currentProfile
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=Load
+# ------------------------------------------------------------------------------
+  GOSUB Name=LoadProfile
+  GOSUB Name=UpdateProfileList
+  GOSUB Name=UpdateDelay
+  GOSUB Name=UpdateScaling
+  GOSUB Name=UpdateStale
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=UpdateProfileList
+# ------------------------------------------------------------------------------
+  BEGINCASE
+  $Form1 = EditForm($Form1, "bgr1", "Visible", "No")
+  $Form1 = EditForm($Form1, "bgr2", "Visible", "No")
+  $Form1 = EditForm($Form1, "bgr3", "Visible", "No")
+  $Form1 = EditForm($Form1, "bgr4", "Visible", "No")
+  $Form1 = EditForm($Form1, "bgr5", "Visible", "No")
+    CASE $currentProfile = 2
+      $profileLoaded = "2 - $profileName_2"
+      $Form1 = EditForm($Form1, "bgr2", "Visible", "Yes")
+    CASE $currentProfile = 3
+      $profileLoaded = "3 - $profileName_3"
+      $Form1 = EditForm($Form1, "bgr3", "Visible", "Yes")
+    CASE $currentProfile = 4
+      $profileLoaded = "4 - $profileName_4"
+      $Form1 = EditForm($Form1, "bgr4", "Visible", "Yes")
+    CASE $currentProfile = 5
+      $profileLoaded = "5 - $profileName_5"
+      $Form1 = EditForm($Form1, "bgr5", "Visible", "Yes")
+    OTHERWISE
+      $currentProfile = 1
+      $profileLoaded = "1 - $profileName_1"
+      $Form1 = EditForm($Form1, "bgr1", "Visible", "Yes")
+  ENDCASE
+  $Form1 = EditForm($Form1, "grpProfile", "Caption", "Profiles ($profileLoaded)")
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=LoadProfile
+# ------------------------------------------------------------------------------
+  BEGINCASE
+    $profileLoaded = ""
+    CASE $currentProfile = 1
+      $chkShow           = $chkShow_1
+      $chkFull           = $chkFull_1
+      $chkAutorun        = $chkAutorun_1
+      $btnThumbs         = $btnThumbs_1
+      $btnBigImage       = $btnBigImage_1
+      $btnHeight         = $btnHeight_1
+      $btnWidth          = $btnWidth_1
+      $btnSquare         = $btnSquare_1
+      $edtDelay          = $edtDelay_1
+      $edtHeight         = $edtHeight_1
+      $edtWidth          = $edtWidth_1
+      $edtSquare         = $edtSquare_1
+      $edtOutputFilename = $edtOutputFilename_1
+      $lstIgnore         = $lstIgnore_1
+      $profileLoaded     = $profileName_1
+    CASE $currentProfile = 2
+      $chkShow           = $chkShow_2
+      $chkFull           = $chkFull_2
+      $chkAutorun        = $chkAutorun_2
+      $btnThumbs         = $btnThumbs_2
+      $btnBigImage       = $btnBigImage_2
+      $btnHeight         = $btnHeight_2
+      $btnWidth          = $btnWidth_2
+      $btnSquare         = $btnSquare_2
+      $edtDelay          = $edtDelay_2
+      $edtHeight         = $edtHeight_2
+      $edtWidth          = $edtWidth_2
+      $edtSquare         = $edtSquare_2
+      $edtOutputFilename = $edtOutputFilename_2
+      $lstIgnore         = $lstIgnore_2
+      $profileLoaded     = $profileName_2
+    CASE $currentProfile = 3
+      $chkShow           = $chkShow_3
+      $chkFull           = $chkFull_3
+      $chkAutorun        = $chkAutorun_3
+      $btnThumbs         = $btnThumbs_3
+      $btnBigImage       = $btnBigImage_3
+      $btnHeight         = $btnHeight_3
+      $btnWidth          = $btnWidth_3
+      $btnSquare         = $btnSquare_3
+      $edtDelay          = $edtDelay_3
+      $edtHeight         = $edtHeight_3
+      $edtWidth          = $edtWidth_3
+      $edtSquare         = $edtSquare_3
+      $edtOutputFilename = $edtOutputFilename_3
+      $lstIgnore         = $lstIgnore_3
+      $profileLoaded     = $profileName_3
+    CASE $currentProfile = 4
+      $chkShow           = $chkShow_4
+      $chkFull           = $chkFull_4
+      $chkAutorun        = $chkAutorun_4
+      $btnThumbs         = $btnThumbs_4
+      $btnBigImage       = $btnBigImage_4
+      $btnHeight         = $btnHeight_4
+      $btnWidth          = $btnWidth_4
+      $btnSquare         = $btnSquare_4
+      $edtDelay          = $edtDelay_4
+      $edtHeight         = $edtHeight_4
+      $edtWidth          = $edtWidth_4
+      $edtSquare         = $edtSquare_4
+      $edtOutputFilename = $edtOutputFilename_4
+      $lstIgnore         = $lstIgnore_4
+      $profileLoaded     = $profileName_4
+    CASE $currentProfile = 5
+      $chkShow           = $chkShow_5
+      $chkFull           = $chkFull_5
+      $chkAutorun        = $chkAutorun_5
+      $btnThumbs         = $btnThumbs_5
+      $btnBigImage       = $btnBigImage_5
+      $btnHeight         = $btnHeight_5
+      $btnWidth          = $btnWidth_5
+      $btnSquare         = $btnSquare_5
+      $edtDelay          = $edtDelay_5
+      $edtHeight         = $edtHeight_5
+      $edtWidth          = $edtWidth_5
+      $edtSquare         = $edtSquare_5
+      $edtOutputFilename = $edtOutputFilename_5
+      $lstIgnore         = $lstIgnore_5
+      $profileLoaded     = $profileName_5
+  ENDCASE
+  IF $profileLoaded <> ""
+    $status = "Profile $currentProfile '$profileLoaded' succesfully loaded"
+    $log = $status
+    GOSUB Name=Log
+    IF Not($silent)
+      #MSGOK Msg=$status Caption="Profile loaded"
+    ENDIF
+  ELSE
+    $status = "Could not load profile $currentProfile"
+    $log = $status
+    GOSUB Name=Log
+    IF Not($silent)
+      MSGOK Msg=$status Caption="Profile not loaded"
+    ENDIF
+  ENDIF
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=GetProfileName
+# ------------------------------------------------------------------------------
+  $edtProfile = ""
+  $btn1 = FALSE
+  $btn2 = FALSE
+  $btn3 = FALSE
+  $btn4 = FALSE
+  $btn5 = FALSE
+  BEGINCASE
+    CASE $currentProfile = 1
+      $edtProfile = $profileName_1
+      $btn1 = TRUE
+    CASE $currentProfile = 2
+      $edtProfile = $profileName_2
+      $btn2 = TRUE
+    CASE $currentProfile = 3
+      $edtProfile = $profileName_3
+      $btn3 = TRUE
+    CASE $currentProfile = 4
+      $edtProfile = $profileName_4
+      $btn4 = TRUE
+    CASE $currentProfile = 5
+      $edtProfile = $profileName_5
+      $btn5 = TRUE
+  ENDCASE
+
+  WHILE TRUE
+    $FormExit = form($Form2,"")
+    BEGINCASE
+      CASE $FormExit = "SystemExit"
+        $edtProfile = ""
+        BREAK
+        
+      CASE $FormExit = "btn1"
+        $currentProfile = 1
+        $edtProfile = $profileName_1
+        
+      CASE $FormExit = "btn2"
+        $currentProfile = 2
+        $edtProfile = $profileName_2
+        
+      CASE $FormExit = "btn3"
+        $currentProfile = 3
+        $edtProfile = $profileName_3
+        
+      CASE $FormExit = "btn4"
+        $currentProfile = 4
+        $edtProfile = $profileName_4
+        
+      CASE $FormExit = "btn5"
+        $currentProfile = 5
+        $edtProfile = $profileName_5
+        
+      CASE $FormExit = "btnSave"
+        BREAK
+    ENDCASE
+  ENDWHILE
+ENDSUB
+  
+# ------------------------------------------------------------------------------
+BEGINSUB Name=SaveProfile
+# ------------------------------------------------------------------------------
+  IF $edtProfile = ""
+    $edtProfile = "Profile $currentProfile"
+  ENDIF  
+  $profileLoaded = ""
+  BEGINCASE
+    CASE $currentProfile = 1
+      $chkShow_1           = $chkShow
+      $chkFull_1           = $chkFull
+      $chkAutorun_1        = $chkAutorun
+      $btnThumbs_1         = $btnThumbs
+      $btnBigImage_1       = $btnBigImage
+      $btnHeight_1         = $btnHeight
+      $btnWidth_1          = $btnWidth
+      $btnSquare_1         = $btnSquare
+      $edtDelay_1          = $edtDelay
+      $edtHeight_1         = $edtHeight
+      $edtWidth_1          = $edtWidth
+      $edtSquare_1         = $edtSquare
+      $edtOutputFilename_1 = $edtOutputFilename
+      $lstIgnore_1         = $lstIgnore
+      $profileName_1       = $edtProfile
+      $profileLoaded       = $profileName_1
+    CASE $currentProfile = 2
+      $chkShow_2           = $chkShow
+      $chkFull_2           = $chkFull
+      $chkAutorun_2        = $chkAutorun
+      $btnThumbs_2         = $btnThumbs
+      $btnBigImage_2       = $btnBigImage
+      $btnHeight_2         = $btnHeight
+      $btnWidth_2          = $btnWidth
+      $btnSquare_2         = $btnSquare
+      $edtDelay_2          = $edtDelay
+      $edtHeight_2         = $edtHeight
+      $edtWidth_2          = $edtWidth
+      $edtSquare_2         = $edtSquare
+      $edtOutputFilename_2 = $edtOutputFilename
+      $lstIgnore_2         = $lstIgnore
+      $profileName_2       = $edtProfile
+      $profileLoaded       = $profileName_2
+    CASE $currentProfile = 3
+      $chkShow_3           = $chkShow
+      $chkFull_3           = $chkFull
+      $chkAutorun_3        = $chkAutorun
+      $btnThumbs_3         = $btnThumbs
+      $btnBigImage_3       = $btnBigImage
+      $btnHeight_3         = $btnHeight
+      $btnWidth_3          = $btnWidth
+      $btnSquare_3         = $btnSquare
+      $edtDelay_3          = $edtDelay
+      $edtHeight_3         = $edtHeight
+      $edtWidth_3          = $edtWidth
+      $edtSquare_3         = $edtSquare
+      $edtOutputFilename_3 = $edtOutputFilename
+      $lstIgnore_3         = $lstIgnore
+      $profileName_3       = $edtProfile
+      $profileLoaded       = $profileName_3
+    CASE $currentProfile = 4
+      $chkShow_4           = $chkShow
+      $chkFull_4           = $chkFull
+      $chkAutorun_4        = $chkAutorun
+      $btnThumbs_4         = $btnThumbs
+      $btnBigImage_4       = $btnBigImage
+      $btnHeight_4         = $btnHeight
+      $btnWidth_4          = $btnWidth
+      $btnSquare_4         = $btnSquare
+      $edtDelay_4          = $edtDelay
+      $edtHeight_4         = $edtHeight
+      $edtWidth_4          = $edtWidth
+      $edtSquare_4         = $edtSquare
+      $edtOutputFilename_4 = $edtOutputFilename
+      $lstIgnore_4         = $lstIgnore
+      $profileName_4       = $edtProfile
+      $profileLoaded       = $profileName_4
+    CASE $currentProfile = 5
+      $chkShow_5           = $chkShow
+      $chkFull_5           = $chkFull
+      $chkAutorun_5        = $chkAutorun
+      $btnThumbs_5         = $btnThumbs
+      $btnBigImage_5       = $btnBigImage
+      $btnHeight_5         = $btnHeight
+      $btnWidth_5          = $btnWidth
+      $btnSquare_5         = $btnSquare
+      $edtDelay_5          = $edtDelay
+      $edtHeight_5         = $edtHeight
+      $edtWidth_5          = $edtWidth
+      $edtSquare_5         = $edtSquare
+      $edtOutputFilename_5 = $edtOutputFilename
+      $lstIgnore_5         = $lstIgnore
+      $profileName_5       = $edtProfile
+      $profileLoaded       = $profileName_5
+  ENDCASE
+  IF $profileLoaded <> ""
+    $status = "Profile $currentProfile '$profileLoaded' succesfully saved"
+    $log = $status
+    GOSUB Name=Log
+    IF Not($silent)
+      #MSGOK Msg=$status Caption="Profile saved"
+    ENDIF
+  ELSE
+    $status = "Could not saved profile $currentProfile"
+    $log = $status
+    GOSUB Name=Log
+    IF Not($silent)
+      MSGOK Msg=$status Caption="Profile not saved"
+    ENDIF
+  ENDIF
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=UpdateDelay
+# ------------------------------------------------------------------------------
+  IF $chkAutoRun
+    $Form1 = EditForm($Form1, "edtDelay", "Enabled", "Yes")
+  ELSE
+    $Form1 = EditForm($Form1, "edtDelay", "Enabled", "No")
+  ENDIF
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=UpdateScaling
+# ------------------------------------------------------------------------------
+  IF $btnBigImage
+    $Form1 = EditForm($Form1, "btnWidth", "Enabled", "Yes")
+    $Form1 = EditForm($Form1, "btnHeight", "Enabled", "Yes")
+    $Form1 = EditForm($Form1, "btnSquare", "Enabled", "Yes")
+    IF $btnWidth
+      $Form1 = EditForm($Form1, "edtWidth", "Enabled", "Yes")
+    ELSE
+      $Form1 = EditForm($Form1, "edtWidth", "Enabled", "No")
+    ENDIF
+    IF $btnHeight
+      $Form1 = EditForm($Form1, "edtHeight", "Enabled", "Yes")
+    ELSE
+      $Form1 = EditForm($Form1, "edtHeight", "Enabled", "No")
+    ENDIF
+    IF $btnSquare
+      $Form1 = EditForm($Form1, "edtSquare", "Enabled", "Yes")
+      $Form1 = EditForm($Form1, "lblSquare", "Visible", "Yes")
+      $Form1 = EditForm($Form1, "lblScale", "Visible", "No")
+    ELSE
+      $Form1 = EditForm($Form1, "edtSquare", "Enabled", "No")
+      $Form1 = EditForm($Form1, "lblSquare", "Visible", "No")
+      $Form1 = EditForm($Form1, "lblScale", "Visible", "Yes")
+    ENDIF
+  ELSE
+    $Form1 = EditForm($Form1, "btnWidth", "Enabled", "No")
+    $Form1 = EditForm($Form1, "btnHeight", "Enabled", "No")
+    $Form1 = EditForm($Form1, "btnSquare", "Enabled", "No")
+    $Form1 = EditForm($Form1, "edtWidth", "Enabled", "No")
+    $Form1 = EditForm($Form1, "edtHeight", "Enabled", "No")
+    $Form1 = EditForm($Form1, "edtSquare", "Enabled", "No")
+    $Form1 = EditForm($Form1, "lblSquare", "Visible", "No")
+    $Form1 = EditForm($Form1, "lblScale", "Visible", "No")
+  ENDIF
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=UpdateStale
+# ------------------------------------------------------------------------------
+  IF $souvenirsGotten
+    $Form1 = EditForm($Form1, "lblUpdated", "Visible", "Yes")
+    $Form1 = EditForm($Form1, "lblStale", "Visible", "No")
+  ELSE
+    $Form1 = EditForm($Form1, "lblUpdated", "Visible", "No")
+    $Form1 = EditForm($Form1, "lblStale", "Visible", "Yes")
+  ENDIF
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=RefreshOwnerData
+# ------------------------------------------------------------------------------
+  $status = sqlite("open","$_AppData\gsak.db3")
+  $edtOwnerId = sqlite("sql","select uData from UserInfo where uKey = 'UserId'")
+  $edtOwnerName = sqlite("sql","select uData from UserInfo where uKey = 'UserName'")
+  $edtGUID = sqlite("sql","select uData from UserInfo where uKey = 'PublicGuid'")
+  $status = sqlite("close", "")
+
+  $log = "OwnerId: $edtOwnerId" + $_CrLf + "OwnerName: $edtOwnerName" + $_CrLf + "PublicGUID: $edtGUID"
+  GOSUB Name=Log
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=Log
+# ------------------------------------------------------------------------------
+  IF $chkLog
+    $logSave = $log
+    $log = $log + $_CrLf
+    IF $logFile=""
+      $log = MacHeader("MacFileName") +" V" + MacHeader("MacVersion") + " by " + MacHeader("MacAuthor") + $_CrLf + $_CrLf + $log
+      $logFile = $edtFilename
+      $fileError = PutFile($logFile, $log)
+    ELSE
+      $fileError = AppendFile($logFile, $log)
+    ENDIF
+    IF Left($fileError , 7) = "*Error*"
+      CANCEL Msg="Error writing logfile: $fileError $_NewLine $_NewLine Macro will end"
+    ENDIF
+  ENDIF
+  $log = $logSave
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=GetApiData
+# ------------------------------------------------------------------------------
+# input: $key
+# output: $data
+# ------------------------------------------------------------------------------
+  $status = sqlite("sql","select data from GcApi where key = '$key'","Headings=N, SqlGet=Yes")
+  $count = 0
+  WHILE not($_sqleol)
+    $count = $count + 1
+    Array($index, $count) = UTF8(SqlGet("data"), "d")
+    $log = "- adding [" + Array($index, $count) + "]"
+    GOSUB Name=Log
+    SQLNEXT
+  ENDWHILE
+  $log = "Read $count values for key [$key] into array index $index. Expected number: $total"
+  GOSUB Name=Log
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=GetSouvenirData
+# ------------------------------------------------------------------------------
+  $PCNwork = $PCN
+  $PCNwork = Replace("{GUID}",$edtGUID,$PCNwork)
+  $log = "Running API query:" + $_CrLf + $PCNWork
+  GOSUB Name=Log
+  $data = GcApi("SearchForSouvenirsByPublicGuid",$PCNwork)
+  IF $ApiCount = 30
+    $ApiCount = 1
+    SHOWSTATUS Msg="Pausing for API Limit ($TotalAPICalls API calls)"
+    DELAY MS=60000
+  ELSE
+    $ApiCount = $ApiCount + 1
+  ENDIF
+  $TotalAPICalls = $TotalAPICalls + 1
+  IF $_GcApiError
+    # error running api so show error message
+    MSGOK Msg="Error:  $data"
+    $log = "GcApiError:" + $_CrLf + $data
+    GOSUB Name=Log
+  ELSE
+    $data = Replace("><", ">$_CrLf<", $data)
+    $data = "     " + Replace($_CrLf, "$_CrLf     ", $data)
+    $log = "API Response:" + $_CrLf + $data
+    GOSUB Name=Log
+
+    # get number of souvenirs
+    $total = Val(sqlite("sql", "select count(*) from gcapi where key = '/SouvenirResponse/Souvenirs/a:Souvenir/a:SouvenirID'", "Headings=N"))
+    $log = "Succesfully retrieved $total souvenirs. Extracting information."
+    GOSUB Name=Log
+
+    # init arrays
+    Array(1, 0) = "$total" # thumb
+    Array(2, 0) = "$total" # GUID
+    Array(3, 0) = "$total" # title
+    Array(4, 0) = "$total" # date discovered
+    Array(5, 0) = "$total" # sort order
+    Array(6, 0) = "$total" # big image
+
+    Array(1, -1) = "" # thumb
+    Array(2, -1) = "" # GUID
+    Array(3, -1) = "" # title
+    Array(4, -1) = "" # date discovered
+    Array(5, -1) = "" # sort order
+    Array(6, -1) = "" # big image
+
+    # get thumb picture
+    $key = "/SouvenirResponse/Souvenirs/a:Souvenir/a:ThumbPath"
+    $index = 1
+    GOSUB Name=GetApiData
+
+    # get souvenir GUID
+    $key = "/SouvenirResponse/Souvenirs/a:Souvenir/a:SouvenirGuid"
+    $index = 2
+    GOSUB Name=GetApiData
+
+    # get title
+    $key = "/SouvenirResponse/Souvenirs/a:Souvenir/a:Title"
+    $index = 3
+    GOSUB Name=GetApiData
+
+    # date discovered
+    $key = "/SouvenirResponse/Souvenirs/a:Souvenir/a:DateDiscovered"
+    $index = 4
+    GOSUB Name=GetApiData
+
+    # bug image
+    $key = "/SouvenirResponse/Souvenirs/a:Souvenir/a:ImagePath"
+    $index = 6
+    GOSUB Name=GetApiData
+    
+    $souvenirsGotten = TRUE
+  ENDIF
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=SortSouvenirs
+# ------------------------------------------------------------------------------
+  $lastDate = "1900-01-01T00:00:00"
+  $index = 0
+  WHILE ($index < $total)
+    $index = $index + 1
+    $log = "Sort iteration $index"
+    GOSUB Name=Log
+
+    $currentDate = "2099-12-31T23:59:59"
+    $currentIndex = 0
+
+    $count = 0
+    WHILE ($count < $total)
+      $count = $count + 1
+      IF (Array(4, $count) >= $lastDate) AND (Array(4, $count) < $currentDate)
+        $log = "  Match for " + Array(4, $count) + " at position $count [$lastDate, $currentDate]"
+        GOSUB Name=Log
+        $currentDate = Array(4, $count)
+        $currentIndex = $count
+      ELSE
+        $log = "  No match for " + Array(4, $count) + " at position $count [$lastDate, $currentDate]"
+        GOSUB Name=Log
+      ENDIF
+    ENDWHILE
+
+    Array(5, $index) = NumToStr($currentIndex)
+    Array(4, $currentIndex) = "2099-12-31T23:59:59"  # mark this date as used
+    $lastDate = $currentDate
+    $log = "  -> Position $index is mapped to $currentIndex ($currentDate)"
+    GOSUB Name=Log
+  ENDWHILE
+  $log = "Sorting done, sort array is:"
+  GOSUB Name=Log
+
+  $count = 0
+  WHILE ($count < $total)
+    $count = $count + 1
+    $log = "Sort position $count is " + Array(5, $count)
+    GOSUB Name=Log
+  ENDWHILE
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=PopulateList
+# ------------------------------------------------------------------------------
+  $ignoreList = ""
+  $count = 0
+  WHILE ($count < $total)
+    $count = $count + 1
+    $ignoreList = $ignoreList + Array(3, $count) + ";"
+  ENDWHILE
+  $ignoreList = Left($ignoreList, Len($ignoreList)-1)
+  $log = "Populated ignore list [$ignoreList]"
+  GOSUB Name=Log
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=WriteHtmlFile
+# ------------------------------------------------------------------------------
+  IF $total > 0
+    $log = "Writing output for $total souvenirs, current ignore list [$lstIgnore]"
+    GOSUB Name=Log
+    GOSUB Name=StartHtml
+    $count = 0
+    WHILE ($count < $total)
+      $count = $count + 1
+      IF At(Array(3, Val(Array(5, $count))), $lstIgnore) = 0
+        $log = "Writing output for souvenir [" + Array(3, Val(Array(5, $count))) + "]"
+        GOSUB Name=Log
+        $html = ""
+        $html = $html + "  <a href='http://www.geocaching.com/souvenir/?guid=" + Array(2, Val(Array(5, $count))) + "'"
+        $html = $html + " target='_blank'"
+        $html = $html + " title='" + Array(3, Val(Array(5, $count))) + "'>" + $_CrLf
+        $html = $html + "    <img title='" + Array(3, Val(Array(5, $count))) + "'"
+        $html = $html + " alt='" + Array(3, Val(Array(5, $count))) + "'"
+        $html = $html + " class='SouvenirThumb'"
+        IF $btnThumbs
+          $html = $html + " src='" + Array(1, Val(Array(5, $count))) + "'"
+          $html = $html + " style='height:100px;width:100px;border-width:0px;' />" + $_CrLf
+        ELSE
+          $html = $html + " src='" + Array(6, Val(Array(5, $count))) + "'"
+          IF $btnHeight
+            $html = $html + " height='$edtHeight'"
+          ELSE
+            IF $btnWidth
+              $html = $html + " width='$edtWidth'"
+            ELSE
+              $html = $html + " height='$edtSquare' width='$edtSquare'"
+            ENDIF
+          ENDIF
+          $html = $html + " style='border-width:0px;' />" + $_CrLf
+        ENDIF
+        $html = $html + "  </a>" + $_CrLf + $_CrLf
+        GOSUB Name=WriteHtml
+      ELSE
+        $log = "Ignoring souvenir [" + Array(3, Val(Array(5, $count))) + "]"
+        GOSUB Name=Log
+      ENDIF
+    ENDWHILE
+    GOSUB Name=EndHtml
+  ELSE
+    $log = "No souvenirs obtained -> not writing output file"
+    GOSUB Name=Log
+    $log = "No souvenirs were retrieved." + $_CrLf + $_CrLf + "No output file is being written."
+    MSGOK Msg=$log Caption="Aborting"
+  ENDIF
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=StartHtml
+# ------------------------------------------------------------------------------
+  IF $chkFull
+    $html = ""
+    $html = $html + "<html>" + $_CrLf
+    $html = $html + "<head>" + $_CrLf
+    $html = $html + "<title>Geocaching Souvenirs</title>" + $_CrLf
+    $html = $html + "</head>" + $_CrLf
+    $html = $html + "<body>" + $_CrLf
+  ELSE
+    $html = "<div>" + $_CrLf
+  ENDIF
+  GOSUB Name=WriteHtml
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=EndHtml
+# ------------------------------------------------------------------------------
+  IF $chkFull
+    $html = ""
+    $html = $html + "</body>" + $_CrLf
+    $html = $html + "</html>" + $_CrLf
+  ELSE
+    $html = "</div>" + $_CrLf
+  ENDIF
+  GOSUB Name=WriteHtml
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=WriteHtml
+# ------------------------------------------------------------------------------
+  $html = $html + $_CrLf
+  IF $htmlFile=""
+    $htmlFile = $edtOutputFilename
+    $fileError = PutFile($htmlFile, $html)
+  ELSE
+    $fileError = AppendFile($htmlFile, $html)
+  ENDIF
+  IF Left($fileError , 7) = "*Error*"
+    CANCEL Msg="Error writing html file: $fileError $_NewLine $_NewLine Macro will end"
+  ENDIF
+ENDSUB
+
+# ------------------------------------------------------------------------------
+BEGINSUB Name=DeclareVariables
+# ------------------------------------------------------------------------------
+Option Explicit=Yes
+
+Declare Var=$ApiCount Type=Numeric
+Declare Var=$btnBigImage Type=Boolean
+Declare Var=$btnBigImage_1 Type=Boolean
+Declare Var=$btnBigImage_2 Type=Boolean
+Declare Var=$btnBigImage_3 Type=Boolean
+Declare Var=$btnBigImage_4 Type=Boolean
+Declare Var=$btnBigImage_5 Type=Boolean
+Declare Var=$btnHeight Type=Boolean
+Declare Var=$btnHeight_1 Type=Boolean
+Declare Var=$btnHeight_2 Type=Boolean
+Declare Var=$btnHeight_3 Type=Boolean
+Declare Var=$btnHeight_4 Type=Boolean
+Declare Var=$btnHeight_5 Type=Boolean
+Declare Var=$btnSquare Type=Boolean
+Declare Var=$btnSquare_1 Type=Boolean
+Declare Var=$btnSquare_2 Type=Boolean
+Declare Var=$btnSquare_3 Type=Boolean
+Declare Var=$btnSquare_4 Type=Boolean
+Declare Var=$btnSquare_5 Type=Boolean
+Declare Var=$btnThumbs Type=Boolean
+Declare Var=$btnThumbs_1 Type=Boolean
+Declare Var=$btnThumbs_2 Type=Boolean
+Declare Var=$btnThumbs_3 Type=Boolean
+Declare Var=$btnThumbs_4 Type=Boolean
+Declare Var=$btnThumbs_5 Type=Boolean
+Declare Var=$btnWidth Type=Boolean
+Declare Var=$btnWidth_1 Type=Boolean
+Declare Var=$btnWidth_2 Type=Boolean
+Declare Var=$btnWidth_3 Type=Boolean
+Declare Var=$btnWidth_4 Type=Boolean
+Declare Var=$btnWidth_5 Type=Boolean
+Declare Var=$chkAutoRun Type=Boolean
+Declare Var=$chkAutorun_1 Type=Boolean
+Declare Var=$chkAutorun_2 Type=Boolean
+Declare Var=$chkAutorun_3 Type=Boolean
+Declare Var=$chkAutorun_4 Type=Boolean
+Declare Var=$chkAutorun_5 Type=Boolean
+Declare Var=$chkFull Type=Boolean
+Declare Var=$chkFull_1 Type=Boolean
+Declare Var=$chkFull_2 Type=Boolean
+Declare Var=$chkFull_3 Type=Boolean
+Declare Var=$chkFull_4 Type=Boolean
+Declare Var=$chkFull_5 Type=Boolean
+Declare Var=$chkLog Type=Boolean
+Declare Var=$chkShow Type=Boolean
+Declare Var=$chkShow_1 Type=Boolean
+Declare Var=$chkShow_2 Type=Boolean
+Declare Var=$chkShow_3 Type=Boolean
+Declare Var=$chkShow_4 Type=Boolean
+Declare Var=$chkShow_5 Type=Boolean
+Declare Var=$count Type=Numeric
+Declare Var=$currentDate Type=String
+Declare Var=$currentIndex Type=Numeric
+Declare Var=$currentProfile Type=Numeric
+Declare Var=$data Type=String
+Declare Var=$delay Type=String
+Declare Var=$edtDelay Type=String
+Declare Var=$edtDelay_1 Type=String
+Declare Var=$edtDelay_2 Type=String
+Declare Var=$edtDelay_3 Type=String
+Declare Var=$edtDelay_4 Type=String
+Declare Var=$edtDelay_5 Type=String
+Declare Var=$edtFilename Type=String
+Declare Var=$edtGUID Type=String
+Declare Var=$edtHeight Type=String
+Declare Var=$edtHeight_1 Type=String
+Declare Var=$edtHeight_2 Type=String
+Declare Var=$edtHeight_3 Type=String
+Declare Var=$edtHeight_4 Type=String
+Declare Var=$edtHeight_5 Type=String
+Declare Var=$edtOutputFilename Type=String
+Declare Var=$edtOutputFilename_1 Type=String
+Declare Var=$edtOutputFilename_2 Type=String
+Declare Var=$edtOutputFilename_3 Type=String
+Declare Var=$edtOutputFilename_4 Type=String
+Declare Var=$edtOutputFilename_5 Type=String
+Declare Var=$edtOwnerId Type=String
+Declare Var=$edtOwnerName Type=String
+Declare Var=$edtProfile Type=String
+Declare Var=$edtSquare Type=String
+Declare Var=$edtSquare_1 Type=String
+Declare Var=$edtSquare_2 Type=String
+Declare Var=$edtSquare_3 Type=String
+Declare Var=$edtSquare_4 Type=String
+Declare Var=$edtSquare_5 Type=String
+Declare Var=$edtWidth Type=String
+Declare Var=$edtWidth_1 Type=String
+Declare Var=$edtWidth_2 Type=String
+Declare Var=$edtWidth_3 Type=String
+Declare Var=$edtWidth_4 Type=String
+Declare Var=$edtWidth_5 Type=String
+Declare Var=$fileError Type=String
+Declare Var=$Form1 Type=String
+Declare Var=$Form2 Type=String
+Declare Var=$FormExit Type=String
+Declare Var=$html Type=String
+Declare Var=$htmlfile Type=String
+Declare Var=$ignoreList Type=String
+Declare Var=$index Type=Numeric
+Declare Var=$key Type=String
+Declare Var=$lastDate Type=String
+Declare Var=$log Type=String
+Declare Var=$logfile Type=String
+Declare Var=$logSave Type=String
+Declare Var=$lstIgnore Type=String
+Declare Var=$lstIgnore_1 Type=String
+Declare Var=$lstIgnore_2 Type=String
+Declare Var=$lstIgnore_3 Type=String
+Declare Var=$lstIgnore_4 Type=String
+Declare Var=$lstIgnore_5 Type=String
+Declare Var=$maxProfile Type=Numeric
+Declare Var=$Parameter Type=String
+Declare Var=$ParamName Type=String
+Declare Var=$ParamValue Type=String
+Declare Var=$PCN Type=String
+Declare Var=$PCNwork Type=String
+Declare Var=$profileLoaded Type=String
+Declare Var=$profileName_1 Type=String
+Declare Var=$profileName_2 Type=String
+Declare Var=$profileName_3 Type=String
+Declare Var=$profileName_4 Type=String
+Declare Var=$profileName_5 Type=String
+Declare Var=$showForm Type=Boolean
+Declare Var=$silent Type=Boolean
+Declare Var=$souvenirsGotten Type=Boolean
+Declare Var=$status Type=String
+Declare Var=$total Type=Numeric
+Declare Var=$TotalAPICalls Type=Numeric
+
+ENDSUB
+
+# ------------------------------------------------------------------------------
+<Data> Varname=$PCN
+  <SearchForSouvenirsByPublicGuidRequest xmlns="http://www.geocaching.com/Geocaching.Live/data">
+    <AccessToken>{ACCESSTOKEN}</AccessToken>
+    <PublicGuid>{GUID}</PublicGuid>
+  </SearchForSouvenirsByPublicGuidRequest>
+<enddata>
+
+# ------------------------------------------------------------------------------
+<Data> VarName=$form1
+#********************************************************************
+# Form generated by GSAK form designer on Do 08-Mrz-2012 08:11:07
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Create souvenir list
+  Height = 634
+  Left = 308
+  Width = 656
+
+Name = grpUser
+  Type = Groupbox
+  Caption = User credentials
+  Height = 141
+  Left = 10
+  Top = 10
+  Width = 311
+  Taborder = 3
+
+Name = grpOutput
+  Type = Groupbox
+  Caption = Output
+  Height = 271
+  Left = 10
+  Top = 160
+  Width = 311
+  Taborder = 4
+
+Name = grpAutorun
+  Type = Groupbox
+  Caption = Auto run
+  Height = 121
+  Left = 10
+  Top = 440
+  Width = 311
+  Taborder = 6
+
+Name = grpScaling
+  Type = Groupbox
+  Caption = Scaling
+  Container = grpOutput
+  Height = 85
+  Left = 30
+  Top = 180
+  Width = 271
+  Taborder = 5
+
+Name = grpIgnore
+  Type = Groupbox
+  Caption = Souvenirs to ignore
+  Height = 521
+  Left = 330
+  Top = 10
+  Width = 311
+  Taborder = 7
+
+Name = grpProfile
+  Type = Groupbox
+  Caption = Profiles
+  Height = 55
+  Left = 330
+  Top = 540
+  Width = 311
+  Taborder = 8
+
+Name = btnCancel
+  Type = Button
+  Escape = Yes
+  Height = 25
+  Left = 182
+  Top = 570
+  Width = 75
+  Taborder = 2
+  Caption = Cancel
+
+Name = Label1
+  Type = Label
+  Container = grpUser
+  Height = 17
+  Left = 10
+  Top = 18
+  Width = 51
+  Caption = Owner Id
+
+Name = Label2
+  Type = Label
+  Container = grpUser
+  Height = 17
+  Left = 10
+  Top = 48
+  Width = 70
+  Caption = Owner Name
+
+Name = Label3
+  Type = Label
+  Container = grpUser
+  Height = 17
+  Left = 10
+  Top = 78
+  Width = 67
+  Caption = Public GUID
+
+Name = edtOwnerName
+  Type = Edit
+  Container = grpUser
+  Enabled = No
+  Height = 21
+  Left = 80
+  Top = 45
+  Width = 221
+  Taborder = 1
+
+Name = edtOwnerId
+  Type = Edit
+  Container = grpUser
+  Enabled = No
+  Height = 21
+  Left = 80
+  Top = 15
+  Width = 221
+  Taborder = 0
+
+Name = edtGUID
+  Type = Edit
+  Container = grpUser
+  Enabled = No
+  Height = 21
+  Left = 80
+  Top = 75
+  Width = 221
+  Taborder = 2
+
+Name = Label4
+  Type = Label
+  Container = grpOutput
+  Height = 17
+  Left = 10
+  Top = 20
+  Width = 56
+  Caption = Output file
+
+Name = edtOutputFilename
+  Type = File
+  Container = grpOutput
+  Height = 21
+  Left = 10
+  Top = 40
+  Width = 291
+  Taborder = 0
+
+Name = chkFull
+  Type = Checkbox
+  Container = grpOutput
+  Height = 40
+  Left = 10
+  Top = 70
+  Width = 280
+  Taborder = 1
+  Caption = Write full HTML file<br>(<i>Disable if you want to inlcude the file in FSG</i>)
+
+Name = chkShow
+  Type = Checkbox
+  Container = grpOutput
+  Height = 20
+  Left = 10
+  Top = 110
+  Width = 200
+  Taborder = 2
+  Caption = Show file when done
+
+Name = chkAutoRun
+  Type = Checkbox
+  Container = grpAutorun
+  Exitonchange = Yes
+  Height = 20
+  Left = 10
+  Top = 20
+  Width = 120
+  Taborder = 0
+  Caption = Autorun with a delay:
+
+Name = btnOk
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 100
+  Top = 570
+  Width = 75
+  Taborder = 5
+  Caption = OK
+
+Name = btnFromApi
+  Type = Button
+  Container = grpUser
+  Height = 25
+  Left = 80
+  Top = 105
+  Width = 221
+  Taborder = 3
+  Caption = Get Information from Groundspeak (API)
+
+Name = lblVersion
+  Type = Label
+  Height = 17
+  Left = 10
+  Top = 580
+  Width = 34
+
+Name = btnThumbs
+  Type = Radiobutton
+  Container = grpOutput
+  Exitonchange = Yes
+  Height = 20
+  Left = 10
+  Top = 140
+  Width = 200
+  Taborder = 3
+  Caption = Use thumbnail image
+
+Name = btnBigImage
+  Type = Radiobutton
+  Container = grpOutput
+  Exitonchange = Yes
+  Height = 20
+  Left = 10
+  Top = 160
+  Width = 200
+  Taborder = 4
+  Caption = Use souvenir image
+
+Name = edtHeight
+  Type = Edit
+  Container = grpScaling
+  Height = 21
+  Left = 110
+  Top = 35
+  Width = 41
+  Taborder = 3
+
+Name = edtDelay
+  Type = Edit
+  Container = grpAutorun
+  Height = 21
+  Left = 130
+  Top = 20
+  Width = 41
+  Taborder = 1
+
+Name = Label8
+  Type = Label
+  Container = grpAutorun
+  Height = 40
+  Left = 28
+  Top = 40
+  Width = 247
+  Caption = A delay of 0 seconds will not display this window.<br>Pressing CTRL when starting the macro will always<br>suppress auto-run and show this window.
+
+Name = lblDelay
+  Type = Label
+  Color = 255
+  Container = grpAutorun
+  Height = 17
+  Left = 10
+  Style = bold
+  Top = 90
+  Width = 284
+  Caption = Click on this line to stop auto-running the macro.
+
+Name = btnWidth
+  Type = Radiobutton
+  Container = grpScaling
+  Exitonchange = Yes
+  Height = 20
+  Left = 10
+  Top = 15
+  Width = 98
+  Taborder = 0
+  Caption = Scale to width
+
+Name = btnHeight
+  Type = Radiobutton
+  Container = grpScaling
+  Exitonchange = Yes
+  Height = 20
+  Left = 10
+  Top = 35
+  Width = 98
+  Taborder = 2
+  Caption = Scale to height
+
+Name = edtWidth
+  Type = Edit
+  Container = grpScaling
+  Height = 21
+  Left = 110
+  Top = 12
+  Width = 41
+  Taborder = 1
+
+Name = btnPopulate
+  Type = Button
+  Container = grpIgnore
+  Height = 25
+  Left = 10
+  Top = 440
+  Width = 291
+  Taborder = 0
+  Caption = Get souvenir list from groundspeak.com
+
+Name = lstIgnore
+  Type = Checklistbox
+  Columns = 0
+  Container = grpIgnore
+  Height = 351
+  Left = 10
+  Top = 50
+  Values = ignoreList
+  Width = 291
+  Taborder = 1
+
+Name = Label5
+  Type = Label
+  Container = grpIgnore
+  Height = 30
+  Left = 10
+  Top = 20
+  Width = 277
+  Caption = Any souvenirs that you select in this list will be <b>excluded</b><br>from the HTML file created by this macro.
+
+Name = btnAll
+  Type = Button
+  Container = grpIgnore
+  Height = 25
+  Left = 78
+  Top = 410
+  Width = 75
+  Taborder = 2
+  Caption = Ignore all
+
+Name = btnNone
+  Type = Button
+  Container = grpIgnore
+  Height = 25
+  Left = 158
+  Top = 410
+  Width = 75
+  Taborder = 3
+  Caption = Ignore none
+
+Name = lblUpdated
+  Type = Label
+  Container = grpIgnore
+  Height = 30
+  Left = 12
+  Top = 470
+  Width = 282
+  Caption = The list of available souvenirs has been updated since the<br>macro was started.
+
+Name = lblStale
+  Type = Label
+  Color = 255
+  Container = grpIgnore
+  Height = 40
+  Left = 12
+  Top = 470
+  Width = 302
+  Caption = The list of available souvenirs has not been updated since you<br>started the macro. The list you see represents the souvenirs<br>stored from the last time you retrieved them.
+
+Name = btnSquare
+  Type = Radiobutton
+  Container = grpScaling
+  Exitonchange = Yes
+  Height = 20
+  Left = 10
+  Top = 55
+  Width = 98
+  Taborder = 4
+  Caption = Force to square
+
+Name = edtSquare
+  Type = Edit
+  Container = grpScaling
+  Height = 21
+  Left = 110
+  Top = 58
+  Width = 41
+  Taborder = 5
+
+Name = lblSquare
+  Type = Label
+  Container = grpScaling
+  Height = 60
+  Left = 155
+  Top = 15
+  Width = 112
+  Caption = <b>Watch out</b><br>Using this option will<br>most likely distort most<br>souvenirs.
+
+Name = lblScale
+  Type = Label
+  Container = grpScaling
+  Height = 60
+  Left = 155
+  Top = 15
+  Width = 115
+  Caption = Using scaling will keep<br>the original aspect ratio<br>but might result in<br>varying width or height.
+
+Name = btnSave
+  Type = Button
+  Container = grpProfile
+  Height = 25
+  Left = 230
+  Top = 20
+  Width = 70
+  Taborder = 0
+  Caption = Save
+
+Name = bgr1
+  Type = Memo
+  Color = 16384
+  Container = grpProfile
+  Enabled = No
+  Height = 27
+  Left = 10
+  Top = 20
+  Width = 27
+  Taborder = 6
+
+Name = bgr2
+  Type = Memo
+  Color = 16384
+  Container = grpProfile
+  Enabled = No
+  Height = 27
+  Left = 50
+  Top = 20
+  Width = 27
+  Taborder = 7
+
+Name = bgr3
+  Type = Memo
+  Color = 16384
+  Container = grpProfile
+  Enabled = No
+  Height = 27
+  Left = 90
+  Top = 20
+  Width = 27
+  Taborder = 8
+
+Name = bgr4
+  Type = Memo
+  Color = 16384
+  Container = grpProfile
+  Enabled = No
+  Height = 27
+  Left = 130
+  Top = 20
+  Width = 27
+  Taborder = 9
+
+Name = bgr5
+  Type = Memo
+  Color = 16384
+  Container = grpProfile
+  Enabled = No
+  Height = 27
+  Left = 170
+  Top = 20
+  Width = 27
+  Taborder = 10
+
+Name = btn1
+  Type = Button
+  Container = grpProfile
+  Height = 19
+  Left = 14
+  Top = 24
+  Width = 19
+  Taborder = 1
+  Caption = 1
+
+Name = btn2
+  Type = Button
+  Container = grpProfile
+  Height = 19
+  Left = 54
+  Top = 24
+  Width = 19
+  Taborder = 2
+  Caption = 2
+
+Name = btn3
+  Type = Button
+  Container = grpProfile
+  Height = 19
+  Left = 94
+  Top = 24
+  Width = 19
+  Taborder = 3
+  Caption = 3
+
+Name = btn4
+  Type = Button
+  Container = grpProfile
+  Height = 19
+  Left = 134
+  Top = 24
+  Width = 19
+  Taborder = 4
+  Caption = 4
+
+Name = btn5
+  Type = Button
+  Container = grpProfile
+  Height = 19
+  Left = 174
+  Top = 24
+  Width = 19
+  Taborder = 5
+  Caption = 5
+
+<enddata>
+
+
+
+
+
+# ------------------------------------------------------------------------------
+<Data> VarName=$form2
+#********************************************************************
+# Form generated by GSAK form designer on Do 08-Mrz-2012 07:56:37
+#********************************************************************
+
+Name = Form2
+  Type = Form
+  Caption = Save profile
+  Height = 177
+  Left = 487
+  Width = 218
+
+Name = Label1
+  Type = Label
+  Height = 17
+  Left = 10
+  Top = 60
+  Width = 68
+  Caption = Profile Name
+
+Name = edtProfile
+  Type = Edit
+  Height = 21
+  Left = 10
+  Top = 78
+  Width = 191
+  Taborder = 10
+
+Name = btnSave
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 70
+  Top = 110
+  Width = 75
+  Taborder = 11
+  Caption = Save
+
+Name = Label2
+  Type = Label
+  Height = 17
+  Left = 10
+  Top = 10
+  Width = 87
+  Caption = Profile to save to
+
+Name = btn1
+  Type = Radiobutton
+  Exitonchange = Yes
+  Height = 20
+  Left = 10
+  Top = 30
+  Width = 30
+  Taborder = 12
+  Caption = 1
+
+Name = btn2
+  Type = Radiobutton
+  Exitonchange = Yes
+  Height = 20
+  Left = 50
+  Top = 30
+  Width = 30
+  Taborder = 13
+  Caption = 2
+
+Name = btn3
+  Type = Radiobutton
+  Exitonchange = Yes
+  Height = 20
+  Left = 90
+  Top = 30
+  Width = 30
+  Taborder = 14
+  Caption = 3
+
+Name = btn4
+  Type = Radiobutton
+  Exitonchange = Yes
+  Height = 20
+  Left = 130
+  Top = 30
+  Width = 30
+  Taborder = 15
+  Caption = 4
+
+Name = btn5
+  Type = Radiobutton
+  Exitonchange = Yes
+  Height = 20
+  Left = 170
+  Top = 30
+  Width = 30
+  Taborder = 16
+  Caption = 5
+
+<enddata>

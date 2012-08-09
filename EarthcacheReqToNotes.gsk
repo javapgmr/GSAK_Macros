@@ -1,0 +1,28 @@
+#*******************************************
+# MacDescription = Earthcache requirements to first log
+# MacFileName = EarthcacheReqToNotes.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.1
+# MacUrl=http://gsak.net/board/index.php?showtopic=17095&view=findpost&p=119337
+#*******************************************
+MACROFLAG Type=Clear Range=All
+MFILTER WHERE=CacheType='R'
+GOTO Position=Top
+TRANSACTION Action=Begin
+WHILE NOT($_EOL)
+    $Desc=RegExReplace("(s?)</?[a-z][a-z0-9]*[^<>]*>",$d_LongDescription,"")
+    $Pos=RegExPos("(To|The|get)\s(claim|log|logging|requirements|credit|rights).*(cache|earthcache|find)",$Desc,1)
+    IF $Pos>0
+        $d_MacroFlag=TRUE
+        $Requirements=Right($Desc,Len($Desc)+1-$Pos)
+        $Note=Extract($d_UserNote,"$~",1)
+        $Log=Extract($d_UserNote,"$~",2)
+        IF At("*~Requirements~*",$Note)=0
+            $d_UserNote="*~Requirements~*" + $_CrLf + $Requirements + $_CrLf + $Note + "$~" + $Log
+        ENDIF
+    ENDIF
+    GOTO Position=Next
+ENDWHILE
+TRANSACTION Action=End
+MFILTER WHERE=MACROFLAG=0 Join=AND
+

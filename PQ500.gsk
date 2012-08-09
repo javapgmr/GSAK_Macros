@@ -1,0 +1,99 @@
+#################################################################################################
+#
+# This macro will check the contents of a single or multiple PQ's so you can see if it is 
+# approaching or has reached the magic 500 mark. 
+#
+# It asks the user where their GPX Files are located and stores this in a file GPX FILES PATH.dat
+# in the "\Macros\Data" folder. It generates a batch file which is also stored in the 
+# "\Macros\Data" folder.
+#
+# The batch file generates a directory listing "dir.txt" of the files in the users GPX File 
+# folder.
+#
+# It requires a 'Test Load Zip' setting in the 'Load GPX/Loc File' dialog. Tick the following
+# only - Load Files, Clear Database before loading, Database update options = Always
+# Found Status = Never, Database = Count. Save these settings as 'Test Load Zip'.
+#
+#################################################################################################
+
+# Set up the Macro\Data\ folder. WINNT is for Windows 2000, change to 
+# match your system.
+SET $MacroDataPath=$_Install + "\Macros\Data\"
+IF .NOT. (FolderExists($MacroDataPath))
+	RUNPGM Pgm="C:\WINNT\System32\cmd.exe" Parms= /C mkdir "$MacroDataPath" wait=YES
+ENDIF
+
+# Check to see if user data file "GPX FILES PATH.dat" exists, if not create it.
+SET $GPXPath="C:\abcdefgh\"
+IF .NOT. (FileExists($GPXPath))
+	SET $DataPath=$_Install + "\Macros\Data\GPX FILES PATH.dat"
+   	IF (FileExists($DataPath))
+       SET $GPXPath=GETFILE($DataPath)
+	IF Left($GPXPath, 7) = "*Error*"
+		CANCEL Msg="$GPXPath"
+       	ENDIF
+   	ENDIF
+   	
+# Ask user for the folder that holds their GPX files and store the path in $GPXPath
+   	WHILE .NOT. (FolderExists($GPXPath))
+		INPUT Msg="Enter the complete path including the drive, folder/s and a trailing \ that contains your GPX Files. e.g. C:\Downloads\Pocket Queries\ " Default="" VarName=$GPXPath
+		IF .NOT. (FolderExists($GPXPath))
+  			SET$Error="The path/folder "+$GPXPath +" cannot found. Check the path and try again."
+			Pause Msg="$Error"
+		ENDIF
+	    SET $Error=PUTFILE($DataPath, $GPXPath)
+	    IF Left($Error, 7) = "*Error*"
+           	PAUSE Msg = "$Error"
+		ENDIF
+   	ENDWHILE
+ENDIF
+
+# Check to see if 'Dir.bat' file exists, if not create it.
+IF .NOT. (FileExists($_Install+ "\Macros\Data\Dir.bat"))
+	SET $Error = PUTFILE($_Install + "\Macros\Data\Dir.bat","@ Echo off" + $_Newline+"CD " + $GPXPath + $_Newline + "dir /b *.zip > dir.txt"+$_Newline+"exit"+$_Newline) 
+	IF Left($Error, 7) = "*Error*"
+		PAUSE Msg = "$Error"
+	ENDIF
+ENDIF
+
+# Create a file list of the files in the users GPX File folder. WINNT is for Windows 2000, change to
+# match your system.
+
+RUNPGM pgm="C:\WINNT\System32\cmd.exe" Parms= /C "$_Install\Macros\Data\Dir.bat" wait=YES
+
+# Read the 'dir.txt' file containing the PQ's
+SET $Data=GetFile($GPXPath+"dir.txt")
+IF Left($Data,7) = "*Error*"
+	Pause Msg="There are no files to load.$_NewLine$_NewLineThis macro will now abort."
+	Cancel
+ENDIF
+
+# Setup the text for the report
+SET $var1="There are "
+SET $var2=" records in the file "
+SET $message1=""
+
+# Check if 'Count' database exists, if not create it
+SET $CountDatabase="Count"
+IF .NOT. (DataBaseExists($CountDatabase))
+	Database Name="Count" action=Create
+ENDIF
+
+# Select the 'Count' database
+Database Name="Count" action=Select
+SET $DataLength=Len($Data)
+WHILE .not.($DataLength=0)
+	SET $a=AT($_Newline, $Data)
+	SET $FileName=Left($Data, ($a-1))
+	SET $File=$GPXPath+$Filename
+	LOAD file="$File" settings="Test Load Zip"
+	SET $count="$_Count"
+	SET $message1=$message1+$var1+$count+$var2+$Filename+$_NewLine	
+	Set $Data=SubStr($Data, ($a+2), ($Datalength-$a))
+	SET $DataLength=Len($Data)
+ENDWHILE
+Pause Msg="$message1"
+
+# You can now run a macro to load the GPX files you've just checked.
+# MACRO File="path\file"
+

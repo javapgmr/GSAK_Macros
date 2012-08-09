@@ -1,0 +1,28 @@
+#################################################
+# FindArchived.txt v.1.0
+# by Pasha Phares
+#
+# Macro to find possibly-archived caches.
+#################################################
+# Edit the below value to match your caching name
+# to enable filtering of owned caches from the
+# list.
+$user = "Pasha"
+
+#DEBUG Status=On
+
+# Get from user the last time GPX was imported/how long ago to search
+INPUT Msg="How many days ago was the last GPX import? (Yesterday = 1)" Default=7 VarName=$daysago
+$days = $_Today - Val($daysago)
+
+# Filter so that we only show caches that may be archived or disabled
+MFILTER IF=$d_LastGPXDate <> [00000000] AND $d_LastGPXDate < $days AND $d_DNFDate = [00000000] AND $d_PlacedBy <> $user AND NOT ($d_Found OR $d_Lock OR $d_HasCorrected OR $d_LastGPXDate > $_Today)
+IF $_FilterCount > 0
+	SORT By="lastupdate"
+	CANCEL
+ELSE
+	PAUSE Msg="No records match archiving criteria. Restoring."
+ENDIF
+
+# Cancel the filters
+CANCELFILTER

@@ -1,0 +1,767 @@
+# MacDescription = Google Maps V3
+# MacFileName = Google_Map_V3.gsk
+# MacAuthor = Lignumaqua
+# MacVersion=3.2
+# MacUrl = 
+
+#==============================================================================#
+#   GSAK Google Maps V3 Export
+#   Lignumaqua
+#   ONLY runs in GSAK V7.7 or above of GSAK
+#
+#==============================================================================#
+#   Google Maps V3 Version History
+# V0.1 4-9-10 First trial release
+# V0.2 4-10-10 Info windows
+# V0.3 4-10-10 Maptype cookie 
+# V0.4 4-11-10 Support Waymarks, Ape. Skip cookies with Chrome. Icons for 1,000 and 10,000
+# V0.5 5-6-10 Options to show Child Waypoints and Text Labels
+# V0.6 5-7-10 Option to use Original coordinates
+# V0.7 5-8-10 Fix for IE8, clean up CSS, change macro file name spaces to underscores
+#             Hold down shift key to access menu. No menu means no options, plain vanilla and QUICK!
+# V0.8 5-8-10 New 'Increment User Sort' option in Info window
+# V0.9 5-9-10 Added Found icons
+# V1.0 9-18-10 MyTopo change, Added Street View
+# V1.1 11-1-10 MyTopo change - use indirect url
+# V1.2 1-3-11 Added Open Cycle Map, MapQuest and Bing maps
+# V1.3 1-17-11 Added Ordnance Survey map type 
+# V1.4 1-20-11 Move to gsak.net, Sticky options for Scroll Zoom and Silent operation. Drag and Zoom using Shift key or icon.
+# V1.5 2-19-11 Added icons for caches with corrected coordinates
+# V1.6 3-12-11 Workround for GMaps bug introduced in v3.4
+# V1.7 4-6-11 Added parent name to child tooltip
+# V1.8 5-6-11 Options for code, name or smartname in Label. Options for label text size.
+# V1.9 5-18-11 Add Hike and Bike map type
+# V2.0 5-20-11 Fix use of the / character 
+# V2.1 7-18-11 Add placed date to Event, CITO and Mega Event cache info windows. Add Found date to found caches
+# V2.2 8-12-11 Fix for API sending Final Waypoints with blank coordinates.
+# V2.3 9-18-11 Added support for Groundspeak HQ and 10 Year Event cache icons now available through API
+# V2.4 10-25-11 Child labels
+# V2.5 12-3-11 New label code, additional fields in labels, Fav Points in InfoWindow
+# V2.6 12-4-11 Fix for IE. Local storage for Chrome
+# V2.7 12-8-11 Favpoints only used in V8
+# V2.8 12-10-11 Cache name added to child waypoint label, all options are sticky
+# V2.9 1-9-12  Child icons fixed, child icon type now case insensitive, New MyTopo maps, Archived/Unavailable added to Info Window
+# V3.0 2-14-12 Strip out LF and CR in cache name
+# V3.1 2-15-12 Grid size in right-click menu
+# V3.2 2-17-12 Indicator for archived/unavailable, speed improvement, remote js file
+
+PREPROCESS Shift=$StartShift
+VERCHECK Version=7.7.4.28 (Note: this macro requires at least  GSAK Version 7.7.4.28, found here:  http://gsak.net/board/index.php?showtopic=17668  Recommended w/ the latest "patch")
+
+Option Explicit=Yes
+
+$ShowChild = FALSE
+$ShowText = FALSE
+$UseOriginal = FALSE
+$UseScrollWheel = FALSE
+$Silent = FALSE
+$ShowName = TRUE
+$ShowCode = FALSE
+$ShowSmart = FALSE
+$Medium = TRUE
+$Small = FALSE
+$Large = FALSE
+$AdditionalFields = ""
+
+# Load and save necessary to update old xml files
+MACSETTINGS Type=R File=GoogleMapsV3.xml FileCheck=N
+MACSETTINGS Type=S Vars=ShowChild,ShowText,UseOriginal,UseScrollWheel,Silent,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields File=GoogleMapsV3.xml
+
+$ShowChild = FALSE
+$ShowText = FALSE
+$UseOriginal = FALSE
+$UseScrollWheel = FALSE
+$Silent = FALSE
+$ShowName = TRUE
+$ShowCode = FALSE
+$ShowSmart = FALSE
+$Medium = TRUE
+$Small = FALSE
+$Large = FALSE
+$AdditionalFields = ""
+
+$versionnumber = MacHeader("macversion")
+$form = Replace("%v%","v" + $versionnumber,$form)
+
+
+# Read in settings (Options only show if SHIFT is pressed)
+MACSETTINGS Type=R Vars=UseScrollWheel,Silent,ShowChild,ShowText,UseOriginal,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields File=GoogleMapsV3.xml FileCheck=N
+
+IF $StartShift
+	$errors = TRUE
+	# Get list of valid field names
+	$test = Sqlite("sql","pragma table_info(cachesall)")
+	$x = 1
+	$columnlist = ""
+	WHILE Extract($test,$_NewLine,$x) <> ""
+		$line = Extract($test,$_NewLine,$x)
+		$columnlist = $columnlist +"," + Extract($line,";",2)
+		$x = $x + 1
+	ENDWHILE
+	$columnlist = Lower($columnlist)
+
+	WHILE $errors
+		$errors = FALSE
+		MACSETTINGS Type=R Vars=ShowChild,ShowText,UseOriginal,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields File=GoogleMapsV3.xml FileCheck=N
+		$result = Form($form,"")
+		MACSETTINGS Type=S Vars=ShowChild,ShowText,UseOriginal,UseScrollWheel,Silent,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields File=GoogleMapsV3.xml
+		IF $result = "SystemExit"
+			RETURN
+		ENDIF
+
+		# Check field names are valid
+		$y = 1
+		WHILE Extract($AdditionalFields,",",$y) <> ""
+			$test = "," + AllTrim(Lower(Extract($AdditionalFields,",",$y)))
+			IF At($test,$columnlist) = 0
+				$errors = TRUE
+				$errormessage = Extract($AdditionalFields,",",$y) + " is not a valid field name"
+				MSGOK msg=$errormessage
+			ENDIF
+			$y=$y+1
+		ENDWHILE
+		
+	ENDWHILE
+ENDIF
+
+
+IF $Silent
+	$SilentString = ":silent"
+ELSE
+	$SilentString = ""
+ENDIF
+
+IF $UseScrollWheel
+	$UseScrollWheelString = "true"
+ELSE
+	$UseScrollWheelString = "false"
+ENDIF
+
+
+IF $UseOriginal
+	$lat = "LatOriginal"
+	$lon = "LonOriginal"
+ELSE
+	$lat = "latitude"
+	$lon = "longitude"
+ENDIF
+
+$limit = 100000
+
+$flagicon = "http://gsak.net/stats/maps/flagicon.gif"
+$viewicon = "http://gsak.net/stats/maps/viewicon.gif"
+$incsorticon = "http://gsak.net/stats/maps/incsorticon.gif"
+
+# Write out Increment Sort macro
+$tmpS = PutFile($_Install + "\macros\incsort.gsk", $IncSort)
+
+$hash = GetUrl("http://gsak.net/stats/maps/MyTopoTileService.php")
+
+IF $ShowText
+	
+	BEGINCASE
+	CASE $ShowName
+		$labeltext = "name"
+	CASE $ShowCode
+		$labeltext = "code"
+	CASE $ShowSmart
+		$labeltext = "smartname"
+	ENDCASE
+	
+	IF Len($AdditionalFields) > 0
+		$AdditionalFields = Replace(",","|| ', ' ||",$AdditionalFields)
+		$labeltext = $labeltext + " || ' - ' || " + "$AdditionalFields"
+	ENDIF
+		
+	
+	
+	BEGINCASE
+	CASE $Small
+		$labelsize = "8px"
+	CASE $Medium
+		$labelsize = "10px"
+	CASE $Large
+		$labelsize = "12px"
+	ENDCASE
+	
+ENDIF
+
+
+
+IF $ShowText
+
+	#SQLite query for marker line with labels
+
+	$_sql = "SELECT "
+	$_sql = $_sql + "'var latlng = new google.maps.LatLng(' || $lat || ',' || $lon || ');"
+	$_sql = $_sql + "m' || rowid || ' = new MarkerWithLabel({position: latlng"
+	$_sql = $_sql + ", icon:' || CASE WHEN Found = '1' AND HasCorrected = '1' THEN cachetype || '_f_e' WHEN Found = '1' THEN cachetype || '_f' WHEN HasCorrected = '1' THEN cachetype || '_e' ELSE cachetype END || '_icon, shadow:shadow, title:" + $_quote + "' || g_regexreplace('\r|\n',replace(replace(name,'" + $_Quote + "',''''),'\','\\'),'') || '" + $_Quote
+	$_sql = $_sql + ", draggable: false,  labelContent:" + $_Quote + "' || g_regexreplace('\r|\n',replace($labeltext,'" + $_Quote + "',''''),'') || '" + $_Quote + ", labelAnchor: new google.maps.Point(10, 0),labelClass: " + $_Quote + "labels" + $_Quote + "}); markers.push(m' || rowid || ');"
+	$_sql = $_sql + "bounds.extend(latlng);'"
+	$_sql = $_sql + " FROM cachesall WHERE $_Where LIMIT $Limit"
+
+	$caches = Sqlite("sql",$_sql, "delim=%%delim%%")
+
+ELSE
+
+	#SQLite query for marker line with no labels
+
+	$_sql = "SELECT "
+	$_sql = $_sql + "'var latlng = new google.maps.LatLng(' || $lat || ',' || $lon || ');"
+	$_sql = $_sql + "m' || rowid || ' = new google.maps.Marker({position: latlng"
+	$_sql = $_sql + ", icon:' || CASE WHEN Found = '1' AND HasCorrected = '1' THEN cachetype || '_f_e' WHEN Found = '1' THEN cachetype || '_f' WHEN HasCorrected = '1' THEN cachetype || '_e' ELSE cachetype END || '_icon, shadow:shadow, title:" + $_quote + "' || g_regexreplace('\r|\n',replace(replace(name,'" + $_Quote + "',''''),'\','\\'),'') || '" + $_Quote
+	$_sql = $_sql + ", draggable: false}); markers.push(m' || rowid || ');"
+	$_sql = $_sql + "bounds.extend(latlng);'"
+	$_sql = $_sql + " FROM cachesall WHERE $_Where LIMIT $Limit"
+
+	$caches = Sqlite("sql",$_sql, "delim=%%delim%%")
+
+ENDIF
+
+#SQLite query for unavailable marker
+
+	$_sql = "SELECT "
+	$_sql = $_sql + "'var latlng = new google.maps.LatLng(' || $lat || ',' || $lon || ');"
+	$_sql = $_sql + "u' || rowid || ' = new google.maps.Marker({position: latlng"
+	$_sql = $_sql + ", map: map, icon:unavailable_icon, title:" + $_quote + "' || replace(replace(name,'" + $_Quote + "',''''),'\','\\') || '" + $_Quote + ", draggable:false, zIndex:99999});'"
+	$_sql = $_sql + "|| 'u' || rowid || '.bindTo(" + $_Quote + "map" + $_Quote + ", m' || rowid || ');'"
+	$_sql = $_sql + " FROM cachesall WHERE (Archived OR TempDisabled) AND code IN(SELECT code from cachesall WHERE $_Where ORDER BY g_Distance('$d_latitude','$d_longitude',latitude,longitude,'M') LIMIT $Limit)"
+
+	$unavailable = Sqlite("sql",$_sql, "delim=%%delim%%")
+
+#u6434.bindTo('map', m6434);
+
+$child=""
+
+IF $ShowChild
+
+	IF $ShowText
+		# SQLite query for child marker line with labels
+
+		$_sql = "SELECT "
+		$_sql = $_sql + "'var latlng = new google.maps.LatLng(' || clat || ',' || clon || ');"
+		$_sql = $_sql + "c' || rowid || ' = new MarkerWithLabel({position: latlng"
+		$_sql = $_sql + ", icon:' || lower(replace(ctype,' ','_')) || '_icon, shadow:shadow, title:" + $_Quote + "' || "
+		$_sql = $_sql + "g_regexreplace('\r|\n',replace(replace((SELECT name FROM cachesall WHERE code=cparent),'" + $_Quote + "',''''),'\','\\'),'') || ' - ' ||"
+		$_sql = $_sql + "replace(cName,'" + $_Quote + "','''') || '" + $_Quote
+		$_sql = $_sql + ", draggable: false, labelContent:" + $_Quote + "' || g_regexreplace('\r|\n',replace(replace((SELECT name FROM cachesall WHERE code=cparent),'" + $_Quote + "',''''),'\','\\'),'') || ' - ' || replace(cName,'" + $_Quote + "','''') || '" + $_Quote + ", labelAnchor: new google.maps.Point(10, 0),labelClass: " + $_Quote + "labels" + $_Quote + "}); markers.push(c' || rowid || '); "
+		$_sql = $_sql + "bounds.extend(latlng);'"
+		$_sql = $_sql + " FROM Waypoints WHERE NOT(clat='' and clon='') AND NOT(clat+0=0 and clon+0=0) AND cParent IN(SELECT code from cachesall WHERE $_Where LIMIT $Limit)"
+
+		$child = Sqlite("sql",$_sql, "delim=%%delim%%")
+
+	ELSE
+		# SQLite query for child marker line with no labels
+
+		$_sql = "SELECT "
+		$_sql = $_sql + "'var latlng = new google.maps.LatLng(' || clat || ',' || clon || ');"
+		$_sql = $_sql + "c' || rowid || ' = new google.maps.Marker({position: latlng"
+		$_sql = $_sql + ", icon:' || lower(replace(ctype,' ','_')) || '_icon, shadow:shadow, title:" + $_Quote + "' || "
+		$_sql = $_sql + "g_regexreplace('\r|\n',replace(replace((SELECT name FROM cachesall WHERE code=cparent),'" + $_Quote + "',''''),'\','\\'),'') || ' - ' ||"
+		$_sql = $_sql + "replace(cName,'" + $_Quote + "','''') || '" + $_Quote
+		$_sql = $_sql + ", draggable: false}); markers.push(c' || rowid || '); "
+		$_sql = $_sql + "bounds.extend(latlng);'"
+		$_sql = $_sql + " FROM Waypoints WHERE NOT(clat='' and clon='') AND NOT(clat+0=0 and clon+0=0) AND cParent IN(SELECT code from cachesall WHERE $_Where LIMIT $Limit)"
+
+		$child = Sqlite("sql",$_sql, "delim=%%delim%%")
+
+	ENDIF
+ENDIF
+
+
+$current = HttpEncode($_CurrentDatabase)
+
+# Build SQLite query for Info Windows Use !&! for quotes in javascript
+
+	$info1 = "<div style=!&!width:200px;overflow:hidden;font-family:Verdana;font-size:10px;!&!>"
+	$info1 = $info1 + "<center><b><a href=!&!' || URL || '!&! target=!&!geo!&!>' || code || '</a><br />"
+	$info1 = $info1 + "' || g_regexreplace('\r|\n',replace(replace(name,'" + $_Quote + "',''''),'\','\\'),'') || ' </b><br />"
+	$info1 = $info1 + "<i>by: ' || replace(replace(ownername,'" + $_Quote + "',''''),'\','\\') || ' </i><br /><br />"
+	$info1 = $info1 + "Difficulty: ' || difficulty || ', Terrain: ' || terrain || '<br />"
+	IF $_Version > "8.0.1.0"
+		$info1 = $info1 + "Size: ' || container || ', Fav Points: ' || favpoints || '<br /><br />"
+	ELSE
+		$info1 = $info1 + "Size: ' || container || '<br /><br />"
+	ENDIF
+	
+	$info1 = $info1 + "' || CASE WHEN cachetype='E' or cachetype='C' or cachetype='Z' THEN '<i>Event on: ' || g_DateFormat(PlacedDate) || '</i><br /><br />' ELSE '' END || '"
+	$info1 = $info1 + "' || CASE WHEN Found=1 THEN '<i>You found this cache on: ' || g_DateFormat(FoundByMeDate) || '</i><br /><br />' ELSE '' END || '"
+	
+	$info1 = $info1 + "' || CASE WHEN Archived THEN '<b><i><font color=!&!ff0000!&!>Archived</font></i></b><br /><br />' ELSE '' END || '"
+	$info1 = $info1 + "' || CASE WHEN TempDisabled THEN '<b><i><font color=!&!ff0000!&!>Temporarily Disabled</font></i></b><br /><br />' ELSE '' END || '"
+
+	$href = "<a href=\" + $_Quote + "gsak://%FF/search/' || code || '/$Current\" + $_Quote + ">"
+	$info1 = $info1 + "<b>View:</b>" + $href + "<img src=!&!$viewicon!&! align=!&!top!&! hspace=!&!4!&!></a>&nbsp;&nbsp;"
+	
+	$href = "<a href=\" + $_Quote + "gsak://%FF/flagtoggle" + $SilentString + "/' || code || '/$Current\" + $_Quote + ">"
+	$info1 = $info1 + "<b>Flag:</b>" + $href + "<img src=!&!$flagicon!&! align=!&!top!&! hspace=!&!4!&!></a>&nbsp;&nbsp;"
+	
+	$href = "<a href=\" + $_Quote + "gsak://%FF/macro" + $SilentString + "/incsort?' || code || '\" + $_Quote + ">"
+	$info1 = $info1 + "<b>Sort:</b>" + $href + "<img src=!&!$incsorticon!&! align=!&!top!&! hspace=!&!4!&!></a><br><br />"
+	$info1 = $info1 + "</center></div>"
+
+
+$_sql = "SELECT "
+$_sql = $_sql + "'google.maps.event.addListener(m' || rowid || ', " + $_Quote + "click" + $_Quote + ", function() "
+$_sql = $_sql + "{ infowindow.setContent(" + $_Quote + $info1 + $_Quote + ");infowindow.open(map,m' || rowid || ');});'"
+$_sql = $_sql + " FROM cachesall WHERE $_Where LIMIT $Limit"
+
+$info = Sqlite("sql",$_sql, "delim=%%delim%%")
+
+$_sql = "SELECT "
+$_sql = $_sql + "'google.maps.event.addListener(u' || rowid || ', " + $_Quote + "click" + $_Quote + ", function() "
+$_sql = $_sql + "{ infowindow.setContent(" + $_Quote + $info1 + $_Quote + ");infowindow.open(map,u' || rowid || ');});'"
+$_sql = $_sql + " FROM cachesall WHERE (Archived OR TempDisabled) AND code IN(SELECT code from cachesall WHERE $_Where ORDER BY g_Distance('$d_latitude','$d_longitude',latitude,longitude,'M') LIMIT $Limit)"
+
+$info = $info + $_CrLf + Sqlite("sql",$_sql, "delim=%%delim%%")
+
+$info = Replace("!&!","'",$info)
+
+$html = $MapHtml
+
+$html = Replace("!!CachesGoHere!!",$caches,$html)
+$html = Replace("!!InfoHere!!",$info,$html)
+$html = Replace("!!ChildrenGoHere!!",$child,$html)
+$html = Replace("!!ScrollWheel!!",$UseScrollWheelString,$html)
+$html = Replace("!!LabelSize!!",$labelsize,$html)
+$html = Replace("!!HashGoesHere!!",$hash,$html)
+$html = Replace("!!UnavailableGoHere!!",$unavailable,$html)
+
+$Filename = $_install + "\macros\" + $_CurrentDatabase + ".html"
+
+$tmpS = PutFile($FileName,$html)
+IF Left($tmpS ,4) <> "*OK*"
+	CANCEL Msg="Sorry! For some reason I couldn't generate the outputfile"
+ENDIF
+WEB URL="$FileName"
+
+#*******************************************************
+#   Variable declarations for
+#   C:\Users\Mike\AppData\Roaming\gsak\Macros\Google_Map_V3.gsk
+#
+#   Generated 2/17/2012 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$AdditionalFields Type=String
+Declare Var=$caches Type=String
+Declare Var=$child Type=String
+Declare Var=$columnlist Type=String
+Declare Var=$current Type=String
+Declare Var=$errormessage Type=String
+Declare Var=$errors Type=Boolean
+Declare Var=$Filename Type=String
+Declare Var=$flagicon Type=String
+Declare Var=$form Type=String
+Declare Var=$hash Type=String
+Declare Var=$href Type=String
+Declare Var=$html Type=String
+Declare Var=$IncSort Type=String
+Declare Var=$incsorticon Type=String
+Declare Var=$info Type=String
+Declare Var=$info1 Type=String
+Declare Var=$labelsize Type=String
+Declare Var=$labeltext Type=String
+Declare Var=$Large Type=Boolean
+Declare Var=$lat Type=String
+Declare Var=$limit Type=Numeric
+Declare Var=$line Type=String
+Declare Var=$lon Type=String
+Declare Var=$MapHtml Type=String
+Declare Var=$Medium Type=Boolean
+Declare Var=$result Type=String
+Declare Var=$ShowChild Type=Boolean
+Declare Var=$ShowCode Type=Boolean
+Declare Var=$ShowName Type=Boolean
+Declare Var=$ShowSmart Type=Boolean
+Declare Var=$ShowText Type=Boolean
+Declare Var=$Silent Type=Boolean
+Declare Var=$SilentString Type=String
+Declare Var=$Small Type=Boolean
+Declare Var=$SortCurrent Type=Numeric
+Declare Var=$SortIncrement Type=Numeric
+Declare Var=$test Type=String
+Declare Var=$tmpS Type=String
+Declare Var=$unavailable Type=String
+Declare Var=$UseOriginal Type=Boolean
+Declare Var=$UseScrollWheel Type=Boolean
+Declare Var=$UseScrollWheelString Type=String
+Declare Var=$versionnumber Type=String
+Declare Var=$viewicon Type=String
+Declare Var=$x Type=Numeric
+Declare Var=$y Type=Numeric
+
+
+
+
+#Run in Chrome
+##$path = GetEnvV("LOCALAPPDATA") + "\Google\Chrome\application\chrome.exe"
+#$path = GetEnvV("PROGRAMFILES(X86)") + "\Google\Chrome\application\chrome.exe"
+#$FileName = Quote($fileName)
+#RUNPGM pgm="$path" parms=$FileName
+
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#  HTML Header Data
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+<data> VarName=$MapHtml
+<!DOCTYPE HTML>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" >
+<HTML>
+<head>
+<!-- saved from url=(0014)about:internet -->
+<title>GSAK Map GMap V3</title>
+<style type="text/css">
+      body {
+        margin: 0;
+        font-family: Arial;
+        font-size: 16px;
+      }
+
+    #map {
+      background-color: #e5e3df;
+      height: 100%;
+    }
+    img{
+      border-style: none;
+    }
+    .labels {
+     color: black;
+     background-color: white;
+     font-family: "Lucida Grande", "Arial", sans-serif;
+     font-size: !!LabelSize!!;
+     font-weight: bold;
+     text-align: center;
+     width: auto;
+     padding-left: 2px;
+     padding-right: 2px;
+     border: 1px solid black;
+     white-space: nowrap;
+     /* IE7 Only */
+     *width: 100px;
+     *white-space: collapse;
+   }
+   		div.contextmenu{
+			background:#FFFFFF; 
+			border:1px solid #8888FF;
+		}
+		div.contextmenu ul {list-style-image:none;
+			list-style-position:outside;
+			list-style-type:none;
+			margin:0;
+			padding:0;
+		}
+		div.contextmenu ul li{
+			display:block;
+			padding:1px;
+			line-height:100%;
+			margin:0;
+		}
+		div.contextmenu ul li a {
+			border:none;
+			padding:3px 11px 3px 10px;
+			display:block;
+			text-decoration:none;
+			color:#233D6D;
+			font-size:11px;
+			font-family:tahoma,arial,sans-serif;
+	}
+		div.contextmenu ul li a:hover  {
+			color:#233d6d;
+			background:#c3daf9;
+			border:1px solid #8BB8F3;
+			padding:2px 10px 2px 9px;
+		}   
+</style>
+
+<!-----local references----->
+
+<script type="text/javascript">
+var useScrollWheel = !!ScrollWheel!!;
+var hash = '!!HashGoesHere!!';
+</script>
+    
+<!-----external references----->
+
+<script type="text/javascript" src="http://maps.google.com/maps/api/js?v=3&amp;sensor=false"></script>
+<script type="text/javascript" src="http://gsak.net/stats/maps/markerclustererplus_packed.js"></script>
+<script type="text/javascript" src="http://gsak.net/stats/maps/markerwithlabel.js"></script>
+<script type="text/javascript" src="http://gsak.net/stats/maps/keydragzoom_packed.js"></script>
+<script type="text/javascript" src="http://gsak.net/stats/maps/gmaps3script.js?v1"></script>
+
+<script type="text/javascript">
+
+function localData() {
+!!CachesGoHere!!
+	
+!!ChildrenGoHere!!
+	
+!!UnavailableGoHere!!
+
+!!InfoHere!!
+
+}
+</script>
+
+
+<style type="text/css">
+
+	html, body {
+	height: 100%;
+	overflow: hidden;
+	font-family: Verdana;
+	font-size: 8pt;
+}
+
+body {
+background-color: white;
+margin: 0;
+}
+</style>
+
+</head>
+
+<body onload="initialize()">
+	<div id="map"></div>
+</body>
+</html>
+<enddata>
+
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sat 10-Dec-2011 22:40:11
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Google Maps V3
+  Height = 420
+  Width = 300
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Options
+  Height = 115
+  Left = 20
+  Top = 46
+  Width = 251
+  Taborder = 0
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = Text Labels
+  Height = 151
+  Left = 20
+  Top = 170
+  Width = 251
+  Taborder = 1
+
+Name = Groupbox3
+  Type = Groupbox
+  Container = Groupbox2
+  Height = 65
+  Left = 19
+  Top = 40
+  Width = 95
+  Taborder = 2
+
+Name = GroupBox4
+  Type = Groupbox
+  Container = Groupbox2
+  Height = 65
+  Left = 139
+  Top = 40
+  Width = 95
+  Taborder = 3
+
+Name = ShowChild
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox1
+  Height = 17
+  Left = 19
+  Top = 18
+  Width = 215
+  Taborder = 0
+  Caption = Show Child Waypoints
+
+Name = ShowText
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox2
+  Height = 17
+  Left = 20
+  Top = 16
+  Width = 214
+  Taborder = 0
+  Caption = Show Text Labels
+
+Name = Label1
+  Type = Label
+  Color = 16744448
+  Height = 20
+  Left = 71
+  Size = 12
+  Style = bold
+  Top = 12
+  Width = 141
+  Caption = Google Maps V3
+
+Name = Button1
+  Type = Button
+  Height = 25
+  Left = 104
+  Top = 340
+  Width = 75
+  Taborder = 2
+  Caption = <img src="idx:0" align="middle"> OK
+
+Name = UseOriginal
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox1
+  Height = 17
+  Left = 19
+  Top = 38
+  Width = 215
+  Taborder = 1
+  Caption = Use Original Coordinates
+
+Name = UseScrollWheel
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox1
+  Height = 17
+  Left = 19
+  Top = 58
+  Width = 215
+  Taborder = 2
+  Caption = Use Scroll Wheel Zoom
+
+Name = Silent
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox1
+  Height = 17
+  Left = 19
+  Top = 78
+  Width = 215
+  Taborder = 3
+  Caption = Keep Map Focus
+
+Name = ShowName
+  Type = Radiobutton
+  Captionposition = Left
+  Container = Groupbox3
+  Fontstyle = italic
+  Height = 17
+  Left = 7
+  Top = 7
+  Width = 80
+  Taborder = 0
+  Caption = Name:
+
+Name = ShowCode
+  Type = Radiobutton
+  Captionposition = Left
+  Container = Groupbox3
+  Fontstyle = italic
+  Height = 17
+  Left = 7
+  Top = 25
+  Width = 80
+  Taborder = 1
+  Caption = Code:
+
+Name = ShowSmart
+  Type = Radiobutton
+  Captionposition = Left
+  Container = Groupbox3
+  Fontstyle = italic
+  Height = 17
+  Left = 7
+  Top = 42
+  Width = 80
+  Taborder = 2
+  Caption = SmartName:
+
+Name = Small
+  Type = Radiobutton
+  Captionposition = Left
+  Container = GroupBox4
+  Fontstyle = italic
+  Height = 17
+  Left = 7
+  Top = 8
+  Width = 80
+  Taborder = 0
+  Caption = Small:
+
+Name = Medium
+  Type = Radiobutton
+  Captionposition = Left
+  Container = GroupBox4
+  Fontstyle = italic
+  Height = 17
+  Left = 7
+  Top = 25
+  Width = 80
+  Taborder = 1
+  Caption = Medium:
+
+Name = Large
+  Type = Radiobutton
+  Captionposition = Left
+  Container = GroupBox4
+  Fontstyle = italic
+  Height = 17
+  Left = 7
+  Top = 42
+  Width = 80
+  Taborder = 2
+  Caption = Large:
+
+Name = Label2
+  Type = Label
+  Container = Groupbox2
+  Height = 17
+  Left = 17
+  Style = italic
+  Top = 116
+  Width = 84
+  Caption = Additional Fields
+
+Name = additionalFields
+  Type = Edit
+  Container = Groupbox2
+  Height = 21
+  Left = 102
+  Top = 114
+  Width = 130
+  Taborder = 1
+
+Name = versionlabel
+  Type = Label
+  Height = 17
+  Left = 250
+  Top = 365
+  Width = 30
+  Caption = %v%
+
+<enddata>
+
+<data> VarName=$IncSort
+IF Seek($_MacroParms)
+	$SortIncrement = Usersort("I")
+	$SortCurrent = Usersort("C")
+	$SortCurrent = usersort("C",$SortCurrent + $SortIncrement)
+	$d_UserSort = $SortCurrent
+ENDIF
+<enddata>
+
+

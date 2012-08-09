@@ -1,0 +1,1247 @@
+#*******************************************
+# MacVersion = 3.0.21
+# MacDescription = LocalCacher.gsk Get to Know your local cachers
+# MacAuthor = Terrible Ts
+# MacFileName = LocalCacher.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=13226&view=findpost&p=88423
+#*******************************************
+# For example:
+# This macro generates and displays an HTML page in your default web browser based
+# on the Know Your Local Cacher Challenge (GC1JQAD) cache based in Washington State.
+# The goal of this challenge is to find 3 different types of caches placed by 10 
+# different cachers.  All finds must be after Dec 13, 2008. Please see the cache 
+# listing for additional requirements.
+#
+#  Example:
+#   The Jester 	Multi : GC10J2Z, Traditional : GCHC1G, Virtual : GC12B2
+#   mc3cats 	Multi : GC1NA01, Traditional : GC1QMJY, Unknown/Mystery : GC1YE61
+#   Shop99er 	Event : GC1JB1N, Traditional : GCX9EQ  
+#                             (I still need another cache type for Shop99er)
+#     etc
+#
+# Each GC id is a link to the coresponding cache page at www.geocaching.com to make
+# it easier to create the bookmark list that is required to complete the challenge.
+# The Cache owner is a link to their coresponding page of all placed caches by
+# the owner.  This will make it easiey to find caches to complete the challenge.
+# The macro only shows records with at least 2 different cache types.
+# The lines that are complete ( 3 different type of cache) will be highlighted in
+# green. 
+#
+# Version History:
+# v1.0.0 10/19/09 - Initial release.
+# V1.0.1 10/20/09 - Fix: problem with & in cacher name. Thanks to Cache U Nuts 
+#					for the fix
+# V2.0.0 10/23/09 - Fix: problem with " in cacher name. Added list of caches.
+# V2.0.1 10/24/09 - Fix: Create html folder in $_Install if it does not exist.
+# V2.0.2 10/29/09 - Added sortable columns (stolen from SqlToHtml function)
+# V2.0.3 11/11/09 - Added new cache: CedarCreekGeocachers.com 3-by-10 Texas Challenge
+# V2.0.4 11/15/09 - Changed minimum version of GSAK from 7.6.0.51 to 7.6.1
+# V2.0.5 01/03/10 - Added new cache: GC21XAZ : Sweden: Challenge #30 Utmaning för 2010(och framåt:)) 
+# V2.0.6 04/13/10 - Added new caches: GC26PNF New Hampshire AND  GC22EF9 Oregon
+# V2.0.7 04/14/10 - Changed New Hampshire and Oregon FD from > to >=
+# V2.0.8 04/15/10 - Added new cache: L: GC13QH7 : Nederlandse "Ken Uw Cachers" Challenge
+# V2.0.9 06/05/10 - Added new cache: GC29T4F  Who's Your Buddy? Missouri Local Cacher Challenge!
+# V2.0.10 06/22/10 - Added new cache: GC27Q3W Know Your Local Maine Cacher Challenge 2010
+# V2.0.11 06/22/10 - Added State restrictions (optional)
+# V2.0.12 07/11/10 - Added new cache: GC226EC :Know Your Local Idaho Cacher Challenge
+# V2.0.13 07/11/10 - Added new cache: GC29BTN : Know Your Local Cacher Challenge
+# V2.0.14 07/27/10 - Fixed dumb typo.  MA not equal Maine.  ME does.
+# V2.0.15 07/27/10 - Added new cache: GC22KME : Welcome to Alabama Caching: The Challenge
+# V2.0.16 07/27/10 - Added new cache: GC2CBWT : Know Your Local Cachers (NC)
+#
+# V3.0.0  08/05/10 - Modified output.  Added changes supplied by lillfiluren. 
+#	* Added Date for each log
+#	* Added linebreaks
+#	* Added cache names
+#	* Fixed cache owner ordering so that the cache owners with most types comes first, and within 
+#       each group, the one with the most recent cache-log is at the top.
+#	* Fixed cache order so that they are listed in chronologic order
+#	* Changed charset to iso-8859-1 since that is the charset that is used by the cache-names and 
+#       owner names.
+# V3.0.1  08/06/10 - Added new cache: GC2CXK5 : Know Your Local Cachers Challenge ~ Utah
+# v3.0.2  08/16/10 - Added new cache: GC23N03 : Know Your Vancouver Island Cacher Challenge
+# v3.0.3  01/22/10 - Added new cache: GC2GYRN : Know Your Local Cachers TN Challenge
+# v3.0.4  12/12/10 - Added new cache: GC2K6NC : Danish Know Your Local Cacher Challenge from 2011
+# v3.0.5  12/13/2010 - Fixed California's allowed caches. CITO and Events were missing.
+# v3.0.6  12/17/2010 - Added new cache in Arizona: GC2K3F4 : Know your local cachers
+# v3.0.7  01/04.2011 - Added new cache in Ontario: GC2KFA1 : Know Your Local Cacher - Ontario Challenge
+# v3.0.8 01/04/2011 - Added capability to change number of types of caches from 3 to any number.
+# v3.0.9 01/12/2011 - Added new cache in Nebraska: GC2M36D : Know Your Local Nebraska Cacher Challenge
+#                   - Added new cache in Kentucky: GC2MB7V : Know Your Local Cacher Challenge
+# v3.0.10 01/13/2011 - Fixed small typo Kentucky State code was wrong.
+# v3.0.11 02/20/2011 - Fixed problem with AZ challenge
+# v3.0.12 02/26/2011 - Added new cache in South Dakota : GC2NZ7D : Know Your Local Cacher - South Dakota
+# v3.0.13 03/21/2011 - Added new cache in Minnesota : GC2QDKM : Challenge: Get to know your fellow cachers
+# v3.0.14 03/26/2011 - Fixed a typo in the start date for the Minnesota challenge.
+# v3.0.15 04/27/2011 - Added new cache in Montana : GC2P4R1 : Know Your Local Montana Cacher Challenge
+# v3.0.16 04/28/2011 - Updated the Montana challenge to restrict the finds to Montana only.
+# v3.0.17 05/27/2011 - Now highlites any caches that were found on the day you run the macro.
+# v3.0.18 06/15/2011 - Modified so script can be run as a FSG plugin.
+# v3.019 07/27/2011 - Added ability to specify a County limit.
+# v3.0.20 07/28/2011 - Added two challenges in Iowa.  GC31A50 : Know Your Local Cacher Iowa Challenge
+#                                and  GC31ADC : Know Your Local Cacher Polk County Iowa Challenge
+# v3.0.21 01/01/2012 - Added new cache in South Carolina: GC31812 : Know your Local Cachers Challenge - SC/GA
+
+VERCHECK Version=7.6.1.0 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+
+SHOWSTATUS Msg="Initializing" Display=On
+
+GOSUB name=DeclareVariables
+
+$vers = Alltrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath") + "\" + SysInfo("Macrofile")),1,1))
+
+GOSUB Name=Initialize
+SHOWSTATUS Msg="Initializing" Display=Off
+
+WHILE True
+	$FormExit = Form($form,"")
+	BEGINCASE
+	CASE $FormExit = "SystemExit"
+		BREAK
+	CASE $FormExit = "bu_Cancel"
+		BREAK
+	CASE $FormExit = "DelayExit"
+		GOSUB Name=ProcessOK
+		BREAK
+	CASE $FormExit = "bu_OK"
+		MACSETTINGS Type=S Vars=$cfgVars
+		GOSUB Name=ProcessOK
+		BREAK
+	ENDCASE
+ENDWHILE
+
+BEGINSUB Name=ProcessOK
+
+	IF $dbcurr <> $LC_co_DatabaseF
+		$status = sqlite("close","","")
+		DATABASE Name="$LC_co_DatabaseF" Action=Select
+	ENDIF
+	
+	# get the attributes associated with the user selected Challenge
+	$select = List("listC","find",$co_Challenge)
+	$attrib = List("listA","item",$select)
+	$attrib = Right($attrib,Len($attrib)-14)  # strip off the label
+
+	# process sections based on attributes of selected Challenge
+	$flagHdr = True
+	$sectNum = 1
+	WHILE True
+		$sect = Extract($attrib,",",$sectNum)
+		IF $sect = ""
+			BREAK
+		ENDIF
+		$sectPat = "([A-Z]+)(([<=>]+)([A-Z0-9()-]+))?"
+		$sectTyp = RegExSub($sectPat,$sect,1,1)
+		$sectOpr = RegExSub($sectPat,$sect,1,3)
+		$sectVal = RegExSub($sectPat,$sect,1,4)
+#		IF $flagHdr AND $sectTyp <> "PD" AND $sectTyp <> "ST"
+#			GOSUB Name=BuildSqlTables
+#			GOSUB Name=BuildHeader
+#			$flagHdr = False
+#		ENDIF
+		BEGINCASE
+#		CASE $sectTyp = "PD"  # Placed Date section
+#			$pdate = $sectVal
+#			IF $sectOpr = "<="
+#				$pdopr = "on or before"
+#			ELSE
+#				$pdopr = "before"
+#			ENDIF
+		CASE $sectTyp = "ST"  # State section
+			$state = $sectVal
+		CASE $sectTyp = "CT"  # County section
+			$county = $sectVal
+#		CASE $sectTyp = "DT"  # Difficulty/Terrain section
+#			GOSUB Name=ProcessDT
+		CASE $sectTyp = "TY"  # Cache Type section
+#			GOSUB Name=ProcessTY
+		CASE $sectTyp = "NT"  # Not Allowed Cache Types section
+			$NoType = $sectVal 
+#		CASE $sectTyp = "SZ"  # Container Size section
+#			GOSUB Name=ProcessSZ
+#		CASE $sectTyp = "PY"  # Placed Year section
+#			GOSUB Name=ProcessPY
+#		CASE $sectTyp = "PM"  # Placed Month section
+#			GOSUB Name=ProcessPM
+#		CASE $sectTyp = "FM"  # Found Month section
+#			GOSUB Name=ProcessFM
+		CASE $sectTyp = "CC"  # Number of different cache owners
+			$CacheCount = $sectVal
+		CASE $sectTyp = "TC"  # Number of Cache types required
+			$TypeCount = $secTVal
+		CASE $sectTyp = "FD"  # Found Date section
+			$sqldate = $sectVal
+			BEGINCASE
+			CASE $sectOpr = "<="
+				$fdopr = "on or before"
+			CASE $sectOpr = "<"
+				$fdopr = "before"
+			CASE $sectOpr = ">"
+				$fdopr = "after"
+			CASE $sectOpr = ">="
+				$fdopr = "on or after"
+			ENDCASE
+			$fdOper = $sectOpr
+		OTHERWISE
+			PAUSE Msg="Unrecognized section type: $sectTyp"
+		ENDCASE
+		$sectNum = $sectNum + 1
+	ENDWHILE
+
+	$fdate = DateFormat(SQLToDate($sqldate))
+	IF $co_Challenge = "SE: GC21XAZ : Sweden: Challenge #30 Utmaning för 2010(och framåt:))"
+		$Text1 = "SE: GC21XAZ : Sweden: Challenge #30 Utmaning f&#246;r 2010(och fram&#229;t:))"
+	ELSE
+		$Text1	= "$co_Challenge"
+	ENDIF
+	$Text2 = "Different type finds $fdopr $fdate by Cache Owner"
+	
+	GOSUB Name=Header
+	
+	$status = list ("CT","create","1")
+	$status = list ("CT","replace",$NoType)
+	$LC_count = list ("CT", "count", "")
+#	$exclude = " AND Code != " + $Q + "GCHC1G" + $Q
+	$i = 1
+	WHILE $i <= Val($LC_count)
+		$item = list ("CT","item","$i")
+		$exclude = $exclude + " AND CacheType != " + $Q + $item + $Q
+		$i = $i + 1
+	ENDWHILE
+
+	IF Len($State) <> 2 AND At($State,$States) >0
+		$StateAbbr = SubStr($States,At($State,$States)-3,2)
+	ENDIF
+	
+	IF $state <> "" AND $StateAbbr <> ""
+		$exclude = $exclude + " AND (State = " + $Q + $state + $Q + " OR State = " + $Q + $StateAbbr + $Q + ")"
+	ENDIF
+	
+	IF $county <> ""
+		$exclude = $exclude + " AND County = " + $Q + $county +$Q
+	ENDIF
+	
+	$_sql = "SELECT Count(cachetype) AS Types, OwnerName, OwnerId, Max(FoundByMeDate) AS Latest FROM (SELECT Code, CacheType, OwnerName, OwnerId, FoundByMeDate FROM CachesAll WHERE FoundByMeDate " + $fdOper + " " + $Q + $sqldate + $Q +  $exclude  + " GROUP BY ownerid,cachetype) GROUP BY ownerid HAVING Types>1 order by Count(cachetype) desc, Latest desc, OwnerName"
+
+	$data = Sqlite("sql",$_sql,"Headings=No")
+
+	$status = list ("CacheOwners", "create",$CR)
+	$status = list ("Line", "create",$CR)
+	$status = list ("CacheOwners", "replace", $data)
+#	$status = list ("CacheOwners", "sort", "")
+#	$status = list ("CacheOwners", "replace", $status)
+	$LC_count = list ("CacheOwners", "count","")
+
+	$i = 1
+
+	$out = $out + "<tr>$CR"
+	
+	WHILE $i <= Val($LC_count)
+		$CurColor = "#BABADD;"
+		$CO = list ("CacheOwners", "Item", NumToStr($i))
+		$i = $i + 1
+		$ccount = Extract($CO,";",1)
+		IF Val($ccount) >= Val($TypeCount)
+			$CurColor = "#B2F9A4;"
+		ENDIF
+		$Cacher = Extract($CO,";",2)
+		$Cacher = Trim($cacher)
+		$CacherId = Extract($CO,";",3)
+		$CacherId = Trim($CacherId)
+		
+		$cacherhtml = HttpEncode($cacher)
+		$out = $out + "<td style='background: $CurColor' align=center><b>" + "$ccount" + "</b></td>$CR"
+		$out = $out + "<td style='background: $CurColor'>" + "<a href=" + $Q + "http://www.geocaching.com/seek/nearest.aspx?u=$cacherhtml" + $Q + ">" + $cacher + "</a>" + "</td>$CR"
+
+		$_sql = "SELECT cachetype as Type, Code, Name, FoundByMeDate from CachesAll where FoundByMeDate " + $fdOper + " " + $Q + $sqldate + $Q + $exclude + " and OwnerId =" + $Q + $cacherId + $Q + " group by cachetype order by FoundByMeDate"
+
+
+		$status = Sqlite("sql",$_sql,"Headings=No")		
+		$status = list ("Line", "replace",$status)
+		$j = 1
+		
+		$out = $out + "<td style='background: $CurColor'>"
+		WHILE $j <= Val($ccount)
+			$TmpS = list ("Line", "Item", NumToStr($j))
+			$Type = Extract ($TmpS,";",1)
+			$Code = Extract ($TmpS,";",2)
+			$Name = Extract ($TmpS,";",3)
+			$Date = Extract ($TmpS,";",4)
+
+			# Highlite if found today
+			$JYear = Extract ($Date,"-",1)
+			$JMonth = Extract ($Date,"-",2)
+			$JDay = Extract ($Date,"-",3)
+			IF ($JYear + $JMonth + $JDay) = DateToString($RunDate)
+				$Date = "<font color=" + $Q + "red" + $Q + ">" + "$Date</font>"
+			ENDIF
+		
+			# Get the Cache type image
+			$tmpN = At($Type,$Types)
+			$thistype	= Extract($Typenums, "," , $tmpN)
+			$TypeImage = "<img align='top'  src='http://www.geocaching.com/images/wpttypes/sm/" + $thistype + ".gif' />"
+			
+			$out = $out + $TypeImage + " "+$Date+": <a href=" + $Q + "http://coord.info/" +  $Code + $Q + ">" + $Code + "-"+$Name + "</a><br>"
+			
+			$j = $j + 1
+		ENDWHILE
+		$out = $out + "</td></tr>$CR"
+
+	ENDWHILE
+	
+	GOSUB Name=OutPut
+	
+ENDSUB # ProcessOK
+
+BEGINSUB Name=Initialize
+	$RunDate = $_Today
+	$CR = $_NewLine
+	$Q = $_Quote
+	$CacheCount = "10"
+	$TypeCount = "3"
+	$comspec = GetEnvV("comspec")
+	$htmldir = $_AppData + "\html"
+	
+	$attributes = Replace($CR,";",$attributes,true)
+	$status = List("listA","create",";")
+	$status = List("listA","replace",$attributes)
+	
+	$challenges = Replace($CR,";",$challenges,true)
+	$status = List("listC","create",";")
+	$status = List("listC","replace",$challenges)
+	$form = EditForm($form,"co_Challenge","values",$challenges)
+	
+	$form = EditForm($form,"la_Version","Caption","V$vers")
+	$form = EditForm($form,"Form1","Delay","10")
+	$dblist = SysInfo("databases")
+	$dbcurr = SysInfo("gsakini;TfmOffline;lblDbase.Caption")
+	$form = EditForm($form,"LC_co_DatabaseF","values",$dblist)
+	$LC_co_DatabaseF = $dbcurr
+	MACSETTINGS Type=R FileCheck=N
+	
+	$Types = "ABCEGLMRTUVWZXI"
+	$Typenums = "9,5,13,6,27,12,3,137,2,8,4,11,453,2134,1858"
+	
+#	$AllStates = "AK,AL,AR,AZ,CO,CA,CT,DE,DC,FL,GA,HI,ID,IL,IN,IA,KS,KY,LA,ME,MD,MA,MI,MN,MS,MO,MT,NE,NV,NH,NJ,NM,NY,NC,ND,OH,OK,OR,PA,RI,SC,SD,TN,TX,UT,VT,VA,WA,WV,WI,WY"
+
+	$out = ""
+	$CacheTypeKeys = "ABCEGILMORTUVWXYZ"
+	$CacheTypeDesc = "Project Ape;Letterbox;Cache In Trash Out;Event;Benchmark;Whereigo;Locationless;Multi;Other;Earth;Traditional;Unknown/Mystery;Virtual;Webcam;Maze Exhibit;Waymark;Mega event"
+	
+ENDSUB   # Initialize
+
+BEGINSUB Name=Header
+	$out = $out + "<div align='center' style='width:710px;  background: #dedeee; font-family: Verdana, Arial, sans-serif; font-size: 13px; color: black; margin: 1px; border: outset;'>" + $CR
+	$out = $out + "<span style='font-family: Tahoma, Arial, sans-serif; font-size: 16px; font-weight: bold;'>" + $CR
+	$Code = Extract ($Text1,": ",2)
+	$Code = Trim($Code)
+	$TmpS = Replace($Code,"<a href=" + $Q + "http://coord.info/" +  $Code + $Q + ">$Code</a>",$Text1,True)
+	$out = $out + "$TmpS $CR"
+	$out = $out + "</span>" + $CR + "<br />" + $CR
+	IF $county <> ""
+		$out = $out + "Limited to $county County <br />" + $CR
+	ENDIF
+	$out = $out + "<br />" + $CR + "Statistics generated on " +  DateFormat($RunDate) + "<br />" + $CR
+	$out = $out + "Using GSAK Database <b> $LC_co_DatabaseF </b><br />" + $CR
+	$out = $out + "<br />" + $CR
+	$out = $out + "<div style='width:690px; background: #666699; font-weight: bold; line-height: 20px; font-size: 13px; color: white; border: 1px solid #000000; text-align: center;;'>"
+#	$Code = Extract ($Text1,":",1)
+#	$Code = Trim($Code)
+#	$TmpS = Replace($Code,"<a href=" + $Q + "http://coord.info/" +  $Code + $Q + ">$Code</a>",$Text1,True)
+	$out = $out + "<a name='1' id='1'></a>$Text2</div>$CR"
+#	$out = $out + "<br />$CR"
+	$out = $out + "(Click on any column heading to sort)<br />" + $CR
+#	$out = $out + "<table width='690' style='text-align: left;'>$CR"
+#	$out = $out + "<tr align=center>$CR"
+#	$out = $out + "<td style='background: #C8C8DD;'><b>Count</b></td>$CR"
+#	$out = $out + "<td style='background: #C8C8DD;'><b>Owner</b></td>$CR"
+#	$out = $out + "<td style='background: #C8C8DD;'><b>Type and GC Numbers</b></td>$CR"
+#	$out = $out + "</tr>$CR"
+#	$out = $out + "<table cellpadding='1' cellspacing='1' border='0' class='sortable' width='690' style='text-align: left;'>"
+	$out = $out + "<table class='sortable' width='690' style='text-align: left;'>"
+	$out = $out + "<tr class='heading'>"
+	$out = $out + "<th class='sorttable_numeric' align='center' style='background: #C8C8DD;'>Count</th class='sorttable_numeric'>"
+	$out = $out + "<th class='sorttable_alpha' align='center' style='background: #C8C8DD;'>Owner</th class='sorttable_alpha'>"
+	$out = $out + "<th align='center' style='background: #C8C8DD;'>Type and GC Numbers</th>"
+	$out = $out + "</tr>"
+
+ENDSUB  # Header
+
+BEGINSUB Name=OutPut
+	# close out HTML
+	
+	$out = $out + "</table>$CR<br />$CR"
+	GOSUB Name=Goal
+	$HTMLFooterLIC = Replace("=VERSION="    , "$vers",  $HTMLFooterLIC, true)
+	$HTMLFooterLIC = Replace("=GSAKVERSION=", $_Version,  $HTMLFooterLIC, true)
+	$out = $out + $HTMLFooterLIC
+	$out = $out + "</div>$CR"
+
+	#Compress the html for GC.com - thanks to javapgmr for this routine
+	$tmpS = Replace("$_newLine", "", $out, TRUE)
+	$tmpS = RegExReplace("\x20+", $tmpS," ")
+	$tmpS = RegExReplace("<!--.+?-->", $tmpS,"")
+	
+	
+	# check for html folder and create it if it does not exist.
+	IF not (FolderExists($htmldir))
+		runpgm pgm=$comspec parms=/C MD "$htmldir" Wait=Yes
+	ENDIF
+	
+	IF ($_MacroLevel > 1)
+		$FileName = $htmldir + "\LocalCacherTemp.html"
+		$Error = PutFile($FileName,$TmpS)
+		IF Left($Error,7) = "*Error*"
+			Pause Msg="$FileName"
+			Cancel
+		ENDIF
+	ENDIF
+	CLIP Data=$TmpS
+	
+	$HTMLHeader = Replace("=TITLE=","$Text1",$HTMLHeader, true)
+
+	$out = $HTMLHeader + $out
+	$out = $out + $HTMLFooter
+	
+
+	# generate file and display
+
+	$FileName = $htmldir + "\LocalCacher.html"
+	$Error = PutFile($FileName,$out)
+	IF Left($Error,7) = "*Error*"
+		Pause Msg="$FileName"
+		Cancel
+	ENDIF
+
+#	OpenFile file="$FileName"
+	WEB URL="$FileName"
+ENDSUB  # OutPut
+
+BEGINSUB Name=Goal
+	$out = $out + "The goal of this challenge is to find $TypeCount different types of" + $CR
+	$out = $out + " caches placed by $CacheCount different cachers.<br/>All finds must be" + $CR
+	$out = $out + " $fdopr $fdate. Please see the cache listing for additional" + $CR
+	$out = $out + " requirements."
+	BeginCase
+		Case $co_Challenge = "ID: GC226EC : Know Your Local Idaho Cacher Challenge"
+			$out = $out + "<br><b>This challenge also requires that " + $Q + "The cache owner must live in Idaho per their geocaching.com profile page." + $Q + "</b>"
+		Case $co_Challenge = "ME: GC27Q3W : Know Your Local Maine Cacher Challenge 2010"
+			$out = $out + "<br><b>This challenge also requires that the cache owner must be a " + $Q + "Maine cacher." + $Q + "</b>"
+	EndCase	
+	$out = $out + $CR + "<br/>"
+ENDSUB
+
+BEGINSUB Name=DeclareVariables
+#*******************************************************
+#   Variable declarations for
+#   D:\Program Files\GSAK7.5\Macros\LocalCacher.gsk
+#
+#   Generated 10/20/2009 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$attrib Type=String
+Declare Var=$attributes Type=String
+Declare Var=$CacheCount Type=String
+Declare Var=$cacher Type=String
+Declare Var=$cacherId Type=String
+Declare Var=$cacherhtml Type=String
+Declare Var=$CacheTypeDesc Type=String
+Declare Var=$CacheTypeKeys Type=String
+Declare Var=$ccount Type=String
+Declare Var=$cfgVars Type=String
+Declare Var=$challenges Type=String
+Declare Var=$CO Type=String
+Declare Var=$County Type=String
+Declare Var=$LC_co_DatabaseF Type=String
+Declare Var=$Code Type=String
+Declare Var=$Comspec Type=String
+Declare Var=$LC_count Type=String
+Declare Var=$CR Type=String
+Declare Var=$CurColor Type=String
+Declare Var=$data Type=String
+Declare Var=$dbcurr Type=String
+Declare Var=$dblist Type=String
+Declare Var=$Error Type=String
+Declare Var=$Exclude Type=String
+Declare Var=$fdate Type=String
+Declare Var=$fdoper Type=String
+Declare Var=$fdopr Type=String
+Declare Var=$FileName Type=String
+Declare Var=$flagHdr Type=Boolean
+Declare Var=$form Type=String
+Declare Var=$FormExit Type=String
+Declare Var=$HTMLDir Type=String
+Declare Var=$HTMLFooter Type=String
+Declare Var=$HTMLFooterLIC Type=String
+Declare Var=$HTMLHeader Type=String
+Declare Var=$i Type=Numeric
+Declare Var=$Item Type=String
+Declare Var=$j Type=Numeric
+Declare Var=$Name Type=String
+Declare Var=$NoType Type=String
+Declare Var=$out Type=String
+Declare Var=$Q Type=String
+Declare Var=$RunDate Type=Date
+Declare Var=$sect Type=String
+Declare Var=$sectNum Type=Numeric
+Declare Var=$sectOpr Type=String
+Declare Var=$sectPat Type=String
+Declare Var=$sectTyp Type=String
+Declare Var=$sectVal Type=String
+Declare Var=$select Type=String
+Declare Var=$sqldate Type=String
+Declare Var=$State Type=String
+Declare Var=$StateAbbr Type=String
+Declare Var=$States Type=String
+Declare Var=$status Type=String
+Declare Var=$Text1 Type=String
+Declare Var=$Text2 Type=String
+Declare Var=$thistype Type=String
+Declare Var=$tmpN Type=Numeric
+Declare Var=$TmpS Type=String
+Declare Var=$Type Type=String
+Declare Var=$TypeCount Type=String
+Declare Var=$TypeImage Type=String
+Declare Var=$Typenums Type=String
+Declare Var=$Types Type=String
+Declare Var=$vers Type=String
+Declare Var=$Date Type=String
+Declare Var=$JYear Type=String
+Declare Var=$JMonth Type=String
+Declare Var=$JDay Type=String
+
+
+$cfgVars = "LC_co_DatabaseF,co_Challenge"
+ ENDSUB  # DeclareVariables
+ 
+ <Data> VarName=$HTMLHeader
+<!DOCTYPE html PUBLIC '-//W3C//DTD XHTML 1.0 Transitional//EN' 'http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd'>
+<html>
+<head>
+<meta http-equiv='Content-Type' content='text/html; charset=ISO-8859-1' />
+<title>=TITLE=</title>
+<script>
+ 
+var stIsIE = /*@cc_on!@*/false;
+
+sorttable = {
+  init: function() {
+    // quit if this function has already been called
+    if (arguments.callee.done) return;
+    // flag this function so we don't do the same thing twice
+    arguments.callee.done = true;
+    // kill the timer
+    if (_timer) clearInterval(_timer);
+    
+    if (!document.createElement || !document.getElementsByTagName) return;
+    
+    sorttable.DATE_RE = /^(\d\d?)[\/\.-](\d\d?)[\/\.-]((\d\d)?\d\d)$/;
+    
+    forEach(document.getElementsByTagName('table'), function(table) {
+      if (table.className.search(/\bsortable\b/) != -1) {
+        sorttable.makeSortable(table);
+      }
+    });
+    
+  },
+  
+  makeSortable: function(table) {
+    if (table.getElementsByTagName('thead').length == 0) {
+      // table doesn't have a tHead. Since it should have, create one and
+      // put the first table row in it.
+      the = document.createElement('thead');
+      the.appendChild(table.rows[0]);
+      table.insertBefore(the,table.firstChild);
+    }
+    // Safari doesn't support table.tHead, sigh
+    if (table.tHead == null) table.tHead = table.getElementsByTagName('thead')[0];
+    
+    if (table.tHead.rows.length != 1) return; // can't cope with two header rows
+    
+    // Sorttable v1 put rows with a class of "sortbottom" at the bottom (as
+    // "total" rows, for example). This is B&R, since what you're supposed
+    // to do is put them in a tfoot. So, if there are sortbottom rows,
+    // for backwards compatibility, move them to tfoot (creating it if needed).
+    sortbottomrows = [];
+    for (var i=0; i<table.rows.length; i++) {
+      if (table.rows[i].className.search(/\bsortbottom\b/) != -1) {
+        sortbottomrows[sortbottomrows.length] = table.rows[i];
+      }
+    }
+    if (sortbottomrows) {
+      if (table.tFoot == null) {
+        // table doesn't have a tfoot. Create one.
+        tfo = document.createElement('tfoot');
+        table.appendChild(tfo);
+      }
+      for (var i=0; i<sortbottomrows.length; i++) {
+        tfo.appendChild(sortbottomrows[i]);
+      }
+      delete sortbottomrows;
+    }
+    
+    // work through each column and calculate its type
+    headrow = table.tHead.rows[0].cells;
+    for (var i=0; i<headrow.length; i++) {
+      // manually override the type with a sorttable_type attribute
+      if (!headrow[i].className.match(/\bsorttable_nosort\b/)) { // skip this col
+        mtch = headrow[i].className.match(/\bsorttable_([a-z0-9]+)\b/);
+        if (mtch) { override = mtch[1]; }
+	      if (mtch && typeof sorttable["sort_"+override] == 'function') {
+	        headrow[i].sorttable_sortfunction = sorttable["sort_"+override];
+	      } else {
+	        headrow[i].sorttable_sortfunction = sorttable.guessType(table,i);
+	      }
+	      // make it clickable to sort
+	      headrow[i].sorttable_columnindex = i;
+	      headrow[i].sorttable_tbody = table.tBodies[0];
+	      dean_addEvent(headrow[i],"click", function(e) {
+
+          if (this.className.search(/\bsorttable_sorted\b/) != -1) {
+            // if we're already sorted by this column, just 
+            // reverse the table, which is quicker
+            sorttable.reverse(this.sorttable_tbody);
+            this.className = this.className.replace('sorttable_sorted',
+                                                    'sorttable_sorted_reverse');
+            this.removeChild(document.getElementById('sorttable_sortfwdind'));
+            sortrevind = document.createElement('span');
+            sortrevind.id = "sorttable_sortrevind";
+            sortrevind.innerHTML = stIsIE ? '&nbsp<font face="webdings">5</font>' : '&nbsp;&#x25B4;';
+            this.appendChild(sortrevind);
+            return;
+          }
+          if (this.className.search(/\bsorttable_sorted_reverse\b/) != -1) {
+            // if we're already sorted by this column in reverse, just 
+            // re-reverse the table, which is quicker
+            sorttable.reverse(this.sorttable_tbody);
+            this.className = this.className.replace('sorttable_sorted_reverse',
+                                                    'sorttable_sorted');
+            this.removeChild(document.getElementById('sorttable_sortrevind'));
+            sortfwdind = document.createElement('span');
+            sortfwdind.id = "sorttable_sortfwdind";
+            sortfwdind.innerHTML = stIsIE ? '&nbsp<font face="webdings">6</font>' : '&nbsp;&#x25BE;';
+            this.appendChild(sortfwdind);
+            return;
+          }
+          
+          // remove sorttable_sorted classes
+          theadrow = this.parentNode;
+          forEach(theadrow.childNodes, function(cell) {
+            if (cell.nodeType == 1) { // an element
+              cell.className = cell.className.replace('sorttable_sorted_reverse','');
+              cell.className = cell.className.replace('sorttable_sorted','');
+            }
+          });
+          sortfwdind = document.getElementById('sorttable_sortfwdind');
+          if (sortfwdind) { sortfwdind.parentNode.removeChild(sortfwdind); }
+          sortrevind = document.getElementById('sorttable_sortrevind');
+          if (sortrevind) { sortrevind.parentNode.removeChild(sortrevind); }
+          
+          this.className += ' sorttable_sorted';
+          sortfwdind = document.createElement('span');
+          sortfwdind.id = "sorttable_sortfwdind";
+          sortfwdind.innerHTML = stIsIE ? '&nbsp<font face="webdings">6</font>' : '&nbsp;&#x25BE;';
+          this.appendChild(sortfwdind);
+
+	        // build an array to sort. This is a Schwartzian transform thing,
+	        // i.e., we "decorate" each row with the actual sort key,
+	        // sort based on the sort keys, and then put the rows back in order
+	        // which is a lot faster because you only do getInnerText once per row
+	        row_array = [];
+	        col = this.sorttable_columnindex;
+	        rows = this.sorttable_tbody.rows;
+	        for (var j=0; j<rows.length; j++) {
+	          row_array[row_array.length] = [sorttable.getInnerText(rows[j].cells[col]), rows[j]];
+	        }
+	        /* If you want a stable sort, uncomment the following line */
+	        //sorttable.shaker_sort(row_array, this.sorttable_sortfunction);
+	        /* and comment out this one */
+	        row_array.sort(this.sorttable_sortfunction);
+	        
+	        tb = this.sorttable_tbody;
+	        for (var j=0; j<row_array.length; j++) {
+	          tb.appendChild(row_array[j][1]);
+	        }
+	        
+	        delete row_array;
+	      });
+	    }
+    }
+  },
+  
+  guessType: function(table, column) {
+    // guess the type of a column based on its first non-blank row
+    sortfn = sorttable.sort_alpha;
+    for (var i=0; i<table.tBodies[0].rows.length; i++) {
+      text = sorttable.getInnerText(table.tBodies[0].rows[i].cells[column]);
+      if (text != '') {
+        if (text.match(/^-?[£$¤]?[\d,.]+%?$/)) {
+          return sorttable.sort_numeric;
+        }
+        // check for a date: dd/mm/yyyy or dd/mm/yy 
+        // can have / or . or - as separator
+        // can be mm/dd as well
+        possdate = text.match(sorttable.DATE_RE)
+        if (possdate) {
+          // looks like a date
+          first = parseInt(possdate[1]);
+          second = parseInt(possdate[2]);
+          if (first > 12) {
+            // definitely dd/mm
+            return sorttable.sort_ddmm;
+          } else if (second > 12) {
+            return sorttable.sort_mmdd;
+          } else {
+            // looks like a date, but we can't tell which, so assume
+            // that it's dd/mm (English imperialism!) and keep looking
+            sortfn = sorttable.sort_ddmm;
+          }
+        }
+      }
+    }
+    return sortfn;
+  },
+  
+  getInnerText: function(node) {
+    // gets the text we want to use for sorting for a cell.
+    // strips leading and trailing whitespace.
+    // this is *not* a generic getInnerText function; it's special to sorttable.
+    // for example, you can override the cell text with a customkey attribute.
+    // it also gets .value for <input> fields.
+    
+    hasInputs = (typeof node.getElementsByTagName == 'function') &&
+                 node.getElementsByTagName('input').length;
+    
+    if (node.getAttribute("sorttable_customkey") != null) {
+      return node.getAttribute("sorttable_customkey");
+    }
+    else if (typeof node.textContent != 'undefined' && !hasInputs) {
+      return node.textContent.replace(/^\s+|\s+$/g, '');
+    }
+    else if (typeof node.innerText != 'undefined' && !hasInputs) {
+      return node.innerText.replace(/^\s+|\s+$/g, '');
+    }
+    else if (typeof node.text != 'undefined' && !hasInputs) {
+      return node.text.replace(/^\s+|\s+$/g, '');
+    }
+    else {
+      switch (node.nodeType) {
+        case 3:
+          if (node.nodeName.toLowerCase() == 'input') {
+            return node.value.replace(/^\s+|\s+$/g, '');
+          }
+        case 4:
+          return node.nodeValue.replace(/^\s+|\s+$/g, '');
+          break;
+        case 1:
+        case 11:
+          var innerText = '';
+          for (var i = 0; i < node.childNodes.length; i++) {
+            innerText += sorttable.getInnerText(node.childNodes[i]);
+          }
+          return innerText.replace(/^\s+|\s+$/g, '');
+          break;
+        default:
+          return '';
+      }
+    }
+  },
+  
+  reverse: function(tbody) {
+    // reverse the rows in a tbody
+    newrows = [];
+    for (var i=0; i<tbody.rows.length; i++) {
+      newrows[newrows.length] = tbody.rows[i];
+    }
+    for (var i=newrows.length-1; i>=0; i--) {
+       tbody.appendChild(newrows[i]);
+    }
+    delete newrows;
+  },
+  
+  /* sort functions
+     each sort function takes two parameters, a and b
+     you are comparing a[0] and b[0] */
+  sort_numeric: function(a,b) {
+    aa = parseFloat(a[0].replace(/[^0-9.-]/g,''));
+    if (isNaN(aa)) aa = 0;
+    bb = parseFloat(b[0].replace(/[^0-9.-]/g,'')); 
+    if (isNaN(bb)) bb = 0;
+    return aa-bb;
+  },
+  sort_alpha: function(a,b) {
+    //if (a[0]==b[0]) return 0;
+    //if (a[0]<b[0]) return -1;
+    if (a[0].toLowerCase()==b[0].toLowerCase()) return 0;
+    if (a[0].toLowerCase()<b[0].toLowerCase()) return -1;
+    return 1;
+  },
+  sort_ddmm: function(a,b) {
+    mtch = a[0].match(sorttable.DATE_RE);
+    y = mtch[3]; m = mtch[2]; d = mtch[1];
+    if (m.length == 1) m = '0'+m;
+    if (d.length == 1) d = '0'+d;
+    dt1 = y+m+d;
+    mtch = b[0].match(sorttable.DATE_RE);
+    y = mtch[3]; m = mtch[2]; d = mtch[1];
+    if (m.length == 1) m = '0'+m;
+    if (d.length == 1) d = '0'+d;
+    dt2 = y+m+d;
+    if (dt1==dt2) return 0;
+    if (dt1<dt2) return -1;
+    return 1;
+  },
+  sort_mmdd: function(a,b) {
+    mtch = a[0].match(sorttable.DATE_RE);
+    y = mtch[3]; d = mtch[2]; m = mtch[1];
+    if (m.length == 1) m = '0'+m;
+    if (d.length == 1) d = '0'+d;
+    dt1 = y+m+d;
+    mtch = b[0].match(sorttable.DATE_RE);
+    y = mtch[3]; d = mtch[2]; m = mtch[1];
+    if (m.length == 1) m = '0'+m;
+    if (d.length == 1) d = '0'+d;
+    dt2 = y+m+d;
+    if (dt1==dt2) return 0;
+    if (dt1<dt2) return -1;
+    return 1;
+  },
+  
+  shaker_sort: function(list, comp_func) {
+    // A stable sort function to allow multi-level sorting of data
+    // see: http://en.wikipedia.org/wiki/Cocktail_sort
+    // thanks to Joseph Nahmias
+    var b = 0;
+    var t = list.length - 1;
+    var swap = true;
+
+    while(swap) {
+        swap = false;
+        for(var i = b; i < t; ++i) {
+            if ( comp_func(list[i], list[i+1]) > 0 ) {
+                var q = list[i]; list[i] = list[i+1]; list[i+1] = q;
+                swap = true;
+            }
+        } // for
+        t--;
+
+        if (!swap) break;
+
+        for(var i = t; i > b; --i) {
+            if ( comp_func(list[i], list[i-1]) < 0 ) {
+                var q = list[i]; list[i] = list[i-1]; list[i-1] = q;
+                swap = true;
+            }
+        } // for
+        b++;
+
+    } // while(swap)
+  }  
+}
+
+/* ******************************************************************
+   Supporting functions: bundled here to avoid depending on a library
+   ****************************************************************** */
+
+// Dean Edwards/Matthias Miller/John Resig
+
+/* for Mozilla/Opera9 */
+if (document.addEventListener) {
+    document.addEventListener("DOMContentLoaded", sorttable.init, false);
+}
+
+/* for Internet Explorer */
+/*@cc_on @*/
+/*@if (@_win32)
+    document.write("<script id=__ie_onload defer src=javascript:void(0)><\/script>");
+    var script = document.getElementById("__ie_onload");
+    script.onreadystatechange = function() {
+        if (this.readyState == "complete") {
+            sorttable.init(); // call the onload handler
+        }
+    };
+/*@end @*/
+
+/* for Safari */
+if (/WebKit/i.test(navigator.userAgent)) { // sniff
+    var _timer = setInterval(function() {
+        if (/loaded|complete/.test(document.readyState)) {
+            sorttable.init(); // call the onload handler
+        }
+    }, 10);
+}
+
+/* for other browsers */
+window.onload = sorttable.init;
+
+// written by Dean Edwards, 2005
+// with input from Tino Zijdel, Matthias Miller, Diego Perini
+
+// http://dean.edwards.name/weblog/2005/10/add-event/
+
+function dean_addEvent(element, type, handler) {
+	if (element.addEventListener) {
+		element.addEventListener(type, handler, false);
+	} else {
+		// assign each event handler a unique ID
+		if (!handler.$$guid) handler.$$guid = dean_addEvent.guid++;
+		// create a hash table of event types for the element
+		if (!element.events) element.events = {};
+		// create a hash table of event handlers for each element/event pair
+		var handlers = element.events[type];
+		if (!handlers) {
+			handlers = element.events[type] = {};
+			// store the existing event handler (if there is one)
+			if (element["on" + type]) {
+				handlers[0] = element["on" + type];
+			}
+		}
+		// store the event handler in the hash table
+		handlers[handler.$$guid] = handler;
+		// assign a global event handler to do all the work
+		element["on" + type] = handleEvent;
+	}
+};
+// a counter used to create unique IDs
+dean_addEvent.guid = 1;
+
+function removeEvent(element, type, handler) {
+	if (element.removeEventListener) {
+		element.removeEventListener(type, handler, false);
+	} else {
+		// delete the event handler from the hash table
+		if (element.events && element.events[type]) {
+			delete element.events[type][handler.$$guid];
+		}
+	}
+};
+
+function handleEvent(event) {
+	var returnValue = true;
+	// grab the event object (IE uses a global event object)
+	event = event || fixEvent(((this.ownerDocument || this.document || this).parentWindow || window).event);
+	// get a reference to the hash table of event handlers
+	var handlers = this.events[event.type];
+	// execute each event handler
+	for (var i in handlers) {
+		this.$$handleEvent = handlers[i];
+		if (this.$$handleEvent(event) === false) {
+			returnValue = false;
+		}
+	}
+	return returnValue;
+};
+
+function fixEvent(event) {
+	// add W3C standard event methods
+	event.preventDefault = fixEvent.preventDefault;
+	event.stopPropagation = fixEvent.stopPropagation;
+	return event;
+};
+fixEvent.preventDefault = function() {
+	this.returnValue = false;
+};
+fixEvent.stopPropagation = function() {
+  this.cancelBubble = true;
+}
+
+// Dean's forEach: http://dean.edwards.name/base/forEach.js
+/*
+	forEach, version 1.0
+	Copyright 2006, Dean Edwards
+	License: http://www.opensource.org/licenses/mit-license.php
+*/
+
+// array-like enumeration
+if (!Array.forEach) { // mozilla already supports this
+	Array.forEach = function(array, block, context) {
+		for (var i = 0; i < array.length; i++) {
+			block.call(context, array[i], i, array);
+		}
+	};
+}
+
+// generic enumeration
+Function.prototype.forEach = function(object, block, context) {
+	for (var key in object) {
+		if (typeof this.prototype[key] == "undefined") {
+			block.call(context, object[key], key, object);
+		}
+	}
+};
+
+// character enumeration
+String.forEach = function(string, block, context) {
+	Array.forEach(string.split(""), function(chr, index) {
+		block.call(context, chr, index, string);
+	});
+};
+
+// globally resolve forEach enumeration
+var forEach = function(object, block, context) {
+	if (object) {
+		var resolve = Object; // default
+		if (object instanceof Function) {
+			// functions have a "length" property
+			resolve = Function;
+		} else if (object.forEach instanceof Function) {
+			// the object implements a custom forEach method so use that
+			object.forEach(block, context);
+			return;
+		} else if (typeof object == "string") {
+			// the object is a string
+			resolve = String;
+		} else if (typeof object.length == "number") {
+			// the object is array-like
+			resolve = Array;
+		}
+		resolve.forEach(object, block, context);
+	}
+};
+
+</script>
+
+</head>
+<body>
+<EndData>
+
+<Data> VarName=$HTMLFooterLIC
+<br /><br />
+<span style='font-family: Verdana, Arial, sans-serif; font-size: 10px;'>
+<a href='http://gsak.net'target='_blank'><img src='http://gsak.net/stats/statslogo.png' style='border:0;'/></a><br /><br />
+Stats generated by LocalCacher =VERSION= by Terrible Ts<br />
+With many thanks to rutson and lignumaqua for the graphic layout<br />
+and many more thanks to lillfiluren for the new data layout<br />
+ running on
+<a href='http://gsak.net'>GSAK</a> v=GSAKVERSION=<br />
+Theme from <a href='http://pisg.sourceforge.net/'>pisg</a>
+by <a href='http://mbrix.dk/'>Morten Brix Pedersen</a><br />
+</span>
+<span style='font-family: Verdana, Arial, sans-serif; font-size: 10px;'>
+<br />This work is licensed under a
+<a rel='license' href='http://creativecommons.org/licenses/by-sa/1.0/'>
+Creative Commons License
+</a>.
+</span>
+<p>
+<a rel='license' href='http://creativecommons.org/licenses/by-sa/3.0/'>
+<img src='http://creativecommons.org/images/public/somerights20.png'
+style='border:none;' alt='Some rights reserved' height='31' width='88' />
+</a>
+<EndData>
+
+<Data> VarName=$HTMLFooter
+</body>
+</html>
+<EndData>
+
+<Data> VarName=$challenges
+Choose a Challenge cache
+AL: GC22KME : Welcome to Alabama Caching: The Challenge
+AZ: GC2K3F4 : Know your local cachers
+CA: GC29BTN : Know Your Local Cacher Challenge
+IA: GC31A50 : Know Your Local Cacher Iowa Challenge
+IP: GC31ADC : Know Your Local Cacher Polk County Iowa Challenge
+ID: GC226EC : Know Your Local Idaho Cacher Challenge
+KY: GC2MB7V : Know Your Local Cacher Challenge
+ME: GC27Q3W : Know Your Local Maine Cacher Challenge 2010
+MI: GC1YNHZ : Variety Pack Challenge
+MN: GC2QDKM : Challenge : Get to know your fellow cachers
+MO: GC29T4F : Who's Your Buddy? Missouri Local Cacher Challenge!
+MT: GC2P4R1 : Know Your Local Montana Cacher Challenge
+NC: GC2CBWT : Know Your Local Cachers
+NE: GC2M36D : Know Your Local Nebraska Cacher Challenge
+NH: GC26PNF : Know Your Local NH Cacher Challenge
+OH: GC1THHV : Variety is the Spice of Life Challenge
+OR: GC22EF9 : Shotgun's Central Oregon Local Cacher Challenge
+SC: GC31812 : Know your Local Cachers Challenge - SC/GA
+SD: GC2NZ7D : Know Your Local Cacher - South Dakota
+TN: GC2GYRN : Know Your Local Cachers TN Challenge
+TX: GC20W41 : CedarCreekGeocachers.com 3-by-10 Texas Challenge
+UT: GC2CXK5 : Know Your Local Cachers Challenge ~ Utah
+WA: GC1JQAD : Know Your Local Cacher Challenge
+ZZ: ------------ Canadian Provences  ------------------------------------
+BC: GC23N03 : Know Your Vancouver Island Cacher Challenge
+ON: GC2KFA1 : Know Your Local Cacher - Ontario Challenge
+YY: ------------ Other Conuntries  ------------------------------------
+DK: GC2K6NC : Danish Know Your Local Cacher Challenge from 2011
+NL: GC13QH7 : Nederlandse "Ken Uw Cachers" Challenge
+SE: GC21XAZ : Sweden: Challenge #30 Utmaning för 2010(och framåt:))
+<EndData>
+#  SE: GC21XAZ : Sweden: Challenge #30 Utmaning f&#246;r 2010(och fram&#229;t:))
+
+############################################################
+# Challenge cache attributes (all characters before position
+# 15 on each line are ignored and are only as a label). These
+# must match up with the list above.
+#
+# ST: State = AZ|AL|CA|CO|FL|...WA|WY|ON
+# PD: Placed Date = YYYY-MM-DD
+# DT: Difficulty/Terrain
+# TY: Cache Type = ABCEGILMORTUVWXYZ
+# NT: No Cache Type = List whats missing from Cache Type, each seperated by 1 (ugly code)
+# SZ: Container Size = MSRLOVNU
+# PY: Placed Year = Y1-Y2 (omit Y2 for current year)
+# PM: Placed Months = Y1M1-Y2M2 (omit Y2M2 for current month)
+# FM: Found Month
+# FD: Found Date = YYYY-MM-DD
+# CC: Cache Count
+# TC: Cache Type Count
+#
+# Cache Types: 17 diff types
+# A = Project Ape
+# B = Letterbox
+# C = Cache In Trash Out
+# E = Event
+# G = BenchMark
+# I = Wherigo
+# L = Locationless
+# M = Multi
+# O = Other
+# R = Earth
+# T = Traditional
+# U = Unknown/Mystery
+# V = Virtual
+# W = Webcam
+# X = Maze Exhibit
+# Y = Waymark
+# Z = Mega event
+#
+############################################################
+<Data> VarName=$attributes
+**: Default - FD>=2008-12-13,TY=ABCEILMRTUVWZ,NT=G1O1X1Y
+AL: GC22KME - ST=Alabama,FD>=2010-01-01,TY=BCEILMRTUVWZ,NT=A1G1O1X1Y
+AZ: GC2K3F4 - FD>=2010-12-05,TY=ABCEILMORTUVWXZ,NT=G1Y
+CA: GC29BTN - FD>=2010-01-01,TY=ABCEIMRTUVW,NT=G1L1O1X1Y1Z
+IA: GC3XXXX -  TC=4,ST=Iowa,FD>=2000-01-01,TY=ABCEIMRTUVWXZ,NT=G1L1O1Y
+IP: GC3XXXX -  ST=Iowa,CT=Polk,FD>=2000-01-01,TY=ABCEIMRTUVWXZ,NT=G1L1O1Y
+ID: GC22GEC - FD>2010-07-01,TY=ABCEIMRTUVWZ,NT=G1L1O1X1Y
+KY: GC2MB7V - ST=Kentucky,FD>=2011-01-01,TY=ABCEIMRTUVWZ,NT=G1L1O1X1Y1
+ME: GC27Q3W - FD>=2010-01-01,TY=ABCEILMRTUVWXZ,NT=G1O1Y
+MI: GC1YNHZ - FD>=2009-09-01,TY=ABCEIMRTUVWZ,NT=G1L1O1X1Y
+MN: GC2QDKM - FD>=2011-03-20,TY=ABCEILMRTUVWXZ,NT=G1O1Y
+MO: GC29T4F - FD>=2010-06-01,TY=ABCEIMRTUVWZ,NT=G1L1O1X1Y
+MT: GC2P4R1 - ST=Montana,FD>=2011-01-01,TY=BCEIMRTUVWZ,NT=A1G1L1O1X1Y1
+NC: GC2CBWT - FD>2010-07-28,TY=ABCEMRTUWZ,NT=G1I1L1O1V1X1Y
+NE: GC2M36D - TC=4,ST=Nebraska,FD>=2000-01-01,TY=ABCEILMRTUVWZ,NT=G1O1X1Y
+NH: GC26PNF - FD>=2010-04-01,TY=BCEMRTUVWY,NT=A1G1I1L1O1X1Z
+OH: GC1THHV - FD>=2009-05-01,TY=ABCEIMRTUVWZ,NT=G1L1O1X1Y
+OR: GC22EF9 - FD>=2010-01-01,TY=ABIMRTUVW,NT=C1E1G1L1O1X1Y1Z
+SC: GC31812 - FD>=2011-08-01,TY=BCEIMRTUVWZ,NT=A1G1L1O1X1Y1
+SD: GC2NZ7D - FD>=2010-06-01,TY=ABCEIMRTUVWZ,NT=G1L1O1X1Y
+TN: GC2GYRN - ST=Tennessee,FD>=2010-10-24,TY=ABCEIMRTUVWZ,NT=G1L1O1X1Y1
+TX: GC20W41 - FD>=2009-08-29,TY=ABCEIMRTUVWZ,NT=G1L1O1X1Y
+UT: GC2CXK5 - FD>=2000-01-01,TY=BCEIMRTUVWZ,NT=A1G1L1O1X1Y
+WA: GC1JQAD - FD>=2008-12-13,TY=ABCEILMRTUVWZ,NT=G1O1X1Y
+ZZ: Default - FD>=2008-12-13,TY=ABCEILMRTUVWZ,NT=G1O1X1Y
+BC: GC23N03 - CC=6,FD>=2010-02-05,TY=BCEIMRTUVW,NT=A1G1l1O1X1Y1Z
+ON: GC2KFA1 - ST=Ontario,FD>=2011-01-01,TY=BCEIMRTUVWZ,NT=A1G1L1O1X1Y
+YY: Default - FD>=2008-12-13,TY=ABCEILMRTUVWZ,NT=G1O1X1Y
+DK: GC2K6NC - FD>=2011-01-01,TY=BCEIMRTUZ,NT=A1G1L1O1V1W1X1Y
+NL: GC13QH7 - FD>=2010-04-14,TY=ABCEIMRTUVWXZ,NT=G1L1O1Y
+SE: GC21XAZ - FD>=2010-01-01,TY=ABCEIMRTUVWZ,NT=G1L1O1X1Y
+<EndData>
+
+########################---Start of State Data---###############################
+<data> Varname=$states
+AL=Alabama,AK=Alaska,AZ=Arizona,AR=Arkansas,CA=California,CO=Colorado,
+CT=Connecticut,DE=Delaware,DC=District of Columbia,FL=Florida,GA=Georgia,
+HI=Hawaii,ID=Idaho,IL=Illinois,IN=Indiana,IA=Iowa,KS=Kansas,KY=Kentucky,
+LA=Louisiana,ME=Maine,MD=Maryland,MA=Massachusetts,MI=Michigan,MN=Minnesota,
+MS=Mississippi,MO=Missouri,MT=Montana,NE=Nebraska,NV=Nevada,NH=New Hampshire,
+NJ=New Jersey,NM=New Mexico,NY=New York,NC=North Carolina,ND=North Dakota,
+OH=Ohio,OK=Oklahoma,OR=Oregon,PA=Pennsylvania,RI=Rhode Island,SC=South Carolina,
+SD=South Dakota,TN=Tennessee,TX=Texas,UT=Utah,VT=Vermont,VA=Virginia,
+WA=Washington,WV=West Virginia,WI=Wisconsin,WY=Wyoming,ON=Ontario
+<enddata>
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Mon 12-Oct-2009 23:21:44
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Know Your Local Cacher
+  Height = 370
+  Width = 500
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Found Database
+  Height = 81
+  Left = 48
+  Top = 168
+  Width = 401
+  Taborder = 0
+
+Name = LC_co_DatabaseF
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 16
+  Top = 40
+  Width = 361
+  Taborder = 0
+
+Name = bu_OK
+  Type = Button
+  Height = 25
+  Left = 128
+  Top = 280
+  Width = 75
+  Taborder = 1
+  Caption = OK
+
+Name = bu_Cancel
+  Type = Button
+  Height = 25
+  Left = 288
+  Top = 280
+  Width = 75
+  Taborder = 2
+  Caption = Cancel
+
+Name = la_Version
+  Type = Label
+  Height = 13
+  Left = 424
+  Top = 296
+  Width = 30
+  Caption = v?.?.?
+
+Name = la_Title
+  Type = Label
+  Height = 31
+  Left = 88
+  Size = 20
+  Style = bold
+  Top = 16
+  Width = 321
+  Caption = Know Your Local Cacher
+
+Name = la_Warning
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 144
+  Top = 64
+  Width = 211
+  Caption = Click anywhere on the form to cancel auto-run
+  
+Name = co_Challenge
+  Type = Combobox
+  Height = 21
+  Left = 45
+  Top = 104
+  Width = 400
+  Taborder = 11
+<enddata>
+
+
+
+

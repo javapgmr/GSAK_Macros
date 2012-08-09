@@ -1,0 +1,287 @@
+#*******************************************
+# MacDescription = User Note Personal Cache Note
+# MacFileName = PersonalCacheNote.gsk
+# MacAuthor = Kai Team
+# MacVersion=3.2
+#*******************************************
+VERCHECK Version=8.0.0.0 (please update GSAK to version 8.0.0.0 or later to run this macro - see http://gsak.net)
+$SettingsFile=$_AppData + "\macros\PersonalCacheNote.xml"
+$IncludeOptions="User Note"
+$CorLat=""
+$CorLon=""
+$Note=""
+$PostEmptyNo=TRUE
+$PostEmptyYes=FALSE
+$IncludeOptions="User Note"
+
+IF Not(FileExists($SettingsFile)) OR $_CtrlKey
+    MACSETTINGS Type=R FileCheck=N
+    WHILE TRUE
+        $FormExit = form($SettingsForm,"")
+        BEGINCASE
+            CASE $FormExit = "SystemExit"
+            RETURN Msg="Macro Canceled"
+
+            CASE $FormExit = "OK"
+            MACSETTINGS Type=S Vars=IncludeOptions,PostEmptyNo,PostEmptyYes
+            BREAK
+
+            CASE $FormExit = "Cancel"
+            RETURN Msg="Macro Canceled"
+        ENDCASE
+    ENDWHILE
+ELSE
+    MACSETTINGS Type=R FileCheck=N
+ENDIF
+
+#Filter out caches which would result in blank PCN, if selected
+IF $PostEmptyNo
+    $_sql=""
+    BEGINCASE
+    #Nothing selected
+    CASE At("User Note",$IncludeOptions)=0 AND At("Corrected Coordinates",$IncludeOptions)=0 AND At("User Log",$IncludeOptions)=0
+        CANCEL Msg=You must include at least one piece of data (User Note, User Log, Corrected Coordinates).  Macro canceled.
+
+    #User Note only
+    CASE At("Corrected Coordinates",$IncludeOptions)=0 AND At("User Log",$IncludeOptions)=0 AND At("User Note",$IncludeOptions)>0
+        $_Sql="Code IN(SELECT Code from CachesAll Where g_RegExReplace('(?s)\$~.*',UserNote,'','')<>'')"
+
+    #User Log only
+    CASE At("User Note",$IncludeOptions)=0 AND At("Corrected Coordinates",$IncludeOptions)=0 AND At("User Log",$IncludeOptions)>0
+        $_Sql="Code IN(SELECT Code from CachesAll Where g_RegEx('.*\$~',UserNote)=1)"
+
+    #Corrected Coordiantes Only
+    CASE At("User Note",$IncludeOptions)=0 AND At("User Log",$IncludeOptions)=0 AND At("Corrected Coordinates",$IncludeOptions)>0
+        $_Sql="Code IN(SELECT Code from CachesAll Where HasCorrected=1)"
+
+    #User Note and User Logs Only
+    CASE At("Corrected Coordinates",$IncludeOptions)=0 AND At("User Note",$IncludeOptions)>0 AND At("User Log",$IncludeOptions)>0
+        $_Sql="Code IN(SELECT Code from CachesAll Where g_RegExReplace('(?s)\$~.*$',UserNote,'','')<>'' OR g_RegEx('.*\$~',UserNote)=1)"
+
+    #User Note and Corrected Only
+    CASE At("User Note",$IncludeOptions)>0 AND At("Corrected Coordinates",$IncludeOptions)>0 AND At("User Log",$IncludeOptions)=0
+        $_Sql="Code IN(SELECT Code from CachesAll Where g_RegExReplace('(?s)\$~.*$',UserNote,'','')<>'' OR HasCorrected=1)"
+
+    #User Log and Corrected Only
+    CASE At("User Note",$IncludeOptions)=0 AND At("Corrected Coordinates",$IncludeOptions)>0 AND At("User Log",$IncludeOptions)>0
+        $_Sql="Code IN(SELECT Code from CachesAll Where g_RegEx('.*\$~',UserNote)=1 OR HasCorrected=1)"
+
+    #Notes, Logs and Corrected
+    CASE At("User Note",$IncludeOptions)>0 AND At("Corrected Coordinates",$IncludeOptions)>0 AND At("User Log",$IncludeOptions)>0
+        $_Sql="Code IN(SELECT Code from CachesAll Where g_RegExReplace('(?s)\$~.*$',UserNote,'','')<>'' OR g_RegEx('.*\$~',UserNote)=1 OR HasCorrected=1)"
+    ENDCASE
+
+    IF $_FilterActive
+        $_sql=$_sql + "AND $_Where"
+        MFILTER Where=$_sql
+        IF $_FilterCount=0
+            CANCEL Msg=No caches in the filter have user notes or corrected coordinates.  Macro cancelled.
+        ENDIF
+    ELSE
+        MFILTER Where=$_sql
+        IF $_FilterCount=0
+            CANCEL Msg=No caches in the filter have user notes or corrected coordinates.  Macro cancelled.
+        ENDIF
+    ENDIF
+ENDIF
+
+GOTO Position=Top
+
+#Get start time for API timeout
+$Count=0
+$_sql="Select strftime('%s','now')"
+$StartTime=Sqlite("sql",$_sql)
+
+WHILE NOT($_EOL)
+    $Count=$Count + 1
+    $Note=""
+    $Code=$d_Code
+
+    IF At("User Note",$IncludeOptions)>0
+        $Note=Extract($d_UserNote,"$~",1)
+    ENDIF
+
+    IF At("Corrected Coordinates",$IncludeOptions)>0
+        $_sql="Select kCode from Corrected WHERE Kcode IN (Select Code from caches Where $_Where)"
+        $kCodes=Sqlite("sql",$_sql)
+
+        IF At($d_Code,$kCodes)>0
+            TABLE Active=Corrected Scope=Parent
+            $Coordinates=$d_kAfterLat + "," + $d_kAfterLon
+            $Coordinates=GCalc($Coordinates,"FormatMinutes")
+            $Coordinates=Replace(";"," ",$Coordinates)
+            IF $Note<>""
+                $Note=$Coordinates + $_CrLf + $Note
+            ELSE
+                $Note=$Coordinates
+            ENDIF
+            TABLE Active=Caches
+        ENDIF
+    ENDIF
+
+    IF At("User Log",$IncludeOptions)>0
+        $Log=Extract($d_UserNote,"$~",2)
+        IF $Note<>""
+            $Note=$Note + $_CrLf + $Log
+        ELSE
+            $Note=$Log
+        ENDIF
+    ENDIF
+
+    IF $Note<>""
+        $Note=Left($Note,500)
+    ELSE
+        IF $PostEmptyNo
+            CANCEL Msg=There is no data to post for cache $Code.  Macro canceled.
+        ENDIF
+    ENDIF
+
+    $PCN=Replace("~~CODE~~",$Code,$PCN)
+    $PCN=Replace("~~NOTE~~",$Note,$PCN)
+
+    $data = GcApi("UpdateCacheNote",$PCN)
+    IF $_GcApiError
+        MSGOK msg=$data
+    ENDIF
+
+    #Reset $PCN with tokens for next replacement (used RegEx to fix case where $Code is contained in $Note)
+    $PCN=RegExReplace("(?s)\s<CacheCode>.*</CacheCode>", $PCN," <CacheCode>~~CODE~~</CacheCode>")
+    $PCN=RegExReplace("(?s)\s<Note>.*</Note>", $PCN," <Note>~~NOTE~~</Note>")
+
+    #Pause for geocaching.com API 30 calls per minute limit, show status, leave GUI active
+    IF $Count=30
+        $_sql="Select strftime('%s','now')"
+        $Elapsed=Val(Sqlite("sql",$_sql)) - Val($StartTime)
+        $DelayTime=(60-$Elapsed)*1000
+        $d = 0
+        $Timeout=60-$Elapsed
+        WHILE $d<$Timeout
+            $PauseTime=NumToStr(($DelayTime/1000)-$d)
+            $Msg="30 API updates per minute limit reached. Pausing for " + $PauseTime + " seconds."
+            SHOWSTATUS Msg=$Msg Width=355
+            DELAY Ms=1000
+            $d = $d + 1
+        ENDWHILE
+        SHOWSTATUS Msg="" Display=Off
+        $Count=0
+        $_sql="Select strftime('%s','now')"
+        $StartTime=Sqlite("sql",$_sql)
+    ENDIF
+
+    GOTO Position=Next
+ENDWHILE
+
+<Data> VarName=$SettingsForm
+#********************************************************************
+# Form generated by GSAK form designer on Sun 20-Nov-2011 10:17:01
+#********************************************************************
+
+Name = SettingsForm
+  Type = Form
+  Caption = Optional Settings
+  Height = 278
+  Top = 297
+  Width = 414
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = Filtering
+  Height = 67
+  Left = 11
+  Top = 96
+  Width = 375
+  Taborder = 4
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Include the following in the personal cache note:
+  Height = 78
+  Left = 10
+  Top = 8
+  Width = 375
+  Taborder = 5
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 79
+  Top = 176
+  Width = 75
+  Taborder = 2
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 244
+  Top = 176
+  Width = 75
+  Taborder = 3
+  Caption = Cancel
+
+Name = Label2
+  Type = Label
+  Color = 255
+  Height = 17
+  Left = 16
+  Size = 10
+  Top = 215
+  Width = 366
+  Caption = Press the Ctrl key when starting the macro to display this form
+
+Name = Label3
+  Type = Label
+  Container = Groupbox2
+  Height = 17
+  Left = 55
+  Size = 10
+  Top = 18
+  Width = 265
+  Caption = Post Empty (blank) Personal Cache Notes?
+
+Name = PostEmptyNo
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 20
+  Left = 125
+  Top = 37
+  Width = 49
+  Taborder = 0
+  Caption = No
+
+Name = PostEmptyYes
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 20
+  Left = 186
+  Top = 37
+  Width = 49
+  Taborder = 1
+  Caption = Yes
+
+Name = IncludeOptions
+  Type = Checklistbox
+  Color = 15395562
+  Container = Groupbox1
+  Height = 53
+  Left = 7
+  Size = 10
+  Top = 17
+  Values = User Note;User Log;Corrected Coordinates
+  Width = 361
+  Taborder = 0
+
+<enddata>
+
+
+
+
+<Data> Varname=$PCN
+<UpdateCacheNoteRequest xmlns="http://www.geocaching.com/Geocaching.Live/data">
+    <AccessToken>{ACCESSTOKEN}</AccessToken>
+    <CacheCode>~~CODE~~</CacheCode>
+    <Note>~~NOTE~~</Note>
+</UpdateCacheNoteRequest>
+<enddata>
+
+

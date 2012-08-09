@@ -1,0 +1,48 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Compress Clip HTML
+# MacAuthor = javapgmr
+# MacFileName =  compressClipHtml.gsk
+# MacUrl =
+#*******************************************
+
+GOSUB Name=Declare
+
+$DataIn = GetClipText()
+$InLen = Len($DataIn)
+
+# normal compression routine
+#$DataIn = Replace("&nbsp;", " ", $DataIn, TRUE)
+$DataIn = Replace("$_newLine", "", $DataIn, TRUE)
+$DataIn = RegExReplace(">\x20*<", $DataIn,"><")
+$DataIn = RegExReplace("\x20+<", $DataIn," <")
+$DataIn = RegExReplace(">\x20+", $DataIn,"> ")
+$DataIn = RegExReplace("\x20+", $DataIn," ")
+$DataIn = RegExReplace("<!--.+?-->", $DataIn,"")
+$DataIn = Replace("</td>", "", $DataIn, TRUE)
+$DataIn = Replace("</tr>", "", $DataIn, TRUE)
+$DataIn = Replace("<br />", "<br/>", $DataIn, TRUE)
+$DataIn = Replace("Note:", " Note:", $DataIn, TRUE)
+
+$DataIn = Replace("</a><b>", "</a> <b>", $DataIn, TRUE)
+
+$OutLen = Len($DataIn)
+$DiffLen = $InLen - $OutLen
+$OutMessage = "Input  Length:" + NumToStr($InLen) + $_NewLine
+$OutMessage = $OutMessage + "Output Length:" + NumToStr($OutLen) + $_NewLine
+$OutMessage = $OutMessage + "Diff   Length:" + NumToStr($DiffLen) + $_NewLine
+$ExitMsg = Form($OutForm, "")
+CLIP Data=$DataIn
+
+BEGINSUB Name=Declare
+  Option Explicit=Yes
+  Declare Var=$DataIn Type=String
+  Declare Var=$OutMessage Type=String
+  Declare Var=$OutForm Type=String
+  Declare Var=$InLen Type=Numeric
+  Declare Var=$OutLen Type=Numeric
+  Declare Var=$DiffLen Type=Numeric
+  Declare Var=$ExitMsg Type=String
+ENDSUB
+
+INCLUDE File="outmessage.include"

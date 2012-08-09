@@ -1,0 +1,366 @@
+###################################################################################
+# MacFileName    = SearchMacros.gsk
+# MacDescription = Search all files in a directory for a string.
+# MacAuthor      = Wayne (Team Red Roo)
+# MacVersion     = 1.4
+# MacURL         = http://gsak.net/board/index.php?showtopic=5673
+###################################################################################
+#
+# MacIdeas : With all of the new editors available these days, it would be good if
+#            there was a choice of editors and it's load string.
+#
+#  Revision History
+# ==================
+# 5/11/2010 8:57:21 PM v1.3 - New - now searches .Txt and .Gsk files only (before it would search ALL files in the serach folder)
+#                             New - now uses Gsak MACSETTINGS.
+#                             New - option to use the configured editor
+#                             New - form colors
+# 5/12/2010 8:01:18 AM v1.4   Added several variable initialisations and declarations 
+#                             that made it through beta.
+#
+###################################################################################
+
+   OPTION Explicit=Yes
+   VERCHECK Version=7.7.0.69 (please update GSAK to the latest version to run this macro)
+
+   $SearchFolder=$_Install+"\Macros\"
+   $UseNotePad=FALSE
+   $UseConfEd=FALSE
+   $UseMemBox=TRUE
+   
+   MACSETTINGS Type=R FileCheck=N
+
+   $Orgdata=""
+   GOSUB Name=SetVersion
+   GOSUB Name=UpdateDisplay
+
+   WHILE TRUE
+   	  $Form=EditForm("$Form","Form1","Top","$_FormTop")
+   	  $Form=EditForm("$Form","Form1","Left","$_FormLeft")
+      $Fx = Form($Form,"")
+      BEGINCASE 
+         GOSUB Name=UpdateDisplay
+         CASE $Fx="OKBtn"
+            GOSUB Name=SearchFiles
+         CASE $Fx="ReadFile"
+            IF $UseMemBox
+               IF ($OrgData <> $MemoBox) and ($OrgData <> "")
+                  $Msg1="Save changes"
+                  $Msg2="Lose changes"
+                  CHOOSE Msg="The data has changed" Opt1=$Msg1 Opt2=$Msg2
+                  IF $Result=1
+                     GOSUB Name=SaveChanges
+                  ENDIF 
+               ENDIF 
+            ENDIF 
+            GOSUB Name=DisplayFile
+         CASE $Fx="SaveFile"
+            GOSUB Name=SaveChanges
+         CASE $Fx="CancelBtn"
+            BREAK 
+         CASE $Fx="SystemExit"
+            CANCEL 
+      ENDCASE 
+   ENDWHILE 
+   MACSETTINGS Type=S Vars=_FormLeft,_FormTop,UseNotePad,UseConfEd,UseMemBox,SearchFolder
+   RETURN 
+##################################################################################
+###############################  End Of Macro  ###################################
+##################################################################################
+   BEGINSUB Name=SearchFiles
+   	  $SearchStr=AllTrim($SearchStr)
+      IF $SearchStr <> ""
+         $DirFile=$_Install+"\Temp\DirList.Txt"
+         $comspec = GetEnvV("comspec")
+         $Parms=$SearchFolder + "\*.Txt"
+         RUNPGM pgm=$comspec parms=/C dir /a-d-h-s /b "$Parms" >"$DirFile" Wait=Yes
+         $Parms=$SearchFolder + "\*.Gsk"
+         RUNPGM pgm=$comspec parms=/C dir /a-d-h-s /b "$Parms" >>"$DirFile" Wait=Yes
+         $DirTxt = GetFile($DirFile)
+         IF Left($DirTxt,7) = "*Error*"
+            PAUSE Msg="Directory File Error $_NewLine $DirTxt"
+            CANCEL 
+         ENDIF 
+         $FilesList = Replace($_Newline,";",$DirTxt,True)
+         $NumFiles=RegExCount(";",$FilesList)
+         $Count=1
+         $Cnt=0
+         $ResultList="Search String = $SearchStr"+$_NewLine
+         $ResultList=$ResultList+"Search Dir    = $SearchFolder"+$_NewLine+$_NewLine
+         $ResultFiles=""
+         WHILE $Count<=$NumFiles
+            $FileName=Extract($FilesList, ";", $Count)
+            SHOWSTATUS Msg="Processing $Count of $NumFiles File = $FileName" Top=0 Width=400
+            $Count=$Count+1
+            $FileData=GetFile($SearchFolder +"\"+ $Filename)
+            IF Left($FileData,7) = "*Error*"
+               CANCEL Msg="$FileData"
+               CANCEL 
+            ENDIF 
+            IF Regex("$SearchStr","$FileData")
+               $ResultList=$ResultList+$FileName+$_NewLine
+               $ResultFiles=$ResultFiles+$FileName+";"
+               $Cnt=$Cnt+1
+            ENDIF 
+         ENDWHILE 
+         IF $Cnt>0
+            $ResultList=$ResultList+$_NewLine+$_NewLine+"$Cnt Items Found"
+            $ResultFile=$_Install + "\Temp\SearchResult.Txt"
+            $Data=PutFile($ResultFile, $ResultList)
+            IF Left($Data,7) = "*Error*"
+               $MemoBox=$Data
+            ENDIF 
+         ENDIF 
+         IF $Cnt=0
+            MSGOK Msg="Sorry - Nothing found"
+         ENDIF 
+         SHOWSTATUS Msg=x Display=Off
+      ENDIF 
+   ENDSUB 
+##################################################################################
+   BEGINSUB Name=DisplayFile
+      $MemBox=""
+      CLIP Data=$SearchStr
+      $Parms="$SearchFolder\$FileList"
+      BEGINCASE 
+         CASE $UseMemBox
+            $OrgData=GetFile("$SearchFolder\$FileList")
+            $MemoBox=$OrgData
+            $CurrentFile="$Parms"
+         CASE $UseNotePad
+            RUNPGM PGM="C:\Windows\NotePad.Exe " Parms=$Parms Wait=Yes
+            $MemoBox=""
+         CASE $UseConfEd
+            $Btst=StrToBool(SysInfo("gsakini;TFMConfig;chkMacroEditor.Checked"))
+            IF $Btst
+               $Pgm=SysInfo("gsakini;TFMConfig;edtMacroEditor.FileName")
+            ELSE 
+               $Pgm="$_exePath\MacroEditor.exe"
+            ENDIF 
+            RUNPGM PGM=$Pgm Parms=$Parms Wait=Yes
+            $MemoBox=""
+      ENDCASE 
+   ENDSUB 
+##################################################################################
+  BEGINSUB Name=UpdateDisplay
+      	 IF $UseNotePad OR $UseConfEd OR $UseMemBox
+      	 	  IF $Fx="UseMemBox"
+      	 	  	$Form=EditForm("$Form","SaveFile","Visible","Yes")
+      	 	  ELSE
+      	 	    $Form=EditForm("$Form","SaveFile","Visible","No")
+      	 	  ENDIF
+      	 	ENDIF 
+  ENDSUB
+###################################################################################
+   BEGINSUB Name=SaveChanges
+      $Tx=PutFile($CurrentFile,$MemoBox)
+      $OrgData = $MemoBox
+   ENDSUB 
+##################################################################################
+   BEGINSUB Name=SetVersion
+      $MacroName=Left(SysInfo("Macrofile"),AT(".",SysInfo("Macrofile"))-1)
+      $MacroVers=" v"+AllTrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath") + "\" + SysInfo("Macrofile")),1,1))
+      $Form=EditForm($Form,"Form1","Caption","$MacroName $MacroVers")
+   ENDSUB 
+###################################################################################
+
+      DECLARE Var=$Btst Type=Boolean
+      DECLARE Var=$Cnt Type=Numeric
+      DECLARE Var=$comspec Type=String
+      DECLARE Var=$Count Type=Numeric
+      DECLARE Var=$CurrentFile Type=String
+      DECLARE Var=$Data Type=String
+      DECLARE Var=$DirFile Type=String
+      DECLARE Var=$DirTxt Type=String
+      DECLARE Var=$FileData Type=String
+      DECLARE Var=$FileName Type=String
+      DECLARE Var=$FilesList Type=String
+      DECLARE Var=$Fx Type=String
+      DECLARE Var=$Form Type=String
+      DECLARE Var=$MacroName Type=String
+      DECLARE Var=$MacroVers Type=String
+      DECLARE Var=$MemBox Type=String
+      DECLARE Var=$MemoBox Type=String
+      DECLARE Var=$Msg1 Type=String
+      DECLARE Var=$Msg2 Type=String
+      DECLARE Var=$NumFiles Type=Numeric
+      DECLARE Var=$Orgdata Type=String
+      DECLARE Var=$Parms Type=String
+      DECLARE Var=$Pgm Type=String
+      DECLARE Var=$ResultFile Type=String
+      DECLARE Var=$ResultFiles Type=String
+      DECLARE Var=$ResultList Type=String
+      DECLARE Var=$SearchFolder Type=String
+      DECLARE Var=$Tx Type=String
+      DECLARE Var=$UseConfEd Type=Boolean
+      DECLARE Var=$UseMemBox Type=Boolean
+      DECLARE Var=$UseNotePad Type=Boolean
+
+###################################################################################
+<DATA> VarName=$form
+
+
+Name = Form1
+  Type = Form
+  Color = 13434828
+  Height = 581
+  Width = 802
+
+Name = Grp1
+  Type = Groupbox
+  Height = 126
+  Left = 8
+  Top = 4
+  Width = 775
+
+Name = SearchStr
+  Type = Edit
+  Container = Grp1
+  Height = 21
+  Left = 277
+  Top = 33
+  Width = 244
+  Taborder = 1
+  
+Name = SearchFolder
+  Type = Folder
+  Container = Grp1
+  Height = 21
+  Left = 19
+  Top = 33
+  Width = 242
+  Taborder = 2
+    
+Name = FileList
+  Type = Combobox
+  Container = Grp1
+  Display = 25
+  Height = 21
+  Left = 20
+  Top = 82
+  Values = $ResultFiles
+  Width = 239
+  Taborder = 3
+    
+Name = OKBtn
+  Type = Button
+  Enter = Yes
+  Height = 21
+  Left = 547
+  Top = 38
+  Width = 75
+  Caption = Search
+  Taborder = 4
+  
+Name = ReadFile
+  Type = Button
+  Container = Grp1
+  Height = 22
+  Left = 277
+  Top = 82
+  Width = 75
+  Caption = Read File
+  Taborder = 5
+    
+Name = UseNotePad
+  Type = Radiobutton
+  Captionposition = Right
+  Container = Grp1
+  Exitonchange = Yes
+  Fontcolor = 16711680
+  Height = 17
+  Left = 536
+  Top = 64
+  Width = 192
+  Caption = Display using Windows Notepad
+    
+Name = UseConfEd
+  Type = Radiobutton
+  Container = Grp1
+  Exitonchange = Yes
+  Fontcolor = 16711680
+  Height = 17
+  Left = 536
+  Top = 81
+  Width = 179
+  Caption = Use the Editor configured in Gsak
+  
+Name = UseMemBox
+  Type = Radiobutton
+  Captionposition = Right
+  Container = Grp1
+  Exitonchange = Yes
+  Fontcolor = 16711680
+  Height = 17
+  Left = 536
+  Top = 98
+  Width = 185
+  Caption = Display here (below)
+    
+Name = MemoBox
+  Type = Memo
+  Color = 13565951
+  Height = 347
+  Left = 8
+  Scrollbars = both
+  Top = 140
+  Width = 775
+  
+Name = SaveFile
+  Type = Button
+  Container = Grp1
+  Height = 22
+  Left = 362
+  Top = 82
+  Width = 75
+  Caption = Save File
+  
+Name = CancelBtn
+  Type = Button
+  Escape = yes
+  Height = 36
+  Left = 353
+  Top = 501
+  Width = 97
+  Caption = Exit
+   
+Name = FolderLbl
+  Type = Label
+  Color = 255
+  Container = Grp1
+  Height = 13
+  Left = 19
+  Style = Bold
+  Top = 15
+  Width = 79
+  Caption = Search Folder
+
+Name = SearchLbl					
+  Type = Label
+  Color = 255
+  Container = Grp1
+  Height = 13
+  Left = 279
+  Style = bold
+  Top = 16
+  Width = 77
+  Caption = Search String
+  
+Name = Lbl4
+  Type = Label
+  Color = 255
+  Container = Grp1
+  Height = 13
+  Left = 20
+  Style = bold
+  Top = 65
+  Width = 44
+  Caption = File List
+
+<enddata>
+
+
+
+
+
+

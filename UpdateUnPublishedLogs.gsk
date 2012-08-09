@@ -1,0 +1,293 @@
+#*******************************************
+# MacDescription =Update selected logs in Publish Logs
+# MacFileName =UpdateUnPublishedLogs.gsk
+# MacAuthor = Kai Team
+# MacVersion=2.1
+#*******************************************
+$Data="Archive;Attended;Didn't find it;Found it;Needs Archived;Needs Maintenance;Owner Maintenance;Temporarily Disable Listing;Update Coordinates;Webcam Photo Taken;Will Attend;Write note"
+$Form1 = editform($Form1,"LogTypeCB","values",$Data)
+$LogTimeEB=""
+$LogDate=$_Today
+$DateTimeCB=FALSE
+$TextCB=FALSE
+$TypeCB=FALSE
+MACSETTINGS Type=R FileCheck=N
+
+#Check for the presence of unpublished logs
+$status = sqlite("open","$_appdata\gsak.db3")
+$Data = sqlite("sql","Select pCode from PublishLogs WHERE NOT pPublished")
+$status = sqlite("close","$_appdata\gsak.db3")
+IF $Data=""
+    RETURN Msg=You do not have any unpublished Logs.  Please go to Geocaching.com Access>Publish Logs and fetch logs before running this macro.
+ENDIF
+
+#Initialize Form
+IF $DateTimeCB
+    $Form1 = editform($Form1,"LogDate","visible","Yes")
+    $Form1 = editform($Form1,"LogTimeEB","visible","Yes")
+    $Form1 = editform($Form1,"Label6","visible","Yes")
+    $Form1 = editform($Form1,"Label7","visible","Yes")
+ELSE
+    $Form1 = editform($Form1,"LogDate","visible","No")
+    $Form1 = editform($Form1,"LogTimeEB","visible","No")
+    $Form1 = editform($Form1,"Label6","visible","No")
+    $Form1 = editform($Form1,"Label7","visible","No")
+ENDIF
+IF $TextCB
+    $Form1 = editform($Form1,"LogText","visible","Yes")
+ELSE
+    $Form1 = editform($Form1,"LogText","visible","No")
+ENDIF
+IF $TypeCB
+    $Form1 = editform($Form1,"LogTypeCB","visible","Yes")
+ELSE
+    $Form1 = editform($Form1,"LogTypeCB","visible","No")
+ENDIF
+
+#Show Form
+WHILE TRUE
+    $FormExit = form($Form1,"")
+    BEGINCASE
+        CASE $FormExit = "SystemExit"
+        RETURN Msg="Macro Canceled"
+
+        CASE $FormExit = "DateTimeCB"
+            IF $DateTimeCB
+                $Form1 = editform($Form1,"LogDate","visible","Yes")
+                $Form1 = editform($Form1,"LogTimeEB","visible","Yes")
+                $Form1 = editform($Form1,"Label6","visible","Yes")
+                $Form1 = editform($Form1,"Label7","visible","Yes")
+            ELSE
+                $Form1 = editform($Form1,"LogDate","visible","No")
+                $Form1 = editform($Form1,"LogTimeEB","visible","No")
+                $Form1 = editform($Form1,"Label6","visible","No")
+                $Form1 = editform($Form1,"Label7","visible","No")
+            ENDIF
+
+        CASE $FormExit = "TextCB"
+            IF $TextCB
+                $Form1 = editform($Form1,"LogText","visible","Yes")
+            ELSE
+                $Form1 = editform($Form1,"LogText","visible","No")
+            ENDIF
+
+        CASE $FormExit = "TypeCB"
+            IF $TypeCB
+                $Form1 = editform($Form1,"LogTypeCB","visible","Yes")
+            ELSE
+                $Form1 = editform($Form1,"LogTypeCB","visible","No")
+            ENDIF
+
+        CASE $FormExit = "OK"
+        MACSETTINGS Type=S Vars=SequenceNums,LogTypeCB,LogText,LogDate,TextCB,TypeCB,DateTimeCB
+        GOSUB Name=Run
+        BREAK
+
+        CASE $FormExit = "Cancel"
+        RETURN Msg="Macro Canceled"
+    ENDCASE
+ENDWHILE
+
+BEGINSUB Name=Run
+    IF At("-",$SequenceNums)>0
+        $Range=TRUE
+        $RangeStart=Extract($SequenceNums,"-",1)
+        $RangeEnd=Extract($SequenceNums,"-",2)
+    ELSE
+        $Range=FALSE
+    ENDIF
+
+    $SequenceNums="'" + Replace(",","','",$SequenceNums) + "'"
+    $sLogDate=DateToSql($LogDate)
+    IF $LogTimeEB=""
+        $LogTimeEB="19:00:00"
+    ENDIF
+    $sLogDateTime=$sLogDate + " $LogTimeEB"
+    TRANSACTION Action=Begin
+        $status = sqlite("open","$_appdata\gsak.db3")
+        IF $DateTimeCB
+            IF $Range=FALSE
+                $status = sqlite("sql","update PublishLogs SET pDate='$sLogDateTime' WHERE NOT pPublished AND pSeq IN($SequenceNums)")
+            ELSE
+                $status = sqlite("sql","update PublishLogs SET pDate='$sLogDateTime' WHERE NOT pPublished AND pSeq BETWEEN $RangeStart AND $RangeEnd")
+            ENDIF
+        ENDIF
+        IF $TypeCB
+            IF $Range=FALSE
+                $status = sqlite("sql","update PublishLogs SET pType = " + SqlQuote($LogTypeCB) + " WHERE NOT pPublished AND pSeq IN($SequenceNums)")
+            ELSE
+                $status = sqlite("sql","update PublishLogs SET pType = " + SqlQuote($LogTypeCB) + " WHERE NOT pPublished AND pSeq BETWEEN $RangeStart AND $RangeEnd")
+            ENDIF
+        ENDIF
+        IF $TextCB
+            IF $Range=FALSE
+                $status = sqlite("sql","update PublishLogs SET pText = " + SqlQuote($Logtext) + " WHERE NOT pPublished AND pSeq IN($SequenceNums)")
+            ELSE
+                $status = sqlite("sql","update PublishLogs SET pText = " + SqlQuote($Logtext) + " WHERE NOT pPublished AND pSeq BETWEEN $RangeStart AND $RangeEnd")
+            ENDIF
+        ENDIF
+        $status = sqlite("close","$_appdata\gsak.db3")
+    TRANSACTION Action=End
+ENDSUB
+
+<Data> VarName=$form1
+#********************************************************************
+# Form generated by GSAK form designer on Sun 15-Jan-2012 11:45:14
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Edit Unpublished Logs
+  Height = 369
+  Top = 363
+  Width = 544
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 126
+  Top = 291
+  Width = 75
+  Taborder = 6
+  Caption = Update
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 297
+  Top = 291
+  Width = 75
+  Taborder = 7
+  Caption = Cancel
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 10
+  Size = 9
+  Top = 6
+  Width = 499
+  Caption = Enter the sequence number(s) of the logs to change, separated by a comma, or as a range
+
+Name = SequenceNums
+  Type = Edit
+  Height = 21
+  Left = 10
+  Top = 26
+  Width = 505
+  Taborder = 1
+
+Name = Label2
+  Type = Label
+  Height = 17
+  Left = 11
+  Top = 49
+  Width = 346
+  Caption = For example: 10,20,50,80 or 10-40 (one form or the other, but not  both).
+
+Name = LogTypeCB
+  Type = Combobox
+  Height = 21
+  Left = 272
+  Top = 120
+  Visible = No
+  Width = 243
+  Taborder = 4
+
+Name = LogText
+  Type = Memo
+  Height = 89
+  Left = 10
+  Scrollbars = Vertical
+  Size = 10
+  Top = 185
+  Visible = No
+  Width = 505
+  Taborder = 5
+
+Name = LogDate
+  Type = Date
+  Height = 21
+  Left = 256
+  Top = 77
+  Visible = No
+  Width = 109
+  Taborder = 2
+
+Name = Label6
+  Type = Label
+  Height = 17
+  Left = 370
+  Size = 8
+  Top = 80
+  Visible = No
+  Width = 31
+  Caption = Time
+
+Name = LogTimeEB
+  Type = Edit
+  Height = 21
+  Left = 395
+  Top = 75
+  Visible = No
+  Width = 121
+  Taborder = 3
+
+Name = Label7
+  Type = Label
+  Height = 17
+  Left = 400
+  Top = 95
+  Visible = No
+  Width = 113
+  Caption = 24 hour - e.g 14:30:00
+
+Name = TextCB
+  Type = Checkbox
+  Exitonchange = Yes
+  Fontsize = 9
+  Height = 20
+  Left = 10
+  Top = 159
+  Width = 457
+  Taborder = 17
+  Caption = Check to enter the log text for these logs (all logs will have the same exact text)
+
+Name = TypeCB
+  Type = Checkbox
+  Exitonchange = Yes
+  Fontsize = 9
+  Height = 20
+  Left = 10
+  Top = 118
+  Visible = Yes
+  Width = 259
+  Taborder = 18
+  Caption = Check to select the Log Type for these logs
+
+Name = DateTimeCB
+  Type = Checkbox
+  Exitonchange = Yes
+  Fontsize = 9
+  Height = 20
+  Left = 10
+  Top = 74
+  Width = 245
+  Taborder = 19
+  Caption = Check to enter the date & time for the logs
+
+<enddata>
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,145 @@
+#************************************************************
+# MacVersion = 1.2
+# MacDescription = Displays 9 waypoints along with the center location on maps.live.com map.
+# MacAuthor = gkrone
+# MacFileName = MapsLive.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=6048
+#************************************************************
+#
+#	MapsLive.gsk change history
+#
+#-----------------------------------------------------------------------------#
+#
+# 8/16/2007 - Initial version 1.0
+#	Opens up a web browser to http://maps.live.com
+#	centered on the center location with the next 9
+#	waypoints annotated on the map.
+#
+# 8/21/2007 = version 1.1
+#	Fixed the problem with double quotes in the cache name and
+#	to the centerpoint name.
+#	Thanks to The Kai Team
+#
+# 7/7/2008 = version 1.2
+#	Use the Final Location child waypoint for the coordinates
+# 
+#-----------------------------------------------------------------------------#
+
+#-----------------------------------------------------------------------------#
+# Display waypoints on Maps Live webpage
+#
+# To get help creating the URL goto:
+# 	http://maps.live.com/default.aspx
+# Open the Help page and search for developer.
+# Select the "Build your own URL" topic
+#-----------------------------------------------------------------------------#
+
+#-----------------------------------------------------------------------------#
+# This is the major version data that the Macro was developed under.
+# Please let me know if it runs under previous versions of GSAK and I
+# will update the version numbers.  E-Mail me through my profile on
+# GSAK.net or geocaching.org.
+#-----------------------------------------------------------------------------#
+verCheck Version=7.1.1.00 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+
+#-----------------------------------------------------------------------------#
+# GSAK string variables are limited to 2GB in length
+#-----------------------------------------------------------------------------#
+$MappointUrl="http://maps.live.com/default.aspx?v=2"
+
+Gosub Name=CreateCenterPoint
+
+if len("$CenterUrl") > 0
+	$MappointUrl="$MappointUrl$CenterUrl"
+endif
+
+
+#-----------------------------------------------------------------------------#
+# Centerpoint is the first
+#-----------------------------------------------------------------------------#
+$RecordNum=1
+
+#-----------------------------------------------------------------------------#
+# Limit number of waypoints sent because the 
+# scratch pad will only display 10
+#-----------------------------------------------------------------------------#
+While NOT ($_EOL) AND $RecordNum < 10
+
+	$wptName = HttpEncode(Replace(Chr(34)," ",$d_Name,TRUE))
+        #-----------------------------------------------------------------------------#
+	# Don't overwrite the centerpoint pin if centered on a waypoint
+        #-----------------------------------------------------------------------------#
+	if "$Centername" <> "$wptName"
+		$bChildFound = false
+		$WPName = $wptName
+		#---------------------------------------------------------------------------#
+		# Use Final child waypoint if it exists
+		#---------------------------------------------------------------------------#
+		TABLE Active=Waypoints Scope=Parent
+		GOTO Position=Top
+
+		While  .not. $_EOL
+			IF $d_cType = "Final Location"
+				$ChildLat = $d_cLat
+				$ChildLon = $d_cLon
+				$wptString="~an."+$ChildLat+"_"+$ChildLon+"_"+$d_cCode+"_"+$WPName
+				$bChildFound = true
+			endif
+			GOTO Position=Next
+		EndWhile
+		Table Active=Caches
+
+		if $bChildFound = false		
+	                #-----------------------------------------------------------------------------#
+			# Create the annotation from the waypoint
+			# HttpEncode takes care of special characters
+			# but does not handle embedded quotes
+			#-----------------------------------------------------------------------------#
+			$wptString="~an.%lat_%lon_"+$d_Code+"_$wptName"
+		endif
+
+		#-----------------------------------------------------------------------------#
+		# Append the annotation to the URL
+		#-----------------------------------------------------------------------------#
+		$MappointUrl = "$MappointUrl$wptString" 
+
+		$RecordNum = $RecordNum + 1
+
+		#-----------------------------------------------------------------------------#
+		# Move to the next record only if we will be processing more
+		#-----------------------------------------------------------------------------#
+		if $RecordNum < 10
+			Goto POSITION=Next
+		endif
+	else
+		Goto POSITION=Next
+	endif
+EndWhile
+
+WEB URL=$MappointUrl
+
+
+#-----------------------------------------------------------------------------#
+# Creates the centerpoint portion of the Url    
+#-----------------------------------------------------------------------------#
+BeginSub Name=CreateCenterPoint
+	#---------------------------------------------------------------------#
+	# Get the center point from the ini file
+	#---------------------------------------------------------------------#
+	$centerlat = allTrim(Sysinfo("gsakini;LastCenter;Lat"))
+	$centerlon = allTrim(Sysinfo("gsakini;LastCenter;Lon")) 
+	$centername = allTrim(Sysinfo("gsakini;LastCenter;Desc"))
+	$centername = HttpEncode(Replace(Chr(34)," ",$centername,TRUE))
+	
+	
+	#---------------------------------------------------------------------#
+	# Make sure we have coordinates to work with
+	#---------------------------------------------------------------------#
+	if len("$centerlat") > 0 AND len("$centerlon") > 0
+		#-------------------------------------------------------------#
+		# Set the center point of the map using the CENTER location
+		#-------------------------------------------------------------#
+		$CenterUrl="&cp=$centerlat~$centerlon&lvl=13&sp=an."+"$centerlat"+"_"
+		$CenterUrl=$CenterUrl+"$centerlon"+"_CenterPoint"+"_"+"$centername"
+	endif
+EndSub

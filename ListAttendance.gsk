@@ -1,0 +1,66 @@
+################################################################################
+# This macro will list, in alphabetical order, all cachers who posted a
+# "Will Attend", "Attended", or "Write Note" log along with a tally of
+# each log type with summary counts listed at the top.
+#
+# MacDescription = List event cache attendance in alphabetical order
+# MacFileName = ListAttendance.gsk
+# MacAuthor = Cache U Nuts
+# MacVersion = 1.1.1
+# MacUrl = http://gsak.net/board/index.php?showtopic=8812
+#
+# Version History:
+# v1.0.0 07/03/08 - Initial release.
+# v1.1.0 11/09/11 - Updated to tally and also include Notes (now using SQLite).
+# v1.1.1 11/18/11 - Changed to make alphabetical ordering case insensitive.
+################################################################################
+
+VERCHECK Version=7.2.3.0 (please update GSAK to the latest version to run this macro - see http://gsak.net)
+
+$outfile  = $_AppData + "\Macros\ListAttendance.txt"
+
+# collect attendance log names
+$_sql = "SELECT DISTINCT lBy FROM Logs WHERE lParent='$d_Code' AND lType IN ('Will Attend','Attended','Write note') ORDER BY lBy"
+$names = SQLite("sql",$_sql)
+$countC = $_SqlRows
+
+# build attendance header
+$countN = Val(SQLite("sql","SELECT Count(lBy) FROM Logs WHERE lParent='$d_Code' AND lType='Write note'"))
+$countW = Val(SQLite("sql","SELECT Count(lBy) FROM Logs WHERE lParent='$d_Code' AND lType='Will Attend'"))
+$countA = Val(SQLite("sql","SELECT Count(lBy) FROM Logs WHERE lParent='$d_Code' AND lType='Attended'"))
+$output = $d_Name + " attendance as of " + DateFormat($d_Changed) + $_NewLine
+$output = $output + "Total number of cachers logging:  " + NumToStr($countC) + $_NewLine
+$output = $output + "Total number of Write note logs:  " + NumToStr($countN) + $_NewLine
+$output = $output + "Total number of Will Attend logs: " + NumToStr($countW) + $_NewLine
+$output = $output + "Total number of Attended logs:    " + NumToStr($countA) + $_NewLine
+$output = $output + $_NewLine
+$output = $output + " N   W   A    Cacher Name" + $_NewLine
+$output = $output + "--- --- ---   -------------------------------" + $_NewLine
+
+# build attendance list
+$_sql = "SELECT N, W, A, Name FROM "
+$_sql = $_sql + "(SELECT DISTINCT lBy AS Name FROM Logs WHERE lParent='$d_Code' AND lType IN ('Write note','Will Attend','Attended')) LEFT JOIN "
+$_sql = $_sql + "(SELECT lBy AS NameN, Count(lType) AS N FROM Logs WHERE lParent='$d_Code' AND lType='Write note'  GROUP BY lBy) ON Name=NameN LEFT JOIN "
+$_sql = $_sql + "(SELECT lBy AS NameW, Count(lType) AS W FROM Logs WHERE lParent='$d_Code' AND lType='Will Attend' GROUP BY lBy) ON Name=NameW LEFT JOIN "
+$_sql = $_sql + "(SELECT lBy AS NameA, Count(lType) AS A FROM Logs WHERE lParent='$d_Code' AND lType='Attended'    GROUP BY lBy) ON Name=NameA ORDER BY Lower(Name)"
+$tally = SQLite("sql",$_sql)
+$row = 1
+WHILE $row <= $_SqlRows
+  $line = EXTRACT($tally,$_NewLine,$row)
+  $n = Right("  "+EXTRACT($line,";",1),2)
+  $w = Right("  "+EXTRACT($line,";",2),2)
+  $a = Right("  "+EXTRACT($line,";",3),2)
+  $name = EXTRACT($line,";",4)
+  $output = $output + "$n  $w  $a    $name" + $_NewLine
+  $row = $row + 1
+ENDWHILE
+
+# display output in Notepad
+$status = PutFile($outfile,$output)
+IF Left($status,7) = "*Error*"
+  PAUSE Msg="$status"
+  CANCEL
+ENDIF
+FILEOPEN File=$outfile
+
+

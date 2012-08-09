@@ -1,0 +1,350 @@
+vercheck version=7.7.2.16 (please update GSAK to the latest version to run this macro - see http://gsak.net)
+
+#*******************************************
+# MacVersion = 0.971
+# MacDescription = Compare GC.com watchlist against database 
+# MacAuthor = Cairngorm
+# MacFileName = WatchlistSync.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=15585
+#*******************************************
+
+SHOWSTATUS msg="Initializing"
+
+MACROFLAG type=clear range=all
+
+#initialize lists to store the names and gcids of caches that aren't in the database
+$tempstring = list("notindb","create",";") 
+$tempstring = list("notindb_gcid","create",";") 
+
+#GC.com constants
+#markers around the name of an archived or disabled cache
+ $archived1 = "<span class=" +quote("Strike Warning") +">"
+ $archived2 = "</span>"
+ $disabled1 = "<span class=" +quote("Strike") +">"
+ $disabled2 = "</span>"
+
+if $_Units = "M"
+	$unit = "mi."
+	else
+	$unit = "km"
+	endif
+
+#End of setup
+##############################################
+#Get watchlist and verify that that's what it is
+
+SHOWSTATUS msg="Requesting your watchlist"
+WEB url="http://www.geocaching.com/my/watchlist.aspx"
+SHOWSTATUS msg="dummytext" display=off
+
+$pointer = 0
+#we'll use $pointer to scan through the html file.
+#Start by loading the file, identifying the user AND verifying we have the correct html
+
+#load the GC.com html into $html
+$html=GetClipText()
+$html_lc = lower($html)
+
+$pointer = at("hello, ",$html_lc)
+WHILE $pointer = 0
+	$pointer = at("<span>log in to geocaching.com</span>",$html_lc)
+	if $pointer>0
+		msgok msg="You are not logged in. WatchlistSync is quitting."
+		cancel
+		ELSE
+		if not(yesno("Please go to your Watchlist page, and copy the source code, like this: In Chrome or Firefox, hold Ctrl while you s.l.o.w.l.y type uac. In Internet Explorer, hold Alt while you s.l.o.w.l.y type vceaec. Then come back here and continue. Ready to continue?"))
+			cancel
+			endif
+		#reload and check the page 
+		$html=GetClipText()
+		$html_lc = lower($html)
+		$pointer = at("hello, ",$html_lc)
+		ENDIF
+	ENDWHILE
+
+#get user name
+$pointer = AtStart(">",$html_lc,$pointer)+1
+$pointer2 = AtStart("<",$html_lc,$pointer)
+$tempstring = substr($html,$pointer,$pointer2-$pointer)
+IF NOT (YesNo("Logged in as " + $tempstring + ", ok?"))
+	cancel
+	ENDIF
+
+#search html for the start of the actual list
+$pointer = AtStart("geocaches on your watchlist",$html_lc,$pointer2)
+if $pointer=0
+	msgok msg="You don't seem to be watching any caches - quitting."
+	cancel
+	ENDIF
+#and to the exact start of the entry for the first cache (have to do this to make the WHILE loop work perfectly)
+$pointer = AtStart("<tbody>",$html_lc,$pointer)
+$endofwatchlist = AtStart("</table>",$html_lc,$pointer)
+
+#########MAIN LOOP - iterate through caches on Watchlist page ##################
+$tempcount=0
+WHILE $tempcount<25
+$tempcount=$tempcount+1
+#WHILE $pointer < $endofwatchlist
+
+	#get name of cache
+	if $pointer > $endofwatchlist 
+		#TERMINATE THE MAIN LOOP, break out from here	
+		SHOWSTATUS msg="Preparing report"
+		break
+		endif
+	$pointer = AtStart("a href",$html_lc,$pointer)
+	$pointer = AtStart(">",$html_lc,$pointer)+1
+	$pointer2 = AtStart("</a>",$html_lc,$pointer)
+	$cachetitle = AllTrim(substr($html,$pointer,$pointer2 -$pointer))
+
+	#if needed, burst $cachetitle:
+	IF left($cachetitle,len($archived1)) = $archived1
+		$cachetitle = substr($cachetitle, len($archived1)+1, len($cachetitle)-len($archived1)-len($archived2))
+		$cachetitle = $cachetitle + " <--ARCHIVED CACHE"
+		ENDIF
+	IF left($cachetitle,len($disabled1)) = $disabled1
+		$cachetitle = substr($cachetitle, len($disabled1)+1, len($cachetitle)-len($disabled1)-len($disabled2))
+		$cachetitle = $cachetitle + " <--DISABLED CACHE"
+		ENDIF
+
+#	#get url for the unwatch command
+#	$pointer = AtStart("a href",$html_lc,$pointer)+8
+#	$pointer2 = AtStart(" title",$html_lc,$pointer)-1
+#	$remove_url = "http://www.geocaching.com" + substr($html,$pointer,$pointer2 -$pointer)
+
+	$pointer = AtStart("value=",$html_lc,$pointer) +7
+	$pointer2 = AtStart("/>",$html_lc,$pointer) -2
+	$gcid = substr($html,$pointer,$pointer2 -$pointer)
+	$dec = val($gcid)
+	#convert the decimal gcid to a GC code:
+	gosub name=dectoGC
+	$codeandname = $GCcode + " " + $cachetitle
+
+	#is this cache in the database?	
+	Mfilter Where=Code=$GCcode
+	IF $_FilterCount>0
+		#if so set the macro flag to show we found it on the watchlist
+		MacroFlag type=set range=filter
+		ELSE
+		#else add to the two notindb lists
+		$tempstring = list("notindb","add",$codeandname)
+		$tempstring = list("notindb_gcid","add",$gcid)
+		ENDIF
+	#move to start of next entry 
+	$pointer = AtStart("<tr",$html_lc,$pointer)
+	ENDWHILE
+
+##########END OF MAIN LOOP######################################################
+SHOWSTATUS msg="Preparing report"
+
+#prepare a list of caches on the watchlist that aren't in the current db
+$tempstring = list("notindb","count","")
+$NOTINDB = val($tempstring)
+
+#prepare a list of caches on the watchlist that aren't flagged as watched in the db
+Mfilter Where=MacroFlag and not Watch
+$NOTFLAGGED = $_FilterCount
+
+#prepare a list of caches flagged as watched in the db that aren't on the watchlist 
+Mfilter Where=Watch and not MacroFlag
+$NOTONLIST = $_FilterCount
+
+SHOWSTATUS msg="Reporting"
+
+#if everything is in perfect sync, WE ARE DONE!
+if $NOTINDB + $NOTFLAGGED + $NOTONLIST = 0
+	msgok msg="Your watchlist and this database are in perfect sync. Thank you for using WatchlistSync"
+	CANCEL
+	endif
+
+############THREE MAIN REPORTS TO PROCESS#########################################
+#otherwise there are three conditions to attend to - (1) not in db, (2) not flagged, (3) not on list
+#TODO: separate out archived caches from others in the first group
+#TODO: also, offer to delete archived from database
+#TODO: persistent settings
+
+SHOWSTATUS msg="dummytext" display=off
+IF $NOTINDB > 0
+	IF $NOTINDB = 1
+		$tempstring = "There's one cache on your watchlist that's not in the current database."	
+		else
+		$tempstring = numtostr($NOTINDB) + " caches on your watchlist are not in the current database."
+		endif
+	CHOOSE Msg=$tempstring opt1="Do nothing" opt2="Review caches for addition to database" opt3="Review caches for removal from watchlist"
+	$tempstring = list("notindb","get","") 
+	BEGINCASE
+		CASE $Result=1
+			#do nothing, as promised
+		CASE $Result=2
+			#Add some to the database 
+			$Count= 1
+			WHILE $count<$NOTINDB + 1
+				$tempstring = "Open the geocaching.com page where you can download a GPX for " + list("notindb","item",numtostr($count)) + "?"
+				if yesno($tempstring)
+					$dec = val(list("notindb_gcid","item",numtostr($count)))
+					gosub name=dectoGC
+					$tempstring = "http://www.geocaching.com/seek/cache_details.aspx?wp=" + $GCcode
+					web url=$tempstring
+					endif
+				$Count= $Count +1
+				ENDWHILE
+		CASE $Result=3
+			#remove some from watchlist
+			goto position=top
+			$Count=1
+			WHILE $count< $NOTINDB +1
+				$tempstring = "Open the geocaching.com watchlist page where you can remove " + list("notindb","item",numtostr($count)) + "?"
+				if yesno($tempstring)
+					$tempstring = "http://www.geocaching.com/my/watchlist.aspx?ds=1&id=" + list("notindb_gcid","item",numtostr($count)) + "&action=rem"
+					web url=$tempstring
+					endif
+				$Count= $Count +1
+				goto position=next
+
+				ENDWHILE
+		ENDCASE
+	ENDIF
+
+SHOWSTATUS msg="dummytext" display=off
+IF $NOTFLAGGED > 0
+	IF $NOTFLAGGED = 1
+		$tempstring = "There's one cache on your watchlist that's not in the current database."
+		else
+		$tempstring = numtostr($NOTINDB) + " caches on your watchlist are not in the current database."
+		endif
+	$tempstring = numtostr($NOTFLAGGED) + " caches on your watchlist aren't marked WATCH in the database."
+	CHOOSE Msg=$tempstring opt1="Do nothing"  opt2="Fix the database" opt3="Review for removal from watchlist" opt4="See cache(s) in GSAK" 
+	#get (again) the list of caches on the watchlist that aren't flagged as watched in the db
+	Mfilter Where=MacroFlag and not Watch
+	BEGINCASE
+		CASE $Result=1
+			#do nothing, as promised
+		CASE $Result=2
+			#flag all as watched
+			goto position=top
+			$Count=$NOTFLAGGED
+			WHILE $count>0
+				$tempstring = numtostr($Count)
+				SHOWSTATUS msg=$tempstring
+				$d_Watch=true
+				$Count= $Count-1
+				goto position=next
+				ENDWHILE
+		CASE $Result=3
+			#remove some from watchlist
+			goto position=top
+			$Count=$NOTFLAGGED
+			WHILE $count>0
+				$tempstring = "Open the geocaching.com watchlist page where you can remove " + $d_Name + " (placed " + DateFormat($d_PlacedDate) + " by " + $d_PlacedBy + ") (" + numtostr($d_Distance) + $unit + " " + $d_Bearing + ")?"
+				if yesno($tempstring)
+					web url="http://www.geocaching.com/my/watchlist.aspx?ds=1&id=%gcid&action=rem"
+					endif
+				$Count= $Count -1
+				goto position=next
+				ENDWHILE
+		CASE $Result=4
+			#See caches
+			$shownotflagged = true
+			IF $NOTFLAGGED = 1
+				msgok msg="Okay, the cache will appear in GSAK when the macro closes."
+				else
+				msgok msg="Okay, these caches will appear in GSAK when the macro closes."
+				endif
+		ENDCASE
+	endif
+
+
+SHOWSTATUS msg="dummytext" display=off
+if $NOTONLIST >0
+	IF $NOTFLAGGED = 1
+		$tempstring = "A cache marked WATCH in this database isn't on your watchlist."
+		else
+		$tempstring = numtostr($NOTONLIST) + " caches marked WATCH in this database aren't on your watchlist."
+		endif
+	CHOOSE Msg=$tempstring opt1="Do nothing"  opt2="Fix the database" opt3="Review for addition to watchlist" opt4="See cache(s) in GSAK" 
+	#get (again) the list of caches on the watchlist that aren't flagged as watched in the db
+	Mfilter Where=Watch and not MacroFlag
+	BEGINCASE
+		CASE $Result=1
+			#do nothing, as promised
+		CASE $Result=2
+			#Remove Flags
+			#remove all flags
+			goto position=top
+			$Count=$NOTONLIST
+			WHILE $count >0
+				$tempstring = numtostr($Count)
+				SHOWSTATUS msg=$tempstring
+				$d_Watch=false
+				$Count= $Count-1
+				goto position=next
+				ENDWHILE
+		CASE $Result=3
+			#add all to watchlist
+			goto position=top
+			$Count=$NOTONLIST
+			WHILE $count>0
+				$tempstring = "Go to geocaching.com and add " + $d_Name + " (placed " + DateFormat($d_PlacedDate) + " by " + $d_PlacedBy + ") (" + numtostr($d_Distance) + " " + $d_Bearing + ")?"
+				if yesno($tempstring)
+					web url="http://www.geocaching.com/my/watchlist.aspx?w=%gcid"
+					endif
+				$Count= $Count -1
+				goto position=next
+				ENDWHILE
+		CASE $Result=4
+			#See caches
+			msgok msg="Okay, these caches will appear in GSAK when the macro closes."
+			$shownotonlist = true
+		ENDCASE
+	endif
+
+IF varexists("shownotonlist") AND varexists("shownotflagged")
+	Mfilter Where=(MacroFlag and not Watch) or (Watch and not MacroFlag)
+	msgok msg="Your GSAK window now contains caches marked as watched which you are not watching, and caches not marked as watched which you are watching. To see which is which, look at your Watch Status column."
+	ELSE
+	if varexists("shownotonlist")
+		Mfilter Where=(Watch and not MacroFlag)
+		endif
+	if varexists("shownotflagged")
+		Mfilter Where=(MacroFlag and not Watch)
+		endif
+#	optional code that breaks the GSAK philosophy of silent running:
+#	if NOT(varexists("shownotonlist")) AND NOT(varexists("shownotflagged"))
+#		msgok msg="Thank you for using WatchlistSync."
+#		endif
+	ENDIF
+			
+CANCEL
+##################################################################################################
+
+#***SUBROUTINES***
+BEGINSUB name=dectoGC
+#convert decimal to GC code
+IF $dec < 65536
+#### here's a reusable dec to hex converter for integers of any size
+	$x = $dec
+	$hexstring = ""
+	WHILE $x > 0
+		$q = int ($x/16)
+		$r = $x - 16*$q
+		IF $r > 9
+			$r = $r + 7
+			ENDIF
+		$hexstring = chr($r +48) + $hexstring
+		$x = $q
+		ENDWHILE
+#### end reusable code
+	$GCcode = $hexstring
+ELSE 
+	$x = $dec + 411120
+	$GCcode = ""
+	WHILE $x > 0
+		$q = int ($x/31)
+		$r = $x -31*$q
+		$GCcode = substr("0123456789ABCDEFGHJKMNPQRTVWXYZ",$r+1,1) + $GCcode
+		$x = $q
+		ENDWHILE
+	ENDIF
+	$GCcode = "GC" + $GCcode
+ENDSUB
+

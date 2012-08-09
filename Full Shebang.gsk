@@ -1,0 +1,26 @@
+# GSAK macro to import all *.gpx files from PQs
+# (appending/synchronizing duplicates)
+# then export all unfound records to CacheMate .PDB file
+# (appending/synchronizing duplicates)
+# then pause
+# then export "ToGPSr" filter to GPSr
+#
+
+GETMAIL settings="Gmail" onerror=Prompt
+DATABASE name="Found Caches" action=select
+LOAD settings="Found Caches" database="Found Caches"
+DATABASE name="Default" action=select
+LOAD settings="Standard Load" database="Default"
+DATABASE name="Benchmarks" action=select
+EXPORT type=CMT settings="Benchmarks"
+DATABASE name="Default" action=Select
+CENTRE location="Home"
+FILTER name="Unfound from home"
+EXPORT type=CMT settings="Unfound"
+USERFLAG type=clear range=all
+USERFLAG type=set range=950
+FILTER name="user flag = set"
+PAUSE msg="Ready to dump unfound waypoints. Power on and connect GPSr."
+EXPORT type=GPS settings="Standard"
+CANCELFILTER
+USERFLAG type=clear range=all

@@ -1,0 +1,163 @@
+#############################################################
+# MacVersion = 1.2
+# MacDescription = Atomic Alphabetizer - Alphabetical Cache Lister
+# MacAuthor = Atomic Falcon
+# MacFileName = Alphabetizer.gsk
+# MacUrl = http://gsak.net/board/index.php?act=ST&f=37&t=17954
+# NOTE = This macro generates an alphabetical list of caches or cache owners from whatever caches are in the current filter.
+#        This is good for those alphabet challenge caches.
+#############################################################
+#
+# Version changes:
+# - 1.1 03/17/2011 Added correct MacUrl to header.
+# - 1.1 03/17/2011 Fixed bug that occurred when there were no found caches for the letters at the end of the alphabet.
+# - 1.2 03/24/2012 Added ability to alphabetize by cache name or cache owner.
+# - 1.2 03/24/2012 Fixed bug that would not display Z if there was no Y or Z.
+# - 1.2 03/24/2012 Fixed bug that would not display a found Z cache if it had already came across and unfound Z cache.
+
+CHOOSE Msg="Is this challenge for alphabetizing Cache Names or Cache Owners?" Opt1="Cache Names" Opt2="Cache Owners"
+BEGINCASE
+CASE $Result = 1
+   $Type = "CacheName"
+   $SortBy="Name"  # Put caches in alphabetical order by Cache Name.
+CASE $Result = 2
+   $Type = "CacheOwner"
+   $SortBy="g_Upper(OwnerName)"  # Put caches in alphabetical order by Cache Owner.
+ENDCASE
+
+CHOOSE Msg="Is this an Alphabetic Challenge or Alphanumeric Challenge?" Opt1="Alphabetic" Opt2="Alphanumeric"
+BEGINCASE
+CASE $Result = 1
+   $Alphanumeric = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+CASE $Result = 2
+   $Alphanumeric = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+ENDCASE
+$Max = LEN($Alphanumeric)
+
+#TIMER Status=On
+   
+MACROFLAG Type=Clear Range=All
+$TheList = ""
+$TheNotList = ""
+$PreviousLetter = ""
+$LastFoundLetter = ""
+$Found = 0
+$Unfound = 0
+$OriginalSort = $_OrderBy  # Save the original sort order.
+SORT By=$SortBy  # Put caches in required order.
+#SPEEDMODE Status=Off  # Do this so user can see progress through the caches.
+
+GOTO Position=Top
+WHILE NOT($_EOL)
+   IF $Type = "CacheName"
+      $Object = $d_Name
+      $ListData = $d_Name + " - " + $d_Code  + " - "
+   ELSE
+      $Object = $d_OwnerName
+      $ListData = $d_OwnerName + " - " + $d_Code  + ":" + $d_Name + " - "
+   ENDIF
+   SHOWSTATUS Msg=$Object
+   $d_MacroFlag = FALSE
+   
+   # This code block finds the first alphanumeric character in the cache name.
+   # This is needed in case cache name begins with a punctuation mark.
+   # If this is a cache owner's name that begins with a punctuation mark, just skip it since GSAK does not sort these properly.
+   $I = 1
+   $FirstLetter = ""
+   WHILE TRUE  
+      $FirstLetter = UPPER(SUBSTR($Object,$I,1))
+      IF AT($FirstLetter,"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") > 0
+         BREAK
+      ELSE
+         IF $Type = "CacheName"
+            $I = $I + 1
+            IF $I > LEN($Object)
+               # This object has no alphanumeric characters in it's name.  Reset and move on.
+               $I = 1
+               GOTO Position=Next
+               IF $_EOL
+                  BREAK
+               ENDIF
+               $Object = $d_Name
+               $ListData = $d_Name + " - " + $d_Code  + " - "
+            ENDIF
+         ELSE  # Type is Cache Owner.  Since it begins with a punctuation mark, just skip it.
+            $I = 1
+            GOTO Position=Next
+            IF $_EOL
+               BREAK
+            ENDIF
+            $Object = $d_OwnerName
+            $ListData = $d_OwnerName + " - " + $d_Code  + ":" + $d_Name + " - "
+         ENDIF
+      ENDIF
+   ENDWHILE
+
+   # Now see if the first letter gives us a new letter cache.
+   BEGINCASE
+   CASE AT($FirstLetter,$Alphanumeric) = 0  
+      # First letter is not a valid letter in our character set, so do nothing.
+   CASE AT($FirstLetter,$Alphanumeric) > AT($PreviousLetter,$Alphanumeric)
+      # We have found a new letter to list.
+      IF NOT($TheNotList = "")
+         # We didn't have any found caches in the last letter, so tack on the not found one.
+         $TheList = $TheList + $TheNotList
+         $TheNotList = ""
+         $Unfound = $Unfound + 1
+      ENDIF
+      WHILE AT($PreviousLetter,$Alphanumeric) + 1 < AT($FirstLetter,$Alphanumeric)
+         # This while loop fills in the blanks in the list.
+         $PreviousLetter = SUBSTR($Alphanumeric,AT($PreviousLetter,$Alphanumeric) + 1,1)
+         $TheList = $TheList + $PreviousLetter + " = " + $_NEWLINE
+      ENDWHILE
+      IF $d_Found = TRUE
+         $TheList = $TheList + $FirstLetter + " = " + $ListData + DateFormat($d_FoundByMeDate) + $_NewLine
+         $TheNotList = ""
+         $LastFoundLetter = $FirstLetter
+         $Found = $Found + 1
+         IF $FirstLetter = RIGHT($Alphanumeric,1)
+            BREAK  # We've found the last possible letter, so break out of the main while loop and finish.
+         ENDIF
+      ELSE
+         $TheNotList = $FirstLetter + " = " + $ListData + "N O T  F O U N D " + $_NewLine
+      ENDIF
+      $d_MacroFlag = TRUE
+      $PreviousLetter = $FirstLetter
+   CASE NOT($FirstLetter = $LastFoundLetter) AND $d_Found = TRUE   # Same letter as before.  See if we have a 'found' cache for this letter.
+      $TheList = $TheList + $FirstLetter + " = " + $ListData + DateFormat($d_FoundByMeDate) + $_NEWLINE
+      $TheNotList = ""
+      $LastFoundLetter = $FirstLetter
+      $Found = $Found + 1
+   ENDCASE 
+            
+   GOTO Position=Next
+
+ENDWHILE
+
+# Finish the remaining letters if we haven't already gone through the alphabet.
+IF NOT($TheNotList = "")
+   # We didn't have any found caches in the last letter, so tack on the not found one.
+   $TheList = $TheList + $TheNotList
+   $TheNotList = ""
+   $Unfound = $Unfound + 1
+ENDIF
+WHILE AT($FirstLetter,$Alphanumeric) < LEN($Alphanumeric)
+   # This while loop fills in the blanks in the list.
+   $FirstLetter = SUBSTR($Alphanumeric,AT($FirstLetter,$Alphanumeric) + 1,1)
+   $TheList = $TheList + $FirstLetter + " = " + $_NEWLINE
+ENDWHILE
+
+#TIMER Status=Off
+CLIP Data=$TheList
+#MFilter Expression=$d_MacroFlag
+SORT By=$OriginalSort  # Put caches back in original order.
+
+$TheMsg = "This list includes " + NUMTOSTR($Found + $Unfound)  + " of the " + NUMTOSTR($Max) + " caches possible ("
+$TheMsg = $TheMsg + NUMTOSTR($Found) + " found, " + NUMTOSTR($Unfound) + " unfound)." + $_NEWLINE 
+$TheMsg = $TheMsg + "This list has been copied to your clipboard." + $_NEWLINE + $_NEWLINE
+$TheMsg = $TheMsg + $TheList
+IF $Type = "CacheOwner"
+   $TheMsg = $TheMsg + $_NEWLINE + "Note: This macro uses the Owner Name field (not the Placed By field) in sorting cache owner names."
+   $TheMsg = $TheMsg + $_NEWLINE + "Note: All caches with cache owner names that begin with a punctuation mark were ignored since GSAK does not sort them properly."
+ENDIF
+MSGOK Caption="Atomic Alphabetizer v1.2" Msg=$TheMsg

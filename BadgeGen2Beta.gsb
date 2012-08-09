@@ -1,0 +1,2489 @@
+#*******************************************
+# MacVersion = 2.0.37
+# MacDescription = Generates badges based on your finds
+# MacAuthor = ky.m.guy
+# MacFileName = BadgeGen2Beta.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=13541
+#*******************************************
+
+
+VERCHECK Version=7.7.0.0 (please update GSAK to version 7.7 beta to run this macro - see http://gsak.net/board/index.php?showtopic=13999&view=findpost&p=94364)
+
+$FindStatGenFile="$_Install" + "\Macros\FindStatGen3.gsk"
+
+
+$Size="100"
+$Current=$_CurrentDatabase
+$DBs=SysInfo("databases")
+$Form = editform($Form,"EditBox","values",$DBs)
+$Form = editform($Form,"EditBox2","values",$DBs)
+$iYou="I"
+
+#---------------------------------------------------
+GOSUB name=Declaration
+GOSUB name=MainForm
+#---------------------------------------------------
+
+
+
+#--------------
+# SubRoutines
+#--------------
+
+
+BEGINSUB name=MainForm
+	WHILE TRUE
+		$FormExit = form($form,"")
+		BeginCase
+		CASE $FormExit = "SystemExit"
+			CANCEL
+		CASE $FormExit = "Button1"
+			GOSUB name=Run
+			RETURN
+		CASE $FormExit = "Forum"
+			WEB Url=$MacURL
+		CASE $FormExit = "ShowRanges"
+			GOSUB name=ShowLimits
+		EndCase
+	ENDWHILE
+ENDSUB #name=MainForm
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=ShowLimits
+	$Message="Please Wait"
+	GOSUB name=Tense
+	GOSUB name=Counter
+	GOSUB name=Assignment
+	GOSUB name=HoverText
+	$Memo1=$LimitSummary
+	WHILE TRUE
+		$FormExit = form($form2,"")
+		BeginCase
+		CASE $FormExit = "SystemExit"
+			BREAK
+		CASE $FormExit = "Back"
+			BREAK
+		EndCase
+	ENDWHILE
+ENDSUB #name=ShowLimits
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=RUN
+	MacSettings Type=S Vars=Editbox,Editbox2,FSG,Suppress,FirstPerson,ThirdPerson,Username,Size,ShowType,ShowSize,ShowFTF,ShowDiff,ShowCoun,ShowHidd,ShowElev File="BadgeGenSavedSettings.data"
+
+	IF ($FirstPerson=FALSE OR $ShowHidd=TRUE) AND $Username=""
+		MSGOK msg="You did not input a username. Please try again"
+		GOSUB name=MainForm
+	ENDIF
+	SHOWSTATUS msg="Preparing Databases"
+	GOSUB name=Tense
+	$Message="Determining Badges"
+	IF not($RANDOMVARR=1)
+		GOSUB name=Counter
+	ENDIF
+	GOSUB name=Assignment
+	GOSUB name=PrepareHTML
+	GOSUB name=Output
+	DATABASE Name=$Current
+ENDSUB #name=run
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=Tense
+	IF $FirstPerson=TRUE
+		$iYou="I"
+		$hh="have"
+		$nn="need"
+	ELSE
+		$iYOU=$Username
+		$hh="has"
+		$nn="needs"
+	ENDIF
+ENDSUB #name=Tense
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=Counter
+
+
+	#Selects the desired database:
+	IF not(DatabaseExists($Editbox))
+		MsgOK msg="That database does not exist.  Please try again"
+		GOSUB name=MainForm
+	ENDIF
+
+	IF not($_CurrentDatabase=$Editbox)
+		DATABASE name=$Editbox StopStartupMacro=Y
+	ENDIF
+	MFILTER Expression=$d_Found
+	SQLITECACHES Scope=Filter
+	SHOWSTATUS msg="Counting Traditionals"
+	$CountTemp = SQLite("sql","Select COUNT(CacheType) from caches where cachetype='T' AND Found")
+	$Trad = Val($CountTemp)
+	SHOWSTATUS msg="Counting Multis"
+	$CountTemp = SQLite("sql","Select COUNT(CacheType) from caches where cachetype='M' AND Found")
+	$Mult = Val($CountTemp)
+	SHOWSTATUS msg="Counting Virtuals"
+	$CountTemp = SQLite("sql","Select COUNT(CacheType) from caches where cachetype='V' AND Found")
+	$Virt = Val($CountTemp)
+	SHOWSTATUS msg="Counting Mysteries"
+	$CountTemp = SQLite("sql","Select COUNT(CacheType) from caches where cachetype='U' AND Found")
+	$Myst = Val($CountTemp)
+	SHOWSTATUS msg="Counting Letterboxes"
+	$CountTemp = SQLite("sql","Select COUNT(CacheType) from caches where cachetype='B' AND Found")
+	$Lett = Val($CountTemp)
+	SHOWSTATUS msg="Counting Wherigos"
+	$CountTemp = SQLite("sql","Select COUNT(CacheType) from caches where cachetype='I' AND Found")
+	$Wher = Val($CountTemp)
+	SHOWSTATUS msg="Counting Webcams"
+	$CountTemp = SQLite("sql","Select COUNT(CacheType) from caches where cachetype='W' AND Found")
+	$Webc = Val($CountTemp)
+	SHOWSTATUS msg="Counting Earthcaches"
+	$CountTemp = SQLite("sql","Select COUNT(CacheType) from caches where cachetype='R' AND Found")
+	$Eart = Val($CountTemp)
+	SHOWSTATUS msg="Counting Mega Events"
+	$CountTemp = SQLite("sql","Select COUNT(CacheType) from caches where cachetype='Z' AND Found")
+	$Mega = Val($CountTemp)
+	SHOWSTATUS msg="Counting Events"
+	$CountTemp = SQLite("sql","Select COUNT(CacheType) from caches where cachetype='E' AND Found")
+	$Even = Val($CountTemp)
+	SHOWSTATUS msg="Counting CITO Events"
+	$CountTemp = SQLite("sql","Select COUNT(CacheType) from caches where cachetype='C' AND Found")
+	$CITO = Val($CountTemp)
+	SHOWSTATUS msg="Counting Benchmarks"
+	$CountTemp = SQLite("sql","Select COUNT(CacheType) from caches where cachetype='G' AND Found")
+	$Benc = Val($CountTemp)
+	SHOWSTATUS msg="Counting Micros"
+	$CountTemp = SQLite("sql","Select count(container) from caches where container = 'Micro' AND Found")
+	$Micr = Val($CountTemp)
+	SHOWSTATUS msg="Counting Smalls"
+	$CountTemp = SQLite("sql","Select count(container) from caches where container = 'Small' AND Found")
+	$Smal = Val($CountTemp)
+	SHOWSTATUS msg="Counting Regulars"
+	$CountTemp = SQLite("sql","Select count(container) from caches where container = 'Regular' AND Found")
+	$Regu = Val($CountTemp)
+	SHOWSTATUS msg="Counting Larges"
+	$CountTemp = SQLite("sql","Select count(container) from caches where container = 'Large' AND Found")
+	$Larg = Val($CountTemp)
+	SHOWSTATUS msg="Counting FTFs"
+	$CountTemp = SQLite("sql","Select count(FTF) from caches where FTF=1 AND Found")
+	$FTF = Val($CountTemp)
+	SHOWSTATUS msg="Counting 5-5s"
+	$CountTemp = SQLite("sql","Select count(Difficulty AND terrain) from caches where (difficulty = 5.0 AND terrain = 5.0) AND Found")
+	$Five = Val($CountTemp)
+	SHOWSTATUS msg="Counting Countries"
+	$CountTemp = Sqlite("sql","Select Count(Distinct Country) from caches where found")
+	$Coun=Val($CountTemp)
+	IF $ShowElev
+		SHOWSTATUS msg="Counting Elevation"
+		CANCELFILTER
+		GOSUB name="CalculateElevation"
+	ENDIF
+	IF $ShowHidd
+		SHOWSTATUS msg="Counting Hidden Caches"
+		DATABASE name=$EditBox2
+		SQLiteCaches	Scope=Filter
+		$CountTemp = SQLite("sql","Select count(OwnerName) from caches where OwnerName='$Username'")
+		$Hidd = Val($CountTemp)
+	ENDIF
+
+	SHOWSTATUS msg="Count Complete"
+	$RANDOMVARR=1
+ENDSUB #name=Counter
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=Assignment
+	SHOWSTATUS msg="Please Wait.  This will take a while."
+
+
+	BEGINCASE #Trad
+	CASE $Trad>=$TradB1 AND $Trad<=$TradB2
+		$TradLeft = $TradS1 - $Trad
+		$TradHTML="$HotLinkURL"+"TradB.png"
+	CASE $Trad>=$TradS1 AND $Trad<=$TradS2
+		$TradLeft = $TradG1 - $Trad
+		$TradHTML="$HotLinkURL"+"TradS.png"
+	CASE $Trad>=$TradG1 AND $Trad<=$TradG2
+		$TradLeft = $TradP1 - $Trad
+		$TradHTML="$HotLinkURL"+"TradG.png"
+	CASE $Trad>=$TradP1 AND $Trad<=$TradP2
+		$TradLeft = $TradR1 - $Trad
+		$TradHTML="$HotLinkURL"+"TradP.png"
+	CASE $Trad>=$TradR1 AND $Trad<=$TradR2
+		$TradLeft = $TradSa1 - $Trad
+		$TradHTML="$HotLinkURL"+"TradR.png"
+	CASE $Trad>=$TradSa1 AND $Trad<=$TradSa2
+		$TradLeft = $TradE1 - $Trad
+		$TradHTML="$HotLinkURL"+"TradSa.png"
+	CASE $Trad>=$TradE1 AND $Trad<=$TradE2
+		$TradLeft = $TradD - $Trad
+		$TradHTML="$HotLinkURL"+"TradE.png"
+	CASE $Trad>=$TradD
+		$TradLeft = 0
+		$TradHTML="$HotLinkURL"+"TradD.png"
+	CASE $Trad=0
+		$TradLeft= $TradB1
+		$TradHTML=""
+	OTHERWISE
+		$TradLeft = $TradB1 - $Trad
+	ENDCASE #Trad
+	SHOWSTATUS msg="$Message.................."
+
+	BEGINCASE #Mult
+	CASE $Mult>=$MultB1 AND $Mult<=$MultB2
+		$MultLeft = $MultS1 - $Mult
+		$MultHTML="$HotLinkURL"+"MultB.png"
+	CASE $Mult>=$MultS1 AND $Mult<=$MultS2
+		$MultLeft = $MultG1 - $Mult
+		$MultHTML="$HotLinkURL"+"MultS.png"
+	CASE $Mult>=$MultG1 AND $Mult<=$MultG2
+		$MultLeft = $MultP1 - $Mult
+		$MultHTML="$HotLinkURL"+"MultG.png"
+	CASE $Mult>=$MultP1 AND $Mult<=$MultP2
+		$MultLeft = $MultR1 - $Mult
+		$MultHTML="$HotLinkURL"+"MultP.png"
+	CASE $Mult>=$MultR1 AND $Mult<=$MultR2
+		$MultLeft = $MultSa1 - $Mult
+		$MultHTML="$HotLinkURL"+"MultR.png"
+	CASE $Mult>=$MultSa1 AND $Mult<=$MultSa2
+		$MultLeft = $MultE1 - $Mult
+		$MultHTML="$HotLinkURL"+"MultSa.png"
+	CASE $Mult>=$MultE1 AND $Mult<=$MultE2
+		$MultLeft = $MultD - $Mult
+		$MultHTML="$HotLinkURL"+"MultE.png"
+	CASE $Mult>=$MultD
+		$MultLeft = 0
+		$MultHTML="$HotLinkURL"+"MultD.png"
+	CASE $Mult=0
+		$MultLeft= $MultB1
+		$MultHTML=""
+	OTHERWISE
+		$MultLeft = $MultB1 - $Mult
+	ENDCASE #Mult
+	SHOWSTATUS msg="$Message................."
+
+	BEGINCASE #Virt
+	CASE $Virt>=$VirtB1 AND $Virt<=$VirtB2
+		$VirtLeft = $VirtS1 - $Virt
+		$VirtHTML="$HotLinkURL"+"VirtB.png"
+	CASE $Virt>=$VirtS1 AND $Virt<=$VirtS2
+		$VirtLeft = $VirtG1 - $Virt
+		$VirtHTML="$HotLinkURL"+"VirtS.png"
+	CASE $Virt>=$VirtG1 AND $Virt<=$VirtG2
+		$VirtLeft = $VirtP1 - $Virt
+		$VirtHTML="$HotLinkURL"+"VirtG.png"
+	CASE $Virt>=$VirtP1 AND $Virt<=$VirtP2
+		$VirtLeft = $VirtR1 - $Virt
+		$VirtHTML="$HotLinkURL"+"VirtP.png"
+	CASE $Virt>=$VirtR1 AND $Virt<=$VirtR2
+		$VirtLeft = $VirtSa1 - $Virt
+		$VirtHTML="$HotLinkURL"+"VirtR.png"
+	CASE $Virt>=$VirtSa1 AND $Virt<=$VirtSa2
+		$VirtLeft = $VirtE1 - $Virt
+		$VirtHTML="$HotLinkURL"+"VirtSa.png"
+	CASE $Virt>=$VirtE1 AND $Virt<=$VirtE2
+		$VirtLeft = $VirtD - $Virt
+		$VirtHTML="$HotLinkURL"+"VirtE.png"
+	CASE $Virt>=$VirtD
+		$VirtLeft = 0
+		$VirtHTML="$HotLinkURL"+"VirtD.png"
+	CASE $Virt=0
+		$VirtLeft= $VirtB1
+		$VirtHTML=""
+	OTHERWISE
+		$VirtLeft = $VirtB1 - $Virt
+	ENDCASE #Virt
+	SHOWSTATUS msg="$Message................"
+
+	BEGINCASE #Myst
+	CASE $Myst>=$MystB1 AND $Myst<=$MystB2
+		$MystLeft = $MystS1 - $Myst
+		$MystHTML="$HotLinkURL"+"MystB.png"
+	CASE $Myst>=$MystS1 AND $Myst<=$MystS2
+		$MystLeft = $MystG1 - $Myst
+		$MystHTML="$HotLinkURL"+"MystS.png"
+	CASE $Myst>=$MystG1 AND $Myst<=$MystG2
+		$MystLeft = $MystP1 - $Myst
+		$MystHTML="$HotLinkURL"+"MystG.png"
+	CASE $Myst>=$MystP1 AND $Myst<=$MystP2
+		$MystLeft = $MystR1 - $Myst
+		$MystHTML="$HotLinkURL"+"MystP.png"
+	CASE $Myst>=$MystR1 AND $Myst<=$MystR2
+		$MystLeft = $MystSa1 - $Myst
+		$MystHTML="$HotLinkURL"+"MystR.png"
+	CASE $Myst>=$MystSa1 AND $Myst<=$MystSa2
+		$MystLeft = $MystE1 - $Myst
+		$MystHTML="$HotLinkURL"+"MystSa.png"
+	CASE $Myst>=$MystE1 AND $Myst<=$MystE2
+		$MystLeft = $MystD - $Myst
+		$MystHTML="$HotLinkURL"+"MystE.png"
+	CASE $Myst>=$MystD
+		$MystLeft = 0
+		$MystHTML="$HotLinkURL"+"MystD.png"
+	CASE $Myst=0
+		$MystLeft= $MystB1
+		$MystHTML=""
+	OTHERWISE
+		$MystLeft = $MystB1 - $Myst
+	ENDCASE #Myst
+	SHOWSTATUS msg="$Message..............."
+
+	BEGINCASE #Eart
+	CASE $Eart>=$EartB1 AND $Eart<=$EartB2
+		$EartLeft = $EartS1 - $Eart
+		$EartHTML="$HotLinkURL"+"EartB.png"
+	CASE $Eart>=$EartS1 AND $Eart<=$EartS2
+		$EartLeft = $EartG1 - $Eart
+		$EartHTML="$HotLinkURL"+"EartS.png"
+	CASE $Eart>=$EartG1 AND $Eart<=$EartG2
+		$EartLeft = $EartP1 - $Eart
+		$EartHTML="$HotLinkURL"+"EartG.png"
+	CASE $Eart>=$EartP1 AND $Eart<=$EartP2
+		$EartLeft = $EartR1 - $Eart
+		$EartHTML="$HotLinkURL"+"EartP.png"
+	CASE $Eart>=$EartR1 AND $Eart<=$EartR2
+		$EartLeft = $EartSa1 - $Eart
+		$EartHTML="$HotLinkURL"+"EartR.png"
+	CASE $Eart>=$EartSa1 AND $Eart<=$EartSa2
+		$EartLeft = $EartE1 - $Eart
+		$EartHTML="$HotLinkURL"+"EartSa.png"
+	CASE $Eart>=$EartE1 AND $Eart<=$EartE2
+		$EartLeft = $EartD - $Eart
+		$EartHTML="$HotLinkURL"+"EartE.png"
+	CASE $Eart>=$EartD
+		$EartLeft = 0
+		$EartHTML="$HotLinkURL"+"EartD.png"
+	CASE $Eart=0
+		$EartLeft= $EartB1
+		$EartHTML=""
+	OTHERWISE
+		$EartLeft = $EartB1 - $Eart
+	ENDCASE #Eart
+	SHOWSTATUS msg="$Message.............."
+
+	BEGINCASE #Lett
+	CASE $Lett>=$LettB1 AND $Lett<=$LettB2
+		$LettLeft = $LettS1 - $Lett
+		$LettHTML="$HotLinkURL"+"LettB.png"
+	CASE $Lett>=$LettS1 AND $Lett<=$LettS2
+		$LettLeft = $LettG1 - $Lett
+		$LettHTML="$HotLinkURL"+"LettS.png"
+	CASE $Lett>=$LettG1 AND $Lett<=$LettG2
+		$LettLeft = $LettP1 - $Lett
+		$LettHTML="$HotLinkURL"+"LettG.png"
+	CASE $Lett>=$LettP1 AND $Lett<=$LettP2
+		$LettLeft = $LettR1 - $Lett
+		$LettHTML="$HotLinkURL"+"LettP.png"
+	CASE $Lett>=$LettR1 AND $Lett<=$LettR2
+		$LettLeft = $LettSa1 - $Lett
+		$LettHTML="$HotLinkURL"+"LettR.png"
+	CASE $Lett>=$LettSa1 AND $Lett<=$LettSa2
+		$LettLeft = $LettE1 - $Lett
+		$LettHTML="$HotLinkURL"+"LettSa.png"
+	CASE $Lett>=$LettE1 AND $Lett<=$LettE2
+		$LettLeft = $LettD - $Lett
+		$LettHTML="$HotLinkURL"+"LettE.png"
+	CASE $Lett>=$LettD
+		$LettLeft = 0
+		$LettHTML="$HotLinkURL"+"LettD.png"
+	CASE $Lett=0
+		$LettLeft= $LettB1
+		$LettHTML=""
+	OTHERWISE
+		$LettLeft = $LettB1 - $Lett
+	ENDCASE #Lett
+	SHOWSTATUS msg="$Message.............."
+
+
+	BEGINCASE #Wher
+	CASE $Wher>=$WherB1 AND $Wher<=$WherB2
+		$WherLeft = $WherS1 - $Wher
+		$WherHTML="$HotLinkURL"+"WherB.png"
+	CASE $Wher>=$WherS1 AND $Wher<=$WherS2
+		$WherLeft = $WherG1 - $Wher
+		$WherHTML="$HotLinkURL"+"WherS.png"
+	CASE $Wher>=$WherG1 AND $Wher<=$WherG2
+		$WherLeft = $WherP1 - $Wher
+		$WherHTML="$HotLinkURL"+"WherG.png"
+	CASE $Wher>=$WherP1 AND $Wher<=$WherP2
+		$WherLeft = $WherR1 - $Wher
+		$WherHTML="$HotLinkURL"+"WherP.png"
+	CASE $Wher>=$WherR1 AND $Wher<=$WherR2
+		$WherLeft = $WherSa1 - $Wher
+		$WherHTML="$HotLinkURL"+"WherR.png"
+	CASE $Wher>=$WherSa1 AND $Wher<=$WherSa2
+		$WherLeft = $WherE1 - $Wher
+		$WherHTML="$HotLinkURL"+"WherSa.png"
+	CASE $Wher>=$WherE1 AND $Wher<=$WherE2
+		$WherLeft = $WherD - $Wher
+		$WherHTML="$HotLinkURL"+"WherE.png"
+	CASE $Wher>=$WherD
+		$WherLeft = 0
+		$WherHTML="$HotLinkURL"+"WherD.png"
+	CASE $Wher=0
+		$WherLeft= $WherB1
+		$WherHTML=""
+	OTHERWISE
+		$WherLeft = $WherB1 - $Wher
+	ENDCASE #Wher
+	SHOWSTATUS msg="$Message............."
+
+	BEGINCASE #Mega
+	CASE $Mega>=$MegaB1 AND $Mega<=$MegaB2
+		$MegaLeft = $MegaS1 - $Mega
+		$MegaHTML="$HotLinkURL"+"MegaB.png"
+	CASE $Mega>=$MegaS1 AND $Mega<=$MegaS2
+		$MegaLeft = $MegaG1 - $Mega
+		$MegaHTML="$HotLinkURL"+"MegaS.png"
+	CASE $Mega>=$MegaG1 AND $Mega<=$MegaG2
+		$MegaLeft = $MegaP1 - $Mega
+		$MegaHTML="$HotLinkURL"+"MegaG.png"
+	CASE $Mega>=$MegaP1 AND $Mega<=$MegaP2
+		$MegaLeft = $MegaR1 - $Mega
+		$MegaHTML="$HotLinkURL"+"MegaP.png"
+	CASE $Mega>=$MegaR1 AND $Mega<=$MegaR2
+		$MegaLeft = $MegaSa1 - $Mega
+		$MegaHTML="$HotLinkURL"+"MegaR.png"
+	CASE $Mega>=$MegaSa1 AND $Mega<=$MegaSa2
+		$MegaLeft = $MegaE1 - $Mega
+		$MegaHTML="$HotLinkURL"+"MegaSa.png"
+	CASE $Mega>=$MegaE1 AND $Mega<=$MegaE2
+		$MegaLeft = $MegaD - $Mega
+		$MegaHTML="$HotLinkURL"+"MegaE.png"
+	CASE $Mega>=$MegaD
+		$MegaLeft = 0
+		$MegaHTML="$HotLinkURL"+"MegaD.png"
+	CASE $Mega=0
+		$MegaLeft= $MegaB1
+		$MegaHTML=""
+	OTHERWISE
+		$MegaLeft = $MegaB1 - $Mega
+	ENDCASE #Mega
+	SHOWSTATUS msg="$Message............"
+
+	BEGINCASE #Even
+	CASE $Even>=$EvenB1 AND $Even<=$EvenB2
+		$EvenLeft = $EvenS1 - $Even
+		$EvenHTML="$HotLinkURL"+"EvenB.png"
+	CASE $Even>=$EvenS1 AND $Even<=$EvenS2
+		$EvenLeft = $EvenG1 - $Even
+		$EvenHTML="$HotLinkURL"+"EvenS.png"
+	CASE $Even>=$EvenG1 AND $Even<=$EvenG2
+		$EvenLeft = $EvenP1 - $Even
+		$EvenHTML="$HotLinkURL"+"EvenG.png"
+	CASE $Even>=$EvenP1 AND $Even<=$EvenP2
+		$EvenLeft = $EvenR1 - $Even
+		$EvenHTML="$HotLinkURL"+"EvenP.png"
+	CASE $Even>=$EvenR1 AND $Even<=$EvenR2
+		$EvenLeft = $EvenSa1 - $Even
+		$EvenHTML="$HotLinkURL"+"EvenR.png"
+	CASE $Even>=$EvenSa1 AND $Even<=$EvenSa2
+		$EvenLeft = $EvenE1 - $Even
+		$EvenHTML="$HotLinkURL"+"EvenSa.png"
+	CASE $Even>=$EvenE1 AND $Even<=$EvenE2
+		$EvenLeft = $EvenD - $Even
+		$EvenHTML="$HotLinkURL"+"EvenE.png"
+	CASE $Even>=$EvenD
+		$EvenLeft = 0
+		$EvenHTML="$HotLinkURL"+"EvenD.png"
+	CASE $Even=0
+		$EvenLeft= $EvenB1
+		$EvenHTML=""
+	OTHERWISE
+		$EvenLeft = $EvenB1 - $Even
+	ENDCASE #Even
+	SHOWSTATUS msg="$Message..........."
+
+	BEGINCASE #CITO
+	CASE $CITO>=$CITOB1 AND $CITO<=$CITOB2
+		$CITOLeft = $CITOS1 - $CITO
+		$CITOHTML="$HotLinkURL"+"CITOB.png"
+	CASE $CITO>=$CITOS1 AND $CITO<=$CITOS2
+		$CITOLeft = $CITOG1 - $CITO
+		$CITOHTML="$HotLinkURL"+"CITOS.png"
+	CASE $CITO>=$CITOG1 AND $CITO<=$CITOG2
+		$CITOLeft = $CITOP1 - $CITO
+		$CITOHTML="$HotLinkURL"+"CITOG.png"
+	CASE $CITO>=$CITOP1 AND $CITO<=$CITOP2
+		$CITOLeft = $CITOR1 - $CITO
+		$CITOHTML="$HotLinkURL"+"CITOP.png"
+	CASE $CITO>=$CITOR1 AND $CITO<=$CITOR2
+		$CITOLeft = $CITOSa1 - $CITO
+		$CITOHTML="$HotLinkURL"+"CITOR.png"
+	CASE $CITO>=$CITOSa1 AND $CITO<=$CITOSa2
+		$CITOLeft = $CITOE1 - $CITO
+		$CITOHTML="$HotLinkURL"+"CITOSa.png"
+	CASE $CITO>=$CITOE1 AND $CITO<=$CITOE2
+		$CITOLeft = $CITOD - $CITO
+		$CITOHTML="$HotLinkURL"+"CITOE.png"
+	CASE $CITO>=$CITOD
+		$CITOLeft = 0
+		$CITOHTML="$HotLinkURL"+"CITOD.png"
+	CASE $CITO=0
+		$CITOLeft= $CITOB1
+		$CITOHTML=""
+	OTHERWISE
+		$CITOLeft = $CITOB1 - $CITO
+	ENDCASE #CITO
+	SHOWSTATUS msg="$Message.........."
+
+	BEGINCASE #Benc
+	CASE $Benc>=$BencB1 AND $Benc<=$BencB2
+		$BencLeft = $BencS1 - $Benc
+		$BencHTML="$HotLinkURL"+"BencB.png"
+	CASE $Benc>=$BencS1 AND $Benc<=$BencS2
+		$BencLeft = $BencG1 - $Benc
+		$BencHTML="$HotLinkURL"+"BencS.png"
+	CASE $Benc>=$BencG1 AND $Benc<=$BencG2
+		$BencLeft = $BencP1 - $Benc
+		$BencHTML="$HotLinkURL"+"BencG.png"
+	CASE $Benc>=$BencP1 AND $Benc<=$BencP2
+		$BencLeft = $BencR1 - $Benc
+		$BencHTML="$HotLinkURL"+"BencP.png"
+	CASE $Benc>=$BencR1 AND $Benc<=$BencR2
+		$BencLeft = $BencSa1 - $Benc
+		$BencHTML="$HotLinkURL"+"BencR.png"
+	CASE $Benc>=$BencSa1 AND $Benc<=$BencSa2
+		$BencLeft = $BencE1 - $Benc
+		$BencHTML="$HotLinkURL"+"BencSa.png"
+	CASE $Benc>=$BencE1 AND $Benc<=$BencE2
+		$BencLeft = $BencD - $Benc
+		$BencHTML="$HotLinkURL"+"BencE.png"
+	CASE $Benc>=$BencD
+		$BencLeft = 0
+		$BencHTML="$HotLinkURL"+"BencD.png"
+	CASE $Benc=0
+		$BencLeft= $BencB1
+		$BencHTML=""
+	OTHERWISE
+		$BencLeft = $BencB1 - $Benc
+	ENDCASE #Benc
+
+	SHOWSTATUS msg="$Message........."
+	BEGINCASE #Webc
+	CASE $Webc>=$WebcB1 AND $Webc<=$WebcB2
+		$WebcLeft = $WebcS1 - $Webc
+		$WebcHTML="$HotLinkURL"+"WebcB.png"
+	CASE $Webc>=$WebcS1 AND $Webc<=$WebcS2
+		$WebcLeft = $WebcG1 - $Webc
+		$WebcHTML="$HotLinkURL"+"WebcS.png"
+	CASE $Webc>=$WebcG1 AND $Webc<=$WebcG2
+		$WebcLeft = $WebcP1 - $Webc
+		$WebcHTML="$HotLinkURL"+"WebcG.png"
+	CASE $Webc>=$WebcP1 AND $Webc<=$WebcP2
+		$WebcLeft = $WebcR1 - $Webc
+		$WebcHTML="$HotLinkURL"+"WebcP.png"
+	CASE $Webc>=$WebcR1 AND $Webc<=$WebcR2
+		$WebcLeft = $WebcSa1 - $Webc
+		$WebcHTML="$HotLinkURL"+"WebcR.png"
+	CASE $Webc>=$WebcSa1 AND $Webc<=$WebcSa2
+		$WebcLeft = $WebcE1 - $Webc
+		$WebcHTML="$HotLinkURL"+"WebcSa.png"
+	CASE $Webc>=$WebcE1 AND $Webc<=$WebcE2
+		$WebcLeft = $WebcD - $Webc
+		$WebcHTML="$HotLinkURL"+"WebcE.png"
+	CASE $Webc>=$WebcD
+		$WebcLeft = 0
+		$WebcHTML="$HotLinkURL"+"WebcD.png"
+	CASE $Webc=0
+		$WebcLeft= $WebcB1
+		$WebcHTML=""
+	OTHERWISE
+		$WebcLeft = $WebcB1 - $Webc
+	ENDCASE #Webc
+
+	BEGINCASE #Micr
+	CASE $Micr>=$MicrB1 AND $Micr<=$MicrB2
+		$MicrLeft = $MicrS1 - $Micr
+		$MicrHTML="$HotLinkURL"+"MicrB.png"
+	CASE $Micr>=$MicrS1 AND $Micr<=$MicrS2
+		$MicrLeft = $MicrG1 - $Micr
+		$MicrHTML="$HotLinkURL"+"MicrS.png"
+	CASE $Micr>=$MicrG1 AND $Micr<=$MicrG2
+		$MicrLeft = $MicrP1 - $Micr
+		$MicrHTML="$HotLinkURL"+"MicrG.png"
+	CASE $Micr>=$MicrP1 AND $Micr<=$MicrP2
+		$MicrLeft = $MicrR1 - $Micr
+		$MicrHTML="$HotLinkURL"+"MicrP.png"
+	CASE $Micr>=$MicrR1 AND $Micr<=$MicrR2
+		$MicrLeft = $MicrSa1 - $Micr
+		$MicrHTML="$HotLinkURL"+"MicrR.png"
+	CASE $Micr>=$MicrSa1 AND $Micr<=$MicrSa2
+		$MicrLeft = $MicrE1 - $Micr
+		$MicrHTML="$HotLinkURL"+"MicrSa.png"
+	CASE $Micr>=$MicrE1 AND $Micr<=$MicrE2
+		$MicrLeft = $MicrD - $Micr
+		$MicrHTML="$HotLinkURL"+"MicrE.png"
+	CASE $Micr>=$MicrD
+		$MicrLeft = 0
+		$MicrHTML="$HotLinkURL"+"MicrD.png"
+	CASE $Micr=0
+		$MicrLeft= $MicrB1
+		$MicrHTML=""
+	OTHERWISE
+		$MicrLeft = $MicrB1 - $Micr
+	ENDCASE #Micr
+	SHOWSTATUS msg="$Message........"
+
+	BEGINCASE #Smal
+	CASE $Smal>=$SmalB1 AND $Smal<=$SmalB2
+		$SmalLeft = $SmalS1 - $Smal
+		$SmalHTML="$HotLinkURL"+"SmalB.png"
+	CASE $Smal>=$SmalS1 AND $Smal<=$SmalS2
+		$SmalLeft = $SmalG1 - $Smal
+		$SmalHTML="$HotLinkURL"+"SmalS.png"
+	CASE $Smal>=$SmalG1 AND $Smal<=$SmalG2
+		$SmalLeft = $SmalP1 - $Smal
+		$SmalHTML="$HotLinkURL"+"SmalG.png"
+	CASE $Smal>=$SmalP1 AND $Smal<=$SmalP2
+		$SmalLeft = $SmalR1 - $Smal
+		$SmalHTML="$HotLinkURL"+"SmalP.png"
+	CASE $Smal>=$SmalR1 AND $Smal<=$SmalR2
+		$SmalLeft = $SmalSa1 - $Smal
+		$SmalHTML="$HotLinkURL"+"SmalR.png"
+	CASE $Smal>=$SmalSa1 AND $Smal<=$SmalSa2
+		$SmalLeft = $SmalE1 - $Smal
+		$SmalHTML="$HotLinkURL"+"SmalSa.png"
+	CASE $Smal>=$SmalE1 AND $Smal<=$SmalE2
+		$SmalLeft = $SmalD - $Smal
+		$SmalHTML="$HotLinkURL"+"SmalE.png"
+	CASE $Smal>=$SmalD
+		$SmalLeft = 0
+		$SmalHTML="$HotLinkURL"+"SmalD.png"
+	CASE $Smal=0
+		$SmalLeft= $SmalB1
+		$SmalHTML=""
+	OTHERWISE
+		$SmalLeft = $SmalB1 - $Smal
+	ENDCASE #Smal
+	SHOWSTATUS msg="$Message......."
+
+	BEGINCASE #Regu
+	CASE $Regu>=$ReguB1 AND $Regu<=$ReguB2
+		$ReguLeft = $ReguS1 - $Regu
+		$ReguHTML="$HotLinkURL"+"ReguB.png"
+	CASE $Regu>=$ReguS1 AND $Regu<=$ReguS2
+		$ReguLeft = $ReguG1 - $Regu
+		$ReguHTML="$HotLinkURL"+"ReguS.png"
+	CASE $Regu>=$ReguG1 AND $Regu<=$ReguG2
+		$ReguLeft = $ReguP1 - $Regu
+		$ReguHTML="$HotLinkURL"+"ReguG.png"
+	CASE $Regu>=$ReguP1 AND $Regu<=$ReguP2
+		$ReguLeft = $ReguR1 - $Regu
+		$ReguHTML="$HotLinkURL"+"ReguP.png"
+	CASE $Regu>=$ReguR1 AND $Regu<=$ReguR2
+		$ReguLeft = $ReguSa1 - $Regu
+		$ReguHTML="$HotLinkURL"+"ReguR.png"
+	CASE $Regu>=$ReguSa1 AND $Regu<=$ReguSa2
+		$ReguLeft = $ReguE1 - $Regu
+		$ReguHTML="$HotLinkURL"+"ReguSa.png"
+	CASE $Regu>=$ReguE1 AND $Regu<=$ReguE2
+		$ReguLeft = $ReguD - $Regu
+		$ReguHTML="$HotLinkURL"+"ReguE.png"
+	CASE $Regu>=$ReguD
+		$ReguLeft = 0
+		$ReguHTML="$HotLinkURL"+"ReguD.png"
+	CASE $Regu=0
+		$ReguLeft= $ReguB1
+		$ReguHTML=""
+	OTHERWISE
+		$ReguLeft = $ReguB1 - $Regu
+	ENDCASE #Regu
+	SHOWSTATUS msg="$Message......"
+
+	BEGINCASE #Larg
+	CASE $Larg>=$LargB1 AND $Larg<=$LargB2
+		$LargLeft = $LargS1 - $Larg
+		$LargHTML="$HotLinkURL"+"LargB.png"
+	CASE $Larg>=$LargS1 AND $Larg<=$LargS2
+		$LargLeft = $LargG1 - $Larg
+		$LargHTML="$HotLinkURL"+"LargS.png"
+	CASE $Larg>=$LargG1 AND $Larg<=$LargG2
+		$LargLeft = $LargP1 - $Larg
+		$LargHTML="$HotLinkURL"+"LargG.png"
+	CASE $Larg>=$LargP1 AND $Larg<=$LargP2
+		$LargLeft = $LargR1 - $Larg
+		$LargHTML="$HotLinkURL"+"LargP.png"
+	CASE $Larg>=$LargR1 AND $Larg<=$LargR2
+		$LargLeft = $LargSa1 - $Larg
+		$LargHTML="$HotLinkURL"+"LargR.png"
+	CASE $Larg>=$LargSa1 AND $Larg<=$LargSa2
+		$LargLeft = $LargE1 - $Larg
+		$LargHTML="$HotLinkURL"+"LargSa.png"
+	CASE $Larg>=$LargE1 AND $Larg<=$LargE2
+		$LargLeft = $LargD - $Larg
+		$LargHTML="$HotLinkURL"+"LargE.png"
+	CASE $Larg>=$LargD
+		$LargLeft = 0
+		$LargHTML="$HotLinkURL"+"LargD.png"
+	CASE $Larg=0
+		$LargLeft= $LargB1
+		$LargHTML=""
+	OTHERWISE
+		$LargLeft = $LargB1 - $Larg
+	ENDCASE #Larg
+	SHOWSTATUS msg="$Message....."
+
+	BEGINCASE #Five
+	CASE $Five>=$FiveB1 AND $Five<=$FiveB2
+		$FiveLeft = $FiveS1 - $Five
+		$FiveHTML="$HotLinkURL"+"FiveB.png"
+	CASE $Five>=$FiveS1 AND $Five<=$FiveS2
+		$FiveLeft = $FiveG1 - $Five
+		$FiveHTML="$HotLinkURL"+"FiveS.png"
+	CASE $Five>=$FiveG1 AND $Five<=$FiveG2
+		$FiveLeft = $FiveP1 - $Five
+		$FiveHTML="$HotLinkURL"+"FiveG.png"
+	CASE $Five>=$FiveP1 AND $Five<=$FiveP2
+		$FiveLeft = $FiveR1 - $Five
+		$FiveHTML="$HotLinkURL"+"FiveP.png"
+	CASE $Five>=$FiveR1 AND $Five<=$FiveR2
+		$FiveLeft = $FiveSa1 - $Five
+		$FiveHTML="$HotLinkURL"+"FiveR.png"
+	CASE $Five>=$FiveSa1 AND $Five<=$FiveSa2
+		$FiveLeft = $FiveE1 - $Five
+		$FiveHTML="$HotLinkURL"+"FiveSa.png"
+	CASE $Five>=$FiveE1 AND $Five<=$FiveE2
+		$FiveLeft = $FiveD - $Five
+		$FiveHTML="$HotLinkURL"+"FiveE.png"
+	CASE $Five>=$FiveD
+		$FiveLeft = 0
+		$FiveHTML="$HotLinkURL"+"FiveD.png"
+	CASE $Five=0
+		$FiveLeft= $FiveB1
+		$FiveHTML=""
+	OTHERWISE
+		$FiveLeft = $FiveB1 - $Five
+	ENDCASE #Five
+	SHOWSTATUS msg="$Message...."
+
+	BEGINCASE #Coun
+	CASE $Coun>=$CounB1 AND $Coun<=$CounB2
+		$CounLeft = $CounS1 - $Coun
+		$CounHTML="$HotLinkURL"+"CounB.png"
+	CASE $Coun>=$CounS1 AND $Coun<=$CounS2
+		$CounLeft = $CounG1 - $Coun
+		$CounHTML="$HotLinkURL"+"CounS.png"
+	CASE $Coun>=$CounG1 AND $Coun<=$CounG2
+		$CounLeft = $CounP1 - $Coun
+		$CounHTML="$HotLinkURL"+"CounG.png"
+	CASE $Coun>=$CounP1 AND $Coun<=$CounP2
+		$CounLeft = $CounR1 - $Coun
+		$CounHTML="$HotLinkURL"+"CounP.png"
+	CASE $Coun>=$CounR1 AND $Coun<=$CounR2
+		$CounLeft = $CounSa1 - $Coun
+		$CounHTML="$HotLinkURL"+"CounR.png"
+	CASE $Coun>=$CounSa1 AND $Coun<=$CounSa2
+		$CounLeft = $CounE1 - $Coun
+		$CounHTML="$HotLinkURL"+"CounSa.png"
+	CASE $Coun>=$CounE1 AND $Coun<=$CounE2
+		$CounLeft = $CounD - $Coun
+		$CounHTML="$HotLinkURL"+"CounE.png"
+	CASE $Coun>=$CounD
+		$CounLeft = 0
+		$CounHTML="$HotLinkURL"+"CounD.png"
+	CASE $Coun=0
+		$CounLeft= $CounB1
+		$CounHTML=""
+	OTHERWISE
+		$CounLeft = $CounB1 - $Coun
+	ENDCASE #Coun
+	SHOWSTATUS msg="$Message..."
+
+	BEGINCASE #FTF
+	CASE $FTF>=$FTFB1 AND $FTF<=$FTFB2
+		$FTFLeft = $FTFS1 - $FTF
+		$FTFHTML="$HotLinkURL"+"FTFB.png"
+	CASE $FTF>=$FTFS1 AND $FTF<=$FTFS2
+		$FTFLeft = $FTFG1 - $FTF
+		$FTFHTML="$HotLinkURL"+"FTFS.png"
+	CASE $FTF>=$FTFG1 AND $FTF<=$FTFG2
+		$FTFLeft = $FTFP1 - $FTF
+		$FTFHTML="$HotLinkURL"+"FTFG.png"
+	CASE $FTF>=$FTFP1 AND $FTF<=$FTFP2
+		$FTFLeft = $FTFR1 - $FTF
+		$FTFHTML="$HotLinkURL"+"FTFP.png"
+	CASE $FTF>=$FTFR1 AND $FTF<=$FTFR2
+		$FTFLeft = $FTFSa1 - $FTF
+		$FTFHTML="$HotLinkURL"+"FTFR.png"
+	CASE $FTF>=$FTFSa1 AND $FTF<=$FTFSa2
+		$FTFLeft = $FTFE1 - $FTF
+		$FTFHTML="$HotLinkURL"+"FTFSa.png"
+	CASE $FTF>=$FTFE1 AND $FTF<=$FTFE2
+		$FTFLeft = $FTFD - $FTF
+		$FTFHTML="$HotLinkURL"+"FTFE.png"
+	CASE $FTF>=$FTFD
+		$FTFLeft = 0
+		$FTFHTML="$HotLinkURL"+"FTFD.png"
+	CASE $FTF=0
+		$FTFLeft= $FTFB1
+		$FTFHTML=""
+	OTHERWISE
+		$FTFLeft = $FTFB1 - $FTF
+	ENDCASE #FTF
+	SHOWSTATUS msg="$Message.."
+
+	BEGINCASE #Hidd
+	CASE $Hidd>=$HiddB1 AND $Hidd<=$HiddB2
+		$HiddLeft = $HiddS1 - $Hidd
+		$HiddHTML="$HotLinkURL"+"HiddB.png"
+	CASE $Hidd>=$HiddS1 AND $Hidd<=$HiddS2
+		$HiddLeft = $HiddG1 - $Hidd
+		$HiddHTML="$HotLinkURL"+"HiddS.png"
+	CASE $Hidd>=$HiddG1 AND $Hidd<=$HiddG2
+		$HiddLeft = $HiddP1 - $Hidd
+		$HiddHTML="$HotLinkURL"+"HiddG.png"
+	CASE $Hidd>=$HiddP1 AND $Hidd<=$HiddP2
+		$HiddLeft = $HiddR1 - $Hidd
+		$HiddHTML="$HotLinkURL"+"HiddP.png"
+	CASE $Hidd>=$HiddR1 AND $Hidd<=$HiddR2
+		$HiddLeft = $HiddSa1 - $Hidd
+		$HiddHTML="$HotLinkURL"+"HiddR.png"
+	CASE $Hidd>=$HiddSa1 AND $Hidd<=$HiddSa2
+		$HiddLeft = $HiddE1 - $Hidd
+		$HiddHTML="$HotLinkURL"+"HiddSa.png"
+	CASE $Hidd>=$HiddE1 AND $Hidd<=$HiddE2
+		$HiddLeft = $HiddD - $Hidd
+		$HiddHTML="$HotLinkURL"+"HiddE.png"
+	CASE $Hidd>=$HiddD
+		$HiddLeft = 0
+		$HiddHTML="$HotLinkURL"+"HiddD.png"
+	CASE $Hidd=0
+		$HiddLeft= $HiddB1
+		$HiddHTML=""
+	OTHERWISE
+		$HiddLeft = $HiddB1 - $Hidd
+	ENDCASE #Hidd
+	SHOWSTATUS msg="$Message."
+
+	BEGINCASE #Elev
+	CASE $Elev>=$ElevB1 AND $Elev<=$ElevB2
+		$ElevLeft = $ElevS1
+		$ElevHTML="$HotLinkURL"+"ElevB.png"
+	CASE $Elev>=$ElevS1 AND $Elev<=$ElevS2
+		$ElevLeft = $ElevG1
+		$ElevHTML="$HotLinkURL"+"ElevS.png"
+	CASE $Elev>=$ElevG1 AND $Elev<=$ElevG2
+		$ElevLeft = $ElevP1
+		$ElevHTML="$HotLinkURL"+"ElevG.png"
+	CASE $Elev>=$ElevP1 AND $Elev<=$ElevP2
+		$ElevLeft = $ElevR1
+		$ElevHTML="$HotLinkURL"+"ElevP.png"
+	CASE $Elev>=$ElevR1 AND $Elev<=$ElevR2
+		$ElevLeft = $ElevSa1
+		$ElevHTML="$HotLinkURL"+"ElevR.png"
+	CASE $Elev>=$ElevSa1 AND $Elev<=$ElevSa2
+		$ElevLeft = $ElevE1
+		$ElevHTML="$HotLinkURL"+"ElevSa.png"
+	CASE $Elev>=$ElevE1 AND $Elev<=$ElevE2
+		$ElevLeft = $ElevD
+		$ElevHTML="$HotLinkURL"+"ElevE.png"
+	CASE $Elev>=$ElevD
+		$ElevLeft = 0
+		$ElevHTML="$HotLinkURL"+"ElevD.png"
+	CASE $Elev=0
+		$ElevLeft= $ElevB1
+		$ElevHTML=""
+	OTHERWISE
+		$ElevLeft = $ElevB1
+	ENDCASE #Elev
+	SHOWSTATUS msg="$Message"
+
+	SHOWSTATUS msg=""
+ENDSUB name=Assignment
+
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=PrepareHTML
+	SHOWSTATUS msg="Preparing HTML Code"
+	GOSUB name=HoverText
+	IF not($TradHTML="") AND $ShowType=TRUE
+		$TradCode=" $1$2$3$2$5$6$2$TradHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$TradAlt$2$5$28$2$20$TradAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($MultHTML="") AND $ShowType=TRUE
+		$MultCode=" $1$2$3$2$5$6$2$MultHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$MultAlt$2$5$28$2$20$MultAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($MystHTML="") AND $ShowType=TRUE
+		$MystCode=" $1$2$3$2$5$6$2$MystHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$MystAlt$2$5$28$2$20$MystAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($VirtHTML="") AND $ShowType=TRUE
+		$VirtCode=" $1$2$3$2$5$6$2$VirtHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$VirtAlt$2$5$28$2$20$VirtAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($EartHTML="") AND $ShowType=TRUE
+		$EartCode=" $1$2$3$2$5$6$2$EartHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$EartAlt$2$5$28$2$20$EartAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($LettHTML="") AND $ShowType=TRUE
+		$LettCode=" $1$2$3$2$5$6$2$LettHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$LettAlt$2$5$28$2$20$LettAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($WherHTML="") AND $ShowType=TRUE
+		$WherCode=" $1$2$3$2$5$6$2$WherHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$WherAlt$2$5$28$2$20$WherAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($MegaHTML="") AND $ShowType=TRUE
+		$MegaCode=" $1$2$3$2$5$6$2$MegaHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$MegaAlt$2$5$28$2$20$MegaAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($EvenHTML="") AND $ShowType=TRUE
+		$EvenCode=" $1$2$3$2$5$6$2$EvenHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$EvenAlt$2$5$28$2$20$EvenAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($CitoHTML="") AND $ShowType=TRUE
+		$CitoCode=" $1$2$3$2$5$6$2$CitoHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$CitoAlt$2$5$28$2$20$CitoAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($BencHTML="") AND $ShowType=TRUE
+		$BencCode=" $1$2$3$2$5$6$2$BencHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$BencAlt$2$5$28$2$20$BencAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($WebcHTML="") AND $ShowType=TRUE
+		$WebcCode=" $1$2$3$2$5$6$2$WebcHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$WebcAlt$2$5$28$2$20$WebcAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($MicrHTML="") AND $ShowSize=TRUE
+		$MicrCode=" $1$2$3$2$5$6$2$MicrHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$MicrAlt$2$5$28$2$20$MicrAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($SmalHTML="") AND $ShowSize=TRUE
+		$SmalCode=" $1$2$3$2$5$6$2$SmalHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$SmalAlt$2$5$28$2$20$SmalAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($ReguHTML="") AND $ShowSize=TRUE
+		$ReguCode=" $1$2$3$2$5$6$2$ReguHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$ReguAlt$2$5$28$2$20$ReguAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($LargHTML="") AND $ShowSize=TRUE
+		$LargCode=" $1$2$3$2$5$6$2$LargHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$LargAlt$2$5$28$2$20$LargAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($FiveHTML="") AND $ShowDiff=TRUE
+		$FiveCode=" $1$2$3$2$5$6$2$FiveHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$FiveAlt$2$5$28$2$20$FiveAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($CounHTML="") AND $ShowCoun=TRUE
+		$CounCode=" $1$2$3$2$5$6$2$CounHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$CounAlt$2$5$28$2$20$CounAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($FTFHTML="") AND $ShowFTF=TRUE
+		$FTFCode=" $1$2$3$2$5$6$2$FTFHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$FTFAlt$2$5$28$2$20$FTFAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($HIDDHTML="") AND $ShowHidd=TRUE
+		$HiddCode=" $1$2$3$2$5$6$2$HiddHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$HiddAlt$2$5$28$2$20$HiddAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+	IF not($ElevHTML="") AND $ShowElev=TRUE
+		$ElevCode=" $1$2$3$2$5$6$2$ElevHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$ElevAlt$2$5$28$2$20$ElevAlt$2$5$23$_NewLine"
+		$BADGENUMBER=$BADGENUMBER+1
+	ENDIF
+
+
+ENDSUB #name=PrepareHTML
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=Output
+	SHOWSTATUS msg="Outputting HTML Code"
+	$HTMLCode="$Centre$_NewLine$TradCode$MultCode$MystCode$VirtCode$EartCode$WherCode$LettCode$WebcCode$EvenCode$CitoCode$MegaCode$BencCode$MicrCode$SmalCode$ReguCode$LargCode$FTFCode$CounCode$FiveCode$ElevCode$HiddCode<br>$_NewLine $Link $_NewLine$endcentre"
+	CLIP data=$HTMLCode
+	IF not($Suppress=TRUE)
+		SET $Data = PutFile($SaveLocation,"$HTMLCode")
+		MSGOK msg="Your badges have been generated.  You have been awarded $BADGENUMBER badges.  The HTML code to display your badges has been copied to your clipboard. Press OK to view badges."
+		FILEOPEN File=$SaveLocation wait=no
+	ENDIF
+	IF $FSG=TRUE
+		SHOWSTATUS msg="Removing Conflicting Variables"
+		$RemoveVariables=RemoveVar("FTF")
+		SHOWSTATUS msg="Running FindStatGen"
+		MACRO file=$FindStatGenFile
+	ELSE
+		RETURN
+	ENDIF
+
+ENDSUB #name=output
+
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+
+BEGINSUB name=Declaration
+	SHOWSTATUS msg="Declaring Variables..."
+	GOSUB name=VarDec
+	GOSUB name=HoverText
+	MacSettings Type=R File="BadgeGenSavedSettings.data" FileCheck=N
+	SHOWSTATUS msg="" display=off
+ENDSUB #name=Declaration
+
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+
+BEGINSUB name=HoverText
+	SHOWSTATUS msg="Creating Hover Text..."
+	$TradAlt="$TradName:  Bronze ($TradB1-$TradB2) | Silver ($TradS1-$TradS2) | Gold ($TradG1-$TradG2) | Platinum ($TradP1-$TradP2) | Ruby ($TradR1-$TradR2) | Sapphire ($TradSa1-$TradSa2) | Emerald ($TradE1-$TradE2) | Diamond ($TradD+) ***$iYou $hh found $Trad and $nn $TradLeft $NextLevel***"
+	$MultAlt="$MultName:  Bronze ($MultB1-$MultB2) | Silver ($MultS1-$MultS2) | Gold ($MultG1-$MultG2) | Platinum ($MultP1-$MultP2) | Ruby ($MultR1-$MultR2) | Sapphire ($MultSa1-$MultSa2) | Emerald ($MultE1-$MultE2) | Diamond ($MultD+) ***$iYou $hh found $Mult and $nn $MultLeft $NextLevel***"
+	$MystAlt="$MystName:  Bronze ($MystB1-$MystB2) | Silver ($MystS1-$MystS2) | Gold ($MystG1-$MystG2) | Platinum ($MystP1-$MystP2) | Ruby ($MystR1-$MystR2) | Sapphire ($MystSa1-$MystSa2) | Emerald ($MystE1-$MystE2) | Diamond ($MystD+) ***$iYou $hh found $Myst and $nn $MystLeft $NextLevel***"
+	$VirtAlt="$VirtName:  Bronze ($VirtB1-$VirtB2) | Silver ($VirtS1-$VirtS2) | Gold ($VirtG1-$VirtG2) | Platinum ($VirtP1-$VirtP2) | Ruby ($VirtR1-$VirtR2) | Sapphire ($VirtSa1-$VirtSa2) | Emerald ($VirtE1-$VirtE2) | Diamond ($VirtD+) ***$iYou $hh found $Virt and $nn $VirtLeft $NextLevel***"
+	$EartAlt="$EartName:  Bronze ($EartB1-$EartB2) | Silver ($EartS1-$EartS2) | Gold ($EartG1-$EartG2) | Platinum ($EartP1-$EartP2) | Ruby ($EartR1-$EartR2) | Sapphire ($EartSa1-$EartSa2) | Emerald ($EartE1-$EartE2) | Diamond ($EartD+) ***$iYou $hh found $Eart and $nn $EartLeft $NextLevel***"
+	$LettAlt="$LettName:  Bronze ($LettB1-$LettB2) | Silver ($LettS1-$LettS2) | Gold ($LettG1-$LettG2) | Platinum ($LettP1-$LettP2) | Ruby ($LettR1-$LettR2) | Sapphire ($LettSa1-$LettSa2) | Emerald ($LettE1-$LettE2) | Diamond ($LettD+) ***$iYou $hh found $Lett and $nn $LettLeft $NextLevel***"
+	$WherAlt="$WherName:  Bronze ($WherB1-$WherB2) | Silver ($WherS1-$WherS2) | Gold ($WherG1-$WherG2) | Platinum ($WherP1-$WherP2) | Ruby ($WherR1-$WherR2) | Sapphire ($WherSa1-$WherSa2) | Emerald ($WherE1-$WherE2) | Diamond ($WherD+) ***$iYou $hh found $Wher and $nn $WherLeft $NextLevel***"
+	$MegaAlt="$MegaName:  Bronze ($MegaB1-$MegaB2) | Silver ($MegaS1-$MegaS2) | Gold ($MegaG1-$MegaG2) | Platinum ($MegaP1-$MegaP2) | Ruby ($MegaR1-$MegaR2) | Sapphire ($MegaSa1-$MegaSa2) | Emerald ($MegaE1-$MegaE2) | Diamond ($MegaD+) ***$iYou $hh attended $Mega and $nn $MegaLeft $NextLevel***"
+	$EvenAlt="$EvenName:  Bronze ($EvenB1-$EvenB2) | Silver ($EvenS1-$EvenS2) | Gold ($EvenG1-$EvenG2) | Platinum ($EvenP1-$EvenP2) | Ruby ($EvenR1-$EvenR2) | Sapphire ($EvenSa1-$EvenSa2) | Emerald ($EvenE1-$EvenE2) | Diamond ($EvenD+) ***$iYou $hh attended $Even and $nn $EvenLeft $NextLevel***"
+	$CITOAlt="$CITOName:  Bronze ($CITOB1-$CITOB2) | Silver ($CITOS1-$CITOS2) | Gold ($CITOG1-$CITOG2) | Platinum ($CITOP1-$CITOP2) | Ruby ($CITOR1-$CITOR2) | Sapphire ($CITOSa1-$CITOSa2) | Emerald ($CITOE1-$CITOE2) | Diamond ($CITOD+) ***$iYou $hh attended $CITO and $nn $CITOLeft $NextLevel***"
+	$BencAlt="$BencName:  Bronze ($BencB1-$BencB2) | Silver ($BencS1-$BencS2) | Gold ($BencG1-$BencG2) | Platinum ($BencP1-$BencP2) | Ruby ($BencR1-$BencR2) | Sapphire ($BencSa1-$BencSa2) | Emerald ($BencE1-$BencE2) | Diamond ($BencD+) ***$iYou $hh found $Benc and $nn $BencLeft $NextLevel***"
+	$WebcAlt="$WebcName:  Bronze ($WebcB1-$WebcB2) | Silver ($WebcS1-$WebcS2) | Gold ($WebcG1-$WebcG2) | Platinum ($WebcP1-$WebcP2) | Ruby ($WebcR1-$WebcR2) | Sapphire ($WebcSa1-$WebcSa2) | Emerald ($WebcE1-$WebcE2) | Diamond ($WebcD+) ***$iYou $hh found $Webc and $nn $WebcLeft $NextLevel***"
+	$MicrAlt="$MicrName:  Bronze ($MicrB1-$MicrB2) | Silver ($MicrS1-$MicrS2) | Gold ($MicrG1-$MicrG2) | Platinum ($MicrP1-$MicrP2) | Ruby ($MicrR1-$MicrR2) | Sapphire ($MicrSa1-$MicrSa2) | Emerald ($MicrE1-$MicrE2) | Diamond ($MicrD+) ***$iYou $hh found $Micr and $nn $MicrLeft $NextLevel***"
+	$SmalAlt="$SmalName:  Bronze ($SmalB1-$SmalB2) | Silver ($SmalS1-$SmalS2) | Gold ($SmalG1-$SmalG2) | Platinum ($SmalP1-$SmalP2) | Ruby ($SmalR1-$SmalR2) | Sapphire ($SmalSa1-$SmalSa2) | Emerald ($SmalE1-$SmalE2) | Diamond ($SmalD+) ***$iYou $hh found $Smal and $nn $SmalLeft $NextLevel***"
+	$ReguAlt="$ReguName:  Bronze ($ReguB1-$ReguB2) | Silver ($ReguS1-$ReguS2) | Gold ($ReguG1-$ReguG2) | Platinum ($ReguP1-$ReguP2) | Ruby ($ReguR1-$ReguR2) | Sapphire ($ReguSa1-$ReguSa2) | Emerald ($ReguE1-$ReguE2) | Diamond ($ReguD+) ***$iYou $hh found $Regu and $nn $ReguLeft $NextLevel***"
+	$LargAlt="$LargName:  Bronze ($LargB1-$LargB2) | Silver ($LargS1-$LargS2) | Gold ($LargG1-$LargG2) | Platinum ($LargP1-$LargP2) | Ruby ($LargR1-$LargR2) | Sapphire ($LargSa1-$LargSa2) | Emerald ($LargE1-$LargE2) | Diamond ($LargD+) ***$iYou $hh found $Larg and $nn $LargLeft $NextLevel***"
+	$FiveAlt="$FiveName:  Bronze ($FiveB1-$FiveB2) | Silver ($FiveS1-$FiveS2) | Gold ($FiveG1-$FiveG2) | Platinum ($FiveP1-$FiveP2) | Ruby ($FiveR1-$FiveR2) | Sapphire ($FiveSa1-$FiveSa2) | Emerald ($FiveE1-$FiveE2) | Diamond ($FiveD+) ***$iYou $hh found $Five and $nn $FiveLeft $NextLevel***"
+	$FTFAlt="$FTFName:  Bronze ($FTFB1-$FTFB2) | Silver ($FTFS1-$FTFS2) | Gold ($FTFG1-$FTFG2) | Platinum ($FTFP1-$FTFP2) | Ruby ($FTFR1-$FTFR2) | Sapphire ($FTFSa1-$FTFSa2) | Emerald ($FTFE1-$FTFE2) | Diamond ($FTFD+) ***$iYou $hh $FTF and $nn $FTFLeft $NextLevel***"
+	$CounAlt="$CounName:  Bronze ($CounB1-$CounB2) | Silver ($CounS1-$CounS2) | Gold ($CounG1-$CounG2) | Platinum ($CounP1-$CounP2) | Ruby ($CounR1-$CounR2) | Sapphire ($CounSa1-$CounSa2) | Emerald ($CounE1-$CounE2) | Diamond ($CounD+) ***$iYou $hh cached in $Coun countries and $nn $CounLeft $NextLevel***"
+	$HiddAlt="$HiddName:  Bronze ($HiddB1-$HiddB2) | Silver ($HiddS1-$HiddS2) | Gold ($HiddG1-$HiddG2) | Platinum ($HiddP1-$HiddP2) | Ruby ($HiddR1-$HiddR2) | Sapphire ($HiddSa1-$HiddSa2) | Emerald ($HiddE1-$HiddE2) | Diamond ($HiddD+) ***$iYou $hh hidden $Hidd and $nn $HiddLeft $NextLevel***"
+	$ElevAlt="$ElevName:  Bronze ($ElevB1 m-$ElevB2 m) | Silver ($ElevS1 m-$ElevS2 m) | Gold ($ElevG1 m-$ElevG2 m) | Platinum ($ElevP1 m-$ElevP2 m) | Ruby ($ElevR1 m-$ElevR2 m) | Sapphire ($ElevSa1 m-$ElevSa2 m) | Emerald ($ElevE1 m-$ElevE2 m) | Diamond ($ElevD m+) ***$iYou $hh found a cache at $Elev m ($MaxElevationCache) and $nn to find a cache at $ElevLeft m to go up a level***"
+	$LimitSummary=" $TradAlt $_NewLine $_NewLine $MultAlt $_NewLine $_NewLine $MystAlt $_NewLine $_NewLine $VirtAlt $_NewLine $_NewLine $EartAlt $_NewLine $_NewLine $LettAlt $_NewLine $_NewLine $WherAlt $_NewLine $_NewLine $WebcAlt $_NewLine $_NewLine $MegaAlt $_NewLine $_NewLine $EvenAlt $_NewLine $_NewLine $CitoAlt $_NewLine $_NewLine $BencAlt $_NewLine $_NewLine $MicrAlt $_NewLine $_NewLine $SmalAlt $_NewLine $_NewLine $ReguAlt $_NewLine $_NewLine $LargAlt $_NewLine $_NewLine $FiveAlt $_NewLine $_NewLine $ElevAlt $_NewLine $_NewLine $FTFAlt $_NewLine $_NewLine $CounAlt $_NewLine $_NewLine $HiddAlt"
+	SHOWSTATUS msg=""
+ENDSUB #name=HoverText
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+#------------------------------
+#. . . . FORMS . . . . . .
+
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Thu 11-Feb-2010 19:33:58
+#********************************************************************
+
+Name = Form1
+Type = Form
+Height = 444
+Width = 642
+
+Name = Groupbox1
+Type = Groupbox
+Caption = Hover Text
+Height = 41
+Left = 16
+Top = 168
+Width = 289
+Taborder = 4
+
+Name = Groupbox2
+Type = Groupbox
+Caption = Other Options
+Height = 137
+Left = 320
+Top = 168
+Width = 289
+Taborder = 5
+
+Name = Groupbox3
+Type = Groupbox
+Caption = Display...
+Height = 89
+Left = 16
+Top = 216
+Width = 289
+Taborder = 6
+
+Name = Label1
+Type = Label
+Color = 85502
+Font = Arial Black
+Height = 38
+Left = 240
+Size = 20
+Top = 16
+Width = 151
+Caption = BadgeGen
+
+Name = Label2
+Type = Label
+Font = Verdana
+Height = 16
+Left = 152
+Size = 10
+Top = 88
+Width = 154
+Caption = Found Database Name:
+
+Name = EditBox
+Type = Combobox
+Color = 12713983
+Height = 21
+Left = 312
+Top = 88
+Width = 193
+Taborder = 0
+
+Name = Button1
+Type = Button
+Enter = Yes
+Height = 41
+Left = 254
+Top = 320
+Width = 121
+Taborder = 1
+Caption = OK
+
+Name = ShowRanges
+Type = Button
+Enabled = Yes
+Height = 25
+Left = 320
+Top = 368
+Width = 113
+Taborder = 2
+Caption = View Ranges
+
+Name = Forum
+Type = Button
+Height = 25
+Left = 198
+Top = 368
+Width = 113
+Taborder = 3
+Caption = Forum
+
+Name = Label3
+Type = Label
+Height = 13
+Left = 284
+Top = 56
+Width = 56
+Caption = by ky.m.guy
+
+Name = FirstPerson
+Type = Radiobutton
+Container = Groupbox1
+Height = 17
+Left = 32
+Top = 16
+Width = 73
+Taborder = 0
+Caption = First Person
+
+Name = ThirdPerson
+Type = Radiobutton
+Container = Groupbox1
+Height = 17
+Left = 112
+Top = 16
+Width = 81
+Taborder = 1
+Caption = Third Person
+
+Name = Username
+Type = Edit
+Height = 21
+Left = 312
+Top = 136
+Width = 193
+Taborder = 8
+
+Name = Label4
+Type = Label
+Font = Verdana
+Height = 16
+Left = 236
+Size = 10
+Top = 138
+Width = 70
+Caption = Username:
+
+Name = Label5
+Type = Label
+Container = Groupbox2
+Height = 13
+Left = 8
+Top = 26
+Width = 70
+Caption = Size:             %
+
+Name = Size
+Type = Edit
+Container = Groupbox2
+Height = 21
+Left = 35
+Top = 24
+Width = 33
+Taborder = 0
+
+Name = ShowType
+Type = Checkbox
+Container = Groupbox3
+Height = 17
+Left = 8
+Top = 16
+Width = 81
+Taborder = 0
+Caption = Cache Type
+
+Name = ShowSize
+Type = Checkbox
+Container = Groupbox3
+Height = 17
+Left = 112
+Top = 16
+Width = 97
+Taborder = 1
+Caption = Cache Size
+
+Name = ShowDiff
+Type = Checkbox
+Container = Groupbox3
+Height = 17
+Left = 8
+Top = 32
+Width = 89
+Taborder = 2
+Caption = 5/5 Diff/Terr
+
+Name = ShowFTF
+Type = Checkbox
+Container = Groupbox3
+Height = 17
+Left = 112
+Top = 32
+Width = 97
+Taborder = 3
+Caption = First to Find
+
+Name = ShowCoun
+Type = Checkbox
+Container = Groupbox3
+Height = 17
+Left = 8
+Top = 48
+Width = 97
+Taborder = 4
+Caption = Countries
+
+Name = Label6
+Type = Label
+Font = Verdana
+Height = 16
+Left = 149
+Size = 10
+Top = 114
+Width = 157
+Caption = Placed Database Name:
+
+Name = ShowHidd
+Type = Checkbox
+Container = Groupbox3
+Height = 17
+Left = 112
+Top = 48
+Width = 97
+Taborder = 5
+Caption = Placed
+
+Name = EditBox2
+Type = Combobox
+Color = 14155735
+Height = 21
+Left = 312
+Top = 112
+Width = 193
+Taborder = 7
+
+Name = FSG
+Type = Checkbox
+Container = Groupbox2
+Height = 17
+Left = 8
+Top = 56
+Width = 233
+Taborder = 1
+Caption = Run FindStatGen after badges are generated
+
+Name = Suppress
+Type = Checkbox
+Container = Groupbox2
+Height = 17
+Left = 8
+Top = 72
+Width = 233
+Taborder = 2
+Caption = Suppress preview and "Complete" message
+
+Name = ShowElev
+Type = Checkbox
+Container = Groupbox3
+Height = 17
+Left = 208
+Top = 16
+Width = 73
+Taborder = 6
+Caption = Elevation
+
+<enddata>
+
+
+<Data> VarName=$form2
+#********************************************************************
+# Form generated by GSAK form designer on Sun 31-Jan-2010 15:23:22
+#********************************************************************
+
+Name = Form1
+Type = Form
+Height = 684
+Width = 1086
+
+Name = Memo1
+Type = Memo
+Color = 15329769
+Height = 553
+Left = 16
+Readonly = Yes
+Scrollbars = Vertical
+Top = 40
+Width = 1041
+Taborder = 8
+
+Name = Label1
+Type = Label
+Color = 33023
+Font = Arial Black
+Height = 27
+Left = 416
+Size = 14
+Top = 8
+Width = 206
+Caption = Badge Qualification
+
+Name = Back
+Type = Button
+Height = 25
+Left = 496
+Top = 608
+Width = 75
+Taborder = 9
+Caption = Back
+
+<enddata>
+
+
+<Data> VarName=$form3
+#********************************************************************
+# Form generated by GSAK form designer on Sun 07-Feb-2010 17:15:18
+#********************************************************************
+
+Name = Form1
+Type = Form
+Height = 355
+Width = 646
+
+Name = Label1
+Type = Label
+Color = 33023
+Font = Arial Black
+Height = 27
+Left = 256
+Size = 14
+Top = 8
+Width = 109
+Caption = BadgeGen
+
+Name = Label2
+Type = Label
+Height = 13
+Left = 48
+Top = 40
+Width = 534
+Caption = Please answer the following questions so that BadgeGen can award badges that it cannot automatically calculate
+
+Name = Label3
+Type = Label
+Height = 13
+Left = 32
+Top = 92
+Width = 244
+Caption = What is your maximum consecutive days with finds?
+
+Name = ConsString
+Type = Edit
+Height = 21
+Left = 368
+Top = 88
+Width = 137
+Taborder = 8
+
+Name = Label4
+Type = Label
+Height = 13
+Left = 32
+Top = 112
+Width = 296
+Caption = What is your maximum number of finds within a 24 hour period?
+
+Name = TwenString
+Type = Edit
+Height = 21
+Left = 368
+Top = 112
+Width = 137
+Taborder = 9
+
+<enddata>
+
+
+
+
+
+###---ELEVATION CALCULATIONS---###
+
+BEGINSUB name=CalculateElevation
+
+	# Units?
+	IF SysInfo("Distance") = "K"
+		$distunits = "m"
+	ELSE
+		$distunits = "ft"
+	ENDIF
+
+	$spaces = "     "
+
+	$conversion = 3.28084
+
+	$outputhtml = $_Install + "\temp\elevationdata.html"
+
+	$database = Replace("'","''",$_CurrentDatabase)
+
+	# Set up the SQL table
+	$sqlfile = $_Install + "\macros\elevationdataSQL.db3"
+
+	$status = ""
+
+	IF NOT(FileExists($sqlfile))
+		$status = Sqlite("create",$sqlfile)
+	ENDIF
+
+	$status = Sqlite("open",$sqlfile)
+
+	$Data="Code text, Database text, Elevation integer, Resolution text, units text, PRIMARY KEY (Code, Database)"
+	$_sql = "CREATE TABLE IF NOT EXISTS elevationdata ($Data)"
+	$status = Sqlite("sql",$_sql)
+	# Filter down to the caches where we have no elevation data
+	$Status = DbToSQLite("caches","Code,Name,Country,State,FoundByMeDate,Found",$sqlfile)
+	$_sql = "select code from caches WHERE (caches.code NOT IN (SELECT code from elevationdata WHERE database='$EditBox1')) AND Found='T'"
+	$codes = Sqlite("sql",$_sql)
+	#MSGOK msg="The codes are: $Codes"
+
+	IF NOT($codes="")
+		$Sort = $_SortBy
+		SORT by="Natural"
+		MACROFLAG type=clear range=all
+		$status = CodeMatch($codes,$_NewLine,"M")
+		MFILTER Expression=$d_MacroFlag
+		$TotalCount = $_FilterCount
+		$count = 0
+
+		$_sql = "BEGIN"
+		$status = Sqlite("sql",$_sql)
+
+		WHILE NOT($_EOL) AND ($TotalCount > 0)
+			$count = $count + 1
+			$codefield = Replace("'","''",$d_Code)
+			$_sql = "SELECT Code from elevationdata WHERE code = '$codefield' and database = '$Database' and elevation <> -32768 and elevation <> -9999"
+			$status = Sqlite("sql",$_sql)
+			IF Len($status) = 0
+				$url = "http://ws5.geonames.org/srtm3?lat=" + $d_Latitude + "&lng=" + $d_Longitude
+				SHOWSTATUS msg="Getting 90m resolution Elevation for $d_name" Width=350 Title="$count of $TotalCount"
+				$data = GetUrl($url,"")
+				$resolution = "90m"
+				IF Val($data) = -32768
+					$url = "http://ws5.geonames.org/gtopo30?lat=" + $d_Latitude + "&lng=" + $d_Longitude
+					SHOWSTATUS msg="Getting 1km resolution Elevation for $d_name" Width=350  Title="$count of $TotalCount"
+					$data = GetUrl($url,"")
+					$resolution = "1km"
+				ENDIF
+				IF Len($data) > 0
+					$elevation = Val($data)
+					IF $elevation = -9999
+						$elevation = 0
+					ENDIF
+					IF $distunits = "ft"
+						$elevation = Int($conversion * $elevation)
+					ENDIF
+					$_sql = "REPLACE INTO elevationdata VALUES('$codefield','$database',$elevation,'$resolution','$distunits')"
+					$status = Sqlite("sql",$_sql)
+					SHOWSTATUS msg="Posting Elevation for $d_name: $elevation" Width=350  Title="$count of $TotalCount"
+
+				ENDIF
+			ENDIF
+			GOTO position=next
+		ENDWHILE
+		SHOWSTATUS msg="End" Width=350 Display=Off
+
+		$_sql = "COMMIT"
+		$status = Sqlite("sql",$_sql)
+
+		$SortData = Extract($Sort, "=",1)
+		$Sequence = Extract($Sort, "=",2)
+		SORT By=$SortData Sequence=$Sequence
+	ENDIF
+	CANCELFILTER
+
+	$Data = SQLite("Open","$sqlfile")
+  $Data = SQLite("sql","Select MAX(elevation) from elevationdata WHERE database='$database' AND code in(SELECT code from Caches WHERE FoundByMeDate<>'')")
+	$code = Sqlite("sql","select code from elevationdata where elevation = ($data) limit 1")
+	$MaxElevationCache = SQLite("sql","Select name from caches where code = '$code'")
+	IF SysInfo("Distance") = "K"
+		$Elev = Val($Data)
+	ELSE
+		$Elev = Round(Val($Data) / $conversion,0)
+	ENDIF
+	$Data = SQLite("Close","","")
+
+
+
+ENDSUB #name=CalculateElevation
+
+
+
+
+
+BEGINSUB name=VarDec
+	SHOWSTATUS msg="Declaring Variables"
+	Option Explicit=On
+
+	Declare Var=$Trad Type=Numeric
+	Declare Var=$Mult Type=Numeric
+	Declare Var=$Virt Type=Numeric
+	Declare Var=$Myst Type=Numeric
+	Declare Var=$Eart Type=Numeric
+	Declare Var=$Lett Type=Numeric
+	Declare Var=$Wher Type=Numeric
+	Declare Var=$Mega Type=Numeric
+	Declare Var=$Even Type=Numeric
+	Declare Var=$Cito Type=Numeric
+	Declare Var=$Benc Type=Numeric
+	Declare Var=$Micr Type=Numeric
+	Declare Var=$Smal Type=Numeric
+	Declare Var=$Regu Type=Numeric
+	Declare Var=$Larg Type=Numeric
+	Declare Var=$Five Type=Numeric
+	Declare Var=$Coun Type=Numeric
+	Declare Var=$FTF Type=Numeric
+	Declare Var=$Hidd Type=Numeric
+	Declare Var=$Elev Type=Numeric
+	Declare Var=$Webc Type=Numeric
+
+	Declare Var=$TradHTML Type=String
+	Declare Var=$MultHTML Type=String
+	Declare Var=$VirtHTML Type=String
+	Declare Var=$MystHTML Type=String
+	Declare Var=$EartHTML Type=String
+	Declare Var=$LettHTML Type=String
+	Declare Var=$WherHTML Type=String
+	Declare Var=$MegaHTML Type=String
+	Declare Var=$EvenHTML Type=String
+	Declare Var=$CitoHTML Type=String
+	Declare Var=$BencHTML Type=String
+	Declare Var=$MicrHTML Type=String
+	Declare Var=$SmalHTML Type=String
+	Declare Var=$ReguHTML Type=String
+	Declare Var=$LargHTML Type=String
+	Declare Var=$FiveHTML Type=String
+	Declare Var=$CounHTML Type=String
+	Declare Var=$FTFHTML Type=String
+	Declare Var=$HiddHTML Type=String
+	Declare Var=$ElevHTML Type=String
+	Declare Var=$WebcHTML Type=String
+
+	Declare Var=$TradNAME Type=String
+	Declare Var=$MultNAME Type=String
+	Declare Var=$VirtNAME Type=String
+	Declare Var=$MystNAME Type=String
+	Declare Var=$EartNAME Type=String
+	Declare Var=$LettNAME Type=String
+	Declare Var=$WherNAME Type=String
+	Declare Var=$MegaNAME Type=String
+	Declare Var=$EvenNAME Type=String
+	Declare Var=$CitoNAME Type=String
+	Declare Var=$BencNAME Type=String
+	Declare Var=$MicrNAME Type=String
+	Declare Var=$SmalNAME Type=String
+	Declare Var=$ReguNAME Type=String
+	Declare Var=$LargNAME Type=String
+	Declare Var=$FiveNAME Type=String
+	Declare Var=$CounNAME Type=String
+	Declare Var=$FTFNAME Type=String
+	Declare Var=$HiddNAME Type=String
+	Declare Var=$ElevName Type=String
+	Declare Var=$WebcName Type=String
+
+	Declare Var=$TradCODE Type=String
+	Declare Var=$MultCODE Type=String
+	Declare Var=$VirtCODE Type=String
+	Declare Var=$MystCODE Type=String
+	Declare Var=$EartCODE Type=String
+	Declare Var=$LettCODE Type=String
+	Declare Var=$WherCODE Type=String
+	Declare Var=$MegaCODE Type=String
+	Declare Var=$EvenCODE Type=String
+	Declare Var=$CitoCODE Type=String
+	Declare Var=$BencCODE Type=String
+	Declare Var=$MicrCODE Type=String
+	Declare Var=$SmalCODE Type=String
+	Declare Var=$ReguCODE Type=String
+	Declare Var=$LargCODE Type=String
+	Declare Var=$FiveCODE Type=String
+	Declare Var=$CounCODE Type=String
+	Declare Var=$FTFCODE Type=String
+	Declare Var=$HiddCODE Type=String
+	Declare Var=$ElevCode Type=String
+	Declare Var=$WebcCode Type=String
+
+	Declare Var=$TradLEFT Type=Numeric
+	Declare Var=$MultLEFT Type=Numeric
+	Declare Var=$VirtLEFT Type=Numeric
+	Declare Var=$MystLEFT Type=Numeric
+	Declare Var=$EartLEFT Type=Numeric
+	Declare Var=$LettLEFT Type=Numeric
+	Declare Var=$WherLEFT Type=Numeric
+	Declare Var=$MegaLEFT Type=Numeric
+	Declare Var=$EvenLEFT Type=Numeric
+	Declare Var=$CitoLEFT Type=Numeric
+	Declare Var=$BencLEFT Type=Numeric
+	Declare Var=$MicrLEFT Type=Numeric
+	Declare Var=$SmalLEFT Type=Numeric
+	Declare Var=$ReguLEFT Type=Numeric
+	Declare Var=$LargLEFT Type=Numeric
+	Declare Var=$FiveLEFT Type=Numeric
+	Declare Var=$CounLEFT Type=Numeric
+	Declare Var=$FTFLEFT Type=Numeric
+	Declare Var=$HiddLEFT Type=Numeric
+	Declare Var=$ElevLeft Type=Numeric
+	Declare Var=$WebcLeft Type=Numeric
+
+	Declare Var=$TradLIMIT Type=Numeric
+	Declare Var=$MultLIMIT Type=Numeric
+	Declare Var=$VirtLIMIT Type=Numeric
+	Declare Var=$MystLIMIT Type=Numeric
+	Declare Var=$EartLIMIT Type=Numeric
+	Declare Var=$LettLIMIT Type=Numeric
+	Declare Var=$WherLIMIT Type=Numeric
+	Declare Var=$MegaLIMIT Type=Numeric
+	Declare Var=$EvenLIMIT Type=Numeric
+	Declare Var=$CitoLIMIT Type=Numeric
+	Declare Var=$BencLIMIT Type=Numeric
+	Declare Var=$MicrLIMIT Type=Numeric
+	Declare Var=$SmalLIMIT Type=Numeric
+	Declare Var=$ReguLIMIT Type=Numeric
+	Declare Var=$LargLIMIT Type=Numeric
+	Declare Var=$FiveLIMIT Type=Numeric
+	Declare Var=$CounLIMIT Type=Numeric
+	Declare Var=$FTFLIMIT Type=Numeric
+	Declare Var=$HiddLIMIT Type=Numeric
+	Declare Var=$ElevLIMIT Type=Numeric
+	Declare Var=$WebcLIMIT Type=Numeric
+
+	Declare Var=$TradALT Type=String
+	Declare Var=$MultALT Type=String
+	Declare Var=$VirtALT Type=String
+	Declare Var=$MystALT Type=String
+	Declare Var=$EartALT Type=String
+	Declare Var=$LettALT Type=String
+	Declare Var=$WherALT Type=String
+	Declare Var=$MegaALT Type=String
+	Declare Var=$EvenALT Type=String
+	Declare Var=$CitoALT Type=String
+	Declare Var=$BencALT Type=String
+	Declare Var=$MicrALT Type=String
+	Declare Var=$SmalALT Type=String
+	Declare Var=$ReguALT Type=String
+	Declare Var=$LargALT Type=String
+	Declare Var=$FiveALT Type=String
+	Declare Var=$CounALT Type=String
+	Declare Var=$FTFALT Type=String
+	Declare Var=$HiddALT Type=String
+	Declare Var=$ElevALT Type=String
+	Declare Var=$WebcALT Type=String
+
+	Declare Var=$TradB1 Type=Numeric
+	Declare Var=$TradB2  Type=Numeric
+	Declare Var=$TradS1 Type=Numeric
+	Declare Var=$TradS2  Type=Numeric
+	Declare Var=$TradG1  Type=Numeric
+	Declare Var=$TradG2  Type=Numeric
+	Declare Var=$TradP1  Type=Numeric
+	Declare Var=$TradP2  Type=Numeric
+	Declare Var=$TradR1  Type=Numeric
+	Declare Var=$TradR2  Type=Numeric
+	Declare Var=$TradSa1  Type=Numeric
+	Declare Var=$TradSa2  Type=Numeric
+	Declare Var=$TradE1  Type=Numeric
+	Declare Var=$TradE2  Type=Numeric
+	Declare Var=$TradD   Type=Numeric
+	Declare Var=$MultB1  Type=Numeric
+	Declare Var=$MultB2  Type=Numeric
+	Declare Var=$MultS1  Type=Numeric
+	Declare Var=$MultS2  Type=Numeric
+	Declare Var=$MultG1  Type=Numeric
+	Declare Var=$MultG2  Type=Numeric
+	Declare Var=$MultP1  Type=Numeric
+	Declare Var=$MultP2  Type=Numeric
+	Declare Var=$MultR1  Type=Numeric
+	Declare Var=$MultR2  Type=Numeric
+	Declare Var=$MultSa1  Type=Numeric
+	Declare Var=$MultSa2  Type=Numeric
+	Declare Var=$MultE1  Type=Numeric
+	Declare Var=$MultE2  Type=Numeric
+	Declare Var=$MultD   Type=Numeric
+	Declare Var=$MystB1  Type=Numeric
+	Declare Var=$MystB2  Type=Numeric
+	Declare Var=$MystS1  Type=Numeric
+	Declare Var=$MystS2  Type=Numeric
+	Declare Var=$MystG1  Type=Numeric
+	Declare Var=$MystG2  Type=Numeric
+	Declare Var=$MystP1  Type=Numeric
+	Declare Var=$MystP2  Type=Numeric
+	Declare Var=$MystR1  Type=Numeric
+	Declare Var=$MystR2  Type=Numeric
+	Declare Var=$MystSa1  Type=Numeric
+	Declare Var=$MystSa2  Type=Numeric
+	Declare Var=$MystE1  Type=Numeric
+	Declare Var=$MystE2  Type=Numeric
+	Declare Var=$MystD   Type=Numeric
+	Declare Var=$VirtB1  Type=Numeric
+	Declare Var=$VirtB2  Type=Numeric
+	Declare Var=$VirtS1  Type=Numeric
+	Declare Var=$VirtS2  Type=Numeric
+	Declare Var=$VirtG1  Type=Numeric
+	Declare Var=$VirtG2  Type=Numeric
+	Declare Var=$VirtP1  Type=Numeric
+	Declare Var=$VirtP2  Type=Numeric
+	Declare Var=$VirtR1 Type=Numeric
+	Declare Var=$VirtR2 Type=Numeric
+	Declare Var=$VirtSa1 Type=Numeric
+	Declare Var=$VirtSa2 Type=Numeric
+	Declare Var=$VirtE1 Type=Numeric
+	Declare Var=$VirtE2 Type=Numeric
+	Declare Var=$VirtD  Type=Numeric
+	Declare Var=$EartB1 Type=Numeric
+	Declare Var=$EartB2 Type=Numeric
+	Declare Var=$EartS1 Type=Numeric
+	Declare Var=$EartS2 Type=Numeric
+	Declare Var=$EartG1 Type=Numeric
+	Declare Var=$EartG2 Type=Numeric
+	Declare Var=$EartP1 Type=Numeric
+	Declare Var=$EartP2 Type=Numeric
+	Declare Var=$EartR1 Type=Numeric
+	Declare Var=$EartR2 Type=Numeric
+	Declare Var=$EartSa1 Type=Numeric
+	Declare Var=$EartSa2 Type=Numeric
+	Declare Var=$EartE1 Type=Numeric
+	Declare Var=$EartE2 Type=Numeric
+	Declare Var=$EartD  Type=Numeric
+	Declare Var=$LettB1 Type=Numeric
+	Declare Var=$LettB2 Type=Numeric
+	Declare Var=$LettS1 Type=Numeric
+	Declare Var=$LettS2 Type=Numeric
+	Declare Var=$LettG1 Type=Numeric
+	Declare Var=$LettG2 Type=Numeric
+	Declare Var=$LettP1 Type=Numeric
+	Declare Var=$LettP2 Type=Numeric
+	Declare Var=$LettR1 Type=Numeric
+	Declare Var=$LettR2 Type=Numeric
+	Declare Var=$LettSa1 Type=Numeric
+	Declare Var=$LettSa2 Type=Numeric
+	Declare Var=$LettE1 Type=Numeric
+	Declare Var=$LettE2 Type=Numeric
+	Declare Var=$LettD  Type=Numeric
+	Declare Var=$WherB1 Type=Numeric
+	Declare Var=$WherB2 Type=Numeric
+	Declare Var=$WherS1 Type=Numeric
+	Declare Var=$WherS2 Type=Numeric
+	Declare Var=$WherG1 Type=Numeric
+	Declare Var=$WherG2 Type=Numeric
+	Declare Var=$WherP1 Type=Numeric
+	Declare Var=$WherP2 Type=Numeric
+	Declare Var=$WherR1 Type=Numeric
+	Declare Var=$WherR2 Type=Numeric
+	Declare Var=$WherSa1 Type=Numeric
+	Declare Var=$WherSa2 Type=Numeric
+	Declare Var=$WherE1 Type=Numeric
+	Declare Var=$WherE2 Type=Numeric
+	Declare Var=$WherD  Type=Numeric
+	Declare Var=$MegaB1 Type=Numeric
+	Declare Var=$MegaB2 Type=Numeric
+	Declare Var=$MegaS1 Type=Numeric
+	Declare Var=$MegaS2 Type=Numeric
+	Declare Var=$MegaG1 Type=Numeric
+	Declare Var=$MegaG2 Type=Numeric
+	Declare Var=$MegaP1 Type=Numeric
+	Declare Var=$MegaP2 Type=Numeric
+	Declare Var=$MegaR1 Type=Numeric
+	Declare Var=$MegaR2 Type=Numeric
+	Declare Var=$MegaSa1 Type=Numeric
+	Declare Var=$MegaSa2 Type=Numeric
+	Declare Var=$MegaE1 Type=Numeric
+	Declare Var=$MegaE2 Type=Numeric
+	Declare Var=$MegaD  Type=Numeric
+	Declare Var=$EvenB1 Type=Numeric
+	Declare Var=$EvenB2 Type=Numeric
+	Declare Var=$EvenS1 Type=Numeric
+	Declare Var=$EvenS2 Type=Numeric
+	Declare Var=$EvenG1 Type=Numeric
+	Declare Var=$EvenG2 Type=Numeric
+	Declare Var=$EvenP1 Type=Numeric
+	Declare Var=$EvenP2 Type=Numeric
+	Declare Var=$EvenR1 Type=Numeric
+	Declare Var=$EvenR2 Type=Numeric
+	Declare Var=$EvenSa1 Type=Numeric
+	Declare Var=$EvenSa2 Type=Numeric
+	Declare Var=$EvenE1 Type=Numeric
+	Declare Var=$EvenE2 Type=Numeric
+	Declare Var=$EvenD  Type=Numeric
+	Declare Var=$CITOB1 Type=Numeric
+	Declare Var=$CITOB2 Type=Numeric
+	Declare Var=$CITOS1 Type=Numeric
+	Declare Var=$CITOS2 Type=Numeric
+	Declare Var=$CITOG1 Type=Numeric
+	Declare Var=$CITOG2 Type=Numeric
+	Declare Var=$CITOP1 Type=Numeric
+	Declare Var=$CITOP2 Type=Numeric
+	Declare Var=$CITOR1 Type=Numeric
+	Declare Var=$CITOR2 Type=Numeric
+	Declare Var=$CITOSa1 Type=Numeric
+	Declare Var=$CITOSa2 Type=Numeric
+	Declare Var=$CITOE1 Type=Numeric
+	Declare Var=$CITOE2 Type=Numeric
+	Declare Var=$CITOD  Type=Numeric
+	Declare Var=$BencB1 Type=Numeric
+	Declare Var=$BencB2 Type=Numeric
+	Declare Var=$BencS1 Type=Numeric
+	Declare Var=$BencS2 Type=Numeric
+	Declare Var=$BencG1 Type=Numeric
+	Declare Var=$BencG2 Type=Numeric
+	Declare Var=$BencP1 Type=Numeric
+	Declare Var=$BencP2 Type=Numeric
+	Declare Var=$BencR1 Type=Numeric
+	Declare Var=$BencR2 Type=Numeric
+	Declare Var=$BencSa1 Type=Numeric
+	Declare Var=$BencSa2 Type=Numeric
+	Declare Var=$BencE1 Type=Numeric
+	Declare Var=$BencE2 Type=Numeric
+	Declare Var=$BencD  Type=Numeric
+	Declare Var=$MicrB1 Type=Numeric
+	Declare Var=$MicrB2 Type=Numeric
+	Declare Var=$MicrS1 Type=Numeric
+	Declare Var=$MicrS2 Type=Numeric
+	Declare Var=$MicrG1 Type=Numeric
+	Declare Var=$MicrG2 Type=Numeric
+	Declare Var=$MicrP1 Type=Numeric
+	Declare Var=$MicrP2 Type=Numeric
+	Declare Var=$MicrR1 Type=Numeric
+	Declare Var=$MicrR2 Type=Numeric
+	Declare Var=$MicrSa1 Type=Numeric
+	Declare Var=$MicrSa2 Type=Numeric
+	Declare Var=$MicrE1 Type=Numeric
+	Declare Var=$MicrE2 Type=Numeric
+	Declare Var=$MicrD  Type=Numeric
+	Declare Var=$SmalB1 Type=Numeric
+	Declare Var=$SmalB2 Type=Numeric
+	Declare Var=$SmalS1 Type=Numeric
+	Declare Var=$SmalS2 Type=Numeric
+	Declare Var=$SmalG1 Type=Numeric
+	Declare Var=$SmalG2 Type=Numeric
+	Declare Var=$SmalP1 Type=Numeric
+	Declare Var=$SmalP2 Type=Numeric
+	Declare Var=$SmalR1 Type=Numeric
+	Declare Var=$SmalR2 Type=Numeric
+	Declare Var=$SmalSa1 Type=Numeric
+	Declare Var=$SmalSa2 Type=Numeric
+	Declare Var=$SmalE1 Type=Numeric
+	Declare Var=$SmalE2 Type=Numeric
+	Declare Var=$SmalD  Type=Numeric
+	Declare Var=$ReguB1 Type=Numeric
+	Declare Var=$ReguB2 Type=Numeric
+	Declare Var=$ReguS1 Type=Numeric
+	Declare Var=$ReguS2 Type=Numeric
+	Declare Var=$ReguG1 Type=Numeric
+	Declare Var=$ReguG2 Type=Numeric
+	Declare Var=$ReguP1 Type=Numeric
+	Declare Var=$ReguP2 Type=Numeric
+	Declare Var=$ReguR1 Type=Numeric
+	Declare Var=$ReguR2 Type=Numeric
+	Declare Var=$ReguSa1 Type=Numeric
+	Declare Var=$ReguSa2 Type=Numeric
+	Declare Var=$ReguE1 Type=Numeric
+	Declare Var=$ReguE2 Type=Numeric
+	Declare Var=$ReguD  Type=Numeric
+	Declare Var=$LargB1 Type=Numeric
+	Declare Var=$LargB2 Type=Numeric
+	Declare Var=$LargS1 Type=Numeric
+	Declare Var=$LargS2 Type=Numeric
+	Declare Var=$LargG1 Type=Numeric
+	Declare Var=$LargG2 Type=Numeric
+	Declare Var=$LargP1 Type=Numeric
+	Declare Var=$LargP2 Type=Numeric
+	Declare Var=$LargR1 Type=Numeric
+	Declare Var=$LargR2 Type=Numeric
+	Declare Var=$LargSa1 Type=Numeric
+	Declare Var=$LargSa2 Type=Numeric
+	Declare Var=$LargE1 Type=Numeric
+	Declare Var=$LargE2 Type=Numeric
+	Declare Var=$LargD  Type=Numeric
+	Declare Var=$FiveB1 Type=Numeric
+	Declare Var=$FiveB2 Type=Numeric
+	Declare Var=$FiveS1 Type=Numeric
+	Declare Var=$FiveS2 Type=Numeric
+	Declare Var=$FiveG1 Type=Numeric
+	Declare Var=$FiveG2 Type=Numeric
+	Declare Var=$FiveP1 Type=Numeric
+	Declare Var=$FiveP2 Type=Numeric
+	Declare Var=$FiveR1 Type=Numeric
+	Declare Var=$FiveR2 Type=Numeric
+	Declare Var=$FiveSa1 Type=Numeric
+	Declare Var=$FiveSa2 Type=Numeric
+	Declare Var=$FiveE1 Type=Numeric
+	Declare Var=$FiveE2 Type=Numeric
+	Declare Var=$FiveD  Type=Numeric
+	Declare Var=$CounB1 Type=Numeric
+	Declare Var=$CounB2 Type=Numeric
+	Declare Var=$CounS1 Type=Numeric
+	Declare Var=$CounS2 Type=Numeric
+	Declare Var=$CounG1 Type=Numeric
+	Declare Var=$CounG2 Type=Numeric
+	Declare Var=$CounP1 Type=Numeric
+	Declare Var=$CounP2 Type=Numeric
+	Declare Var=$CounR1 Type=Numeric
+	Declare Var=$CounR2 Type=Numeric
+	Declare Var=$CounSa1 Type=Numeric
+	Declare Var=$CounSa2 Type=Numeric
+	Declare Var=$CounE1 Type=Numeric
+	Declare Var=$CounE2 Type=Numeric
+	Declare Var=$CounD  Type=Numeric
+	Declare Var=$FTFB1  Type=Numeric
+	Declare Var=$FTFB2  Type=Numeric
+	Declare Var=$FTFS1  Type=Numeric
+	Declare Var=$FTFS2  Type=Numeric
+	Declare Var=$FTFG1  Type=Numeric
+	Declare Var=$FTFG2  Type=Numeric
+	Declare Var=$FTFP1  Type=Numeric
+	Declare Var=$FTFP2  Type=Numeric
+	Declare Var=$FTFR1  Type=Numeric
+	Declare Var=$FTFR2  Type=Numeric
+	Declare Var=$FTFSa1 Type=Numeric
+	Declare Var=$FTFSa2 Type=Numeric
+	Declare Var=$FTFE1  Type=Numeric
+	Declare Var=$FTFE2  Type=Numeric
+	Declare Var=$FTFD   Type=Numeric
+	Declare Var=$HiddB1 Type=Numeric
+	Declare Var=$HiddB2 Type=Numeric
+	Declare Var=$HiddS1 Type=Numeric
+	Declare Var=$HiddS2 Type=Numeric
+	Declare Var=$HiddG1 Type=Numeric
+	Declare Var=$HiddG2 Type=Numeric
+	Declare Var=$HiddP1 Type=Numeric
+	Declare Var=$HiddP2 Type=Numeric
+	Declare Var=$HiddR1 Type=Numeric
+	Declare Var=$HiddR2 Type=Numeric
+	Declare Var=$HiddSa1 Type=Numeric
+	Declare Var=$HiddSa2 Type=Numeric
+	Declare Var=$HiddE1 Type=Numeric
+	Declare Var=$HiddE2 Type=Numeric
+	Declare Var=$HiddD Type=Numeric
+	Declare Var=$ElevB1 Type=Numeric
+	Declare Var=$ElevB2  Type=Numeric
+	Declare Var=$ElevS1 Type=Numeric
+	Declare Var=$ElevS2  Type=Numeric
+	Declare Var=$ElevG1  Type=Numeric
+	Declare Var=$ElevG2  Type=Numeric
+	Declare Var=$ElevP1  Type=Numeric
+	Declare Var=$ElevP2  Type=Numeric
+	Declare Var=$ElevR1  Type=Numeric
+	Declare Var=$ElevR2  Type=Numeric
+	Declare Var=$ElevSa1  Type=Numeric
+	Declare Var=$ElevSa2  Type=Numeric
+	Declare Var=$ElevE1  Type=Numeric
+	Declare Var=$ElevE2  Type=Numeric
+	Declare Var=$ElevD   Type=Numeric
+	Declare Var=$WebcB1 Type=Numeric
+	Declare Var=$WebcB2  Type=Numeric
+	Declare Var=$WebcS1 Type=Numeric
+	Declare Var=$WebcS2  Type=Numeric
+	Declare Var=$WebcG1  Type=Numeric
+	Declare Var=$WebcG2  Type=Numeric
+	Declare Var=$WebcP1  Type=Numeric
+	Declare Var=$WebcP2  Type=Numeric
+	Declare Var=$WebcR1  Type=Numeric
+	Declare Var=$WebcR2  Type=Numeric
+	Declare Var=$WebcSa1  Type=Numeric
+	Declare Var=$WebcSa2  Type=Numeric
+	Declare Var=$WebcE1  Type=Numeric
+	Declare Var=$WebcE2  Type=Numeric
+	Declare Var=$WebcD   Type=Numeric
+
+
+	Declare Var=$Link Type=String
+	Declare Var=$centre Type=String
+	Declare Var=$endcentre Type=String
+	Declare Var=$newline Type=String
+	Declare Var=$1 Type=String
+	Declare Var=$2 Type=String
+	Declare Var=$3 Type=String
+	Declare Var=$5 Type=String
+	Declare Var=$6 Type=String
+	Declare Var=$10 Type=String
+	Declare Var=$15 Type=String
+	Declare Var=$20 Type=String
+	Declare Var=$23 Type=String
+	Declare Var=$24 Type=String
+	Declare Var=$26 Type=String
+	Declare Var=$28 Type=String
+	Declare Var=$01 Type=String
+	Declare Var=$02 Type=String
+	Declare Var=$03 Type=String
+	Declare Var=$04 Type=String
+	Declare Var=$05 Type=String
+	Declare Var=$06 Type=String
+	Declare Var=$07 Type=String
+
+	Declare Var=$Units Type=String
+	Declare Var=$Randomvarr Type=Numeric
+	Declare Var=$RemoveVariables Type=Boolean
+	Declare Var=$HotlinkURL Type=String
+	Declare Var=$BadgeNumber Type=Numeric
+	Declare Var=$SaveLocation Type=String
+	Declare Var=$MacURL Type=String
+	Declare Var=$NextLevel Type=String
+	Declare Var=$Hidd1 Type=String
+	Declare Var=$LimitSummary Type=String
+	Declare Var=$URL Type=String
+	Declare Var=$Temp2 Type=Numeric
+	Declare Var=$AllElev Type=String
+	Declare Var=$num Type=Numeric
+	Declare Var=$Temp1 Type=String
+	Declare Var=$Data Type=String
+	Declare Var=$Position Type=Numeric
+	Declare Var=$MaxElevationCache Type=String
+	Declare Var=$CountTemp Type=String
+
+	Option Explicit=Off
+
+	SHOWSTATUS msg="Assigning Limits"
+	$TradLIMIT = (Val(chr(50)) ^ Val(chr(56))) - Val(chr(54))
+	$MultLIMIT = Val(chr(51)+chr(48)) + Val(chr(53))
+	$VirtLIMIT = Val(chr(51)+chr(48)) + Val(chr(53))
+	$MystLIMIT = Val(chr(51)+chr(48)) + Val(chr(53))
+	$EartLIMIT = (Val(chr(50)) ^ Val(chr(52))) + Val(chr(52))
+	$LettLIMIT = (Val(chr(50)) ^ Val(chr(52))) + Val(chr(52)) + Val(chr(53))
+	$WherLIMIT = (Val(chr(50)) ^ Val(chr(52))) + Val(chr(52))
+	$MegaLIMIT = (Val(chr(57)+chr(57)) - Val(chr(57)+chr(56))) + Val(chr(49))
+	$EvenLIMIT = ((Val(chr(54)) * Val(chr(54))) - Val(chr(51)+chr(48))) + Val(chr(52))
+	$CitoLIMIT = (Val(chr(57)+chr(57)) - Val(chr(57)+chr(56))) + Val(chr(49))
+	$BencLIMIT = ((Val(chr(54)) * Val(chr(54))) - Val(chr(51)+chr(48))) + Val(chr(52))
+	$MicrLIMIT = (((Val(chr(50)) ^ Val(chr(52))) + Val(chr(52)))) * Val(chr(49)+chr(48)) + Val(chr(53)+chr(48))
+	$SmalLIMIT = (((Val(chr(50)) ^ Val(chr(52))) + Val(chr(52)))) * Val(chr(49)+chr(48))
+	$ReguLIMIT = ((((Val(chr(50)) ^ Val(chr(52))) + Val(chr(52)))) * Val(chr(49)+chr(48)) + Val(chr(53)+chr(48))) - Val(chr(49)+chr(48)+chr(48))
+	$LargLIMIT = Val(chr(53)) * (Val(chr(53)) + Val(chr(53)))
+	$FiveLIMIT = Val(chr(57)+chr(57)) - Val(chr(57)+chr(56))
+	$CounLIMIT = (Val(chr(57)+chr(57)) - Val(chr(57)+chr(56))) + Val(chr(49))
+	$FTFLIMIT =  (Val(chr(50)) ^ Val(chr(52))) + Val(chr(52))
+	$HiddLIMIT = ((Val(chr(54)) * Val(chr(54))) - Val(chr(51)+chr(48))) + Val(chr(52))
+	$ElevLIMIT = 500
+	$WebcLIMIT = 2
+	$TradB1 = Round($TradLIMIT,0)
+	$TradB2 = Round(($TradLIMIT * 1.5) - 1,0)
+	$TradS1 = Round($TradLIMIT * 1.5, 0)
+	$TradS2 = Round(($TradLIMIT * 3) - 1,0)
+	$TradG1 = Round($TradLIMIT * 3,0)
+	$TradG2 = Round(($TradLIMIT * 5) - 1,0)
+	$TradP1 = Round($TradLIMIT * 5,0)
+	$TradP2 = Round(($TradLIMIT * 10) - 1,0)
+	$TradR1 = Round($TradLIMIT * 10,0)
+	$TradR2 = Round(($TradR1 * 1.5) - 1,0)
+	$TradSa1 = Round($TradR1 * 1.5,0)
+	$TradSa2 = Round(($TradR1 * 3) - 1,0)
+	$TradE1 = Round($TradR1 * 3,0)
+	$TradE2 = Round(($TradR1 * 5) - 1,0)
+	$TradD  = Round($TradR1 * 5,0)
+	$MultB1 = Round($MultLIMIT,0)
+	$MultB2 = Round(($MultLIMIT * 1.5) - 1,0)
+	$MultS1 = Round($MultLIMIT * 1.5, 0)
+	$MultS2 = Round(($MultLIMIT * 3) - 1,0)
+	$MultG1 = Round($MultLIMIT * 3,0)
+	$MultG2 = Round(($MultLIMIT * 5) - 1,0)
+	$MultP1 = Round($MultLIMIT * 5,0)
+	$MultP2 = Round(($MultLIMIT * 10) - 1,0)
+	$MultR1 = Round($MultLIMIT * 10,0)
+	$MultR2 = Round(($MultR1 * 1.5) - 1,0)
+	$MultSa1 = Round($MultR1 * 1.5,0)
+	$MultSa2 = Round(($MultR1 * 3) - 1,0)
+	$MultE1 = Round($MultR1 * 3,0)
+	$MultE2 = Round(($MultR1 * 5) - 1,0)
+	$MultD  = Round($MultR1 * 5,0)
+	$MystB1 = Round($MystLIMIT,0)
+	$MystB2 = Round(($MystLIMIT * 1.5) - 1,0)
+	$MystS1 = Round($MystLIMIT * 1.5, 0)
+	$MystS2 = Round(($MystLIMIT * 3) - 1,0)
+	$MystG1 = Round($MystLIMIT * 3,0)
+	$MystG2 = Round(($MystLIMIT * 5) - 1,0)
+	$MystP1 = Round($MystLIMIT * 5,0)
+	$MystP2 = Round(($MystLIMIT * 10) - 1,0)
+	$MystR1 = Round($MystLIMIT * 10,0)
+	$MystR2 = Round(($MystR1 * 1.5) - 1,0)
+	$MystSa1 = Round($MystR1 * 1.5,0)
+	$MystSa2 = Round(($MystR1 * 3) - 1,0)
+	$MystE1 = Round($MystR1 * 3,0)
+	$MystE2 = Round(($MystR1 * 5) - 1,0)
+	$MystD  = Round($MystR1 * 5,0)
+	$VirtB1 = Round($VirtLIMIT,0)
+	$VirtB2 = Round(($VirtLIMIT * 1.5) - 1,0)
+	$VirtS1 = Round($VirtLIMIT * 1.5, 0)
+	$VirtS2 = Round(($VirtLIMIT * 3) - 1,0)
+	$VirtG1 = Round($VirtLIMIT * 3,0)
+	$VirtG2 = Round(($VirtLIMIT * 5) - 1,0)
+	$VirtP1 = Round($VirtLIMIT * 5,0)
+	$VirtP2 = Round(($VirtLIMIT * 10) - 1,0)
+	$VirtR1 = Round($VirtLIMIT * 10,0)
+	$VirtR2 = Round(($VirtR1 * 1.5) - 1,0)
+	$VirtSa1 = Round($VirtR1 * 1.5,0)
+	$VirtSa2 = Round(($VirtR1 * 3) - 1,0)
+	$VirtE1 = Round($VirtR1 * 3,0)
+	$VirtE2 = Round(($VirtR1 * 5) - 1,0)
+	$VirtD  = Round($VirtR1 * 5,0)
+	$EartB1 = Round($EartLIMIT,0)
+	$EartB2 = Round(($EartLIMIT * 1.5) - 1,0)
+	$EartS1 = Round($EartLIMIT * 1.5, 0)
+	$EartS2 = Round(($EartLIMIT * 3) - 1,0)
+	$EartG1 = Round($EartLIMIT * 3,0)
+	$EartG2 = Round(($EartLIMIT * 5) - 1,0)
+	$EartP1 = Round($EartLIMIT * 5,0)
+	$EartP2 = Round(($EartLIMIT * 10) - 1,0)
+	$EartR1 = Round($EartLIMIT * 10,0)
+	$EartR2 = Round(($EartR1 * 1.5) - 1,0)
+	$EartSa1 = Round($EartR1 * 1.5,0)
+	$EartSa2 = Round(($EartR1 * 3) - 1,0)
+	$EartE1 = Round($EartR1 * 3,0)
+	$EartE2 = Round(($EartR1 * 5) - 1,0)
+	$EartD  = Round($EartR1 * 5,0)
+	$LettB1 = Round($LettLIMIT,0)
+	$LettB2 = Round(($LettLIMIT * 1.5) - 1,0)
+	$LettS1 = Round($LettLIMIT * 1.5, 0)
+	$LettS2 = Round(($LettLIMIT * 3) - 1,0)
+	$LettG1 = Round($LettLIMIT * 3,0)
+	$LettG2 = Round(($LettLIMIT * 5) - 1,0)
+	$LettP1 = Round($LettLIMIT * 5,0)
+	$LettP2 = Round(($LettLIMIT * 10) - 1,0)
+	$LettR1 = Round($LettLIMIT * 10,0)
+	$LettR2 = Round(($LettR1 * 1.5) - 1,0)
+	$LettSa1 = Round($LettR1 * 1.5,0)
+	$LettSa2 = Round(($LettR1 * 3) - 1,0)
+	$LettE1 = Round($LettR1 * 3,0)
+	$LettE2 = Round(($LettR1 * 5) - 1,0)
+	$LettD  = Round($LettR1 * 5,0)
+	$WherB1 = Round($WherLIMIT,0)
+	$WherB2 = Round(($WherLIMIT * 1.5) - 1,0)
+	$WherS1 = Round($WherLIMIT * 1.5, 0)
+	$WherS2 = Round(($WherLIMIT * 3) - 1,0)
+	$WherG1 = Round($WherLIMIT * 3,0)
+	$WherG2 = Round(($WherLIMIT * 5) - 1,0)
+	$WherP1 = Round($WherLIMIT * 5,0)
+	$WherP2 = Round(($WherLIMIT * 10) - 1,0)
+	$WherR1 = Round($WherLIMIT * 10,0)
+	$WherR2 = Round(($WherR1 * 1.5) - 1,0)
+	$WherSa1 = Round($WherR1 * 1.5,0)
+	$WherSa2 = Round(($WherR1 * 3) - 1,0)
+	$WherE1 = Round($WherR1 * 3,0)
+	$WherE2 = Round(($WherR1 * 5) - 1,0)
+	$WherD  = Round($WherR1 * 5,0)
+	$MegaB1 = Round($MegaLIMIT,0)
+	$MegaB2 = Round(($MegaLIMIT * 1.5) - 1,0)
+	$MegaS1 = Round($MegaLIMIT * 1.5, 0)
+	$MegaS2 = Round(($MegaLIMIT * 3) - 1,0)
+	$MegaG1 = Round($MegaLIMIT * 3,0)
+	$MegaG2 = Round(($MegaLIMIT * 5) - 1,0)
+	$MegaP1 = Round($MegaLIMIT * 5,0)
+	$MegaP2 = Round(($MegaLIMIT * 10) - 1,0)
+	$MegaR1 = Round($MegaLIMIT * 10,0)
+	$MegaR2 = Round(($MegaR1 * 1.5) - 1,0)
+	$MegaSa1 = Round($MegaR1 * 1.5,0)
+	$MegaSa2 = Round(($MegaR1 * 3) - 1,0)
+	$MegaE1 = Round($MegaR1 * 3,0)
+	$MegaE2 = Round(($MegaR1 * 5) - 1,0)
+	$MegaD  = Round($MegaR1 * 5,0)
+	$EvenB1 = Round($EvenLIMIT,0)
+	$EvenB2 = Round(($EvenLIMIT * 1.5) - 1,0)
+	$EvenS1 = Round($EvenLIMIT * 1.5, 0)
+	$EvenS2 = Round(($EvenLIMIT * 3) - 1,0)
+	$EvenG1 = Round($EvenLIMIT * 3,0)
+	$EvenG2 = Round(($EvenLIMIT * 5) - 1,0)
+	$EvenP1 = Round($EvenLIMIT * 5,0)
+	$EvenP2 = Round(($EvenLIMIT * 10) - 1,0)
+	$EvenR1 = Round($EvenLIMIT * 10,0)
+	$EvenR2 = Round(($EvenR1 * 1.5) - 1,0)
+	$EvenSa1 = Round($EvenR1 * 1.5,0)
+	$EvenSa2 = Round(($EvenR1 * 3) - 1,0)
+	$EvenE1 = Round($EvenR1 * 3,0)
+	$EvenE2 = Round(($EvenR1 * 5) - 1,0)
+	$EvenD  = Round($EvenR1 * 5,0)
+	$CITOB1 = Round($CITOLIMIT,0)
+	$CITOB2 = Round(($CITOLIMIT * 1.5) - 1,0)
+	$CITOS1 = Round($CITOLIMIT * 1.5, 0)
+	$CITOS2 = Round(($CITOLIMIT * 3) - 1,0)
+	$CITOG1 = Round($CITOLIMIT * 3,0)
+	$CITOG2 = Round(($CITOLIMIT * 5) - 1,0)
+	$CITOP1 = Round($CITOLIMIT * 5,0)
+	$CITOP2 = Round(($CITOLIMIT * 10) - 1,0)
+	$CITOR1 = Round($CITOLIMIT * 10,0)
+	$CITOR2 = Round(($CITOR1 * 1.5) - 1,0)
+	$CITOSa1=Round($CITOR1 * 1.5,0)
+	$CITOSa2=Round(($CITOR1 * 3) - 1,0)
+	$CITOE1 =Round($CITOR1 * 3,0)
+	$CITOE2 =Round(($CITOR1 * 5) - 1,0)
+	$CITOD  =Round($CITOR1 * 5,0)
+	$BencB1 =Round($BencLIMIT,0)
+	$BencB2 =Round(($BencLIMIT * 1.5) - 1,0)
+	$BencS1 =Round($BencLIMIT * 1.5, 0)
+	$BencS2 =Round(($BencLIMIT * 3) - 1,0)
+	$BencG1 =Round($BencLIMIT * 3,0)
+	$BencG2 =Round(($BencLIMIT * 5) - 1,0)
+	$BencP1 =Round($BencLIMIT * 5,0)
+	$BencP2 =Round(($BencLIMIT * 10) - 1,0)
+	$BencR1 =Round($BencLIMIT * 10,0)
+	$BencR2 =Round(($BencR1 * 1.5) - 1,0)
+	$BencSa1=Round($BencR1 * 1.5,0)
+	$BencSa2=Round(($BencR1 * 3) - 1,0)
+	$BencE1 =Round($BencR1 * 3,0)
+	$BencE2 =Round(($BencR1 * 5) - 1,0)
+	$BencD  =Round($BencR1 * 5,0)
+	$MicrB1 =Round($MicrLIMIT,0)
+	$MicrB2 =Round(($MicrLIMIT * 1.5) - 1,0)
+	$MicrS1 =Round($MicrLIMIT * 1.5, 0)
+	$MicrS2 =Round(($MicrLIMIT * 3) - 1,0)
+	$MicrG1 =Round($MicrLIMIT * 3,0)
+	$MicrG2 =Round(($MicrLIMIT * 5) - 1,0)
+	$MicrP1 =Round($MicrLIMIT * 5,0)
+	$MicrP2 =Round(($MicrLIMIT * 10) - 1,0)
+	$MicrR1 =Round($MicrLIMIT * 10,0)
+	$MicrR2 =Round(($MicrR1 * 1.5) - 1,0)
+	$MicrSa1=Round($MicrR1 * 1.5,0)
+	$MicrSa2=Round(($MicrR1 * 3) - 1,0)
+	$MicrE1= Round($MicrR1 * 3,0)
+	$MicrE2= Round(($MicrR1 * 5) - 1,0)
+	$MicrD = Round($MicrR1 * 5,0)
+	$SmalB1= Round($SmalLIMIT,0)
+	$SmalB2= Round(($SmalLIMIT * 1.5) - 1,0)
+	$SmalS1= Round($SmalLIMIT * 1.5, 0)
+	$SmalS2= Round(($SmalLIMIT * 3) - 1,0)
+	$SmalG1= Round($SmalLIMIT * 3,0)
+	$SmalG2= Round(($SmalLIMIT * 5) - 1,0)
+	$SmalP1= Round($SmalLIMIT * 5,0)
+	$SmalP2= Round(($SmalLIMIT * 10) - 1,0)
+	$SmalR1= Round($SmalLIMIT * 10,0)
+	$SmalR2= Round(($SmalR1 * 1.5) - 1,0)
+	$SmalSa1=Round($SmalR1 * 1.5,0)
+	$SmalSa2=Round(($SmalR1 * 3) - 1,0)
+	$SmalE1 =Round($SmalR1 * 3,0)
+	$SmalE2 =Round(($SmalR1 * 5) - 1,0)
+	$SmalD  =Round($SmalR1 * 5,0)
+	$ReguB1 =Round($ReguLIMIT,0)
+	$ReguB2 =Round(($ReguLIMIT * 1.5) - 1,0)
+	$ReguS1 =Round($ReguLIMIT * 1.5, 0)
+	$ReguS2 =Round(($ReguLIMIT * 3) - 1,0)
+	$ReguG1 =Round($ReguLIMIT * 3,0)
+	$ReguG2 =Round(($ReguLIMIT * 5) - 1,0)
+	$ReguP1 =Round($ReguLIMIT * 5,0)
+	$ReguP2 =Round(($ReguLIMIT * 10) - 1,0)
+	$ReguR1 =Round($ReguLIMIT * 10,0)
+	$ReguR2 =Round(($ReguR1 * 1.5) - 1,0)
+	$ReguSa1=Round($ReguR1 * 1.5,0)
+	$ReguSa2=Round(($ReguR1 * 3) - 1,0)
+	$ReguE1 =Round($ReguR1 * 3,0)
+	$ReguE2 =Round(($ReguR1 * 5) - 1,0)
+	$ReguD  =Round($ReguR1 * 5,0)
+	$LargB1 =Round($LargLIMIT,0)
+	$LargB2 =Round(($LargLIMIT * 1.5) - 1,0)
+	$LargS1 =Round($LargLIMIT * 1.5, 0)
+	$LargS2 =Round(($LargLIMIT * 3) - 1,0)
+	$LargG1 =Round($LargLIMIT * 3,0)
+	$LargG2 =Round(($LargLIMIT * 5) - 1,0)
+	$LargP1 =Round($LargLIMIT * 5,0)
+	$LargP2 =Round(($LargLIMIT * 10) - 1,0)
+	$LargR1 =Round($LargLIMIT * 10,0)
+	$LargR2 =Round(($LargR1 * 1.5) - 1,0)
+	$LargSa1=Round($LargR1 * 1.5,0)
+	$LargSa2=Round(($LargR1 * 3) - 1,0)
+	$LargE1 =Round($LargR1 * 3,0)
+	$LargE2 =Round(($LargR1 * 5) - 1,0)
+	$LargD  =Round($LargR1 * 5,0)
+	$FiveB1 =Round($FiveLIMIT,0)
+	$FiveB2 =Round(($FiveLIMIT * 1.5) - 1,0)
+	$FiveS1 =Round($FiveLIMIT * 1.5, 0)
+	$FiveS2 =Round(($FiveLIMIT * 3) - 1,0)
+	$FiveG1 =Round($FiveLIMIT * 3,0)
+	$FiveG2 =Round(($FiveLIMIT * 5) - 1,0)
+	$FiveP1 =Round($FiveLIMIT * 5,0)
+	$FiveP2 =Round(($FiveLIMIT * 10) - 1,0)
+	$FiveR1 =Round($FiveLIMIT * 10,0)
+	$FiveR2 =Round(($FiveR1 * 1.5) - 1,0)
+	$FiveSa1=Round($FiveR1 * 1.5,0)
+	$FiveSa2=Round(($FiveR1 * 3) - 1,0)
+	$FiveE1 =Round($FiveR1 * 3,0)
+	$FiveE2 =Round(($FiveR1 * 5) - 1,0)
+	$FiveD  =Round($FiveR1 * 5,0)
+	$CounB1 =Round($CounLIMIT,0)
+	$CounB2 =Round(($CounLIMIT * 1.5) - 1,0)
+	$CounS1 =Round($CounLIMIT * 1.5, 0)
+	$CounS2 =Round(($CounLIMIT * 3) - 1,0)
+	$CounG1 =Round($CounLIMIT * 3,0)
+	$CounG2 =Round(($CounLIMIT * 5) - 1,0)
+	$CounP1 =Round($CounLIMIT * 5,0)
+	$CounP2 =Round(($CounLIMIT * 10) - 1,0)
+	$CounR1 =Round($CounLIMIT * 10,0)
+	$CounR2 =Round(($CounR1 * 1.5) - 1,0)
+	$CounSa1=Round($CounR1 * 1.5,0)
+	$CounSa2=Round(($CounR1 * 3) - 1,0)
+	$CounE1 =Round($CounR1 * 3,0)
+	$CounE2 =Round(($CounR1 * 5) - 1,0)
+	$CounD  =Round($CounR1 * 5,0)
+	$FTFB1 = Round($FTFLIMIT,0)
+	$FTFB2 = Round(($FTFLIMIT * 1.5) - 1,0)
+	$FTFS1 = Round($FTFLIMIT * 1.5, 0)
+	$FTFS2 = Round(($FTFLIMIT * 3) - 1,0)
+	$FTFG1 = Round($FTFLIMIT * 3,0)
+	$FTFG2 = Round(($FTFLIMIT * 5) - 1,0)
+	$FTFP1 = Round($FTFLIMIT * 5,0)
+	$FTFP2 = Round(($FTFLIMIT * 10) - 1,0)
+	$FTFR1 = Round($FTFLIMIT * 10,0)
+	$FTFR2 = Round(($FTFR1 * 1.5) - 1,0)
+	$FTFSa1 =Round($FTFR1 * 1.5,0)
+	$FTFSa2 =Round(($FTFR1 * 3) - 1,0)
+	$FTFE1 = Round($FTFR1 * 3,0)
+	$FTFE2 = Round(($FTFR1 * 5) - 1,0)
+	$FTFD  = Round($FTFR1 * 5,0)
+	$HiddB1= Round($HiddLIMIT,0)
+	$HiddB2= Round(($HiddLIMIT*1.5)-1,0)
+	$HiddS1= Round($HiddLIMIT*1.5,0)
+	$HiddS2= Round(($HiddLIMIT*3)-1,0)
+	$HiddG1= Round($HiddLIMIT*3,0)
+	$HiddG2= Round(($HiddLIMIT*5)-1,0)
+	$HiddP1= Round($HiddLIMIT*5,0)
+	$HiddP2= Round(($HiddLIMIT*10)-1,0)
+	$HiddR1= Round($HiddLIMIT*10,0)
+	$HiddR2= Round(($HiddR1*1.5)-1,0)
+	$HiddSa1=Round($HiddR1*1.5,0)
+	$HiddSa2=Round(($HiddR1*3)-1,0)
+	$HiddE1= Round($HiddR1*3,0)
+	$HiddE2= Round(($HiddR1*5)-1,0)
+	$HiddD  = Round($HiddR1 * 5,0)
+	$ElevB1 = Round($ElevLIMIT,0)
+	$WebcB1 = Round($WebcLIMIT,0)
+	$WebcB2 = Round(($WebcLIMIT * 1.5) - 1,0)
+	$WebcS1 = Round($WebcLIMIT * 1.5, 0)
+	$WebcS2 = Round(($WebcLIMIT * 3) - 1,0)
+	$WebcG1 = Round($WebcLIMIT * 3,0)
+	$WebcG2 = Round(($WebcLIMIT * 5) - 1,0)
+	$WebcP1 = Round($WebcLIMIT * 5,0)
+	$WebcP2 = Round(($WebcLIMIT * 10) - 1,0)
+	$WebcR1 = Round($WebcLIMIT * 10,0)
+	$WebcR2 = Round(($WebcR1 * 1.5) - 1,0)
+	$WebcSa1 = Round($WebcR1 * 1.5,0)
+	$WebcSa2 = Round(($WebcR1 * 3) - 1,0)
+	$WebcE1 = Round($WebcR1 * 3,0)
+	$WebcE2 = Round(($WebcR1 * 5) - 1,0)
+	$WebcD  = Round($WebcR1 * 5,0)
+	$ElevB2 = Round($ElevLIMIT + 499,0)
+	$ElevS1 = Round($ElevLIMIT + 500,0)
+	$ElevS2 = Round($ElevLIMIT + 999,0)
+	$ElevG1 = Round($ElevLIMIT + 1000,0)
+	$ElevG2 = Round($ElevLIMIT + 1499,0)
+	$ElevP1 = Round($ElevLIMIT + 1500,0)
+	$ElevP2 = Round($ElevLIMIT + 1999,0)
+	$ElevR1 = Round($ElevLIMIT + 2000,0)
+	$ElevR2 = Round($ElevLIMIT + 2499,0)
+	$ElevSa1 = Round($ElevLIMIT + 2500,0)
+	$ElevSa2 = Round($ElevLIMIT + 2999,0)
+	$ElevE1 = Round($ElevLIMIT + 3000,0)
+	$ElevE2 = Round($ElevLIMIT + 3999,0)
+	$ElevD  = Round($ElevLIMIT + 4000,0)
+
+
+	SHOWSTATUS msg="Assigning Badge Names"
+	$TradName = "The Traditional Cacher"
+	$MultName = "The Multi Cacher"
+	$MystName = "The Mysterious Cacher"
+	$VirtName = "The Virtual Cacher"
+	$EartName = "The Earth Cacher"
+	$LettName = "The Letterboxer"
+	$WherName = "The Wherigo Cacher"
+	$MegaName = "The Mega Social Cacher"
+	$EvenName = "The Social Cacher"
+	$CITOName = "The Environmental Cacher"
+	$BencName = "The Benchmarker"
+	$MicrName = "The Micro Cacher"
+	$SmalName = "The Small Cacher"
+	$ReguName = "The Regular Cacher"
+	$LargName = "The Large Cacher"
+	$FiveName = "The Adventurous Cacher"
+	$FTFName = "The FTF Addict"
+	$CounName = "The Travelling Cacher"
+	$HiddName = "The Cache Owner"
+	$ElevName = "Head-In-The-Clouds Award"
+	$WebcName = "The Photogenic Cacher"
+
+
+	Showstatus msg="Assigning Values to Declared Variables"
+	$RemoveVariables=FALSE
+	$HotLinkURL="http://i898.photobucket.com/albums/ac188/BadgeGen/BadgeGen/"
+	$BADGENUMBER=0
+	$SaveLocation=$_Install + "\BadgeTemp.htm"
+	$MacUrl = "http://gsak.net/board/index.php?showtopic=13541"
+	$NextLevel="more to go up a level"
+	$RANDOMVARR=0
+	$Units = SysInfo("Distance")
+	$1="<img border="
+	$2="$_Quote"
+	$3="0"
+	$5=" "
+	$6="src="
+	$10="width="
+	$15="height="
+	$20="title="
+	$23=">"
+	$24="<p align="
+	$26="center"
+	$28="alt="
+	$centre="$24$2$26$2$23"
+	$endcentre="</p>"
+	$newline="<br>"
+	$01="<font face="
+	$02="Verdana"
+	$03=" size="
+	$04="1"
+	$05="Badges generated by <a href="
+	$06="http://gsak.net/board/index.php?showtopic=13541"
+	$07=">BadgeGen</a>.</font>"
+	$Link="$01$2$02$2$03$2$04$2$23$05$2$06$2$07"
+
+	SHOWSTATUS msg=""
+
+
+
+ENDSUB #name=VarDec
+
+
+#TEMPORARY
+
+#   Create table "badgegendata" ("Code" "varchar(10)","Name" "varchar(100)","Elevation" "number(30)","Found" "boolean")

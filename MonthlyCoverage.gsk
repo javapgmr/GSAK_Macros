@@ -1,0 +1,238 @@
+#*******************************************
+# MacVersion = 1.1.6
+# MacDescription = Monthly Coverage
+# MacAuthor = jasmerb, with bug fixes by jholly
+# MacFileName = MonthlyCoverage.gsk
+#*******************************************
+########################################################
+#
+# CREATIVE COMMONS
+#
+# This work is licensed under the Creative Commons Attribution-Noncommercial-Share Alike 3.0 United States License. 
+# To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-sa/3.0/us/
+#
+########################################################
+
+
+DATABASE Name="Found" Action=select
+GOTO Position="Top"
+$OUTFILE = $_Install + "\html\monthly.html"
+
+
+##
+# BUGS:
+#
+# 1. Uses C:\Temp - FIXED in 1.1.2
+# 2. Doesn't take care of pre-May-2000 caches - FIXED in 1.1.3
+# 3. Should check to see which version of GSAK it is running (needs >= 7.x)
+# 4. Changed the URL to point to the GSAK macro forum in 1.1.4
+# 5. Incorporated some fixes from jholly to support variable years, not fixed to an older year in v1.1.5
+# 6. Created the "html" folder if it didn't already exist in v1.1.6
+# 
+##
+
+#########################################################################
+# The monthNumStr List converts a month number in a zero-padded string to be used for dates like 200109.
+#########################################################################
+$junk = List("monthNumStr", "create", ";")
+$junk = List("monthNumStr", "add", "01")
+$junk = List("monthNumStr", "add", "02")
+$junk = List("monthNumStr", "add", "03")
+$junk = List("monthNumStr", "add", "04")
+$junk = List("monthNumStr", "add", "05")
+$junk = List("monthNumStr", "add", "06")
+$junk = List("monthNumStr", "add", "07")
+$junk = List("monthNumStr", "add", "08")
+$junk = List("monthNumStr", "add", "09")
+$junk = List("monthNumStr", "add", "10")
+$junk = List("monthNumStr", "add", "11")
+$junk = List("monthNumStr", "add", "12")
+
+###
+$maxMonthCount = 0
+$maxYearSliceCount = 0
+$maxMonthSliceCount = 0
+$thisyear = Val(SubStr(DateToString($_Today),1,4))
+$rowspan = $thisyear - 1998
+
+###################
+# Create the HTML folder
+###################
+$htmlfilepath = $_Install + "\html"
+If NOT(FolderExists($htmlfilepath))
+	$BatFile = $_Install + "\babel.bat"
+	$result = PutFile($BatFile, "MD " + quote($htmlfilepath))
+	FileOpen File="$BatFile" Wait=yes
+EndIf
+
+
+################################################
+# The number of caches found per month. Index starts at January 2000
+################################################
+$junk = List("monthCacheCount", "create", ";")
+$i = 0
+WHILE $i <= 250
+	$junk = List("monthCacheCount", "add", "0")
+	$i = $i + 1
+ENDWHILE
+
+############################
+# Number of caches found per year slice.
+############################
+$junk = List("yearSliceCount", "create", ";")
+$i = 0
+WHILE $i < 20
+	$junk = List("yearSliceCount", "add", "0")
+	$i = $i + 1
+ENDWHILE
+
+###################################################
+# Number of caches found per MONTH SLICE (Jan 2001 + Jan 2002  + ...)
+###################################################
+$junk = List("monthSliceCount", "create", ";")
+$i = 0
+WHILE $i < 13
+	$junk = List("monthSliceCount", "add", "0")
+	$i = $i + 1
+ENDWHILE
+
+
+
+$monthDB = List("db", "create", ";")
+
+WHILE not($_EOL)
+	$yearMonthStr = Substr(DateToString($d_PlacedDate), 1, 6)
+	$year = Val(Substr(DateToString($d_PlacedDate), 1, 4))
+	IF $year >= 2000
+		$month = Val(Substr(DateToString($d_PlacedDate), 5, 2))
+		$monthIndex = (($year - 2000) * 12) + $month
+	
+		$curCount = Val(List("monthCacheCount", "item", "$monthIndex"))
+		$curCount = $curCount + 1
+		IF $curCount > $maxMonthCount
+			$maxMonthCount = $curCount
+		ENDIF
+		$junk = List("monthCacheCount", "edit:$monthIndex", "$curCount")
+	
+		$yearSliceIndex = $year - 1999
+		$curCount = Val(List("yearSliceCount", "item", "$yearSliceIndex"))
+		$curCount = $curCount + 1
+		IF $curCount > $maxYearSliceCount
+			$maxYearSliceCount = $curCount
+		ENDIF
+		$junk = List("yearSliceCount", "edit:$yearSliceIndex", "$curCount")
+	
+		$curCount = Val(List("monthSliceCount", "item", "$month"))
+		$curCount = $curCount + 1
+		IF $curCount > $maxMonthSliceCount
+			$maxMonthSliceCount = $curCount
+		ENDIF
+		$junk = List("monthSliceCount", "edit:$month", "$curCount")
+	
+#		$found = Val(List("db", "find", $monthStr))
+#		if $found = 0
+#			$monthDB = List("db", "add", $monthStr)
+#		endif
+	ENDIF	
+	GOTO Position=Next
+EndWhile
+
+Debug status=Off
+
+#$monthDB =  List("db", "sort", "")
+
+$dbStr = List("db", "get", "")
+#Pause Msg=$monthDB
+
+#$data = PutFile("c:\temp\monthly.txt", $dbStr)
+
+#
+# CREATE TABLE
+#
+$table = "<HTML><HEAD></HEAD><BODY>" + $_NewLine
+$table = $table + "<div align='center' style='width:770px; background: #DEDEEE; margin: 1px; border: outset;'><BR/>" + $_NewLine
+$table = $table + "<div style='width:750px; background: #666699; font-family: Verdana, Arial, sans-serif; font-weight: bold; line-height: 20px; font-size: 13px; color: white; border: 1px solid #000000; text-align: center;'>" + $_NewLine
+$table = $table + " Find Count by Month Cache Was Hidden </div><br />" + $_NewLine
+$table = $table + "<table width='750' style='text-align: left; font-family: Verdana, Arial, sans-serif; font-size: 13px;'>" + $_NewLine
+$table = $table + "<tr><td style='background: #C8C8DD;'></td>" + $_NewLine
+$table = $table + "<td style='background: #C8C8DD;' colspan='13' align='center'><B>Month</B></td></tr>" + $_NewLine
+# TODO: figure out how many years and do rowspan dynamically
+$table = $table + "<tr><td style='background: #C8C8DD;' rowspan='"+NumToStr($rowspan)+"' width='70' align='center'><B>Year</B></td>" + $_NewLine
+$table = $table + "<td style='background: #CCCCD4;'></td>" + $_NewLine
+$table = $table + "<td style='background: #CCCCD4;' width='60' align='center'><B>Jan</B></td>" + $_NewLine
+$table = $table + "<td style='background: #CCCCD4;' width='60' align='center'><B>Feb</B></td>" + $_NewLine
+$table = $table + "<td style='background: #CCCCD4;' width='60' align='center'><B>Mar</B></td>" + $_NewLine
+$table = $table + "<td style='background: #CCCCD4;' width='60' align='center'><B>Apr</B></td>" + $_NewLine
+$table = $table + "<td style='background: #CCCCD4;' width='60' align='center'><B>May</B></td>" + $_NewLine
+$table = $table + "<td style='background: #CCCCD4;' width='60' align='center'><B>Jun</B></td>" + $_NewLine
+$table = $table + "<td style='background: #CCCCD4;' width='60' align='center'><B>Jul</B></td>" + $_NewLine
+$table = $table + "<td style='background: #CCCCD4;' width='60' align='center'><B>Aug</B></td>" + $_NewLine
+$table = $table + "<td style='background: #CCCCD4;' width='60' align='center'><B>Sep</B></td>" + $_NewLine
+$table = $table + "<td style='background: #CCCCD4;' width='60' align='center'><B>Oct</B></td>" + $_NewLine
+$table = $table + "<td style='background: #CCCCD4;' width='60' align='center'><B>Nov</B></td>" + $_NewLine
+$table = $table + "<td style='background: #CCCCD4;' width='60' align='center'><B>Dec</B></td>" + $_NewLine
+$table = $table + "</TR>" + $_NewLine
+
+$year = 2000
+WHILE $year < $thisyear+1
+$table = $table + "<TR><TD style='background: #CCCCD4;' width='60'><B>" + "$year" + "</B></TD>"
+GoSub Name=YearSub
+$table = $table + "</TR>"
+$year = $year + 1
+ENDWHILE
+
+############################################
+# Month Slice Summary: totals per month along bottom of table. #
+############################################
+$table = $table + "<tr><td></td><td></td>" + $_NewLine
+$i = 1
+WHILE $i < 13
+	$sliceCount = Val(List("monthSliceCount", "item", "$i"))
+	IF $sliceCount = $maxMonthSliceCount
+		$table = $table + "<td style='background: #C8C8DD; color: red' width='60' align='center'><i><b>" + "$sliceCount" + "</b></i></td>" + $_NewLine
+	ELSE
+		$table = $table + "<td style='background: #C8C8DD;' width='60' align='center'><i>" + "$sliceCount" + "</i></td>" + $_NewLine
+	ENDIF
+	$i = $i + 1
+ENDWHILE
+
+$table = $table + "</DIV></TABLE><font style='width:750px; font-family: Verdana, Arial, sans-serif; line-height: 20px; font-size: 9px; color: black; text-align: right;'>generated by <a href=""http://gsak.net/board/index.php?act=ST&f=7&t=10281"">MonthlyCoverage.gsk</a> v1.1.6</font></BODY></HTML>"
+
+$data = PutFile($outFile, $table)
+#Web URL="file:///C:/temp/monthly.html"
+OpenFile file=$outFile
+
+BeginSub Name=YearSub
+	$month = 1
+	WHILE $month < 13
+		$monthIndex = (($year - 2000) * 12) + $month
+		$count = Val(List("monthCacheCount", "item", "$monthIndex"))
+		IF $count > 0
+			IF $count = $maxMonthCount
+				$table = $table + "<td style='background: #005BB7; color: red;' width='60' align='center'><b>" + "$count" +  "</b></td>" + $_NewLine
+			ELSE
+				$table = $table + "<td style='background: #005BB7; color: #FFFFFF' width='60' align='center'>" + "$count" +  "</td>" + $_NewLine
+			ENDIF
+		ELSE
+			IF $year = 2000
+				IF $month < 5
+					$table = $table + "<td style='background: #005BB7; color: #FFFFFF;' width='60' align='center'></td>" + $_NewLine
+				ELSE
+					$table = $table + "<td style='background: #BABADD;' width='60' align='center'> </td>" + $_NewLine
+				ENDIF
+			ELSE
+				$table = $table + "<td style='background: #BABADD;' width='60' align='center'> </td>" + $_NewLine
+			ENDIF
+		ENDIF
+
+		$month = $month + 1
+	ENDWHILE
+	$yearSliceIndex = $year - 1999
+	$sliceCount = Val(List("yearSliceCount", "item", "$yearSliceIndex"))
+	IF $sliceCount = $maxYearSliceCount
+		$table = $table + "<td style='background: #C8C8DD; color: red;' width='60' align='center'><b><i>" + "$sliceCount" + "</i></b></td>" + $_NewLine
+	ELSE
+		$table = $table + "<td style='background: #C8C8DD;' width='60' align='center'><i>" + "$sliceCount" + "</i></td>" + $_NewLine
+	ENDIF		
+EndSub
+

@@ -1,0 +1,502 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<meta http-equiv="X-UA-Compatible" content="IE=EmulateIE7">
+<HTML>
+<head>
+<!-- saved from url=(0014)about:internet -->
+<title>GSAK Map GMap V3</title>
+<style type="text/css">
+      body {
+        margin: 0;
+        font-family: Arial;
+        font-size: 16px;
+      }
+
+    #map {
+      background-color: #e5e3df;
+      height: 100%;
+    }
+    img{
+      border-style: none;
+    }
+</style>
+    
+<!-----external references----->
+
+<script type="text/javascript" src="http://www.google.com/jsapi"></script>
+<script type="text/javascript" src="http://gsak.net/stats/maps/markerclusterer_packed.js"></script>
+<script type="text/javascript" src="http://gsak.net/stats/maps/mytopo.js"></script>
+
+<script type="text/javascript">
+
+
+google.load('maps', '3', {other_params: 'sensor=false'});
+google.setOnLoadCallback(initialize);
+
+var markerClusterer = null;
+var map = null;
+var markers = [];
+
+ var styles = [[{
+        url: 'http://gsak.net/stats/maps/m1.png',
+        height: 53,
+        width: 53
+      }, {
+        url: 'http://gsak.net/stats/maps/m2.png',
+        height: 56,
+        width: 56
+      }, {
+        url: 'http://gsak.net/stats/maps/m3.png',
+        height: 66,
+        width: 66
+      }, {
+        url: 'http://gsak.net/stats/maps/m4.png',
+        height: 78,
+        width: 78
+      }, {
+        url: 'http://gsak.net/stats/maps/m5.png',
+        height: 90,
+        width: 90
+      }]];
+
+function writecookie(cookiename,k) { document.cookie=cookiename+'='+k+'; expires=Fri, 31 Dec 2020 00:00:00 UTC' };
+
+function clearcookie(cookiename,k) { document.cookie=cookiename+'='+k+'; expires=Fri, 31 Dec 2000 00:00:00 UTC' };
+
+function readCookie(cookieName){
+   var searchName = cookieName + "="
+   var cookies = document.cookie
+   var start = cookies.indexOf(cookieName)
+   if (start == -1){ // cookie not found
+      return "-1"
+   }
+   start += searchName.length //start of the cookie data
+   var end = cookies.indexOf(";", start)
+   if (end == -1){
+      end = cookies.length
+   }
+   return cookies.substring(start, end)
+}
+
+function initialize() {
+
+//------- Initialize label class -------
+
+// Define the overlay, derived from google.maps.OverlayView
+function Label(opt_options) {
+ // Initialization
+ this.setValues(opt_options);
+
+ // Label specific
+ var span = this.span_ = document.createElement('span');
+ span.style.cssText = 'position: relative; left: -50%; top: -45px; ' +
+                      'white-space: pre; border: 1px solid black; ' +
+                      'font-size: ; ' +
+                      'padding: 1px 2px 1px 2px; background-color: white';
+
+ var div = this.div_ = document.createElement('div');
+ div.appendChild(span);
+ div.style.cssText = 'position: absolute; display: none';
+};
+Label.prototype = new google.maps.OverlayView;
+
+// Implement onAdd
+Label.prototype.onAdd = function() {
+ var pane = this.getPanes().overlayLayer;
+ pane.appendChild(this.div_);
+
+ // Ensures the label is redrawn if the text or position is changed.
+ var me = this;
+ this.listeners_ = [
+   google.maps.event.addListener(this, 'position_changed',
+       function() { me.draw(); }),
+   google.maps.event.addListener(this, 'visible_changed',
+          function() { me.draw(); }),
+   google.maps.event.addListener(this, 'text_changed',
+       function() { me.draw(); })
+ ];
+};
+
+// Implement onRemove
+Label.prototype.onRemove = function() {
+ this.div_.parentNode.removeChild(this.div_);
+
+ // Label is removed from the map, stop updating its position/text.
+ for (var i = 0, I = this.listeners_.length; i < I; ++i) {
+   google.maps.event.removeListener(this.listeners_[i]);
+ }
+};
+
+// Implement draw
+Label.prototype.draw = function() {
+ var projection = this.getProjection();
+ var position = projection.fromLatLngToDivPixel(this.get('position'));
+
+ var div = this.div_;
+ div.style.left = position.x + 'px';
+ div.style.top = position.y + 'px';
+ var visible = this.get('visible');
+ div.style.display = visible ? 'block' : 'none';
+
+
+ this.span_.innerHTML = this.get('text').toString();
+};
+
+//------- END of label.js -------
+
+
+
+
+   //-----icon references----->
+   
+   var iconName = new Array('A','B','C','E','G','I','L','M','O','R','T','U','V','W','X','Y','Z');
+   var imageName = new Array('ape1','le1','ci1','ev1','be1','wh1','lo1','mu1','other1','ea1','tr1','un1','vi1','we1','maze1','wm1','mega1');
+   
+   for (i=0;i<=16;i++)
+      {
+      window[iconName[i] + "_icon"] = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/" + imageName[i] + ".png",
+      new google.maps.Size(27,34),
+      new google.maps.Point(0,0),
+      new google.maps.Point(4,34));
+      
+      window[iconName[i] + "_f_icon"] = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/" + imageName[i] + "_f" + ".png",
+      new google.maps.Size(27,34),
+      new google.maps.Point(0,0),
+      new google.maps.Point(4,34));
+      
+      window[iconName[i] + "_e_icon"] = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/" + imageName[i] + "_e" + ".png",
+      new google.maps.Size(27,34),
+      new google.maps.Point(0,0),
+      new google.maps.Point(4,34));
+      
+      window[iconName[i] + "_f_e_icon"] = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/" + imageName[i] + "_f_e" + ".png",
+      new google.maps.Size(27,34),
+      new google.maps.Point(0,0),
+      new google.maps.Point(4,34));
+      
+      }
+   
+
+   var shadow = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/shadow1.png",
+   new google.maps.Size(45,34),
+   new google.maps.Point(0,0),
+   new google.maps.Point(4,34));
+
+   var found_icon = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/found1.png",
+   new google.maps.Size(27,34),
+   new google.maps.Point(0,0),
+   new google.maps.Point(4,34));
+
+   var childicon = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/waypoint1.png",
+   new google.maps.Size(27,34),
+   new google.maps.Point(0,0),
+   new google.maps.Point(4,34));
+
+   var correctedicon = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/traffic_cone.png",
+   new google.maps.Size(16,16),
+   new google.maps.Point(0,0),
+   new google.maps.Point(8,16));
+
+
+   var options = {
+      scrollwheel: false,
+      scaleControl: true,
+      streetViewControl: true,
+      mapTypeControlOptions: {style: google.maps.MapTypeControlStyle.DROPDOWN_MENU}
+   };
+   map = new google.maps.Map(document.getElementById("map"), options);
+   
+   
+   map.enableKeyDragZoom({
+          visualEnabled: true,
+          visualPosition: google.maps.ControlPosition.LEFT,
+          visualPositionOffset: new google.maps.Size(35, 0),
+          visualPositionIndex: null,
+          visualSprite: "http://gsak.net/stats/maps/dragzoom_btn.png",
+          visualSize: new google.maps.Size(20, 20),
+          visualTips: {
+            off: "Turn on",
+            on: "Turn off"
+          }
+   });
+   
+   
+   
+   map.setCenter(new google.maps.LatLng(30, -97));
+   map.setZoom(12);
+   
+   
+   
+   map.setMapTypeId(google.maps.MapTypeId.ROADMAP);
+
+var is_chrome = navigator.userAgent.toLowerCase().indexOf('chrome') > -1;
+
+//----read cookie and set maptype accordingly---
+
+   if (!is_chrome) {
+         //alert("Not Chrome");
+         var typecookie = readCookie("maptypev3");
+         //alert (typecookie);
+         if (typecookie == "-1") {typecookie = "roadmap"};
+         map.setMapTypeId(typecookie);
+   }
+
+
+// Add listener to see if map type changes and store it, use local storage if we can
+  google.maps.event.addListener(map, "maptypeid_changed", function() {
+        k = map.getMapTypeId();
+        if (!is_chrome) {
+       writecookie('maptypev3',k);
+         }
+    }); 
+
+
+   // add OCM to mapTypes
+//return"http://a.andy.sandbox.cloudmade.com/tiles/cycle/"+b+"/"+a.x%(1<<b)+"/"+a.y+".png"
+   var openCycle = new google.maps.ImageMapType({
+      getTileUrl:function(a,b){
+         return"http://" + ["a","b","c"][Math.floor(Math.random()*3)] + ".tile.opencyclemap.org/cycle/"+b+"/"+a.x%(1<<b)+"/"+a.y+".png"
+      },
+      tileSize:new google.maps.Size(256,256),
+      isPng:true,
+      minZoom:1,
+      maxZoom:18,
+      name:"OCM",
+      alt:"Open Cycle Map"
+   });
+map.mapTypes.set('ocm', openCycle);
+
+
+   // add OSM to mapTypes
+   var openStreet = new google.maps.ImageMapType({
+      getTileUrl: function(ll, z) {
+         var X = ll.x % (1 << z);  // wrap
+         return "http://" + ["a","b","c"][Math.floor(Math.random()*3)] + ".tile.openstreetmap.org/" + z + "/" + X + "/" + ll.y + ".png";
+      },
+      tileSize: new google.maps.Size(256, 256),
+      isPng: true,
+      maxZoom: 18,
+      name: "OSM",
+      alt: "Open Streetmap tiles"
+   });
+map.mapTypes.set('osm', openStreet);
+
+
+// add MapQuest to mapTypes
+var mapQuest = new google.maps.ImageMapType({
+   getTileUrl:function(a,b){
+      return" http://"+["otile1","otile2","otile3","otile4"][Math.floor(Math.random()*4)]+".mqcdn.com/tiles/1.0.0/osm/"+b+"/"+a.x%(1<<b)+"/"+a.y+".png"
+      },
+      tileSize:new google.maps.Size(256,256),
+      isPng:true,
+      minZoom:1,
+      maxZoom:18,
+      name:"MapQuest",
+      alt:"Map Quest"
+   });
+map.mapTypes.set('mpq', mapQuest);
+
+
+   // add Bing to mapTypes
+var bing = new google.maps.ImageMapType({
+      getTileUrl:function(a,b){
+         for(var k=a.x%(1<<b),l=a.y,g=[],e=b;e>0;e--){
+            var d=0,h=1<<e-1;
+            (k&h)!=0&&d++;
+            if((l&h)!=0){
+               d++;d++
+            }
+            g.push(d)
+         }
+         return"http://ecn.t0.tiles.virtualearth.net/tiles/r"+g.join("")+"?g=604&mkt=en-us&lbl=l1&stl=h&shading=hill&n=z";
+      },
+      tileSize:new google.maps.Size(256,256),
+      isPng:true,
+      minZoom:1,
+      maxZoom:18,
+      name:"Bing",
+      alt:"Bing"
+   });
+map.mapTypes.set('bing', bing);
+
+   // add BingOS to mapTypes
+var bingos = new google.maps.ImageMapType({
+      getTileUrl:function(a,b){
+         for(var k=a.x%(1<<b),l=a.y,g=[],e=b;e>0;e--){
+            var d=0,h=1<<e-1;
+            (k&h)!=0&&d++;
+            if((l&h)!=0){
+               d++;d++
+            }
+            g.push(d)
+         }
+         
+         if (b >= 12 && b < 16) 
+         {
+            return"http://ecn.t0.tiles.virtualearth.net/tiles/r"+g.join("")+".png?g=41&productSet=mmOS";
+         } else {
+            return"http://ecn.t0.tiles.virtualearth.net/tiles/r"+g.join("")+"?g=604&mkt=en-us&lbl=l1&stl=h&shading=hill&n=z";
+         }
+         },
+         tileSize:new google.maps.Size(256,256),
+         isPng:true,
+         minZoom:1,
+         maxZoom:18,
+         name:"Ord. Survey",
+         alt:"Ordnance Survey"
+      });
+map.mapTypes.set('bingos', bingos);
+
+
+   // Add MyTopo to mapTypes
+   var myTopo = new google.maps.ImageMapType({
+      getTileUrl: function(ll, z) {
+         var X = ll.x % (1 << z);  // wrap
+         //return "http://maps.mytopo.com/mytopo/tilecache.py/1.0.0/topoG/" + z + "/" + X + "/" + ll.y + ".png";
+         //return "http://maps.mytopo.com/mt20100826/tilecache.py/1.0.0/topoG/" + z + "/" + X + "/" + ll.y + ".jpg";
+         //return "http://maps.mytopo.com/mytopoK55Zc3L/tilecache.py/1.0.0/topoG/" + z + "/" + X + "/" + ll.y + ".jpg";
+
+
+         // mytopo.js contains a variable definition for 'mytopourl' for the current url of the mytopo data
+         
+         return mytopourl + z + "/" + X + "/" + ll.y + ".jpg";         
+      },
+      tileSize: new google.maps.Size(256, 256),
+      isPng: true,
+      maxZoom: 16,
+      name: "MyTopo",
+      alt: "MyTopo tiles"
+   });
+map.mapTypes.set('mytopo', myTopo);
+
+
+  // add HikeBikeMap to mapTypes
+  var openHike = new google.maps.ImageMapType({
+     getTileUrl: function(ll, z) {
+        var X = ll.x % (1 << z);  // wrap
+        return "http://toolserver.org/tiles/hikebike/" + z + "/" + X + "/" + ll.y + ".png";
+     },
+     tileSize: new google.maps.Size(256, 256),
+     isPng: true,
+     maxZoom: 18,
+     name: "HikeBike",
+     alt: "HikeBikeMap"
+  });
+map.mapTypes.set('ohb', openHike);
+
+
+   map.setOptions({
+      mapTypeControlOptions: {
+         mapTypeIds: [
+         'roadmap',
+         google.maps.MapTypeId.TERRAIN,
+         google.maps.MapTypeId.SATELLITE,
+         google.maps.MapTypeId.HYBRID,
+         'osm',
+         'ocm',
+         'ohb',
+         'mytopo',
+         'mpq',
+         'bing',
+         'bingos'
+         ],
+         style: google.maps.MapTypeControlStyle.DROPDOWN_MENU
+      },
+      streetViewControl: true
+   });
+
+   var bounds = new google.maps.LatLngBounds();
+   
+
+   //   // Add a marker at cache position
+   //   var latlng = new google.maps.LatLng(30, -97);
+   //   marker1 = new google.maps.Marker({position: latlng, map: map, icon: T_icon, shadow: shadow, title: "Cache", draggable: false});
+   //
+   //   bounds.extend(latlng);
+   //   markers.push(marker1);
+   //
+   //   var infomsg = "Cache Title";
+   //
+   //   var infowindow = new google.maps.InfoWindow({content: infomsg});
+   //
+   //   google.maps.event.addListener(marker1, 'click', function() {infowindow.open(map,marker1);});
+
+   var latlng = new google.maps.LatLng(39.341,-87.356067);m1 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Fowler Park Wilderness Stash", draggable: false}); markers.push(m1);bounds.extend(latlng);
+var latlng = new google.maps.LatLng(36.347467,-92.3755);m2 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Gorilla Stash", draggable: false}); markers.push(m2);bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.943483,-94.602467);m3 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Missouri's First - Watts Mill", draggable: false}); markers.push(m3);bounds.extend(latlng);
+var latlng = new google.maps.LatLng(42.090017,-88.22435);m4 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Beverly", draggable: false}); markers.push(m4);bounds.extend(latlng);
+var latlng = new google.maps.LatLng(41.719967,-85.98535);m5 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Indiana's First", draggable: false}); markers.push(m5);bounds.extend(latlng);
+var latlng = new google.maps.LatLng(34.7433,-85.331633);m6 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Iron Horse", draggable: false}); markers.push(m6);bounds.extend(latlng);
+var latlng = new google.maps.LatLng(34.648317,-85.392467);m7 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Rock Town", draggable: false}); markers.push(m7);bounds.extend(latlng);
+var latlng = new google.maps.LatLng(33.631083,-86.620817);m8 = new google.maps.Marker({position: latlng, icon:U_icon, shadow:shadow, title:"Daylight Saving Time Machine", draggable: false}); markers.push(m8);bounds.extend(latlng);
+var latlng = new google.maps.LatLng(32.352333,-88.667167);m9 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Bonita Lakes", draggable: false}); markers.push(m9);bounds.extend(latlng);
+var latlng = new google.maps.LatLng(34.1936,-84.083);m10 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Lake Lanier", draggable: false}); markers.push(m10);bounds.extend(latlng);
+var latlng = new google.maps.LatLng(34.219133,-83.985967);m11 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Marooned", draggable: false}); markers.push(m11);bounds.extend(latlng);
+var latlng = new google.maps.LatLng(33.799083,-84.154783);m12 = new google.maps.Marker({position: latlng, icon:M_icon, shadow:shadow, title:"Tour of Stone Mountain", draggable: false}); markers.push(m12);bounds.extend(latlng);
+var latlng = new google.maps.LatLng(33.87175,-83.9718);m13 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Beaver Cache", draggable: false}); markers.push(m13);bounds.extend(latlng);
+var latlng = new google.maps.LatLng(33.783583,-84.067333);m14 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Yellow River Stash", draggable: false}); markers.push(m14);bounds.extend(latlng);
+   
+   
+   
+   //Create infowindow instance. This ensures we only have 1 infowindow throughout application
+  var infowindow = new google.maps.InfoWindow();
+  
+  // Add listener to close it if you click on the map
+  google.maps.event.addListener(map, "click", function() {
+       if (infowindow) {
+            infowindow.close();
+       }
+    }); 
+   
+   google.maps.event.addListener(m1, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='http://www.geocaching.com/seek/cache_details.aspx?guid=954e1a74-9164-49af-8cce-966d8af0ad9b' target='geo'>GCC7</a><br />Fowler Park Wilderness Stash </b><br /><i>by: Jim, Di & The Boyz </i><br /><br />Difficulty: 2.0 Terrain: 2.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GCC7/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GCC7/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GCC7\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m1);});
+google.maps.event.addListener(m2, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='http://www.geocaching.com/seek/cache_details.aspx?guid=2337bc65-65be-408d-abe3-deab3689270c' target='geo'>GC1B</a><br />Gorilla Stash </b><br /><i>by: ednormandy </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC1B/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC1B/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC1B\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m2);});
+google.maps.event.addListener(m3, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='http://www.geocaching.com/seek/cache_details.aspx?guid=454b0066-bc01-4bb2-9894-a0d27e0c2329' target='geo'>GC37</a><br />Missouri's First - Watts Mill </b><br /><i>by: webscouter. </i><br /><br />Difficulty: 1.0 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC37/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC37/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC37\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m3);});
+google.maps.event.addListener(m4, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='http://www.geocaching.com/seek/cache_details.aspx?guid=1ab68474-fa78-4d45-90b0-55c09adb280c' target='geo'>GC28</a><br />Beverly </b><br /><i>by: robamy </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC28/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC28/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC28\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m4);});
+google.maps.event.addListener(m5, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='http://www.geocaching.com/seek/cache_details.aspx?guid=28bff7c9-c719-4250-af6f-cb6187e05b79' target='geo'>GC93</a><br />Indiana's First </b><br /><i>by: 501_Gang </i><br /><br />Difficulty: 2.0 Terrain: 3.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC93/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC93/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC93\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m5);});
+google.maps.event.addListener(m6, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='http://www.geocaching.com/seek/cache_details.aspx?guid=c305e7d1-8863-4c12-a610-ca207e6847dc' target='geo'>GC89</a><br />Iron Horse </b><br /><i>by: thebisch </i><br /><br />Difficulty: 1.5 Terrain: 4.0<br />Size: Not chosen<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC89/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC89/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC89\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m6);});
+google.maps.event.addListener(m7, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='http://www.geocaching.com/seek/cache_details.aspx?guid=77034d28-5645-4e70-924e-49f4f454b382' target='geo'>GC76</a><br />Rock Town </b><br /><i>by: thebisch </i><br /><br />Difficulty: 3.0 Terrain: 3.0<br />Size: Not chosen<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC76/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC76/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC76\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m7);});
+google.maps.event.addListener(m8, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='http://www.geocaching.com/seek/cache_details.aspx?guid=c223c09c-f8a1-48b8-866c-ae731d61f423' target='geo'>GC1HTTN</a><br />Daylight Saving Time Machine </b><br /><i>by: Scooter Bill </i><br /><br />Difficulty: 2.0 Terrain: 1.5<br />Size: Small<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC1HTTN/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC1HTTN/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC1HTTN\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m8);});
+google.maps.event.addListener(m9, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='http://www.geocaching.com/seek/cache_details.aspx?guid=b1442776-a9c6-4659-8238-39424238b91c' target='geo'>GC90</a><br />Bonita Lakes </b><br /><i>by: GeoTony </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Not chosen<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC90/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC90/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC90\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m9);});
+google.maps.event.addListener(m10, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='http://www.geocaching.com/seek/cache_details.aspx?guid=dd047ce3-b9e3-421e-bcda-d527c0549030' target='geo'>GC21</a><br />Lake Lanier </b><br /><i>by: Allen_L </i><br /><br />Difficulty: 1.0 Terrain: 1.5<br />Size: Not chosen<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC21/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC21/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC21\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m10);});
+google.maps.event.addListener(m11, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='http://www.geocaching.com/seek/cache_details.aspx?guid=ea6dade3-dacf-4bb0-86d7-63f90b1db1ae' target='geo'>GC20</a><br />Marooned </b><br /><i>by: Lakebum </i><br /><br />Difficulty: 4.0 Terrain: 5.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC20/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC20/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC20\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m11);});
+google.maps.event.addListener(m12, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='http://www.geocaching.com/seek/cache_details.aspx?guid=f9acd595-022c-4d24-90fe-b69292442722' target='geo'>GC1E</a><br />Tour of Stone Mountain </b><br /><i>by: LostNfound </i><br /><br />Difficulty: 2.5 Terrain: 2.0<br />Size: Other<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC1E/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC1E/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC1E\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m12);});
+google.maps.event.addListener(m13, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='http://www.geocaching.com/seek/cache_details.aspx?guid=07c58bb0-e54f-4f74-bed7-8c45e41cc7ea' target='geo'>GC1D</a><br />Beaver Cache </b><br /><i>by: designer </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Large<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC1D/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC1D/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC1D\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m13);});
+google.maps.event.addListener(m14, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='http://www.geocaching.com/seek/cache_details.aspx?guid=a0c69416-c3e3-4376-aa3c-2139ee4ab0ff' target='geo'>GCB6</a><br />Yellow River Stash </b><br /><i>by: Ramness </i><br /><br />Difficulty: 2.5 Terrain: 2.0<br />Size: Not chosen<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GCB6/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GCB6/Year%202000%20caches\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GCB6\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m14);});
+
+   markerClusterer = new MarkerClusterer(map, markers, {
+      gridSize: 50,
+      maxZoom: 12,
+      styles: styles[0]
+   });
+
+   map.fitBounds(bounds);
+
+
+
+} // End of initialize
+
+
+</script>
+
+<script type="text/javascript" src="http://gsak.net/stats/maps/keydragzoom_packed.js"></script>
+
+<style type="text/css">
+
+   html, body {
+   height: 100%;
+   overflow: hidden;
+   font-family: Verdana;
+   font-size: 8pt;
+}
+
+body {
+background-color: white;
+margin: 0;
+}
+</style>
+
+</head>
+
+<body>
+   <div id="map"></div>
+</body>
+</html>

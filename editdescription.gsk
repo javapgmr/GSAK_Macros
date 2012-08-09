@@ -1,0 +1,11 @@
+$filename = extract(extract($_MacroParms,"&",1),"macro=",2)
+$mydescription = extract(extract($_MacroParms,"&",2),"val=",2)
+$mydescription = Replace("'","''",$mydescription)
+
+
+$sqlfile = $_Install + "\macros\MacroIndex.db3"
+$sqlfile = SqlQuote($sqlfile)
+$_sql = "ATTACH $sqlfile AS macroindex"
+$status = Sqlite("sql",$_sql)
+$_sql = "REPLACE INTO macroindex.mymacros values('$filename', '$mydescription')"
+$status = Sqlite("sql",$_sql)

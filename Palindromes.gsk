@@ -1,0 +1,262 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Find caches that are palindromes. Checks the name, code and coordinate fields.
+# MacAuthor = Lil Devil
+# MacFileName = Palindromes.gsk
+# MacUrl =
+#*******************************************
+
+# Ideas for future versions
+# - Evaluate coordinate fields in other formats, e.g. D.d and DMS and UTM
+# - Configurable charset instead of only a-zA-Z0-9
+# - Continue to search for ways to make this more efficient
+
+VERCHECK Version=7.7.0.0
+$advanced = (Val($_Version) >= 8.0)
+
+# MFILTER Where, SqlGet, SQLNEXT added in 7.7
+# g_LatLonFormat, CheckGroup added in 8.0
+
+VSUB Status=off
+SPEEDMODE Status=on
+
+# defaults
+$searchFields = "Name"	# Name, Code, drop2, Latitude, Longitude, Lat & Lon
+$minLength = 4
+$applyFilter = false
+MACSETTINGS Type=R Filecheck=N
+$minLengthStr = NumToStr($minLength)
+
+WHILE true
+	$result = Form($form,"")
+	BEGINCASE
+		CASE $result = "OKButton"
+			$minLength = Val($minLengthStr)
+			IF $minLength < 1
+				$minLength = 1
+			ENDIF
+			$numberOfSelectedFields = RegExCount("[^;]+(;|$)", $searchFields)
+			IF $numberOfSelectedFields > 0
+				MACSETTINGS Type=S Vars=searchFields,minLength,applyFilter
+				GOSUB Name=FindPalindromes
+				RETURN
+			ELSE
+				MSGOK Msg="You must select at least one field to search for palindromes."
+			ENDIF
+		OTHERWISE
+			CANCEL
+	ENDCASE
+ENDWHILE
+
+BEGINSUB Name=FindPalindromes
+#	DEBUG Status=on
+	$thisRecord = 0
+	$needCoords = RegEx("(Latitude|Longitude|Lat & Lon)", $searchFields)
+
+	# Create temp table
+	SHOWSTATUS Msg=Preparing temporary database...
+	$SQLresult = Sqlite("sql", "DROP TABLE IF EXISTS Palindromes", "")
+	$SQLresult = Sqlite("sql", "CREATE TEMP TABLE Palindromes (Code, Name, Latitude, Longitude, Field)", "")
+
+	# if still showing filter from previous run, ignore it
+	$where = $_Where
+	IF RegEx("FROM Palindromes", $where)
+		$where = "1"
+	ENDIF
+
+#	TIMER Status=on
+	$totalRecords = Sqlite("sql", "SELECT Count(*) FROM Caches WHERE " + $where, "")
+	$coordColumns = ""
+	$_sql = "SELECT Code, Name"
+	IF $needCoords
+		$coordColumns = ",Latitude,Longitude"
+		IF $advanced
+			# the newer g_LatLonFormat() sql function is significantly faster than the GCalc() macro function
+			$_sql = $_sql + ", g_LatLonFormat(latOriginal,'latm') AS Latitude, g_LatLonFormat(lonOriginal,'lonm') AS Longitude"
+		ELSE
+			$_sql = $_sql + ", latOriginal AS Latitude, lonOriginal AS Longitude"
+		ENDIF
+	ENDIF
+	$_sql = $_sql + " FROM Caches WHERE " + $where
+	$SQLresult = Sqlite("sql", $_sql, "SqlGet=yes")
+
+	WHILE Not($_SQLEol)
+		$thisRecord = $thisRecord + 1
+		IF Frac($thisRecord/100) = 0
+			SHOWSTATUS Msg=Processing $thisRecord of $totalRecords Title="Searching for palindromes..."
+		ENDIF
+
+		$thisName = SqlGet("Name")
+		$thisCode = SqlGet("Code")
+		IF $needCoords
+			$thisLat = SqlGet("Latitude")
+			$thisLon = SqlGet("Longitude")
+			IF Not($advanced)
+				$thisCoords = GCalc($thisLat + " " + $thisLon, "FormatMinutes")
+				$thisLat = Extract($thisCoords, ";", 1)
+				$thisLon = Extract($thisCoords, ";", 2)
+			ENDIF
+		ENDIF
+
+		$fieldNumberToSearch = 1
+		WHILE $fieldNumberToSearch <= $numberOfSelectedFields
+			$thisField = Extract($searchFields, ";", $fieldNumberToSearch)
+
+			BEGINCASE
+				CASE $thisField = "Name"
+					$a = Lower(RegExReplace("[^A-Za-z0-9]", $thisName, ""))
+					IF Len($a) < $minLength
+						$a = "AB"	# would be nice to have the equivalent to JavaScript's "continue" command here
+					ENDIF
+				CASE $thisField = "Code"
+					$a = $thisCode
+				CASE $thisField = "drop2"
+					$a = Substr($thisCode, 3, 0)
+				CASE $thisField = "Latitude"
+					$a = RegExReplace("\D", $thisLat, "")
+				CASE $thisField = "Longitude"
+					$a = RegExReplace("\D", $thisLon, "")
+				CASE $thisField = "Lat & Lon"
+					$a = RegExReplace("\D", $thisLat + $thisLon, "")
+			ENDCASE
+
+			# here is the actual meat that determines if the given string is a palindrome
+			$len = Len($a)
+			$i = Int($len / 2)
+			WHILE ($i > 0) AND (Substr($a, $i, 1) = Substr($a, $len + 1 - $i, 1))
+				$i = $i - 1
+			ENDWHILE
+
+			# if it is a palindrome, add it to the temporary table
+			IF ($i = 0)
+				$_sql = "INSERT INTO Palindromes (Code, Name" + $coordColumns + ", Field) VALUES ('" + $thisCode + "'," + SqlQuote($thisName)
+				IF $needCoords
+					$_sql = $_sql + ",'" + $thisLat + "','" + $thisLon + "'"
+				ENDIF
+				$_sql = $_sql + ",'" + $thisField + "')"
+				$SQLresult = Sqlite("sql", $_sql, "")
+			ENDIF
+
+			$fieldNumberToSearch = $fieldNumberToSearch + 1
+		ENDWHILE
+
+		SQLNEXT
+	ENDWHILE
+#	TIMER Status=off
+
+	$totalFound = Val(Sqlite("sql", "SELECT count(*) FROM Palindromes", ""))
+	IF $totalFound > 0
+		IF $applyFilter
+			MFILTER Where="Code IN (SELECT Code FROM Palindromes)"
+		ENDIF
+		$_sql = "SELECT Code, Name" + $coordColumns
+		IF $searchFields <> "Name"	# if more than one field, or one field that isn't "Name"
+			$_sql = $_sql + ", group_concat(Field, ', ') AS 'Field(s)'"
+		ENDIF
+		$_sql = $_sql + " FROM Palindromes GROUP BY Code"
+		$SQLresult = Sqlite("sql", $_sql, "Headings=Yes")
+		$result = SqlToHtml($SQLresult, "Palindromes", "y")
+	ELSE
+		MSGOK Msg="No palindromes found."
+	ENDIF
+ENDSUB
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Fri 02-Mar-2012 21:30:31
+#********************************************************************
+
+Name = Form
+  Type = Form
+  Caption = Find Palindromes
+  Height = 316
+  Width = 234
+
+Name = searchFieldsGroupbox
+  Type = Groupbox
+  Caption = Search Fields
+  Height = 165
+  Left = 52
+  Top = 36
+  Width = 121
+  Taborder = 0
+
+Name = mainTitle
+  Type = Label
+  Color = 16711680
+  Height = 25
+  Left = 28
+  Size = 15
+  Style = bold
+  Top = 8
+  Width = 175
+  Caption = Find Palindromes
+
+Name = minLengthLabel1
+  Type = Label
+  Container = searchFieldsGroupbox
+  Height = 17
+  Left = 8
+  Top = 124
+  Width = 85
+  Caption = Minimum Length
+
+Name = minLengthStr
+  Type = Edit
+  Container = searchFieldsGroupbox
+  Height = 21
+  Left = 88
+  Top = 127
+  Width = 25
+  Taborder = 1
+
+Name = applyFilter
+  Type = Checkbox
+  Height = 20
+  Left = 52
+  Top = 208
+  Width = 137
+  Taborder = 3
+  Caption = Apply Filter when Done
+
+Name = OKButton
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 32
+  Top = 240
+  Width = 75
+  Taborder = 4
+  Caption = Go
+
+Name = CancelButton
+  Type = Button
+  Escape = Yes
+  Height = 25
+  Left = 120
+  Top = 240
+  Width = 75
+  Taborder = 5
+  Caption = Cancel
+
+Name = searchFields
+  Type = Checklistbox
+  Color = 15724527
+  Container = searchFieldsGroupbox
+  Height = 89
+  Left = 20
+  Top = 24
+  Values = Name;Code;drop2;Latitude;Longitude;Lat & Lon
+  Width = 81
+  Taborder = 0
+
+Name = minLengthLabel2
+  Type = Label
+  Container = searchFieldsGroupbox
+  Height = 17
+  Left = 40
+  Top = 136
+  Width = 51
+  Caption = for Name
+
+<enddata>

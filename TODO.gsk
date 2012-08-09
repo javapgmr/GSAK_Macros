@@ -1,0 +1,88 @@
+# Un comment the next line if you want to run the macro one line at a time
+#DEBUG Status="on"
+#speedmode status=off
+
+
+# Save the name of the current database we are working in
+SET $CurrentData = $_CurrentDatabase
+
+# first clear all flags
+MACROFLAG Type=clear Range=all
+USERFLAG Type=clear Range=all
+
+# set flag for starting cache
+MACROFLAG Type=set Range=1
+
+# make sure the "Cache Raid" database is empty
+IF DatabaseExists("TODO")
+  DATABASE Name="TODO" Action=delete
+ENDIF
+
+DATABASE Name="TODO" Action=create
+
+# select the starting database again
+DATABASE Name="$CurrentData"
+
+# now set on userflag for all the required required waypoints for the cache raid
+FILTER Name="User Flag (GSAK Default)"
+USERFLAG Type=set Range=Filter
+MFILTER If=$d_UserFlag
+
+#set center to the starting waypoint
+MFILTER If=$d_UserFlag .and. $d_MacroFlag
+IF $_FilterCount = 0
+   SET $Message = "The cache you first selected is not in your 'Cache Raid' filter" + $_NewLine + $_NewLine + "Macro will now abort"
+   PAUSE Msg="$Message"
+   DATABASE Name="$CurrentData"
+   CANCEL
+ENDIF
+# First make sure distances are calculated from your starting cache
+CENTER
+
+SORT By="distance"
+MacroSet Dialog=MoveCopy VarName=$Raid
+# now start moving waypoints to the "TODO" database
+SET $j = 0
+WHILE $j < 9999
+   GOTO Position=top
+   MACROFLAG Type=set Range=1
+   MFILTER IF=$d_MacroFlag
+   MOVECOPY Settings=<macro>
+   USERFLAG type=clear Range=1
+   SORT By="distance"
+   MFILTER If=$d_UserFlag
+   GOTO Position=top
+   CENTER
+   SET $j = $j + 1
+ENDWHILE
+# restore source database to "home" location
+CENTER Location="Home"   
+
+# Finally select the "TODO" database and sort in natural order
+DATABASE Name="TODO"
+SORT By="natural"
+GOTO Position=top
+# Show all distances from starting point
+CENTER
+# put back in natural order (may have changed to distance after Center command)
+SORT By="natural"
+
+##############################################################
+# embeded settings
+
+<data> VarName=$Raid
+[TfmMove]
+cbxDestination.Text=Cache Raid
+rbtAdd.Checked=True
+rbtAddFlag.Checked=False
+rbtAddIgnore.Checked=False
+rbtCopy.Checked=True
+rbtExistIgnore.Checked=False
+rbtFlagOnly.Checked=False
+rbtMove.Checked=False
+rbtReplace.Checked=True
+rbtReplaceFlag.Checked=False
+chkDisplay.Checked=False
+<enddata>
+
+

@@ -1,0 +1,165 @@
+#####################################################################################
+# This script produces an html page for each connected database and lists the       #
+# tables and views.  In addition it also produces a page listing the names of       #
+# the datbases and indicates the location of each of if memory based.               #  
+#                                                                                   #
+# To use it open up your defualt browser then go back to GSAK and either run        #
+# it as a normal macro or call it by including the code in your own macro by        #
+# use of the following.                                                             #
+#                                                                                   #
+#                            include file=dbinfo.gsk                                #  
+#___________________________________________________________________________________#
+#                                                                                   #
+# Bug reports, feature suggestions and any other comments should be posted          # 
+# on the GSAK forums.                                                               # 
+#                                                                                   # 
+# This macro is Open Source and comes with no warranty implied, or otherwise.       # 
+#___________________________________________________________________________________#
+# MacVersion = 1.0.1                                                                #
+# MacDescription = Display all connected daatabases and tables/views                #
+# MacAuthor = Big Wolf                                                              #
+# MacFileName = DBinfo.gsk                                                          #
+# MacUrl = http://gsak.net/board/index.php?showtopic=15222&view=findpost&p=104119   #
+#                                                                                   #
+# Version History:                                                                  #
+# V1.1.0  25-04-10   A) first release                                               #
+#                                                                                   #
+#####################################################################################
+
+# Version check for ver 7.7.0.0 or greater
+VERCHECK Version=7.7.0.0 (You can find the latest version of GSAK in the forums at http://support.gsak.net/)
+
+
+DECLARE Var=$v_aa Type=String
+Declare Var=$v_BatFile Type=String
+Declare Var=$v_cde Type=Numeric
+Declare Var=$v_dbinfo Type=String
+Declare Var=$v_dd Type=String
+Declare Var=$v_html Type=String
+Declare Var=$v_htmlfilepath Type=String
+Declare Var=$v_index Type=Numeric
+Declare Var=$v_loc Type=String
+Declare Var=$v_noresult Type=String
+Declare Var=$v_prag Type=String
+Declare Var=$v_result Type=String
+Declare Var=$v_statement Type=String
+Declare Var=$v_status Type=String
+Declare Var=$v_tt Type=Numeric
+
+
+
+
+$v_htmlfilepath = $_Install + "\html"
+IF Not(FolderExists($v_htmlfilepath))
+     $v_BatFile = $_Install + "\babel.bat"
+     $v_result = PutFile($v_BatFile, "MD " + quote($v_htmlfilepath))
+     FILEOPEN File="$v_BatFile" Wait=yes
+ENDIF
+
+$v_statement="PRAGMA database_list"
+$v_result = sqlite("sql",$v_statement,"Headings=Yes")
+$v_result = RegExReplace("(?<!\r)\n",$v_result,"")  #remove crlf's from the result
+
+$v_html=SqlToHtml($v_result,"database_list","n")
+$v_html = Replace("<title>GSAK Totals</title>","<title>database_list</title>",$v_html)
+
+$v_dd= $v_htmlfilepath+"\database_list.html"
+$v_result=PutFile($v_dd, $v_html)
+  IF Left($v_result, 7) = "*Error*"
+     CANCEL Msg="Unable to save form values to $v_datafile!"
+  ENDIF
+WEB URL=$v_dd	
+
+
+$v_status = sqlite("sql","PRAGMA database_list","sqlget=yes")
+$v_cde=0
+$v_prag=""
+
+#create a string to hold the cache name and locations forall databases
+WHILE not($_SQLEol)
+  # process the cache data using sqlget calls
+  $v_cde=$v_cde+1
+  $v_prag=$v_prag+SqlGet("name")+":-:"
+  $v_prag=$v_prag+SqlGet("file")+":~:"
+  SQLNEXT
+ENDWHILE
+
+$v_index=1
+WHILE $v_index <=$v_cde
+$v_dbinfo=Extract($v_prag, ":~:", $v_index)
+	$v_aa=Extract($v_dbinfo, ":-:", 1)
+	$v_loc=Extract($v_dbinfo, ":-:", 2)
+	IF $v_loc=""
+		$v_loc="MEMORY"
+	ENDIF	
+
+$v_tt=0	
+BEGINCASE
+    CASE $v_aa="temp"
+	           $v_statement="SELECT * FROM $v_aa.sqlite_temp_master where type in ('table','view') ORDER BY type, name"
+	  
+	  CASE $v_aa="main"
+	           $v_statement="SELECT * FROM $v_aa.sqlite_master where type in ('table','view') ORDER BY type, name"
+	  
+	  OTHERWISE 
+	  	       
+	  	       #see if master table exists
+	  	       $v_result = sqlite("sql","SELECT * FROM $v_aa.sqlite_master","error=Trap")
+	  	       IF Left($v_result, 7) = "*Error*"
+                 #master does not exists
+             ELSE
+             	   $v_tt=1    
+             ENDIF
+	  	       #see if temp master table exists
+	  	       $v_result = sqlite("sql","SELECT * FROM $v_aa.sqlite_temp_master","error=Trap")
+	  	       IF Left($v_result, 7) = "*Error*"
+                 #temp does not exists
+             ELSE
+             	   $v_tt=$v_tt+2
+             ENDIF
+                       
+             BEGINCASE 
+             	  CASE  $v_tt=1   
+	                 $v_statement="SELECT * FROM $v_aa.sqlite_master where type in ('table','view') ORDER BY type, name"
+             	  CASE  $v_tt=2   
+	                 $v_statement="SELECT * FROM $v_aa.sqlite_temp_master where type in ('table','view') ORDER BY type, name"
+             	  CASE  $v_tt=3   
+	                 $v_statement="SELECT * FROM sqlite_master WHERE type in ('table','view') UNION ALL SELECT name FROM sqlite_temp_master WHERE type IN ('table','view')"
+              OTHERWISE   #no tables or views yet created
+                   $v_tt=99            
+              ENDCASE
+            
+ENDCASE	  	
+	IF $v_tt<>99
+			$v_result = sqlite("sql",$v_statement,"Headings=Yes")
+			IF $v_result=""
+				$v_result=$v_noresult
+			ENDIF
+			
+	ELSE
+		  $v_result=$v_noresult
+  ENDIF
+	
+	$v_result = RegExReplace("(?<!\r)\n",$v_result,"")  #remove crlf's from the result
+
+	$v_html=SqlToHtml($v_result,"Database: $v_aa &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Located: $v_loc","n")
+	$v_html = Replace("<title>GSAK Totals</title>","<title>$v_aa</title>",$v_html)
+	$v_dd= $v_htmlfilepath+"\"+$v_aa+".html"
+	$v_result=PutFile($v_dd, $v_html)
+    IF Left($v_result, 7) = "*Error*"
+       CANCEL Msg="Unable to save form values to $v_datafile!"
+    ENDIF
+	
+	#display the data
+	WEB URL=$v_dd
+	
+	$v_index=$v_index+1
+	
+ENDWHILE 
+
+
+#data string to show when no tables or views found - used when an empty string returned
+<data> VarName=$v_noresult
+Note-
+No tables or views found
+<enddata>

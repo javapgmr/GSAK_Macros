@@ -1,0 +1,32 @@
+#*******************************************
+# MacVersion = 1.1
+# MacDescription = Show local time and Geocaching.com time
+# MacAuthor = Clyde
+# MacFileName = ShowTime.gsk
+# MacUrl =
+#*******************************************
+
+array(1,0) = "7"
+array(1,1) = "Sunday"
+array(1,2) = "Monday"
+array(1,3) = "Tuesday"
+array(1,4) = "Wednesday"
+array(1,5) = "Thursday"
+array(1,6) = "Friday"
+array(1,7) = "Saturday"
+
+$stauts = sqlite("open","$_CurrentDataPath\sqlite.db3")
+$PstTime = sqlite("sql","select datetime('now','localtime','utc','-8 hours' )")
+$PstDay = array(1,val(sqlite("sql","select strftime('%w','$PstTime')")) + 1 )
+
+$PdtTime = sqlite("sql","select datetime('now','localtime','utc','-7 hours' )")
+$PdtDay = array(1,val(sqlite("sql","select strftime('%w','$PdtTime')")) + 1 )
+
+
+$LocalTime = sqlite("sql","select datetime('now','localtime')")
+$LocalDay = array(1,val(sqlite("sql","select strftime('%w','$localtime')")) + 1 )
+
+$out =        "Pacific Standard Time:" + chr(09) + "$PstDay, $pstTime" + $_Newline 
+$out = $out + "Pacific Daylight Time:" + chr(09) + "$PdtDay, $pdtTime" + $_Newline 
+$out = $out + "Local Time:           " + chr(09) + "$Localday, $LocalTime"
+MsgOK msg=$out

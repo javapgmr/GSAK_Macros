@@ -1,0 +1,53 @@
+#*******************************************
+# MacDescription = Refresh caches before publishing logs
+# MacFileName =RefreshBeforePublish.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.2
+#*******************************************
+VERCHECK Version=8.0.0.133 (please update GSAK to version 8.0.0.133 or later to run this macro - see http://gsak.net)
+
+#Cancel filter if set
+CANCELFILTER
+#Clear macro flags
+MACROFLAG Type=Clear Range=All
+
+#retrieve the cache codes for unpublished logs
+$Status = sqlite("open","$_appdata\gsak.db3")
+$_sql="Select pCode from PublishLogs WHERE pPublished=0"
+$Codes=Sqlite("sql",$_sql)
+$status = sqlite("close","$_appdata\gsak.db3")
+
+IF $Codes<>""
+    $x=1
+    $counter=RegExCount($_CrLf,$Codes) + 1
+    WHILE $x<=$counter
+        $ThisCode=Extract($Codes,$_CrLf,$x)
+        IF Seek($ThisCode)=FALSE
+            ADDNEW
+            $d_code=$ThisCode
+            GCREFRESH
+            IF $d_OwnerName=""
+              MACRODELETE action=delcurrent
+              MACRODELETE action=commit
+            ENDIF
+        ENDIF
+        $x=$x+1
+    ENDWHILE
+
+    #Set macro flags
+    $filter=CodeMatch($Codes, $_CrLf, "M")
+
+    #Filter for caches with unpublished logs
+    MFILTER Where=MacroFlag
+
+    #Update caches in the filter
+    IF $_FilterCount>0
+        GcGetLogs Scope=FILTER LogsPerCache=20 ShowSummary=N
+    ELSE
+        RETURN Msg=There are no unpublished logs in GSAK.
+    ENDIF
+
+    CANCELFILTER
+ELSE
+    RETURN Msg=You do not have any unpublished logs.  Please go to Geocaching.com Access>Publish Logs and Fetch logs before running the macro.
+ENDIF

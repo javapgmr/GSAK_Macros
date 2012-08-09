@@ -1,0 +1,36 @@
+#*******************************************
+# MacVersion = 1.1
+# MacDescription = List caches by Favorites Points
+# MacAuthor = Mortensen
+# MacFileName = ListFavPoints.gsk
+# MacUrl =
+#*******************************************
+
+VERCHECK version=8.0.0.91
+
+If YesNo("Do you want to exclude caches with 0 Favorites points from the list","Exclude FavPoints = 0")
+
+SQLITECACHES
+$DB=$_CurrentDataPath + "\Sqlite.db3"
+$TmpS=Sqlite("Open",$DB)
+$_sql="SELECT Code, Name, FavPoints from CachesTemp Where FavPoints >= '1' ORDER BY FavPoints Desc"
+$status = Sqlite("sql",$_sql,"Headings=Yes")
+$Delimiter=";" + $_NewLine
+$status=Replace($_NewLine,$Delimiter,$status)
+
+$TmpS=SqlToHtml($status, "Favorite points","Y")
+
+Else
+
+SQLITECACHES
+$DB=$_CurrentDataPath + "\Sqlite.db3"
+$TmpS=Sqlite("Open",$DB)
+$_sql="SELECT Code, Name, FavPoints from CachesTemp ORDER BY FavPoints Desc"
+$status = Sqlite("sql",$_sql,"Headings=Yes")
+$Delimiter=";" + $_NewLine
+$status=Replace($_NewLine,$Delimiter,$status)
+
+$TmpS=SqlToHtml($status, "Favorite points","Y")
+
+Endif
+

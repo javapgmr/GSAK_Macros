@@ -1,0 +1,139 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Remove non-active, with multiple dnf's and unsolved mysteries before running AutoRouteFilterWrapper"
+# MacAuthor = javapgmr
+# MacFileName= AutoRouteFilterWrapper
+# MacUrl =
+#*******************************************
+DECLARE Var=$Count Type=Numeric
+DECLARE var=$status type=String
+
+SHOWSTATUS Msg="Removing caches with last 2 dnf's." Title="AutoRouteFilterWrapper" Width=350
+$status = createTempTable
+$status = resetTempTable
+$count = eliminateDNFs(2)
+GoSub Name=FilterByTempTable
+$status = deleteTempTable
+
+SHOWSTATUS Msg="Running AloungRouteFilter.gsk" Title="AutoRouteFilterWrapper" Width=350
+Macro File="AlongRouteFilter.gsk"
+SQLSort OrderBy=Distance
+
+BEGINSUB Name=FilterByTempTable
+	 MFILTER where=code in (select gccode from gccodes)
+ENDSUB
+
+############################################################################################
+############################################################################################
+<data> varname=$pascal
+
+{************************************************************************************}
+Function createTempTable : string;
+var
+ status, _sql : string;
+ begin
+  _sql := 'drop table if exists gccodes';
+  status := sqlite('sql',_sql);
+  _sql := 'create table gsak_mem.gccodes (gccode,gcdistance,gcsel)';
+  status := sqlite('sql',_sql);
+ end;
+
+{************************************************************************************}
+Function resetTempTable : string;
+ var
+ status, _sql  : string;
+
+ begin
+ _sql :='delete from gccodes';
+ status := sqlite('sql', _sql );
+ _sql:='insert into gccodes (gccode, gcdistance) select code, distance from Caches where RowId in (Select * from GridTemp)';
+ status := sqlite('sql', _sql);
+end;
+
+{************************************************************************************}
+Function deleteTempTable : string;
+var
+ status, _sql  : string;
+
+ begin
+ _sql := 'DROP TABLE IF EXISTS gccodes';
+ status := Sqlite('sql',_sql);
+end;
+
+{************************************************************************************}
+Function resetGridIntoTempTable : string;
+var
+ status, _sql  : string;
+
+ begin
+_sql := 'delete from gccodes';
+status := sqlite('sql', _sql );
+_sql:='insert into gccodes (gccode, gcdistance) select code, distance from Caches where RowId in (Select * from GridTemp)';
+status := sqlite('sql', _sql);
+end;
+
+{************************************************************************************}
+Function removeGridFromTT : string;
+var
+ status, _sql  : string;
+
+ begin
+_sql:='delete from gccodes where gccode in (select code from Caches where RowId in (Select * from GridTemp))';
+status := sqlite('sql', _sql );
+end;
+
+{************************************************************************************}
+Function runsql(_sql : string) : string;
+ Var
+ status : string;
+ count : numeric;
+ begin
+ status  := sqlite('sql', _sql );
+ result := status;
+end;
+
+{************************************************************************************}
+Function eliminateDNFs (nofind: extended) : extended;
+Var
+ _sql, status, data : string;
+ totalCount, count  : integer;
+ del : boolean;
+
+ begin
+ count := 0;
+  _sqleol := 0;
+  _sql := 'update gccodes set gcsel=''1'' where gccode in (select lparent from logs where llogid in (select max(llogid) from logs as l1 where llogid < (select max(llogid) from logs as l2 where l1.lparent = l2.lparent) group by lparent) and ltype = ''Didn''''t find it'') AND gccode in (select lparent from Logs where llogid in (select max(llogid) from logs group by lparent) and ltype = ''Didn''''t find it'')';
+   status := sqlite('sql',_sql);
+  if (nofind = 2) then begin
+  _sql := 'delete from gccodes where gcsel = ''1''';
+   status := sqlite('sql',_sql);
+   result := 'OK';
+   end else begin
+  _sql := 'select gccode from gccodes where gcsel = ''1''';
+   status := sqlite('sql',_sql, 'sqlget=yes');
+  while not _sqleol do
+    begin
+      del := true;
+      data := sqlget('gccode');
+      if (nofind > 2) then begin
+         del := false;
+          _sql := 'select ltype from logs where logs.lparent = ''' + data + '''  order by ldate desc, llogid desc limit 0,' + inttostr(nofind);
+          status := sqlite('sql', _sql );
+	         count := regexcount('(?m)^Didn.*it',status);
+	         if (count = nofind)  then
+	           del := true;
+	     end;
+	     if (del) then begin
+	        _sql := 'delete from gccodes where gccode = ''' + data + '''';
+	         status := sqlite('sql', _sql);
+	         inc(count);
+	     end;
+
+  sqlnext;
+   end;
+  sqlgetclose;
+	 Showmessage('Dnf''s removed: ' + inttostr(count));
+  result := count;
+  end;
+ end;
+<enddata>

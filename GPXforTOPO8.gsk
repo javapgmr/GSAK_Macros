@@ -1,0 +1,123 @@
+#*******************************************
+# MacVersion = 1.00.02
+# MacDescription = GPX Export for Delorme TOPO8 to PN-40 v2.5+ or PN-20 v1.5+
+# MacAuthor = haverood
+# MacFileName = GPXforTOPO8.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=12077&view=getlastpost
+#*******************************************
+
+$Revision = "V1.00.02"
+#*******************************************
+# 1.0 Version History:
+#
+# 1.00.00 06-10-09 First release
+# 1.00.01 06-11-09 Added output folder selection per javapgmr suggestion
+# 1.00.02 08-09-09 Changed export filter MaxGps.Text from 32 to 31 chacters per PN-Series limit per robertlipe
+#*******************************************
+
+#*******************************************
+# This GSAK macro gathers the closest geocaches and their additional waypoints
+# for up to 950 total waypoints from the active GSAK database Centre point
+# for import into a Delorme TOPO8 Draw layer as a GPX file. Proxumity testing
+# is done from the current Centre point with the GPX output file smart named
+# after the same Centre point. The GPX output uses modified additional waypoint
+# names for smart recognition on an Earthmate PN-40 v2.5 or PN-20 v1.6 GPRs
+# via a GPSr Exchange of Draw layer waypoints from TOPO8.
+#
+# The macro writes the exported GPX file to a user selected save folder on its
+# first run. For convenience of importing the GPX file into a Draw Layer,
+# the save folder defaults to C:\Delorme Docs\Draw when found and MSWindows $TEMP
+# otherwise. To reselect a default save folder, delete the MACSETTINGS file of
+# GPXforTOPO8.xml from your GSAK Macros folder.
+#*******************************************
+
+# Uncomment next 2 lines for trouble shooting
+# DEBUG Status=On
+# SPEEDMODE Status=Off
+
+# Requires at least this build or later
+VERCHECK Version=7.5.1.0 (Note: macro requires GSAK Version 7.5.1.0, found here:  http://www.gsak.net)
+
+# check for valid output folder
+$OutFolder="none"
+MACSETTINGS Type=R Vars=OutFolder FileCheck=N
+IF not(FolderExists("$OutFolder"))
+  IF FolderExists("C:\Delorme Docs\Draw")
+  $ThisDefault="C:\Delorme Docs\Draw"
+  ELSE
+    Set $ThisDefault=GetEnvV("TEMP")
+  ENDIF
+  INPUT Msg="Select a default output folder for GPX file:" Default=$ThisDefault VarName=$OutFolder Browse=Folder
+  MACSETTINGS Type=S Vars=OutFolder
+ENDIF
+  
+MACROFLAG Type=clear Range=all
+# Filter active database for caches personally not found and available ToDo
+MFILTER Expression=not($d_Found) and not($d_Archived) and not($d_TempDisabled) and not(IsOwner())
+# Sort ToDo list by the closest to the current centre point
+SORT By="distance" Sequence=A
+TABLE Active=Caches
+GOTO Position=top
+# use named centre point or alternate closest cache for output file naming
+IF IsEmpty(SysInfo("centre"))
+  $CentreName=$d_Name
+ELSE
+  $CentreName=(SysInfo("centre")) 
+ENDIF
+$CentreName=SmartName("$CentreName",10)
+# cycle through ToDo list finding last cache within the 950 waypoint limit
+$TotalCount=0
+$CacheCount=0 
+WHILE NOT($_EOL)
+  TABLE Active=waypoints Scope=parent
+  $ThisChildCount=$_Count
+  TABLE Active=Caches
+  IF $ThisChildCount + $TotalCount < 950
+    $CacheCount=$CacheCount + 1
+    $TotalCount=$TotalCount + $ThisChildCount + 1
+    GOTO Position=Next
+  ELSE
+    BREAK
+  ENDIF
+ENDWHILE
+# filter ToDo list for 1st through last cache 
+GOTO Position=top
+MACROFLAG Type=set Range=$CacheCount
+MFILTER Expression=$d_MacroFlag
+# export ToDo list of caches and additional waypoints as GPX file in output folder
+MACROSET Dialog=GPX VarName=$GPXforTOPO8
+$OutFile=$OutFolder+"\ToDo"+$CentreName+".gpx"
+EXPORT Type=GPX Settings=<macro> File=$OutFile Max=1000
+MSGOK Msg="$OutFile Caches:$CacheCount Total:$TotalCount " Caption="Saved gpx as..." 
+
+# export options
+<data> VarName=$GPXforTOPO8
+[TfmExportGpx]
+fnmTo.Text=C:\DeLorme Docs\Draw\ToDo.gpx
+cbxLimit.Text=10
+cbxUserNotes.Checked=False
+chkActual.Checked=False
+chkDefault.Checked=False
+chkExtra.Checked=False
+chkMyLogs.Checked=True
+chkSymbol.Checked=False
+edtFormat.Text=
+edtMax.Text=
+edtMaxGps.Text=31
+edtWaypoint.Text=%code %children %smart  %c_Type=6 %c_Prefix
+rbtGpx.Checked=True
+rbtLoc.Checked=False
+edtProblem.Text=
+edtExtra.Text=
+chkChild.Checked=True
+chkOnlyChild.Checked=False
+rbtAllChildren.Checked=True
+rbtOnlyFlagged.Checked=False
+rbtOnlyUnFlagged.Checked=False
+chkApplyName.Checked=False
+chkForce.Checked=True
+cbxVersion.Text=Ver 1.0
+[TfmExportGpx.cbxRecent.Items]
+Count=0
+<enddata>
+

@@ -1,0 +1,550 @@
+#*******************************************
+# MacVersion = 0.4.1
+# MacDescription = Returns an HTML d/t grid of found and unfound caches.  Unfound cells will display the available caches in the vicinity and allow for display on an embedded Google Map.
+# MacAuthor = GeoTrailGuy
+# MacFileName = MissingFizzy2HTML.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=20528
+#*******************************************
+
+GoSub Name=InitApp
+
+# Need to fix form saving settings (add found and placed date vars)
+
+
+# ==============================================================================================================================
+# Initialize the macro - display form, get inputs, declare vars
+# ==============================================================================================================================
+BeginSub name=InitApp
+	gosub name=DeclareVars
+
+	WHILE TRUE
+
+		$DBlist_Caches = Sysinfo("Databases")
+		$DBlist_Finds = Sysinfo("Databases")
+		# Restore settings from local file if it exists
+		MacSettings Type=R FileCheck=N
+
+
+		$Form = EditForm($form,"inDBCaches","values",$DBlist_Caches)
+		$Form = EditForm($form,"inDBFinds","values",$DBlist_Finds)
+		$Form = EditForm($form,"inFizzyCount","values",Replace($CR,";",$FizzyCount,true))
+
+		$FormExit = form($Form,"")
+		BEGINCASE 
+		        CASE $FormExit = "SystemExit"
+			        CANCEL #Msg="Macro Cancelled"
+		        CASE $FormExit = "btCancel"
+			        CANCEL #Msg="Macro Cancelled"
+		        CASE $FormExit = "btRun"
+				# Save settings to local file so they can be used as default on next load
+				MacSettings Type=S Vars=inDBCaches,inDBFinds,inFizzyCount,inMaxDist
+
+				# Attach the appropriate finds and caches databases
+				$databasefolder = RegExReplace("\\" + $_CurrentDatabase,$_CurrentDataPath,"")
+				$_sql = "ATTACH '$databasefolder\$inDBFinds\sqlite.db3' AS dbfinds"
+				$status = SQLite("sql",$_sql)
+				$sqlout= sqlite("close", "", "")
+				$_sql = "ATTACH '$databasefolder\$inDBCaches\sqlite.db3' AS dbcaches"
+				$status = SQLite("sql",$_sql)
+				$sqlout= sqlite("close", "", "")
+
+				# Get fizzy target level from form
+				$fizzytarget = val($inFizzyCount)
+				# Get the prefered earliest found date from form
+				$datestatus = ValidDate($inFoundDate)
+				if ($datestatus)
+					$founddate = $inFoundDate
+				else
+					$founddate = ""
+				endif
+				# Get the prefered earliest cache placed date from form
+				$datestatus = ValidDate($inPlacedDate)
+				if ($datestatus)
+					$placeddate = $inPlacedDate
+				else
+					$placeddate = ""
+				endif
+				# Get max distance from form
+				$maxdist = val($inMaxDist)
+
+#gosub name=PullSampleRecords
+#break
+
+
+				GoSub Name=JSON
+
+
+				$filename = "MissingFizzy2HTML.html"
+				$FileOutput = RegExReplace("@@JSON@@",$HTML_Page,$json)
+				gosub name=WriteHTMLFile
+
+
+			        BREAK 
+	    ENDCASE 
+	ENDWHILE
+
+EndSub
+
+
+
+
+# ==============================================================================================================================
+# Build JSON file
+# ==============================================================================================================================
+BeginSub name=JSON
+
+	$dif = 1
+	$ter = 1
+	$json = ""
+	$temp = ""
+
+	# JSON: add the 'cache-independant' properties
+	$CenterLat = Sysinfo("gsakini;LastCenter;Lat")
+	$CenterLon = Sysinfo("gsakini;LastCenter;Lon")
+	$cacherId = Sysinfo("gsakini;TfmConfig;edtGeoName.Text")
+
+	$header = "	""centrePoint"": {""lat"": """ + $CenterLat + """, ""lon"": """ + $CenterLon + """}, "	+ $CR
+	$header = $header + "	""cacherId"": """ + $cacherId + """, "	+ $CR
+	$header = $header + "	""maxDist"": """ + numtostr($maxdist) + """, "	+ $CR
+	$header = $header + "	""distUnit"": """ + $_Units + """, "	+ $CR
+	$header = $header + "	""datePlacedBefore"": """ + $placeddate + """, "	+ $CR
+	$header = $header + "	""dateFoundAfter"": """ + $founddate + """, "	+ $CR
+	$header = $header + "	""dateCurrent"": """ + DateFormat($_Today) + " " + $_Time + """, "	+ $CR
+	$header = $header + "	""fizzyTarget"": """ + numtostr($fizzytarget) + """,	"	+ $CR
+
+
+	# Cycle through each dif value
+	while ($dif <= $max_dif)
+
+		#Cycle through each ter value
+		while ($ter <= $max_ter)
+
+			#Check if I have any caches at this d/t value
+			$_Sql = "select count(*) as 'count' from dbfinds.caches where difficulty = $dif and terrain = $ter and found = 1 "
+			if ($founddate <> "")
+				$_Sql = $_Sql + " and FoundByMeDate >= '$founddate' "
+			endif
+			if ($placeddate <> "")
+				$_Sql = $_Sql + " and placeddate <= '$placeddate' "
+			endif
+
+			$sqlout = sqlite("sql",$_Sql,"sqlget=yes")
+			$sqlout = sqlite("close","","")
+
+			while not($_sqleol)
+				$cachecount = val(sqlget("count"))
+				sqlnext
+			Endwhile	
+
+			if ($grid <> "")
+				$grid = $grid + ", " + $CR
+			endif
+			$grid = $grid + " {""dif"": """ + str($dif,3 ,1) + """, ""ter"": """ + str($ter,3 ,1) + """, ""countFound"": """ + numtostr($cachecount) + """} "
+
+#msgok msg=$_sql
+#Pause msg=$_sql
+#break
+
+			# FAIL - the fizzy objective has NOT yet been met
+			if ($cachecount < $fizzytarget)
+				$_Sql = "select * "
+				$_Sql = $_Sql + "from dbcaches.caches c "
+				$_Sql = $_Sql + "left join (select code as 'code2' from dbfinds.caches where difficulty = $dif and terrain = $ter and found = 1) f on c.code = f.code2 " 
+				$_Sql = $_Sql + "left join cachememo cm on cm.code = c.code "
+				$_Sql = $_Sql + "where f.code2 is null and isowner = 0 and difficulty = $dif and terrain = $ter and status = 'A' and distance <= $maxdist "
+
+				if ($placeddate <> "")
+					$_Sql = $_Sql + " and c.placeddate <= '$placeddate' "
+				endif
+
+				$_Sql = $_Sql + " order by distance limit $MaxMissingCaches "
+
+
+				$sqlout= sqlite("sql",$_Sql,"sqlget=yes") #"Headings=Y")
+				$sqlout= sqlite("close", "", "")
+
+				$temp = ""
+
+				while not($_sqleol)
+
+					$gcCode = sqlget("code")
+					$cacheId = sqlget("cacheid")
+					$difficulty = Replace(",", ".", sqlget("difficulty"))
+					$terrain = Replace(",", ".", sqlget("terrain"))
+					# Need to further analyze which chrs need to be replaced or escaped
+					$name = Replace("'", "\u0027", Replace(chr(34), "\" + chr(34), Replace("\", "\\", sqlget("name"))))
+					$placedBy = RegExReplace("'",RegExReplace("\>",RegExReplace("\\",RegExReplace(chr(34),sqlget("placedby"),"'"), "\\"), "&gt;"), "\u0027")
+					$ownerId = sqlget("ownerid")
+					$cacheType = sqlget("cachetype")
+					$container = sqlget("container")
+					$lastFoundDate = sqlget("lastfounddate")
+					$lat = sqlget("latitude")
+					$lon = sqlget("longitude")
+					$dateCachePlaced = sqlget("placeddate")
+					$status = sqlget("status")
+					$url = RegExReplace("'",RegExReplace("\>",RegExReplace("\\",RegExReplace(chr(34),sqlget("url"),"'"), "\\"), "&gt;"), "\u0027")
+					$distance = Replace(",", ".", sqlget("distance"))
+
+					$temp = $temp + "			{" + $CR
+					#$temp = $temp + "				""rating"": """ + $cssid  + """, " + $CR
+					$temp = $temp + "				""gcCode"": """ + $gcCode + """, " + $CR
+					$temp = $temp + "				""cacheId"": """ + $cacheId + """, " + $CR
+					$temp = $temp + "				""dif"": """ + $difficulty + """, " + $CR
+					$temp = $temp + "				""ter"": """ + $terrain + """, " + $CR
+					$temp = $temp + "				""name"": """ + $name + """, " + $CR
+					$temp = $temp + "				""placedBy"": """ + $placedBy + """, " + $CR
+					$temp = $temp + "				""ownerId"": """ + $ownerId + """, " + $CR
+					$temp = $temp + "				""cacheType"": """ + $cacheType + """, " + $CR
+					$temp = $temp + "				""container"": """ + $container + """, " + $CR
+					$temp = $temp + "				""lastFoundDate"": """ + $lastFoundDate + """, " + $CR
+					$temp = $temp + "				""lat"": """ + $lat + """, " + $CR
+					$temp = $temp + "				""lon"": """ + $lon + """, " + $CR
+					$temp = $temp + "				""placedDate"": """ + $dateCachePlaced + """, " + $CR
+					$temp = $temp + "				""status"": """ + $status + """, " + $CR
+
+					# Need to further troubleshoot how to embed longdesc and shortdesc content
+					#$temp = $temp + "				""descLong"": """ + RegExReplace("'",RegExReplace("\>",RegExReplace("\\",RegExReplace(chr(34),sqlget("longdescription"),"'"), "\\"), "&gt;"), "\u0027") + """, " + $CR
+					#$temp = $temp + "				""descLong"": """ + Replace(chr(145), "\u0027", Replace(chr(146), "\u0027", Replace("'", "\u0027", Replace(chr(34), "\" + chr(34), Replace("\", "\\", sqlget("longdescription")))))) + """, " + $CR
+					#$temp = $temp + "				""descLong"": """ + Replace("\R", "\r", Replace(chr(146), "\u0027", Replace("'", "\u0027", Replace(chr(34), "\" + chr(34), Replace("\", "\\", sqlget("longdescription")))))) + """, " + $CR
+
+					#$temp = $temp + "				""descShort"": """ + RegExReplace("'",RegExReplace("\>",RegExReplace("\\",RegExReplace(chr(34),sqlget("shortdescription"),"'"), "\\"), "&gt;"), "\u0027") + """, " + $CR
+
+
+					#$temp = $temp + "				""hint"": """ + RegExReplace("'",RegExReplace("\>",RegExReplace("\\",RegExReplace(chr(34),sqlget("hints"),"'"), "\\"), "&gt;"), "\u0027") + """, " + $CR
+
+					$temp = $temp + "				""url"": """ + $url + """, " + $CR
+					$temp = $temp + "				""distance"": """ + $distance + """}"
+
+					sqlnext
+
+					if ($_sqleol)
+#						$temp = $temp + " ]"
+					else
+						$temp = $temp + ", " + $CR
+					endif
+
+				Endwhile		
+
+				# if the temp variable is not empty (meaning there were caches in the last d/t combo), add it to the cache details
+				if ($temp <> "")
+					# if the cache details var is empty, don't add the , seperator
+					if ($details = "")
+						$details = $details + $temp
+					else
+						$details = $details + ", " + $temp
+					endif
+				endif
+
+				# if we are at the end of the d/t combo list, close the cache details portion of the JSON
+				if ($dif = $max_dif and $ter = $max_ter)
+
+				endif
+
+			endif
+
+			$ter = $ter + 0.5
+		
+		endwhile
+
+		$ter = 1
+		$dif = $dif + 0.5
+
+	endwhile
+
+# JSON: construct the grid summary section
+$grid = "	""grid"": [ " + $CR + $grid + $CR + "	], " + $CR
+# JSON: construct the details summary section
+$details = "	""caches"": [" + $CR + $details + $CR + "	]" + $CR
+
+# Construct the JSON set
+	# JSON: Start the JSON contents
+	$json = "{"
+		# Add the header
+		$json = $json + $header
+		# Add the grid summary
+		$json = $json + $grid 
+		# Add the cache details
+		$json = $json + $details 
+	# Close the JSON set
+	$json = $json + "}"
+
+#	$filename = "MissingFizzy2HTML.json"
+#	gosub name=WriteHTMLFile
+
+
+EndSub
+
+
+
+
+# =================================================================================================================================
+# =================================================================================================================================
+# =================================================================================================================================
+# =================================================================================================================================
+# =================================================================================================================================
+# =================================================================================================================================
+
+
+# 
+# =================================================================================================================================
+BeginSub name=PullSampleRecords
+
+	$_Sql = "select * from dbfinds.caches limit 10 "
+	$data = sqlite("sql",$_Sql,"Headings=Y")
+	$data = sqlite("close", "", "")
+
+	$html = sqltohtml($data,"HTML Out","y")
+
+EndSub
+
+
+# 
+# =================================================================================================================================
+BeginSub name=DeclareVars
+
+
+	# Define constants
+	# ===========================
+	$max_dt = 1	# used for setting the max value used in dif or ter settings.  set to 1 or another low number to avoid long testing times
+	$max_dif = 5						# set the max dif value.  intended to be the gc.com max value of 5
+	$max_ter = 5	# set the max ter value.  intended to be the gc.com max value of 5
+	$fizzytarget = 1	# which fizzy level is being targeted?
+#	$maxdist_default = 100	# max distance value to use.  Will be overwritten with the collected form value
+#	$inMaxDist = numtostr($max_dist)
+	$MaxMissingCaches = 25	# max number of caches to pull when identifying qualifying caches for a missing d/t grid value
+
+	# Prep vars
+	# ===========================
+	$dif = 1 	# starting point of dif value.  intended to be the gc.com min value of 1
+	$ter = 1 	# starting point of ter value.  intended to be the gc.com min value of 1 	
+
+	$datestatus = false
+
+	$details = ""
+	$temp = ""
+	$grid = ""
+	$cachelist = ""
+	$cachecount  = 0
+	$CR = $_NewLine
+
+EndSub
+
+
+
+# 
+# =================================================================================================================================
+BeginSub name=WriteHTMLFile
+
+	$loc = $_AppData + "\macros\" + $filename
+	TIMER status=off msg=no
+	$file = PutFile($loc,$FileOutput) 
+
+	if (substr($loc, len($loc)-4,5) = ".html")
+		FILEOPEN file=$loc
+	endif
+	DELAY ms=500
+#	FILEERASE file=$loc
+EndSub
+
+
+# =================================================================================================================================
+# =================================================================================================================================
+# DATA SETS
+# =================================================================================================================================
+# =================================================================================================================================
+
+
+# =================================================================================================================================
+<data> VarName=$HTML_Page
+<!DOCTYPE html>
+<HTML>
+<HEAD>
+
+<link rel="stylesheet" type="text/css" href="http://gsak.418error.com/macros/MissingFizzy2HTML/0.4.1/MissingFizzy2HTML.css" title="standard" media="screen" />
+
+<SCRIPT src='http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js' type='text/javascript'>); </script>
+
+<SCRIPT src='http://gsak.418error.com/macros/MissingFizzy2HTML/0.4.1/MissingFizzy2HTML.js' type='text/javascript'>); </script>
+<!-- SCRIPT src='MissingFizzy2HTML.js' type='text/javascript'>); </script -->
+
+<script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?sensor=false"></script>
+
+<script id="data" type="application/x-json">
+@@JSON@@
+</script>
+
+
+</head>
+<body id='body'>
+
+
+<div id='jsondata' data-caches=''></div>
+
+
+</body>
+</html>
+
+<enddata>
+
+
+<Data> VarName=$FizzyCount
+1: Single
+2: Double
+3: Triple
+4: Quad
+<enddata>
+
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sun 11-Dec-2011 23:17:21
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 301
+  Left = 716
+  Width = 428
+
+Name = inDBCaches
+  Type = Combobox
+  Height = 21
+  Left = 192
+  Top = 16
+  Width = 145
+  Taborder = 1
+
+Name = Label1
+  Type = Label
+  Height = 17
+  Left = 40
+  Size = 12
+  Top = 16
+  Width = 136
+  Caption = Caches Database
+
+Name = Label2
+  Type = Label
+  Height = 25
+  Left = 40
+  Size = 12
+  Top = 80
+  Width = 104
+  Caption = Max Distance
+
+Name = inMaxDist
+  Type = Edit
+  Height = 21
+  Left = 192
+  Top = 80
+  Width = 49
+  Taborder = 3
+
+Name = Label3
+  Type = Label
+  Height = 17
+  Left = 40
+  Size = 12
+  Top = 48
+  Width = 121
+  Caption = Finds Database
+
+Name = inDBFinds
+  Type = Combobox
+  Height = 21
+  Left = 192
+  Top = 48
+  Width = 145
+  Taborder = 2
+
+Name = Label4
+  Type = Label
+  Height = 25
+  Left = 40
+  Size = 12
+  Top = 112
+  Width = 136
+  Caption = Goal (Fizzy count)
+
+Name = inFizzyCount
+  Type = Combobox
+  Height = 21
+  Left = 192
+  Top = 112
+  Width = 145
+  Taborder = 4
+
+Name = Label5
+  Type = Label
+  Height = 25
+  Left = 40
+  Size = 12
+  Top = 144
+  Width = 104
+  Caption = Earliest Found Date
+
+Name = inFoundDate
+  Type = Edit
+  Height = 21
+  Left = 192
+  Top = 144
+  Width = 104
+  Taborder = 5
+
+Name = Label6
+  Type = Label
+  Height = 25
+  Left = 310
+  Size = 12
+  Top = 144
+  Width = 104
+  Caption = (YYYYMMDD)
+
+Name = Label7
+  Type = Label
+  Height = 25
+  Left = 40
+  Size = 12
+  Top = 176
+  Width = 104
+  Caption = Earliest Placed Date
+
+Name = inPlacedDate
+  Type = Edit
+  Height = 21
+  Left = 192
+  Top = 176
+  Width = 104
+  Taborder = 6
+
+Name = Label8
+  Type = Label
+  Height = 25
+  Left = 310
+  Size = 12
+  Top = 176
+  Width = 104
+  Caption = (YYYYMMDD)
+
+Name = btRun
+  Type = Button
+  Height = 25
+  Left = 96
+  Top = 220
+  Width = 75
+  Taborder = 14
+  Caption = Run
+
+Name = btCancel
+  Type = Button
+  Height = 25
+  Left = 224
+  Top = 220
+  Width = 75
+  Taborder = 15
+  Caption = Cancel
+
+
+
+
+<enddata>

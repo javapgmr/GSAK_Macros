@@ -1,0 +1,960 @@
+# This macro is to give you an idea how you can
+# automatically load a GPX ToDBName, then export to diferent formats
+# There are settings that will need to be set up you want this to work for you.
+
+# MacVersion = 1.0.1
+# MacDescription = Export to various
+# MacAuthor = bromley
+# MacFileName = swbExportG.gsk
+
+  GOSUB Name=Declare
+  SPEEDMODE Status=On
+  MacSettings Type=R  FileCheck=N
+
+#  $CBG60=TRUE
+#  $CBCM=TRUE
+#  $HTMLEXP=TRUE
+#  $PPCEXP=TRUE
+#	 $DELORME=TRUE
+#  $DBSET=FALSE
+#  $CBMAP=TRUE
+
+  $rb2=TRUE
+  $DB="work"
+  $ExportDB="__ExportDB"
+	$ToName=$_CurrentDatabase
+
+  DEBUG Status=OFF
+
+
+
+  $macrohome = Sysinfo("MacroPath")
+  $log1="logorigincoords.gsk"
+  $log2="AddChildNote.gsk"
+  $DelormeParms = "delbin,nukewpt,nuketrk,nukerte logs=1"
+
+While True # Infinite loop to redisplay form as required
+  $FormExit = form($form,"")
+DEBUG Status=OFF
+  BEGINCASE
+    Case $FormExit = "DelayExit"
+      GOSUB Name=Process
+      BREAK
+    Case $FormExit = "SystemExit"
+      CANCEL
+      BREAK
+    Case $FormExit = "btnCancel"
+      CANCEL
+      BREAK
+    CASE $FormExit = "btnOk"
+       GOSUB Name=Process
+    	BREAK
+  ENDCASE
+ENDWHILE
+
+  BEGINSUB Name=Process
+
+      SHOWSTATUS msg="Saving State" Width=350
+
+			MacSettings Type=S Vars=rb1,rb2,rb3,rb4,ToName,CBEXP,CBMAP,HTMLEXP,CachematePPC,CBCM,CBG60,PPCEXP,DELORME1,DELORME2,GCZFile,ChildPts,Nuvi   FileCheck=N
+
+      GOSUB Name=SaveState
+    BEGINCASE
+      CASE $rb1
+          $DB=$_CurrentDatabase
+          $DBSET=TRUE
+          $ToName=$DB
+
+      CASE $rb2
+          $DB="work"
+          $ToName=$DB
+          $DBSET=TRUE
+
+      CASE $rb3
+          $DB="Cache Raid"
+          $ToName=$DB
+          $DBSET=TRUE
+
+      CASE $rb4
+          $DB="Default"
+          $ToName=$DB
+          $DBSET=TRUE
+    ENDCASE
+
+      IF .not. $DBSET
+          $DB="work"
+          $ToName=$DB
+      ENDIF
+
+      IF ($DB <> $_CurrentDatabase)
+          DATABASE Name=$DB
+      ENDIF
+
+      IF $_Count < 1
+          PAUSE MSG="$Result Database is empty"
+          CANCEL
+      ENDIF
+
+      SHOWSTATUS msg="Saving State" Width=350
+      GOSUB Name=SaveState
+
+# make sure the "Cache Raid" database is empty
+      SHOWSTATUS msg="Creating Export Database" Width=350
+      IF DatabaseExists($ExportDB)
+          DATABASE Name="$ExportDB" Action=delete
+      ENDIF
+
+      DATABASE Name="$ExportDB" Action=create
+
+      SHOWSTATUS msg="Restoring Database" Width=350
+      GOSUB Name=RestoreDatabase
+      SHOWSTATUS msg="Restoring Filter" Width=350
+      GOSUB Name=RestoreFilter
+
+      SHOWSTATUS msg="Copying current contents to Export Database" Width=350
+      $MoveCopy = $MoveCopy + "cbxDestination.Text=" + $ExportDB + $_NewLine
+      MACROSET Dialog=MoveCopy VarName=$MoveCopy
+      MOVECOPY Settings=<macro>
+
+      $ToName = Alltrim($ToName)
+      $basepath="c:\apps\gps\"
+      $htmlname="C:\apps\plucker\" + $ToName
+      $baseppc="C:\apps\mydocuments\Steve_Bromley My Documents\"
+      $fullppc=$baseppc  + $ToName + ".gpx"
+      $htmlcachename=$htmlname + "\cache"
+      $cachefilename=$basepath + $ToName + ".pdb"
+      $sntname=$basepath + $ToName + ".csv"
+      $gpxname=$basepath + $ToName + ".gpx"
+			$DelormeFileName = $ToName + "_delorme.gpx"
+			$DelormeFilePathName=$basepath + $DelormeFileName
+			$DelormeOutputPath="J:\Delorme Docs\Draw\"
+			$DelormeOutputPathName = $DelormeOutputPath + $DelormeFileName
+			$GCZFileName=$basepath + $ToName + "_gpz.gpx"
+      $poigpxname=$basepath + "poi\" + $ToName + ".gpx"
+      $exploristname="$p_exporistDrive\Geocaches\" + $ToName + ".ps"
+      $mkdir="MD " + $htmlname
+
+
+#CHANGE to the export DB
+      DATABASE Name=$ExportDB
+# Update original coordinates to log when overridden coordinates exist.
+      SHOWSTATUS msg="Updating original coordinates" Width=350
+      MACRO File=$log1    VarScope=Local
+
+# Add child point notes
+      SHOWSTATUS msg="Adding child cooridnates" Width=350
+      MACRO File=$log2    VarScope=Local
+
+#######################################################################################
+# Export to Garmin 60CSx
+#######################################################################################
+      IF $CBG60
+          SHOWSTATUS msg="Exporting to the Garmin 60CSx" Width=350
+          MACRO File=swbExport60CSX VarScope=Local
+      ENDIF
+
+#######################################################################################
+# HTML Export
+#######################################################################################
+      		IF $HTMLEXP
+          SHOWSTATUS msg="Exporting to HTML" Width=350
+					# Export to HTML
+		          IF .not. FOLDEREXISTS($htmlname)
+		              $r2 = PUTFILE("$_Install\Temp\temp.bat", $mkdir)
+		              FILEOPEN File="$_Install\Temp\temp.bat" wait=yes
+		          ENDIF
+
+          MACROSET Dialog=HTML  VarName=$HTML
+          EXPORT Type=HTML Settings=<Macro> File=$htmlname
+ENDIF
+
+#######################################################################################
+# Output Map files
+#######################################################################################
+					IF $CBMAP
+					#EXPORT to Delorme Street Atlas
+					#MACROSET Dialog=Delorme  VarName=$Delorme
+					#EXPORT Type=DEL Settings=<Macro> File=$delormename
+
+					# Export to Streets and Trips
+          SHOWSTATUS msg="Exporting to Streets & Trips" Width=350
+          MACROSET Dialog=S&T  VarName=$S&T
+          EXPORT Type=SNT Settings=<Macro> File=$sntname
+
+					# this macro generates, from the currently flagged caches
+					# HTML files AND sends them to a directory called Cache on the
+					# storage card on a mobile device
+
+					# Export waypoints to HTML files for subsequent upload to phone
+					# EXPORT Type=HTML File="C:\Temp\"
+
+					# copy files to storage card using CEcopy
+					#RUNPGM pgm="C:\Windows Mobile Developer Power Toys\CECopy\cecopy.exe" parms=/is /s "$htmlcachename" "dev:\Storage Card\Cache"
+
+					# Export to A GPX ToName
+          SHOWSTATUS msg="Exporting GPX file" Width=350
+          MACROSET Dialog=GPX  VarName=$GPXDef
+          EXPORT Type=GPX Settings=<macro> File=$gpxname
+      ENDIF
+
+
+
+#######################################################################################
+#EXPORT to Magellean Explorist
+#######################################################################################
+      IF $CBEXP
+
+          IF ($_Count <= 200)
+              SHOWSTATUS msg="Exporting to the Magellan Explorist" Width=350
+              MACROSET Dialog=MagellanSD  VarName=$MagellanSD
+					# Send to GPS receiver
+              EXPORT Type=MAGSD Settings=<macro> File=$exploristname
+          ELSE
+              SHOWSTATUS msg="Exporting to the Magellan Explorist in groups" Width=350
+              MACRO File="$macrohome/exportbydistance.gsk"  VarScope=Local
+          ENDIF
+      ENDIF
+
+#######################################################################################
+#Export to delorme GPX
+#######################################################################################
+      IF $DELORME1
+		  MACRO File=DelormeGPSExport  VarScope=Local
+      ENDIF
+
+#######################################################################################
+#Export to delorme GPX
+#######################################################################################
+      IF $DELORME2
+       MSGOK MSG="Ready second delorme unit"
+		  MACRO File=DelormeGPSExport  VarScope=Local
+      ENDIF
+
+
+#######################################################################################
+#Export to GCZFile
+#######################################################################################
+      IF $GCZFile
+        SHOWSTATUS msg="Exporting GCZFile" Width=350
+        MACROSET Dialog=GPX  VarName=$GCZFileDef
+        EXPORT Type=GPX Settings=<macro> File=$GCZFileName
+      ENDIF
+
+#######################################################################################
+# Export to CacheMate
+#######################################################################################
+      IF $CBCM
+          SHOWSTATUS msg="Exporting to Palm" Width=350
+          DEBUG Status=Off
+          RUNPGM Pgm="C:\Sunrise XP\sunrisexp.exe"  PARMS=-update c:\apps\plucker\temp1.sxl  WAIT=yes
+          MACROSET Dialog=CacheMate VarName=$CacheMate
+          EXPORT Type=CMT Settings=<macro> File=$cachefilename
+					#RUNPGM Pgm="C:\Palm\QuickInstall.exe" Parms=$cachefilename Wait=Yes
+          PAUSE MSG="Remember to run a hotsync"
+      ENDIF
+
+      SHOWSTATUS msg="Restoring State" Width=350
+      GOSUB Name=RestoreState
+
+      SHOWSTATUS msg="Removing $ExportDB"
+      DATABASE Name="$ExportDB" Action=DELETE
+
+#######################################################################################
+# Cachemate PPC
+#######################################################################################
+			IF $CacheMatePPC
+					MACRO file="changeToDefault.gsk"
+          SHOWSTATUS msg="Exporting GPX file for PPC" Width=350
+					MACRO file="CacheMatePPC.gsk"	 VarScope=Local
+				ENDIF
+
+#######################################################################################
+# Gpx by Cache Type
+#######################################################################################
+
+     IF $Nuvi
+        #$TempBool=RemoveVar("*")
+        DATABASE Name="Default" Action=Select
+        CANCELFILTER
+        MACRO File="Nuvi_GPX_By_CT.gsk"  VarScope=Local
+      ENDIF
+
+
+ENDSUB
+
+
+
+
+#######################################################################################
+# Display Form
+#######################################################################################
+
+  <DATA> VarName=$form
+
+# Form generated by GSAK form designer on Fri 22-Apr-2011 16:21:19
+
+Name = Form1
+  Type = Form
+  Height = 474
+  Width = 215
+
+Name = grp6
+  Type = Groupbox
+  Caption = Select a DATABASE
+  Height = 102
+  Left = 8
+  Top = 37
+  Width = 189
+  Taborder = 0
+
+Name = lbl5
+  Type = Label
+  Height = 20
+  Left = 7
+  Size = Yes
+  Style = bold
+  Top = 6
+  Width = 186
+  Caption = Geocache export menu
+
+Name = rb1
+  Type = Radiobutton
+  Captionposition = Left
+  Container = grp6
+  Fontstyle = bold
+  Height = 17
+  Left = 30
+  Top = 19
+  Width = 128
+  Taborder = 0
+  Caption = Current
+
+Name = rb2
+  Type = Radiobutton
+  Captionposition = Left
+  Container = grp6
+  Fontstyle = bold
+  Height = 17
+  Left = 30
+  Top = 39
+  Width = 128
+  Taborder = 1
+  Caption = Work
+
+Name = rb3
+  Type = Radiobutton
+  Captionposition = Left
+  Container = grp6
+  Fontstyle = bold
+  Height = 17
+  Left = 30
+  Top = 59
+  Width = 128
+  Taborder = 2
+  Caption = Cache Raid
+
+Name = rb4
+  Type = Radiobutton
+  Captionposition = Left
+  Container = grp6
+  Fontstyle = bold
+  Height = 17
+  Left = 30
+  Top = 79
+  Width = 128
+  Taborder = 3
+  Caption = Default
+
+Name = FrmLbl1
+  Type = Label
+  Height = 13
+  Left = 12
+  Style = bold
+  Top = 154
+  Width = 78
+  Caption = Output Name:
+
+Name = ToName
+  Type = Edit
+  Color = 8454143
+  Height = 21
+  Left = 101
+  Top = 150
+  Width = 96
+  Taborder = 1
+
+Name = CBEXP
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 17
+  Left = 33
+  Top = 303
+  Width = 141
+  Taborder = 2
+  Caption = GPS > Explorist
+
+Name = CBMAP
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 17
+  Left = 33
+  Top = 324
+  Width = 141
+  Taborder = 3
+  Caption = EXPORT Map info.
+
+Name = btnOk
+  Type = Button
+  Height = 25
+  Left = 14
+  Top = 402
+  Width = 76
+  Taborder = 4
+  Caption = OK
+
+Name = btnCancel
+  Type = Button
+  Height = 25
+  Left = 112
+  Top = 402
+  Width = 76
+  Taborder = 5
+  Caption = Cancel
+
+Name = HTMLEXP
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 18
+  Left = 33
+  Top = 283
+  Width = 141
+  Taborder = 6
+  Caption = HTML:Exp
+
+Name = CacheMatePPC
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 17
+  Left = 33
+  Top = 343
+  Width = 141
+  Taborder = 7
+  Caption = CacheMatePPC
+
+Name = CBCM
+  Type = Checkbox
+  Captionposition = Left
+  Color = -2147483633
+  Enabled = Yes
+  Fontstyle = bold
+  Height = 18
+  Left = 33
+  Top = 203
+  Visible = Yes
+  Width = 141
+  Taborder = 8
+  Caption = Palm
+
+Name = DELORME1
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 18
+  Left = 33
+  Top = 223
+  Width = 141
+  Taborder = 9
+  Caption = PN-40/60 - 1
+
+Name = PPCEXP
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 17
+  Left = 33
+  Top = 264
+  Width = 141
+  Taborder = 10
+  Caption = Export PPC DB
+
+Name = DELORME2
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 18
+  Left = 33
+  Top = 243
+  Width = 141
+  Taborder = 11
+  Caption = PN-40/60 - 2
+
+Name = GCZFile
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 17
+  Left = 33
+  Top = 360
+  Width = 141
+  Taborder = 12
+  Caption = GCZ File
+
+Name = ChildPts
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 19
+  Left = 12
+  Top = 179
+  Width = 161
+  Taborder = 13
+  Caption = Export Child Wpts:
+
+Name = Nuvi
+  Type = Checkbox
+  Captionposition = Left
+  Fontstyle = bold
+  Height = 19
+  Left = 32
+  Top = 378
+  Width = 141
+  Taborder = 14
+  Caption = Nuvi Export:
+
+<enddata>
+
+
+
+
+
+
+
+
+  <DATA> VarName=$MagellanSD
+      [TfmMagPro]
+      edtFormat.Text=%smart/%Name/%drop2 by %By (%Dif/%Ter)
+      edtProblem.Text=
+      fnmTo.Text=M:\Geocaches\temp.gs
+      cbxGps.Checked=True
+      edtMaxGps.Text=14
+      edtMax.Text=200
+      edtWaypoint.Text=%code
+      cbxFormat.Text=Explorist Geocaches
+      chkMacro.Checked=False
+      chkChild.Checked=True
+      chkFlag.Checked=False
+      chkOnlyChild.Checked=False
+      rbtAllChildren.Checked=False
+      rbtOnlyFlagged.Checked=TRUE
+      rbtOnlyUnFlagged.Checked=False
+      [TfmIcons]
+      rbtBoth.Checked=False
+      rbtStatus.Checked=True
+      rbtType.Checked=False
+      [icons]Archived=obstruction
+      Benchmark+Archived=camping
+      Benchmark+Found=camping
+      Benchmark+Not Found=camping
+      Benchmark+Placed=camping
+      Benchmark=camping
+      CITO+Archived=auto repair
+      CITO+Found=auto repair
+      CITO+Not Found=auto repair
+      CITO+Placed=auto repair
+      CITO=auto repair
+      Earth+Archived=first aid
+      Earth+Found=first aid
+      Earth+Not Found=first aid
+      Earth+Placed=first aid
+      Earth=first aid
+      Event+Archived=house
+      Event+Found=house
+      Event+Not Found=house
+      Event+Placed=house
+      Event=house
+      Found=ATM
+      LetterBox+Archived=boating
+      LetterBox+Found=boating
+      LetterBox+Not Found=boating
+      LetterBox+Placed=boating
+      LetterBox=boating
+      Locationless+Archived=ATM
+      Locationless+Found=ATM
+      Locationless+Not Found=ATM
+      Locationless+Placed=ATM
+      Locationless=ATM
+      Multi+Archived=box
+      Multi+Found=box
+      Multi+Not Found=box
+      Multi+Placed=box
+      Multi=box
+      Mystery+Archived=aerial
+      Mystery+Found=aerial
+      Mystery+Not Found=aerial
+      Mystery+Placed=aerial
+      Mystery=aerial
+      Not Found=shooting
+      Other+Archived=exit ramp
+      Other+Found=exit ramp
+      Other+Not Found=exit ramp
+      Other+Placed=exit ramp
+      Other=exit ramp
+      Placed=house
+      Traditional+Archived=crossed square
+      Traditional+Found=crossed square
+      Traditional+Not Found=crossed square
+      Traditional+Placed=crossed square
+      Traditional=crossed square
+      Version4.3
+      Virtual+Archived=airport
+      Virtual+Found=airport
+      Virtual+Not Found=airport
+      Virtual+Placed=airport
+      Virtual=airport
+      Web Cam+Archived=amusement park
+      Web Cam+Found=amusement park
+      Web Cam+Not Found=amusement park
+      Web Cam+Placed=amusement park
+      Web Cam=amusement park
+  <ENDDATA>
+
+
+
+  <DATA> VarName=$HTML
+      [TfmHtml]
+      edtHtmFolder.Text=C:\apps\plucker\temp
+      edtMax.Text=40
+      cbxIndex.Checked=True
+      cbxHtmlFound.Checked=True
+      cbxLimit.Text=15
+      cbxFormat.Text=K610i
+      cbxHtmlPlaced.Checked=True
+      cbxMakeZip.Checked=False
+      cbxUseOwnerId.Checked=True
+      edtHtmZip.Text=C:\GSAK\cache\cache.zip
+      chkHints.Checked=True
+      chkBearing.Checked=True
+      chkBugs.Checked=True
+      chkCode.Checked=True
+      chkDistance.Checked=True
+      chkFound.Checked=True
+      chkFoundByMe.Checked=False
+      chkName.Checked=True
+      chkPlacedBy.Checked=True
+      chkUnfound.Checked=True
+      chkCustomUrl.Checked=True
+      chkTopOfPage.Checked=True
+      edtCode.Text=%code
+      cbxLogLimit.Text=8
+      chkDensity.Checked=True
+      edtDisGroup.Text=5
+      edtDensity.Text=5
+      chkStrip.Checked=True
+      chkCvtToDBName.Checked=True
+      edtSpecial.Text=
+      chkSpecial.Checked=FALSE
+  <ENDDATA>
+
+  <DATA> VarName=$S&T
+      [TfmStreets]
+      edtFormat.Text=%smart
+      edtProblem.Text=
+      edtMaxGps.Text=14
+      edtWaypoint.Text=%smart
+      cbxLocal.Checked=False
+      edtLocal.Text=C:\apps\plucker\temp\cache
+      chkChild.Checked=True
+      chkFlag.Checked=False
+  <ENDDATA>
+
+  <DATA> VarName=$GPXDef
+      [TfmExportGpx]
+      edtProblem.Text=
+      edtFormat.Text=%Name by %By (%Dif/%Ter)
+      rbtGpx.Checked=True
+      rbtLoc.Checked=False
+      cbxUserNotes.Checked=True
+      edtMaxGps.Text=14
+      edtWaypoint.Text=%code
+      chkExtra.Checked=True
+      chkMyLogs.Checked=True
+      cbxLimit.Text=No Limit
+      chkSymbol.Checked=True
+      chkActual.Checked=False
+      chkChild.Checked=True
+      chkFlag.Checked=False
+  <ENDDATA>
+
+  <DATA> VarName=$GPXPOIDef
+      [TfmExportGpx]
+      fnmTo.Text=C:\apps\gsakout\poi\poi.gpx
+      cbxLimit.Text=No Limit
+      cbxUserNotes.Checked=True
+      chkActual.Checked=False
+      chkChild.Checked=True
+      chkDefault.Checked=False
+      chkExtra.Checked=True
+      chkFlag.Checked=False
+      chkMyLogs.Checked=True
+      chkSymbol.Checked=True
+      edtFormat.Text=%hint %name %code
+      edtMax.Text=
+      edtMaxGps.Text=44
+      edtWaypoint.Text=%smart=14 %typ1 %con1 %last4 %Dif/%Ter %by
+      rbtGpx.Checked=True
+      rbtLoc.Checked=False
+      edtProblem.Text=
+      edtExtra.Text=
+  <ENDDATA>
+
+
+<data> VarName=$GPXChildNO
+[TfmExportGpx]
+fnmTo.Text=c:\apps\gps\work_gpz.gpx
+cbxLimit.Text=5
+cbxUserNotes.Checked=True
+chkActual.Checked=False
+chkDefault.Checked=False
+chkExtra.Checked=False
+chkMyLogs.Checked=False
+chkSymbol.Checked=False
+edtFormat.Text=%Name by %By (%Dif/%Ter)
+edtMax.Text=
+edtMaxGps.Text=32
+edtWaypoint.Text=%code
+rbtGpx.Checked=True
+rbtLoc.Checked=False
+edtProblem.Text=
+edtExtra.Text=
+chkChild.Checked=False
+chkOnlyChild.Checked=False
+rbtAllChildren.Checked=True
+rbtOnlyFlagged.Checked=False
+rbtOnlyUnFlagged.Checked=False
+chkApplyName.Checked=False
+chkForce.Checked=True
+cbxVersion.Text=Ver 1.0
+[TfmExportGpx.cbxRecent.Items]
+Count=10
+Item0=File=work_gpz.gpx Path=c:\apps\gps
+Item1=File=work_delorme.gpx Path=c:\apps\gps
+Item2=File=work.gpx Path=c:\apps\gps
+Item3=File=roadrallycaches.gpx Path=C:\apps\gps
+Item4=File=MOGA_delorme.gpx Path=c:\apps\gps
+Item5=File=MOGA.gpx Path=c:\apps\gps
+Item6=File=work_delorme.gpx Path=c:\apps\gsakout
+Item7=File= Path=
+Item8=File= Path=
+Item9=File= Path=
+<enddata>
+
+
+
+  <DATA> VarName=$CacheMate
+      [TfmCMate]
+      cbxLimit.Text=10
+      chkBugs.Checked=True
+      chkChild.Checked=True
+      chkContainer.Checked=True
+      chkDecode.Checked=True
+      chkDefault.Checked=False
+      chkFlag.Checked=False
+      chkHidden.Checked=True
+      chkInstall.Checked=True
+      chkLong.Checked=True
+      chkMyLogs.Checked=True
+      chkNotes.Checked=True
+      chkOwner.Checked=True
+      chkState.Checked=True
+      chkStatus.Checked=True
+      edtFormat.Text=%smart (%Name by %By (%Dif/%Ter))
+      edtMax.Text=
+      edtMaxGps.Text=14
+      edtProblem.Text=
+      edtWaypoint.Text=%code
+      edtExtra.Text=%Macro="AddChildNote.gsk"
+      chkExcludeUserNotes.Checked=False
+  <ENDDATA>
+
+  <DATA> VarName=$MoveCopy
+      [TfmMove]
+      rbtAdd.Checked=True
+      rbtAddFlag.Checked=False
+      rbtAddIgnore.Checked=False
+      rbtCopy.Checked=True
+      rbtExistIgnore.Checked=False
+      rbtFlagOnly.Checked=False
+      rbtMove.Checked=False
+      rbtReplace.Checked=False
+      rbtReplaceFlag.Checked=True
+      chkDisplay.Checked=True
+  <ENDDATA>
+
+
+
+
+<data> VarName=$DelormeGPXDef
+[TfmExportGpx]
+cbxLimit.Text=10
+cbxUserNotes.Checked=False
+chkActual.Checked=False
+chkDefault.Checked=False
+chkExtra.Checked=False
+chkMyLogs.Checked=True
+chkSymbol.Checked=False
+edtFormat.Text=%Name by %By (%Dif/%Ter)
+edtMax.Text=
+edtMaxGps.Text=31
+edtWaypoint.Text=%code %children %smart  %c_Type=6 %c_Prefix
+rbtGpx.Checked=True
+rbtLoc.Checked=False
+edtProblem.Text=
+edtExtra.Text=
+chkChild.Checked={Child}
+chkOnlyChild.Checked=False
+rbtAllChildren.Checked=True
+rbtOnlyFlagged.Checked=False
+rbtOnlyUnFlagged.Checked=False
+chkApplyName.Checked=False
+chkForce.Checked=True
+cbxVersion.Text=Ver 1.0
+[TfmExportGpx.cbxRecent.Items]
+Count=0
+<enddata>
+
+# export options
+<data> VarName=$GPXforTOPO8
+[TfmExportGpx]
+fnmTo.Text=C:\DeLorme Docs\Draw\ToDo.gpx
+cbxLimit.Text=10
+cbxUserNotes.Checked=False
+chkActual.Checked=False
+chkDefault.Checked=False
+chkExtra.Checked=False
+chkMyLogs.Checked=True
+chkSymbol.Checked=False
+edtFormat.Text=
+edtMax.Text=
+edtMaxGps.Text=31
+edtWaypoint.Text=%code %children %smart  %c_Type=6 %c_Prefix
+rbtGpx.Checked=True
+rbtLoc.Checked=False
+edtProblem.Text=
+edtExtra.Text=
+chkChild.Checked=True
+chkOnlyChild.Checked=False
+rbtAllChildren.Checked=True
+rbtOnlyFlagged.Checked=False
+rbtOnlyUnFlagged.Checked=False
+chkApplyName.Checked=False
+chkForce.Checked=True
+cbxVersion.Text=Ver 1.0
+[TfmExportGpx.cbxRecent.Items]
+Count=0
+<enddata>
+
+
+<data> VarName=$GCZFileDef
+[TfmExportGpx]
+cbxLimit.Text=10
+cbxUserNotes.Checked=False
+chkActual.Checked=False
+chkDefault.Checked=False
+chkExtra.Checked=False
+chkMyLogs.Checked=True
+chkSymbol.Checked=False
+edtFormat.Text=%Name by %By (%Dif/%Ter)
+edtMax.Text=
+edtMaxGps.Text=31
+edtWaypoint.Text=%code %children %smart  %c_Type=6 %c_Prefix
+rbtGpx.Checked=True
+rbtLoc.Checked=False
+edtProblem.Text=
+edtExtra.Text=
+chkChild.Checked=True
+chkOnlyChild.Checked=False
+rbtAllChildren.Checked=True
+rbtOnlyFlagged.Checked=False
+rbtOnlyUnFlagged.Checked=False
+chkApplyName.Checked=False
+chkForce.Checked=True
+cbxVersion.Text=Ver 1.0
+[TfmExportGpx.cbxRecent.Items]
+Count=0
+<enddata>
+
+
+
+
+
+#######################################################################################
+#   Variable declarations for
+#   swbExportG.gsk
+#   Generated 08/04/2007 8:04:39 PM on GSAKVariables.gsk Rev V0.20 B11
+#######################################################################################
+  BEGINSUB Name=Declare
+      OPTION Explicit=Yes
+
+			DECLARE Var=$DelormeGPXDefname Type=String
+			DECLARE VAR=$HTMLEXP  Type=Boolean
+      DECLARE Var=$basepath Type=String
+			DECLARE Var=$delormebasepath Type=String
+      DECLARE Var=$baseppc Type=String
+      DECLARE Var=$cachefilename Type=String
+      DECLARE Var=$CacheMate Type=String
+      DECLARE Var=$CacheMateOLD Type=String
+      DECLARE VAR=$CacheMatePPC Type=Boolean
+      DECLARE VAR=$CBCM  Type=Boolean
+      DECLARE VAR=$CBG60  Type=Boolean
+      DECLARE Var=$CBMAP Type=Boolean
+      DECLARE Var=$DB Type=String
+      DECLARE Var=$DBSET Type=Boolean
+      DECLARE Var=$DELORME Type=Boolean
+      DECLARE Var=$DelormeGPXDef Type=String
+			DECLARE Var=$DelormeFileName Type=String
+			DECLARE Var=$DelormeFilePathName Type=String
+			DECLARE Var=$DelormeOutputPath Type=String
+			DECLARE Var=$DelormeOutputPathName Type=String
+			DECLARE Var=$DelormeParms Type=String
+			DECLARE Var=$DelormeResults Type=String
+
+      DECLARE Var=$exploristname Type=String
+      DECLARE Var=$ExportDB Type=String
+      DECLARE Var=$form Type=String
+      DECLARE Var=$formexit Type=String
+      DECLARE Var=$fullppc Type=String
+      DECLARE Var=$GPS Type=String
+      DECLARE Var=$DelormeGPXDef Type=String
+      DECLARE Var=$GPSXXX Type=String
+      DECLARE Var=$GPXDef Type=String
+      DECLARE Var=$gpxname Type=String
+      DECLARE Var=$GPXPOIDef Type=String
+      DECLARE Var=$HTML Type=String
+      DECLARE Var=$htmlcachename Type=String
+      DECLARE Var=$htmlname Type=String
+      DECLARE Var=$log1 Type=String
+      DECLARE Var=$log2 Type=String
+      DECLARE Var=$macrohome Type=String
+      DECLARE Var=$MagellanSD Type=String
+      DECLARE Var=$mkdir Type=String
+      DECLARE Var=$MoveCopy Type=String
+      DECLARE Var=$poigpx Type=String
+      DECLARE Var=$poigpxname Type=String
+      DECLARE VAR=$PPCEXP  Type=Boolean
+      DECLARE Var=$r2 Type=String
+      DECLARE Var=$rb2 Type=Boolean
+      DECLARE Var=$S&T Type=String
+      DECLARE Var=$sntname Type=String
+      DECLARE Var=$ToName Type=String
+			DECLARE var=$GCZFile Type=Boolean
+			DECLARE VAR=$GCZFileName Type=String
+			DECLARE VAR=$TempBool Type=Boolean
+  ENDSUB
+
+  INCLUDE File=includeSaveRestore.gsk
+  INCLUDE File=includeOnlyOne.gsk
+

@@ -1,0 +1,195 @@
+#***************************************
+# HTMLName=CondensedPrintout
+# MacDescription = Condensed html print out of all caches in the current filter with wideView style
+# MacVersion = 1.0
+# MacAuthor = bazzanowitz
+# MacFileName = HTML_CondensedPrintout.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=9231
+# SplitScreen=No
+# Export=No
+# Offline=No
+# Condensed=Yes
+#***************************************
+# GSAK images for cache and log types are stored here
+$images = "file://" + $_Install + "\images"
+$images = replace("\","/",$images,false)
+$colorText = "333333"
+$colorLeft="FFFFFF"
+$colorRight="FFFFCC"
+$colorBorder="990000"
+$backgroundColor = "FFFFFF"
+
+# Display Header
+$h = "<!DOCTYPE HTML PUBLIC '-//W3C//DTD HTML 4.01 Transitional//EN' 'http://www.w3.org/TR/html4/loose.dtd'><html><head>"
+$h = $h + "<title>Cache Information Page</title>"
+$h = $h + "<style type='text/css'>"
+$h = $h + "body,td,th {font-family: Verdana, Arial, Helvetica, sans-serif; font-size: 12px; color: #" + $colorText + ";}"
+$h = $h + "body {background-color: #" + $backgroundColor + "; margin-top:1; margin-bottom:2; margin-left:2; margin-right:2;}"
+$h = $h + ".style1 {font-size: 18px; font-weight: bold;}"
+$h = $h + ".style2 {font-size: 14px;}"
+$h = $h + ".style3 {color: #FFFFFF; font-weight: bold;}"
+$h = $h + ".style4 {color: #990000; font-size: 12px; font-weight: bold;}"
+$h = $h + ".style5 {color: #009900; font-size: 12px; font-weight: bold;}"
+$h = $h + ".style6 {color: #005913; font-size: 12px; font-weight: bold;}"
+$h = $h + ".style7 {color: #009900; font-size: 10px; font-weight: normal;}"
+$h = $h + "</style></head>"
+
+# Begin Body
+$h = $h + "<body>"
+
+# Set Header
+$_htmlHeader = $h
+
+$h = ""
+# Begin main table
+$h = $h + "<div style='page-break-after:always'>"
+$h = $h + "<table align='center' bgcolor='white' border='0' cellpadding='2' cellspacing='0' width='100%'><tr><td>"
+$h = $h + "<table align='center' bgcolor='#" + $colorBorder + "' border='0'  cellspacing='2' cellpadding='10' width='100%'>"
+$h = $h + "<tr><td width='50%' valign='top' bgcolor='#" + $colorLeft + "'>"
+
+$h = $h + "<div align='center'>"
+$h = $h + "<img src=" + quote($images + "\cache" + $d_CacheType + ".gif") 
+$h = $h + "alt="  + quote($d_CacheType) + " align='absmiddle'>" 
+$h = $h + "<span class='style1'>" + HTML("Clean",$d_name) + "</span>"
+$type =CacheType($d_CacheType)
+$h = $h + "<br />Type: <strong>" + $type + "</strong>"
+If ($d_container="Not chosen" or $d_container="Virtual")
+  $sizeImage = "<img src=" + quote($images + "\con_other.gif") 
+  $sizeImage = $sizeImage + "alt="  + "$d_container" + " align='absmiddle'>"
+else
+  $sizeImage = "<img src=" + quote($images + "\con_" + $d_container + ".gif") 
+  $sizeImage = $sizeImage + "alt="  + "$d_container" + " align='absmiddle'>" 
+EndIf
+$h = $h + " | Size: <strong>" + $d_container + "</strong> " + $sizeImage
+# Difficulty Stars
+$Diff = Replace(".","_", NumToStr($d_difficulty), false)
+$Diff = Replace(",","_", $Diff, false)
+$h = $h + " | Difficulty: <img src=" + quote($images + "\stars" + $Diff + ".gif") 
+$h = $h + "alt="  + "$d_difficulty" + " align='absmiddle'>" 
+
+# Terrain Stars
+$Terr = Replace(".","_", NumToStr($d_Terrain), false)
+$Terr = Replace(",","_", $Terr, false)
+$h = $h + " | Terrain: <img src=" + quote($images + "\stars" + $Terr + ".gif") 
+$h = $h + "alt="  + "$d_Terrain" + " align='absmiddle'>" 
+# Cache Owner
+$h = $h + "<br />By: " + $d_PlacedBy
+
+# Hidden Date
+$h = $h + " | Hidden: <strong>" + DateFormat($d_PlacedDate) + "</strong>"
+
+# Waypoint code and link
+$h = $h + " | Waypoint: <a href='" + $d_Url + "'>" + $d_Code + "</a>"
+
+# Status
+$cacheStatus = "<span class='style6'>Active</span>"
+If ($d_TempDisabled)
+  $cacheStatus = "<span class='style4'>Disabled</span>"
+EndIf
+If ($d_Archived)
+  $cacheStatus = "<span class='style4'>Archived</span>"
+EndIf
+If ($d_Found)
+  $cacheStatus = "<span class='style5'>Found</span>"
+EndIf
+$h = $h + " | Status: <strong>" + $cacheStatus + "</strong>"
+
+# Display Coordinates
+$temp = GeoCalc($d_Latitude + ";" + $d_Longitude, "FormatMinutes")
+$h = $h + "<br />Coordinates: <strong>" +  extract($temp,";",1) + " " + extract($temp,";",2) + "</strong> (WGS84)"
+If $d_HasCorrected
+  $h=$h+"<span class='style7'> (Corrected)</span>"
+EndIf
+
+# End Title Block
+$h = $h + "</div><hr />"
+$h = $h + "<i>" + HTML("ShortDescription","") + "</i>"
+#If not (IsEmpty($d_LongDescription))
+#  $temp = $d_LongDescription
+#  # Remove Aditional Waypoints text if present
+#  if at("Additional Waypoints",$temp) > 0
+#    $temp = Extract($temp,"Additional Waypoints",1)
+#  EndIf
+#  # make plain text if not HTML encoded
+#  $HtmlText = $temp
+#  If not ($d_LongHtm)
+#    GoSub Name=HtmlText
+#  EndIf
+#  $h = $h + $HtmlText + "<br /><br />"
+#EndIf
+$h = $h + HTML("LongDescription","")
+$h = $h + "</td>"
+
+$h = $h + "<td align='left' valign='top' bgcolor='#" + $colorRight + "'>"
+$h = $h + HTML("GSAKNotes","")
+$h = $h + HTML("Logs","")
+$h = $h + "<HR>"
+
+$h = $h + "<b>Hint: </b><br>"
+$DecryptHint = SysInfo("gsakini;TfmPrint;chkDecrypt.Checked")
+If IsEmpty($d_Hints)
+	$h = $h + "no hints<br>"
+Else
+	If ($DecryptHint="False")
+		$h = $h + HTML("Hints","E")
+		$h = $h + "<br><br><span style=font-family:Courier, 'Courier New', monospace>Decryption key <br>A|B|C|D|E|F|G|H|I|J|K|L|M<br>N|O|P|Q|R|S|T|U|V|W|X|Y|Z</span>"
+	Else
+		$h = $h + HTML("Hints","D")
+	EndIf
+EndIf
+
+Table Active=WayPoints scope=Parent
+If $_count > 0
+	$h = $h + "</td></tr>"
+	$h = $h + "<tr>"
+	$h = $h + "<td colspan='2' align='left' valign='top' bgcolor='#" + $colorLeft + "'>"
+	$h = $h + "<table width='100%' border='0' cellpadding='1' cellspacing='1' bgcolor='#FF9900'>"
+  $h = $h + "  <tr><td bgcolor='#eeeeee'><b>&nbsp;Additional Waypoints (" + NumToStr($_count) + ")</b>"
+  $h = $h + "</td></tr></table><br />"
+
+  $temp = ""
+  $temp = $temp + "<table width='100%' border='0' cellpadding='2' cellspacing='1' bgcolor='#778899'>"
+  $temp = $temp + "<tr align='center' bgcolor='#DFDFDF'><td><b>Code</b></td><td><b>Name</b></td><td><b>Type</b></td>"
+  $temp = $temp + "<td><b>Comments</b></td><td><b>Date</b></td><td><b>Coordinates</b></td></tr>"
+  While not($_eol)
+    $temp = $temp + "<tr bgcolor='#FFFFFF'>"
+    If not (IsEmpty($d_cUrl))
+      $temp = $temp + "<td><a href='" + $d_cUrl + "'>" + $d_cCode + "</a></td>"
+    Else
+      $temp = $temp + "<td>" + $d_cCode + "</td>"
+    EndIf
+    $temp = $temp + "<td>" + $d_cName + "&nbsp;</td>"
+    $temp = $temp + "<td>" + $d_cType + "&nbsp;</td>"
+    $temp = $temp + "<td>" + $d_cComment + "&nbsp;</td>"
+    $temp = $temp + "<td>" + DateFormat($d_cDate) + "&nbsp;</td>"
+    $temp2 = GeoCalc($d_cLat + ";" + $d_cLon, "FormatMinutes")
+    $temp2 = extract($temp2,";",1) + " " + extract($temp2,";",2) 
+    $temp = $temp + "<td><a href='http://maps.google.com/maps?q=" + $d_cLat + "+" + $d_cLon + "+(" + $d_cCode + ")&hl=en'>" + $temp2 + "</a></td>"
+    $temp = $temp + "</tr>"
+    Goto Position=Next
+  EndWhile
+
+  $h = $h + $temp + "</table><br />"
+
+EndIf
+
+$h = $h + "</td></tr></table>"
+$h = $h + "</td></tr></table></div>"
+
+$_htmlbody = $h
+
+# END HTML
+$h = ""
+$h = $h + "</body></html>"
+$_htmlFooter = $h
+
+BeginSub name=HtmlText
+  $HtmlText = Replace("<br>", "~.~", $HtmlText, true) # exception, do not replace <br>
+  $HtmlText = Replace("&", "&amp;", $HtmlText, false)
+  $HtmlText = Replace("<","&lt;", $HtmlText, false)
+  $HtmlText = Replace(">", "&gt;", $HtmlText, false)
+  $HtmlText = Replace($_quote, "&quot;", $HtmlText, false)
+  $HtmlText = Replace("~.~", "<br>", $HtmlText, false)
+  $HtmlText = Replace($_Newline,"<br>",$HtmlText,false) 
+  $HtmlText = Replace("'","&#039;",$HtmlText,false)
+EndSub

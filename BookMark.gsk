@@ -1,0 +1,43 @@
+#*******************************************
+# MacVersion = 1.4
+# MacDescription = Bookmark your current filter one by one at gc.com
+# MacAuthor = clyde
+# MacFileName = BookMark.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=1452&view=findpost&p=32600
+#*******************************************
+####################################################
+# Macro to bookmark your current filter one by one.
+# You must manually click on the "create bookmark" button for each cache at gc.com
+#####################################################
+Speedmode Status=On
+# 1 character cache types
+$Type1 = "TUVEWBLMCGORAIZX"
+# corresponding number to waytype
+$WayNums = "2~8~4~6~11~5~12~3~13~8~8~137~9~1858~453~1304"     
+
+Goto Position=Top
+$Skipped = 0
+$Current = 0
+While .not. $_eol
+  $Current = $Current + 1
+  If regex("www\.geocaching\.com",$d_Url) and upper(left($d_code,2)) = "GC"
+    $GuiId = extract($d_Url,"=",2)
+    $waytype = "8"
+    $index = at($d_CacheType,$type1) 
+    If $index > 0
+      $WayType = Extract($WayNums,"~",$index)
+    EndIf
+    $WayType="2"
+    $url = "http://www.geocaching.com/bookmarks/mark.aspx?guid=" + $GuiId + "&WptTypeID=" + $WayType
+    web url=$url
+    $msg = "Click on continue for next cache.  Currently at #$Current/"+NumToStr($_Count)
+    IF $Current < $_Count
+      PAUSE msg=$msg
+    EndIf
+  ELSE
+    $Skipped = $Skipped + 1
+  EndIf
+  Goto Position=Next
+EndWhile
+Pause msg="Finished.  $Skipped non-GC caches were skipped."
+

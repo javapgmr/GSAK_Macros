@@ -1,0 +1,82 @@
+#*******************************************
+# MacDescription = Check for deprecated macro functions
+# MacFileName =ListDeprecatedMacros.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.12
+#*******************************************
+
+#http://gsak.net/board/index.php?showtopic=22735&view=findpost&p=167908
+#Not(RegEx("^\s*?#",$Data)) AND
+
+$Out="File;Author;Deprecated Commands\Functions" + $_CrLf
+$Path=$_AppData + "\Macros\"
+$Directory=$Path + "*.gsk"
+$FileList=Dir($Directory,"F")
+$Tally=0
+$Count=RegExCount($_CrLf,$FileList)
+$x=1
+WHILE $x<=$Count
+    $FileName=Extract($FileList,$_CrLf,$x)
+    $File=$Path + $FileName
+
+    $status = "Analyzing Macro: " + $FileName + " (" + "$x" + " of " + "$Count" + ")"
+    SHOWSTATUS msg="$status" Width=350
+
+    $Data = GetFile($File)
+    IF Left($Data,7) = "*Error*"
+        PAUSE Msg="$Data"
+        CANCEL
+    ENDIF
+
+    #Remove all text in double quotes
+    $CleanData=RegExReplace("\x22(.*?)\x22",$Data,"")
+
+    #Remove all text in comments
+    $CleanData=RegExReplace("\s*(#.*)",$CleanData,"")
+
+    #Remove all text in <Data> statements
+    $CleanData=RegExReplace("(?s)<data>.*<enddata>",$CleanData,"")
+
+    IF RegEx("\s*\bDbToSql\(|\s*\bDbToSqlite\(|\s*\bGeoCalc\(|\s*\bHTML\(|\s*\bShowForm\(|\s*\bSql\(|\s*\bGETSPECIAL\s*\bData=|(?m)^\s*\bSet\s|(?m)^\s*\bSort\s*\bby=|\s*\bSQLITECACHES\s*\bScope=",$CleanData)
+        $Out=$Out + $FileName + ";"
+        $Author=RegExData("#.*MacAuthor.*=.*",$Data,1)
+        $Author=AllTrim(Extract($Author,"=",2))
+        $Out=$Out + $Author + ";"
+
+        IF RegEx("\s*\bDbToSql\(",$CleanData)
+            $Out=$Out + "DbToSql()<br>"
+        ENDIF
+        IF RegEx("\s*\bDbToSqlite\(",$CleanData)
+            $Out=$Out + "DbToSqlite()<br>"
+        ENDIF
+        IF RegEx("\s*\bGeoCalc\(",$CleanData)
+            $Out=$Out + "GeoCalc()<br>"
+        ENDIF
+        IF RegEx("\s*\bHTML\(",$CleanData)
+            $Out=$Out + "HTML()<br>"
+        ENDIF
+        IF RegEx("\s*\bShowForm\(",$CleanData)
+            $Out=$Out + "ShowForm()<br>"
+        ENDIF
+        IF RegEx("\s*\bSql\(",$CleanData)
+            $Out=$Out + "Sql()<br>"
+        ENDIF
+        IF RegEx("\s*\bGETSPECIAL\s*Data=",$CleanData)
+            $Out=$Out + "GETSPECIAL<br>"
+        ENDIF
+        IF RegEx("(?m)^\s*\bSet\s",$CleanData)
+            $Out=$Out + "SET<br>"
+        ENDIF
+        IF RegEx("(?m)^\s*\bSort\s*by=",$CleanData)
+            $Out=$Out + "SORT<br>"
+        ENDIF
+        IF RegEx("\s*\bSQLITECACHES\s*Scope=",$CleanData)
+            $Out=$Out + "SQLITECACHES"
+        ENDIF
+        $Out=$Out + $_CrLf
+        $Tally=$Tally + 1
+    ENDIF
+    $x=$x+1
+ENDWHILE
+$Display=SqlToHtml($Out,"Macros with deprecated functions","Y")
+MSGOK Msg=$Tally out of $Count macros need updating.

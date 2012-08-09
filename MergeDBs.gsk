@@ -1,0 +1,781 @@
+#*******************************************
+# MacDescription = Merge databases
+# MacFileName = MergeDBs.gsk
+# MacAuthor = Kai Team
+# MacVersion=2.1
+# MacUrl=http://gsak.net/board/index.php?showtopic=7180&view=findpost&p=43611
+#*******************************************
+
+VerCheck Version=7.6.1.27 (please update GSAK to the latest version to run this macro - see http://gsak.net)
+Option Explicit=Yes
+GOSUB Name=Declare Variables
+
+#Set variable to display macro version in the form header:
+$MacroVersion=Alltrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath") + "\" + SysInfo("Macrofile")),1,1))
+
+#set database dropdown values
+$Databases=Sysinfo("Databases")
+$DatabasesNone="**None**"  + ";" + $Databases
+#$DataFile=$_Install + "\Macros\MergeDBs.dat"
+
+#Set initial form options non-destructive
+$CopyRB=TRUE
+$IgnoreExistingRB=TRUE
+$DeleteSourceDB=FALSE
+$DeleteWaypointsFirst=FALSE
+$AutoRunCkBx=FALSE
+
+#Determine if saved settings file exists, and if so, read the saved settings
+MACSETTINGS Type=R FileCheck=N
+IF $ReplaceExistingRB
+    $Form = editform($Form,"MergeLogsCB","visible","Yes")
+    $Form = editform($Form,"MergeWptsCB","visible","Yes")
+ENDIF
+
+IF Not($AutoRunCkBx) OR ($AutoRunCkBx AND $_ShiftKey)
+    WHILE TRUE # Infinite loop to redisplay form as required
+      $Form = Editform($Form,"Form1","caption","Merge Databases ($MacroVersion)")
+      $FormExit = form($form,"")
+      BeginCase
+        CASE $FormExit = "SystemExit"
+            BREAK
+        CASE $FormExit = "CancelBtn"
+            BREAK
+        CASE $FormExit = "ReplaceExistingRB"
+            $Form = editform($Form,"MergeLogsCB","visible","Yes")
+            $Form = editform($Form,"MergeWptsCB","visible","Yes")
+        CASE $Formexit = "IgnoreExistingRB"
+            $Form = editform($Form,"MergeLogsCB","visible","No")
+            $Form = editform($Form,"MergeWptsCB","visible","No")
+        CASE $FormExit = "MergeBtn"
+            #Save Values for the Next time
+            $Vars="SourceDB1,SourceDB2,SourceDB3,SourceDB4,SourceDB5,SourceDB6,"
+            $Vars=$Vars + "DestinationDB,CopyRB,MoveRB,ReplaceExistingRB,IgnoreExistingRB,"
+            $Vars=$Vars + "MergeOnlyFlagged,DeleteSourceDB,FlagCB,ClearFlagsFirst,DeleteWaypointsFirst,"
+            $Vars=$Vars + "MergeLogsCB,MergeWptsCB,AutoRunCkBx"
+            MACSETTINGS Type=S Vars=$Vars
+            # Gosub edit move/copy macroset data (add elements for each of the options)
+            GOSUB Name=ConstructMacroset
+            # Gosub to executive move/copy (select source databases, move/copy, select next source DB).
+            GOSUB Name=Execute
+            BREAK
+      ENDCASE
+    ENDWHILE
+ELSE
+    GOSUB GOSUB Name=ConstructMacroset
+    GOSUB Name=Execute
+ENDIF
+
+BEGINSUB Name=ConstructMacroset
+    #Set the detination database
+    $MoveCopy = $MoveCopy + "cbxDestination.Text=" + $DestinationDB + $_NewLine
+
+    IF $MergeLogsCB
+        $MoveCopy = $MoveCopy + "chkMergeLogs.Checked=True"  + $_NewLine
+    ENDIF
+
+    IF $MergeWptsCB
+         $MoveCopy = $MoveCopy + "chkMergeWaypoints.Checked=True"  + $_NewLine
+    ENDIF
+
+    BEGINCASE
+    #Copy, replace existing, flag
+    CASE $CopyRB AND $ReplaceExistingRB AND $FlagCB
+        #Copy or Move
+        $MoveCopy = $MoveCopy + "rbtCopy.Checked=True" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtMove.Checked=False" + $_NewLine
+        #Replace or ignore existing
+        $MoveCopy = $MoveCopy + "rbtReplace.Checked=True" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtExistIgnore.Checked=False" + $_NewLine
+        #Flag
+        $MoveCopy = $MoveCopy + "rbtAddFlag.Checked=True" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtReplaceFlag.Checked=True" + $_NewLine
+
+    #Copy, replace existing, don't flag
+    CASE $CopyRB AND $ReplaceExistingRB AND $FlagCB=FALSE
+        #Copy or Move
+        $MoveCopy = $MoveCopy + "rbtCopy.Checked=True" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtMove.Checked=False" + $_NewLine
+        #Replace or ignore existing
+        $MoveCopy = $MoveCopy + "rbtReplace.Checked=True" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtExistIgnore.Checked=False" + $_NewLine
+        #Flag
+        $MoveCopy = $MoveCopy + "rbtAddFlag.Checked=False" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtReplaceFlag.Checked=False" + $_NewLine
+
+    #Copy, ignore existing, flag
+    CASE $CopyRB AND $IgnoreExistingRB AND $FlagCB
+        #Copy or Move
+        $MoveCopy = $MoveCopy + "rbtCopy.Checked=True" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtMove.Checked=False" + $_NewLine
+        #Replace or ignore existing
+        $MoveCopy = $MoveCopy + "rbtReplace.Checked=False" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtExistIgnore.Checked=True" + $_NewLine
+        #Flag
+        $MoveCopy = $MoveCopy + "rbtAddFlag.Checked=True" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtReplaceFlag.Checked=False" + $_NewLine
+
+    #Copy, ignore existing, don't flag
+    CASE $CopyRB AND $IgnoreExistingRB AND $FlagCB=FALSE
+        #Copy or Move
+        $MoveCopy = $MoveCopy + "rbtCopy.Checked=True" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtMove.Checked=False" + $_NewLine
+        #Replace or ignore existing
+        $MoveCopy = $MoveCopy + "rbtReplace.Checked=False" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtExistIgnore.Checked=True" + $_NewLine
+        #Flag
+        $MoveCopy = $MoveCopy + "rbtAddFlag.Checked=False" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtReplaceFlag.Checked=False" + $_NewLine
+
+    #Move, replace existing, flag
+    CASE $MoveRB AND $ReplaceExistingRB AND $FlagCB
+        #Copy or Move
+        $MoveCopy = $MoveCopy + "rbtCopy.Checked=False" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtMove.Checked=True" + $_NewLine
+        #Replace or ignore existing
+        $MoveCopy = $MoveCopy + "rbtReplace.Checked=True" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtExistIgnore.Checked=False" + $_NewLine
+        #Flag
+        $MoveCopy = $MoveCopy + "rbtAddFlag.Checked=True" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtReplaceFlag.Checked=True" + $_NewLine
+
+    #Move, replace existing, don't flag
+    CASE $MoveRB AND $ReplaceExistingRB AND $FlagCB=FALSE
+        #Copy or Move
+        $MoveCopy = $MoveCopy + "rbtCopy.Checked=False" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtMove.Checked=True" + $_NewLine
+        #Replace or ignore existing
+        $MoveCopy = $MoveCopy + "rbtReplace.Checked=True" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtExistIgnore.Checked=False" + $_NewLine
+        #Flag
+        $MoveCopy = $MoveCopy + "rbtAddFlag.Checked=False" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtReplaceFlag.Checked=False" + $_NewLine
+
+    #Move, ignore existing, flag
+    CASE $MoveRB AND $IgnoreExistingRB AND $FlagCB
+        #Copy or Move
+        $MoveCopy = $MoveCopy + "rbtCopy.Checked=False" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtMove.Checked=True" + $_NewLine
+        #Replace or ignore existing
+        $MoveCopy = $MoveCopy + "rbtReplace.Checked=False" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtExistIgnore.Checked=True" + $_NewLine
+        #Flag
+        $MoveCopy = $MoveCopy + "rbtAddFlag.Checked=True" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtReplaceFlag.Checked=False" + $_NewLine
+
+    #Move, ignore existing, don't flag
+    CASE $MoveRB AND $IgnoreExistingRB AND $FlagCB=FALSE
+        #Copy or Move
+        $MoveCopy = $MoveCopy + "rbtCopy.Checked=False" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtMove.Checked=True" + $_NewLine
+        #Replace or ignore existing
+        $MoveCopy = $MoveCopy + "rbtReplace.Checked=False" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtExistIgnore.Checked=True" + $_NewLine
+        #Flag
+        $MoveCopy = $MoveCopy + "rbtAddFlag.Checked=False" + $_NewLine
+        $MoveCopy = $MoveCopy + "rbtReplaceFlag.Checked=False" + $_NewLine
+    ENDCASE
+ENDSUB
+
+BEGINSUB Name=Execute
+    #Clear all user flags in the destination database if option selected
+    IF $ClearFlagsFirst
+        DATABASE Name=$DestinationDB Action=Select
+        USERFLAG type=clear range=all
+    ENDIF
+    #Delete all waypoints in the destination database if option selected
+    IF $DeleteWaypointsFirst
+        DATABASE Name=$DestinationDB Action=Select
+        MACROSET Dialog=DELETE VarName=$Delete
+        DELETE Settings=<MACRO>
+    ENDIF
+    #Move or copy the first source database
+    IF $SourceDB1<>"**None**"
+        DATABASE Name=$SourceDB1 Action=Select
+        IF $MergeOnlyFlagged
+            MACROSET Dialog=FILTER VarName=$Filter
+            FILTER Name=<Macro>
+        ENDIF
+        MACROSET  Dialog=MoveCopy VarName=$MoveCopy
+        MOVECOPY Settings=<Macro>
+    ELSE
+        CANCEL Msg="You must select at least one source database.  Macro cancelled."
+    ENDIF
+
+    #Move or copy the second source database
+    IF $SourceDB2<>"**None**"
+        DATABASE Name=$SourceDB2 Action=Select
+        IF $MergeOnlyFlagged
+            MACROSET Dialog=FILTER VarName=$Filter
+            FILTER Name=<Macro>
+        ENDIF
+        MACROSET  Dialog=MoveCopy VarName=$MoveCopy
+        MOVECOPY Settings=<Macro>
+    ELSE
+        GOSUB Name=DeleteSource
+    ENDIF
+
+    #Move or copy the third source database
+    IF $SourceDB3<>"**None**"
+        DATABASE Name=$SourceDB3 Action=Select
+        IF $MergeOnlyFlagged
+            MACROSET Dialog=FILTER VarName=$Filter
+            Filter Name=<Macro>
+        ENDIF
+        MACROSET  Dialog=MoveCopy VarName=$MoveCopy
+        MOVECOPY Settings=<Macro>
+    ELSE
+        GOSUB Name=DeleteSource
+    ENDIF
+
+    #Move or copy the fourth source database
+    IF $SourceDB4<>"**None**"
+        DATABASE Name=$SourceDB4 Action=Select
+        IF $MergeOnlyFlagged
+            MACROSET Dialog=FILTER VarName=$Filter
+            Filter Name=<Macro>
+        ENDIF
+        MACROSET  Dialog=MoveCopy VarName=$MoveCopy
+        MOVECOPY Settings=<Macro>
+    ELSE
+        GOSUB Name=DeleteSource
+    ENDIF
+
+    #Move or copy the fifth source database
+    IF $SourceDB5<>"**None**"
+        DATABASE Name=$SourceDB5 Action=Select
+        IF $MergeOnlyFlagged
+            MACROSET Dialog=FILTER VarName=$Filter
+            Filter Name=<Macro>
+        ENDIF
+        MACROSET  Dialog=MoveCopy VarName=$MoveCopy
+        MOVECOPY Settings=<Macro>
+    ELSE
+        GOSUB Name=DeleteSource
+    ENDIF
+
+    #Move or copy the sixth source database
+    IF $SourceDB6<>"**None**"
+        DATABASE Name=$SourceDB6 Action=Select
+        IF $MergeOnlyFlagged
+            MACROSET Dialog=FILTER VarName=$Filter
+            Filter Name=<Macro>
+        ENDIF
+        MACROSET  Dialog=MoveCopy VarName=$MoveCopy
+        MOVECOPY Settings=<Macro>
+    ELSE
+        GOSUB Name=DeleteSource
+    ENDIF
+ENDSUB
+
+BEGINSUB Name=DeleteSource
+    #Delete source databases if checked on form
+    IF $DeleteSourceDB
+        IF DatabaseExists($SourceDB1)
+            DATABASE Name=$SourceDB1 Action=DELETE
+        ENDIF
+        IF DatabaseExists($SourceDB2)
+            DATABASE Name=$SourceDB2 Action=DELETE
+        ENDIF
+        IF DatabaseExists($SourceDB3)
+            DATABASE Name=$SourceDB3 Action=DELETE
+        ENDIF
+        IF DatabaseExists($SourceDB4)
+            DATABASE Name=$SourceDB4 Action=DELETE
+        ENDIF
+        IF DatabaseExists($SourceDB5)
+            DATABASE Name=$SourceDB5 Action=DELETE
+        ENDIF
+        IF DatabaseExists($SourceDB6)
+            DATABASE Name=$SourceDB6 Action=DELETE
+        ENDIF
+    ENDIF
+    IF $_MacroLevel=1
+        CANCEL msg="Database merge complete."
+    ELSE
+        RETURN
+    ENDIF
+ENDSUB
+
+BEGINSUB Name=Declare Variables
+    Declare Var=$AutoRunCkBx Type=Boolean
+    Declare Var=$MergeOnlyFlagged Type=Boolean
+    Declare Var=$DeleteSourceDB Type=Boolean
+    Declare Var=$FlagCB Type=Boolean
+    Declare Var=$ClearFlagsFirst Type=Boolean
+    Declare Var=$DeleteWaypointsFirst Type=Boolean
+    Declare Var=$SourceDB1 Type=String
+    Declare Var=$SourceDB2 Type=String
+    Declare Var=$SourceDB3 Type=String
+    Declare Var=$SourceDB4 Type=String
+    Declare Var=$SourceDB5 Type=String
+    Declare Var=$SourceDB6 Type=String
+    Declare Var=$DestinationDB Type=String
+    Declare Var=$Databases Type=String
+    Declare Var=$DatabasesNone Type=String
+    Declare Var=$Delete Type=String
+    Declare Var=$DestinationDB Type=String
+    Declare Var=$Filter Type=String
+    Declare Var=$form Type=String
+    Declare Var=$FormExit Type=String
+    Declare Var=$MacroVersion Type=String
+    Declare Var=$MoveCopy Type=String
+    Declare Var=$CopyRB Type=Boolean
+    Declare Var=$MoveRB Type=Boolean
+    Declare Var=$ReplaceExistingRB Type=Boolean
+    Declare Var=$IgnoreExistingRB Type=Boolean
+    Declare Var=$Vars Type=String
+ENDSUB
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sun 01-Jul-2012 07:11:19
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Merge Databases
+  Color = 13027001
+  Height = 503
+  Width = 730
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Select the databases to merge:
+  Color = 15000798
+  Height = 283
+  Left = 11
+  Top = 12
+  Width = 343
+  Taborder = 0
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = Options
+  Color = 15000798
+  Height = 375
+  Left = 366
+  Top = 12
+  Width = 343
+  Taborder = 4
+
+Name = Groupbox3
+  Type = Groupbox
+  Caption = Move or Copy?
+  Container = Groupbox2
+  Height = 67
+  Left = 12
+  Top = 18
+  Width = 319
+  Taborder = 0
+
+Name = Groupbox4
+  Type = Groupbox
+  Caption = Select the destination database:
+  Color = 15000798
+  Height = 78
+  Left = 11
+  Top = 309
+  Width = 343
+  Taborder = 1
+
+Name = Groupbox5
+  Type = Groupbox
+  Caption = If waypoint already exists in destination database?
+  Container = Groupbox2
+  Height = 68
+  Left = 12
+  Top = 99
+  Width = 319
+  Taborder = 1
+
+Name = Groupbox6
+  Type = Groupbox
+  Caption = Destination Database Options
+  Container = Groupbox2
+  Height = 96
+  Left = 12
+  Top = 270
+  Width = 319
+  Taborder = 3
+
+Name = Groupbox7
+  Type = Groupbox
+  Caption = Source Databases Options
+  Container = Groupbox2
+  Height = 67
+  Left = 12
+  Top = 180
+  Width = 319
+  Taborder = 2
+
+Name = SourceDB1
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 15
+  Top = 24
+  Values = $DatabasesNone
+  Width = 313
+  Taborder = 0
+
+Name = SourceDB2
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 15
+  Top = 68
+  Values = $DatabasesNone
+  Width = 313
+  Taborder = 1
+
+Name = SourceDB3
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 15
+  Top = 112
+  Values = $DatabasesNone
+  Width = 313
+  Taborder = 2
+
+Name = SourceDB4
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 15
+  Top = 156
+  Values = $DatabasesNone
+  Width = 313
+  Taborder = 3
+
+Name = SourceDB5
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 15
+  Top = 200
+  Values = $DatabasesNone
+  Width = 313
+  Taborder = 4
+
+Name = SourceDB6
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 15
+  Top = 244
+  Values = $DatabasesNone
+  Width = 313
+  Taborder = 5
+
+Name = CopyRB
+  Type = Radiobutton
+  Container = Groupbox3
+  Height = 17
+  Left = 6
+  Top = 19
+  Width = 15
+  Taborder = 0
+
+Name = Label1
+  Type = Label
+  Container = Groupbox3
+  Height = 13
+  Left = 29
+  Top = 21
+  Width = 186
+  Caption = COPY waypoints (leave in source DB)
+
+Name = MoveRB
+  Type = Radiobutton
+  Container = Groupbox3
+  Height = 17
+  Left = 6
+  Top = 42
+  Width = 15
+  Taborder = 1
+
+Name = Label2
+  Type = Label
+  Container = Groupbox3
+  Height = 13
+  Left = 29
+  Top = 44
+  Width = 203
+  Caption = MOVE waypoints (delete from source DB)
+
+Name = DestinationDB
+  Type = Combobox
+  Container = Groupbox4
+  Height = 21
+  Left = 15
+  Top = 28
+  Values = $Databases
+  Width = 313
+  Taborder = 0
+
+Name = MergeBtn
+  Type = Button
+  Height = 25
+  Left = 227
+  Top = 430
+  Width = 75
+  Taborder = 2
+  Caption = Merge
+
+Name = CancelBtn
+  Type = Button
+  Height = 25
+  Left = 419
+  Top = 430
+  Width = 75
+  Taborder = 3
+  Caption = Cancel
+
+Name = ReplaceExistingRB
+  Type = Radiobutton
+  Container = Groupbox5
+  Exitonchange = Yes
+  Height = 17
+  Left = 6
+  Top = 18
+  Width = 15
+  Taborder = 0
+
+Name = Label4
+  Type = Label
+  Container = Groupbox5
+  Height = 13
+  Left = 25
+  Top = 20
+  Width = 48
+  Caption = Replace
+
+Name = IgnoreExistingRB
+  Type = Radiobutton
+  Container = Groupbox5
+  Exitonchange = Yes
+  Height = 17
+  Left = 144
+  Top = 18
+  Width = 15
+  Taborder = 1
+
+Name = Label5
+  Type = Label
+  Container = Groupbox5
+  Height = 13
+  Left = 163
+  Top = 20
+  Width = 38
+  Caption = Ignore
+
+Name = Label7
+  Type = Label
+  Container = Groupbox6
+  Height = 13
+  Left = 29
+  Top = 46
+  Width = 242
+  Caption = Clear all user flags in the destination database first
+
+Name = Label8
+  Type = Label
+  Container = Groupbox6
+  Height = 13
+  Left = 29
+  Top = 70
+  Width = 262
+  Caption = DELETE all waypoints in the destination database first
+
+Name = Label6
+  Type = Label
+  Container = Groupbox7
+  Height = 13
+  Left = 29
+  Top = 20
+  Width = 224
+  Caption = Merge ONLY waypoints with the user flag set*
+
+Name = Label9
+  Type = Label
+  Container = Groupbox7
+  Height = 13
+  Left = 29
+  Top = 44
+  Width = 206
+  Caption = DELETE all source databases after merge
+
+Name = MergeOnlyFlagged
+  Type = Checkbox
+  Container = Groupbox7
+  Height = 17
+  Left = 8
+  Top = 19
+  Width = 15
+  Taborder = 0
+
+Name = DeleteSourceDB
+  Type = Checkbox
+  Container = Groupbox7
+  Height = 17
+  Left = 8
+  Top = 41
+  Width = 15
+  Taborder = 1
+
+Name = FlagCB
+  Type = Checkbox
+  Container = Groupbox6
+  Height = 17
+  Left = 8
+  Top = 20
+  Width = 15
+  Taborder = 0
+
+Name = Label3
+  Type = Label
+  Container = Groupbox6
+  Height = 13
+  Left = 29
+  Top = 22
+  Width = 242
+  Caption = Flag waypoints added to the destination database
+
+Name = ClearFlagsFirst
+  Type = Checkbox
+  Container = Groupbox6
+  Height = 17
+  Left = 8
+  Top = 42
+  Width = 15
+  Taborder = 1
+
+Name = DeleteWaypointsFirst
+  Type = Checkbox
+  Container = Groupbox6
+  Height = 17
+  Left = 8
+  Top = 66
+  Width = 15
+  Taborder = 2
+
+Name = Label10
+  Type = Label
+  Container = Groupbox2
+  Height = 12
+  Left = 18
+  Size = 7
+  Top = 246
+  Width = 314
+  Caption = *if no flags are set in a database, all waypoints from that DB will be included
+
+Name = MergeLogsCB
+  Type = Checkbox
+  Container = Groupbox5
+  Height = 17
+  Left = 7
+  Top = 42
+  Visible = No
+  Width = 97
+  Taborder = 2
+  Caption = Merge Logs
+
+Name = MergeWptsCB
+  Type = Checkbox
+  Container = Groupbox5
+  Height = 17
+  Left = 145
+  Top = 42
+  Visible = No
+  Width = 100
+  Taborder = 3
+  Caption = Merge Waypoints
+
+Name = AutoRunCkBx
+  Type = Checkbox
+  Fontsize = 10
+  Height = 20
+  Left = 36
+  Top = 394
+  Width = 649
+  Taborder = 15
+  Caption = Autorun (suppress all user input forms).  If checked, hold Shift key when starting the macro to show options.
+
+<enddata>
+
+
+
+
+
+<data> VarName=$MoveCopy
+[TfmMove]
+rbtAdd.Checked=True
+rbtAddIgnore.Checked=False
+rbtFlagOnly.Checked=False
+chkDisplay.Checked=True
+<enddata>
+
+<data> VarName=$Filter
+edtDesc=
+cbxDesc=0
+cbxFilter=0
+edtDistance=
+cbxDistance=0
+edtDistance2=
+edtPlacedBy=
+cbxDifficulty=0
+cbxTerrain=0
+cbxDif=8
+cbxTer=8
+cbxPlacedBy=0
+cbxDif2=8
+cbxTer2=8
+edtUserData=
+cbxUserData=0
+chkReverse=False
+edtTbugName=
+cbxTbugName=0
+cbxSource=0
+edtSource=
+cbxUser2=0
+EdtUser2=
+cbxOwnerName=0
+edtOwnerName=
+cbxSymbol=0
+edtSymbol=
+chkFound=True
+chkNotFound=True
+chkExclude=True
+chkAvailable=True
+chkArchivedOnly=True
+chkTempUnavailable=True
+chkUserFlag1=True
+chkUserFlag2=False
+chkBugNo=True
+cbxBugs=True
+chkNoteNo=True
+chkNoteYes=True
+edtFull=
+chkFullHighlight=True
+chkRegEx=False
+chkFullNotes=False
+chkFullLogs=False
+chkFullDes=False
+RbtFullAll=True
+rbtFullSelect=False
+chkFtfNo=True
+chkFtfyes=True
+<enddata>
+
+<data> VarName=$Delete
+[TfmDelete]
+cbxStop.Checked=False
+rbtFilter.Checked=False
+rbtFlagged.Checked=False
+rbtOnly.Checked=False
+rbtAll.Checked=True
+<enddata>
+
+

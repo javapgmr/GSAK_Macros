@@ -1,0 +1,517 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<meta http-equiv="X-UA-Compatible" content="IE=EmulateIE7">
+<HTML>
+<head>
+<!-- saved from url=(0014)about:internet -->
+<title>GSAK Map GMap V3</title>
+<style type="text/css">
+      body {
+        margin: 0;
+        font-family: Arial;
+        font-size: 16px;
+      }
+
+    #map {
+      background-color: #e5e3df;
+      height: 100%;
+    }
+    img{
+      border-style: none;
+    }
+</style>
+    
+<!-----external references----->
+
+<script type="text/javascript" src="http://www.google.com/jsapi"></script>
+<script type="text/javascript" src="http://gsak.net/stats/maps/markerclusterer_packed.js"></script>
+<script type="text/javascript" src="http://gsak.net/stats/maps/mytopo.js"></script>
+
+<script type="text/javascript">
+
+
+google.load('maps', '3', {other_params: 'sensor=false'});
+google.setOnLoadCallback(initialize);
+
+var markerClusterer = null;
+var map = null;
+var markers = [];
+
+ var styles = [[{
+        url: 'http://gsak.net/stats/maps/m1.png',
+        height: 53,
+        width: 53
+      }, {
+        url: 'http://gsak.net/stats/maps/m2.png',
+        height: 56,
+        width: 56
+      }, {
+        url: 'http://gsak.net/stats/maps/m3.png',
+        height: 66,
+        width: 66
+      }, {
+        url: 'http://gsak.net/stats/maps/m4.png',
+        height: 78,
+        width: 78
+      }, {
+        url: 'http://gsak.net/stats/maps/m5.png',
+        height: 90,
+        width: 90
+      }]];
+
+function writecookie(cookiename,k) { document.cookie=cookiename+'='+k+'; expires=Fri, 31 Dec 2020 00:00:00 UTC' };
+
+function clearcookie(cookiename,k) { document.cookie=cookiename+'='+k+'; expires=Fri, 31 Dec 2000 00:00:00 UTC' };
+
+function readCookie(cookieName){
+   var searchName = cookieName + "="
+   var cookies = document.cookie
+   var start = cookies.indexOf(cookieName)
+   if (start == -1){ // cookie not found
+      return "-1"
+   }
+   start += searchName.length //start of the cookie data
+   var end = cookies.indexOf(";", start)
+   if (end == -1){
+      end = cookies.length
+   }
+   return cookies.substring(start, end)
+}
+
+function initialize() {
+
+//------- Initialize label class -------
+
+// Define the overlay, derived from google.maps.OverlayView
+function Label(opt_options) {
+ // Initialization
+ this.setValues(opt_options);
+
+ // Label specific
+ var span = this.span_ = document.createElement('span');
+ span.style.cssText = 'position: relative; left: -50%; top: -45px; ' +
+                      'white-space: pre; border: 1px solid black; ' +
+                      'font-size: 10px; ' +
+                      'padding: 1px 2px 1px 2px; background-color: white';
+
+ var div = this.div_ = document.createElement('div');
+ div.appendChild(span);
+ div.style.cssText = 'position: absolute; display: none';
+};
+Label.prototype = new google.maps.OverlayView;
+
+// Implement onAdd
+Label.prototype.onAdd = function() {
+ var pane = this.getPanes().overlayLayer;
+ pane.appendChild(this.div_);
+
+ // Ensures the label is redrawn if the text or position is changed.
+ var me = this;
+ this.listeners_ = [
+   google.maps.event.addListener(this, 'position_changed',
+       function() { me.draw(); }),
+   google.maps.event.addListener(this, 'visible_changed',
+          function() { me.draw(); }),
+   google.maps.event.addListener(this, 'text_changed',
+       function() { me.draw(); })
+ ];
+};
+
+// Implement onRemove
+Label.prototype.onRemove = function() {
+ this.div_.parentNode.removeChild(this.div_);
+
+ // Label is removed from the map, stop updating its position/text.
+ for (var i = 0, I = this.listeners_.length; i < I; ++i) {
+   google.maps.event.removeListener(this.listeners_[i]);
+ }
+};
+
+// Implement draw
+Label.prototype.draw = function() {
+ var projection = this.getProjection();
+ var position = projection.fromLatLngToDivPixel(this.get('position'));
+
+ var div = this.div_;
+ div.style.left = position.x + 'px';
+ div.style.top = position.y + 'px';
+   var visible = this.get('visible');
+   div.style.display = visible ? 'block' : 'none';
+
+ this.span_.innerHTML = this.get('text').toString();
+};
+
+//------- END of label.js -------
+
+
+
+
+   //-----icon references----->
+   
+   var iconName = new Array('A','B','C','E','G','I','L','M','O','R','T','U','V','W','X','Y','Z');
+   var imageName = new Array('ape1','le1','ci1','ev1','be1','wh1','lo1','mu1','other1','ea1','tr1','un1','vi1','we1','maze1','wm1','mega1');
+   
+   for (i=0;i<=16;i++)
+      {
+      window[iconName[i] + "_icon"] = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/" + imageName[i] + ".png",
+      new google.maps.Size(27,34),
+      new google.maps.Point(0,0),
+      new google.maps.Point(4,34));
+      
+      window[iconName[i] + "_f_icon"] = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/" + imageName[i] + "_f" + ".png",
+      new google.maps.Size(27,34),
+      new google.maps.Point(0,0),
+      new google.maps.Point(4,34));
+      
+      }
+   
+
+   var shadow = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/shadow1.png",
+   new google.maps.Size(45,34),
+   new google.maps.Point(0,0),
+   new google.maps.Point(4,34));
+
+   var found_icon = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/found1.png",
+   new google.maps.Size(27,34),
+   new google.maps.Point(0,0),
+   new google.maps.Point(4,34));
+
+   var childicon = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/waypoint1.png",
+   new google.maps.Size(27,34),
+   new google.maps.Point(0,0),
+   new google.maps.Point(4,34));
+
+   var correctedicon = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/traffic_cone.png",
+   new google.maps.Size(16,16),
+   new google.maps.Point(0,0),
+   new google.maps.Point(8,16));
+
+
+   var options = {
+      scrollwheel: false,
+      scaleControl: true,
+      streetViewControl: true,
+      mapTypeControlOptions: {style: google.maps.MapTypeControlStyle.DROPDOWN_MENU}
+   };
+   map = new google.maps.Map(document.getElementById("map"), options);
+   
+   
+   map.enableKeyDragZoom({
+          visualEnabled: true,
+          visualPosition: google.maps.ControlPosition.LEFT,
+          visualPositionOffset: new google.maps.Size(35, 0),
+          visualPositionIndex: null,
+          visualSprite: "http://gsak.net/stats/maps/dragzoom_btn.png",
+          visualSize: new google.maps.Size(20, 20),
+          visualTips: {
+            off: "Turn on",
+            on: "Turn off"
+          }
+   });
+   
+   
+   
+   map.setCenter(new google.maps.LatLng(30, -97));
+   map.setZoom(12);
+   
+   
+   
+   map.setMapTypeId(google.maps.MapTypeId.ROADMAP);
+
+var is_chrome = navigator.userAgent.toLowerCase().indexOf('chrome') > -1;
+
+//----read cookie and set maptype accordingly---
+
+   if (!is_chrome) {
+         //alert("Not Chrome");
+         var typecookie = readCookie("maptypev3");
+         //alert (typecookie);
+         if (typecookie == "-1") {typecookie = "roadmap"};
+         map.setMapTypeId(typecookie);
+   }
+
+
+// Add listener to see if map type changes and store it, use local storage if we can
+  google.maps.event.addListener(map, "maptypeid_changed", function() {
+        k = map.getMapTypeId();
+        if (!is_chrome) {
+       writecookie('maptypev3',k);
+         }
+    }); 
+
+
+   // add OCM to mapTypes
+//return"http://a.andy.sandbox.cloudmade.com/tiles/cycle/"+b+"/"+a.x%(1<<b)+"/"+a.y+".png"
+   var openCycle = new google.maps.ImageMapType({
+      getTileUrl:function(a,b){
+         return"http://" + ["a","b","c"][Math.floor(Math.random()*3)] + ".tile.opencyclemap.org/cycle/"+b+"/"+a.x%(1<<b)+"/"+a.y+".png"
+      },
+      tileSize:new google.maps.Size(256,256),
+      isPng:true,
+      minZoom:1,
+      maxZoom:18,
+      name:"OCM",
+      alt:"Open Cycle Map"
+   });
+map.mapTypes.set('ocm', openCycle);
+
+
+   // add OSM to mapTypes
+   var openStreet = new google.maps.ImageMapType({
+      getTileUrl: function(ll, z) {
+         var X = ll.x % (1 << z);  // wrap
+         return "http://" + ["a","b","c"][Math.floor(Math.random()*3)] + ".tile.openstreetmap.org/" + z + "/" + X + "/" + ll.y + ".png";
+      },
+      tileSize: new google.maps.Size(256, 256),
+      isPng: true,
+      maxZoom: 18,
+      name: "OSM",
+      alt: "Open Streetmap tiles"
+   });
+map.mapTypes.set('osm', openStreet);
+
+
+// add MapQuest to mapTypes
+var mapQuest = new google.maps.ImageMapType({
+   getTileUrl:function(a,b){
+      return" http://"+["otile1","otile2","otile3","otile4"][Math.floor(Math.random()*4)]+".mqcdn.com/tiles/1.0.0/osm/"+b+"/"+a.x%(1<<b)+"/"+a.y+".png"
+      },
+      tileSize:new google.maps.Size(256,256),
+      isPng:true,
+      minZoom:1,
+      maxZoom:18,
+      name:"MapQuest",
+      alt:"Map Quest"
+   });
+map.mapTypes.set('mpq', mapQuest);
+
+
+   // add Bing to mapTypes
+var bing = new google.maps.ImageMapType({
+      getTileUrl:function(a,b){
+         for(var k=a.x%(1<<b),l=a.y,g=[],e=b;e>0;e--){
+            var d=0,h=1<<e-1;
+            (k&h)!=0&&d++;
+            if((l&h)!=0){
+               d++;d++
+            }
+            g.push(d)
+         }
+         return"http://ecn.t0.tiles.virtualearth.net/tiles/r"+g.join("")+"?g=604&mkt=en-us&lbl=l1&stl=h&shading=hill&n=z";
+      },
+      tileSize:new google.maps.Size(256,256),
+      isPng:true,
+      minZoom:1,
+      maxZoom:18,
+      name:"Bing",
+      alt:"Bing"
+   });
+map.mapTypes.set('bing', bing);
+
+   // add BingOS to mapTypes
+var bingos = new google.maps.ImageMapType({
+      getTileUrl:function(a,b){
+         for(var k=a.x%(1<<b),l=a.y,g=[],e=b;e>0;e--){
+            var d=0,h=1<<e-1;
+            (k&h)!=0&&d++;
+            if((l&h)!=0){
+               d++;d++
+            }
+            g.push(d)
+         }
+         
+         if (b >= 12 && b < 16) 
+         {
+            return"http://ecn.t0.tiles.virtualearth.net/tiles/r"+g.join("")+".png?g=41&productSet=mmOS";
+         } else {
+            return"http://ecn.t0.tiles.virtualearth.net/tiles/r"+g.join("")+"?g=604&mkt=en-us&lbl=l1&stl=h&shading=hill&n=z";
+         }
+         },
+         tileSize:new google.maps.Size(256,256),
+         isPng:true,
+         minZoom:1,
+         maxZoom:18,
+         name:"Ord. Survey",
+         alt:"Ordnance Survey"
+      });
+map.mapTypes.set('bingos', bingos);
+
+
+   // Add MyTopo to mapTypes
+   var myTopo = new google.maps.ImageMapType({
+      getTileUrl: function(ll, z) {
+         var X = ll.x % (1 << z);  // wrap
+         //return "http://maps.mytopo.com/mytopo/tilecache.py/1.0.0/topoG/" + z + "/" + X + "/" + ll.y + ".png";
+         //return "http://maps.mytopo.com/mt20100826/tilecache.py/1.0.0/topoG/" + z + "/" + X + "/" + ll.y + ".jpg";
+         //return "http://maps.mytopo.com/mytopoK55Zc3L/tilecache.py/1.0.0/topoG/" + z + "/" + X + "/" + ll.y + ".jpg";
+
+
+         // mytopo.js contains a variable definition for 'mytopourl' for the current url of the mytopo data
+         
+         return mytopourl + z + "/" + X + "/" + ll.y + ".jpg";         
+      },
+      tileSize: new google.maps.Size(256, 256),
+      isPng: true,
+      maxZoom: 16,
+      name: "MyTopo",
+      alt: "MyTopo tiles"
+   });
+map.mapTypes.set('mytopo', myTopo);
+
+
+   map.setOptions({
+      mapTypeControlOptions: {
+         mapTypeIds: [
+         'roadmap',
+         google.maps.MapTypeId.TERRAIN,
+         google.maps.MapTypeId.SATELLITE,
+         google.maps.MapTypeId.HYBRID,
+         'osm',
+         'ocm',
+         'mytopo',
+         'mpq',
+         'bing',
+         'bingos'
+         ],
+         style: google.maps.MapTypeControlStyle.DROPDOWN_MENU
+      },
+      streetViewControl: true
+   });
+
+   var bounds = new google.maps.LatLngBounds();
+   
+
+   //   // Add a marker at cache position
+   //   var latlng = new google.maps.LatLng(30, -97);
+   //   marker1 = new google.maps.Marker({position: latlng, map: map, icon: T_icon, shadow: shadow, title: "Cache", draggable: false});
+   //
+   //   bounds.extend(latlng);
+   //   markers.push(marker1);
+   //
+   //   var infomsg = "Cache Title";
+   //
+   //   var infowindow = new google.maps.InfoWindow({content: infomsg});
+   //
+   //   google.maps.event.addListener(marker1, 'click', function() {infowindow.open(map,marker1);});
+
+   var latlng = new google.maps.LatLng(38.19133535,-88.88900332);m1 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"White Tail Ridge", draggable: false}); markers.push(m1); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.13773252,-89.00207694);m2 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Turnip Patch", draggable: false}); markers.push(m2); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.20234091,-88.88587704);m3 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Bonnie Lane", draggable: false}); markers.push(m3); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.05181784,-88.93406554);m4 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"129/East Palestine", draggable: false}); markers.push(m4); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.08571384,-88.92390109);m5 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"128 RLCD", draggable: false}); markers.push(m5); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.12601943,-88.87885203);m6 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"126 Wood Cock Ridge", draggable: false}); markers.push(m6); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.11155625,-88.89066361);m7 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"125 Buttonbush Bay", draggable: false}); markers.push(m7); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.10398452,-88.89651382);m8 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"124 Hamilton Branch", draggable: false}); markers.push(m8); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.09851703,-88.90723442);m9 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"123 Oak Grove", draggable: false}); markers.push(m9); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.14019160,-88.91770489);m10 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"122 Ina South (Ken Gray)", draggable: false}); markers.push(m10); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.15422251,-88.92227643);m11 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"121 Ina", draggable: false}); markers.push(m11); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.15382585,-89.00829288);m13 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"117/Ward Branch", draggable: false}); markers.push(m13); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.13783193,-89.01376906);m14 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"116/C & E", draggable: false}); markers.push(m14); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.12477400,-89.00433797);m15 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"114/County Line", draggable: false}); markers.push(m15); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.11866956,-89.00600609);m16 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"113/Mine 21", draggable: false}); markers.push(m16); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.11299421,-89.00581954);m17 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"112/Lambrusco", draggable: false}); markers.push(m17); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.10322652,-89.00546959);m19 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"110/North Jackie Branch", draggable: false}); markers.push(m19); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.09752058,-89.00357634);m20 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"109/South Jackie Branch", draggable: false}); markers.push(m20); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.09658063,-88.99561323);m21 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"108/Jackie Branch", draggable: false}); markers.push(m21); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.06462097,-88.99712541);m22 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"107/North Sandusky", draggable: false}); markers.push(m22); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.05873440,-88.99091746);m23 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"106/South Sandusky", draggable: false}); markers.push(m23); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.03929751,-88.98586739);m24 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"105/Dam West", draggable: false}); markers.push(m24); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.03517603,-88.98543657);m25 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"104/Prairie Hill", draggable: false}); markers.push(m25); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.02866019,-88.96137942);m26 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"103/River Road", draggable: false}); markers.push(m26); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.03668999,-88.95449651);m27 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"102/Spillway", draggable: false}); markers.push(m27); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.183667,-88.902617);m28 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Atchison Creek", draggable: false}); markers.push(m28); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.155067,-88.91775);m29 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Road closed parking lot", draggable: false}); markers.push(m29); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.125633,-88.889783);m30 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"White Oak Pond", draggable: false}); markers.push(m30); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.125517,-88.886783);m31 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Cypress View", draggable: false}); markers.push(m31); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.087333,-88.924783);m32 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"LCDLamppost", draggable: false}); markers.push(m32); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.0535,-89.007117);m33 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Blackberry Trail Parking", draggable: false}); markers.push(m33); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.043983,-88.988933);m34 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Marina", draggable: false}); markers.push(m34); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.036717,-88.95885);m35 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Pinetree", draggable: false}); markers.push(m35); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.049683,-88.938767);m36 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Palistine West", draggable: false}); markers.push(m36); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.053983,-88.952983);m37 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Marcum area boat ramp389", draggable: false}); markers.push(m37); bounds.extend(latlng);
+   
+   
+   
+   //Create infowindow instance. This ensures we only have 1 infowindow throughout application
+  var infowindow = new google.maps.InfoWindow();
+  
+  // Add listener to close it if you click on the map
+  google.maps.event.addListener(map, "click", function() {
+       if (infowindow) {
+            infowindow.close();
+       }
+    }); 
+   
+   google.maps.event.addListener(m1, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC24</a><br />White Tail Ridge </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC24/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC24/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC24\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m1);});
+google.maps.event.addListener(m2, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC03</a><br />Turnip Patch </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC03/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC03/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC03\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m2);});
+google.maps.event.addListener(m3, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC23</a><br />Bonnie Lane </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC23/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC23/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC23\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m3);});
+google.maps.event.addListener(m4, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC29</a><br />129/East Palestine </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC29/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC29/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC29\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m4);});
+google.maps.event.addListener(m5, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC27</a><br />128 RLCD </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC27/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC27/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC27\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m5);});
+google.maps.event.addListener(m6, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC35</a><br />126 Wood Cock Ridge </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC35/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC35/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC35\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m6);});
+google.maps.event.addListener(m7, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC34</a><br />125 Buttonbush Bay </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC34/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC34/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC34\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m7);});
+google.maps.event.addListener(m8, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC32</a><br />124 Hamilton Branch </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC32/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC32/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC32\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m8);});
+google.maps.event.addListener(m9, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC30</a><br />123 Oak Grove </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC30/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC30/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC30\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m9);});
+google.maps.event.addListener(m10, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC19</a><br />122 Ina South (Ken Gray) </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC19/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC19/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC19\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m10);});
+google.maps.event.addListener(m11, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC16</a><br />121 Ina </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC16/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC16/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC16\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m11);});
+google.maps.event.addListener(m13, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC01</a><br />117/Ward Branch </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC01/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC01/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC01\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m13);});
+google.maps.event.addListener(m14, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC02</a><br />116/C & E </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC02/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC02/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC02\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m14);});
+google.maps.event.addListener(m15, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC04</a><br />114/County Line </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC04/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC04/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC04\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m15);});
+google.maps.event.addListener(m16, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC05</a><br />113/Mine 21 </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC05/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC05/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC05\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m16);});
+google.maps.event.addListener(m17, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC06</a><br />112/Lambrusco </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC06/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC06/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC06\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m17);});
+google.maps.event.addListener(m19, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC07</a><br />110/North Jackie Branch </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC07/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC07/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC07\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m19);});
+google.maps.event.addListener(m20, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC08</a><br />109/South Jackie Branch </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC08/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC08/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC08\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m20);});
+google.maps.event.addListener(m21, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC09</a><br />108/Jackie Branch </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC09/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC09/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC09\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m21);});
+google.maps.event.addListener(m22, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC11</a><br />107/North Sandusky </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC11/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC11/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC11\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m22);});
+google.maps.event.addListener(m23, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC12</a><br />106/South Sandusky </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC12/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC12/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC12\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m23);});
+google.maps.event.addListener(m24, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC14</a><br />105/Dam West </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC14/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC14/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC14\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m24);});
+google.maps.event.addListener(m25, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC15</a><br />104/Prairie Hill </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC15/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC15/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC15\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m25);});
+google.maps.event.addListener(m26, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC22</a><br />103/River Road </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC22/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC22/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC22\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m26);});
+google.maps.event.addListener(m27, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC25</a><br />102/Spillway </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Unknown<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC25/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC25/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC25\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m27);});
+google.maps.event.addListener(m28, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC18</a><br />Atchison Creek </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC18/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC18/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC18\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m28);});
+google.maps.event.addListener(m29, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC17</a><br />Road closed parking lot </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC17/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC17/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC17\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m29);});
+google.maps.event.addListener(m30, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC31</a><br />White Oak Pond </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC31/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC31/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC31\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m30);});
+google.maps.event.addListener(m31, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC33</a><br />Cypress View </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC33/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC33/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC33\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m31);});
+google.maps.event.addListener(m32, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC26</a><br />LCDLamppost </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC26/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC26/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC26\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m32);});
+google.maps.event.addListener(m33, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC10</a><br />Blackberry Trail Parking </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC10/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC10/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC10\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m33);});
+google.maps.event.addListener(m34, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC13</a><br />Marina </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC13/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC13/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC13\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m34);});
+google.maps.event.addListener(m35, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC21</a><br />Pinetree </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC21/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC21/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC21\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m35);});
+google.maps.event.addListener(m36, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC28</a><br />Palistine West </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC28/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC28/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC28\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m36);});
+google.maps.event.addListener(m37, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC20</a><br />Marcum area boat ramp389 </b><br /><i>by: (1/1) </i><br /><br />Difficulty: 1.0 Terrain: 1.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC20/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC20/Moga2011_Parkinglogs\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC20\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m37);});
+
+   markerClusterer = new MarkerClusterer(map, markers, {
+      gridSize: 50,
+      maxZoom: 12,
+      styles: styles[0]
+   });
+
+   map.fitBounds(bounds);
+
+
+
+} // End of initialize
+
+
+</script>
+
+<script type="text/javascript" src="http://gsak.net/stats/maps/keydragzoom_packed.js"></script>
+
+<style type="text/css">
+
+   html, body {
+   height: 100%;
+   overflow: hidden;
+   font-family: Verdana;
+   font-size: 8pt;
+}
+
+body {
+background-color: white;
+margin: 0;
+}
+</style>
+
+</head>
+
+<body>
+   <div id="map"></div>
+</body>
+</html>

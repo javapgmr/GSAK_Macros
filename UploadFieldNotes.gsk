@@ -1,0 +1,663 @@
+#*******************************************
+# MacVersion = 2.0.5
+# MacDescription = Upload Field Notes to Geocaching.com
+# MacAuthor = SnoWake, Lignumaqua, Ian-and-Penny
+# MacFileName = UploadFieldNotes.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=10270&st=0&#entry66707
+#*******************************************
+#
+# V1.0.0 Much of this code is sourced from the Colorado/Oregon Macro by Lignumaqua.
+# V1.1.0 Release version
+# V2.0.0 Code changed to incorporate selection of which UserData field to sort on
+#        And GSAK 7.5 Compatibility
+# V2.0.1 Small logic change to config setup.
+# V2.0.2 Added UserSort to list of fields to use
+# V2.0.4 Updated field note character limit to 4000
+# V2.0.4 Fixed minor bug in sort order.
+# V2.0.5 Adds a dummy time to the fieldnote if a find time doesn't exist in user log
+#*******************************************
+#Debug status=on
+NoError DbVar=$d_User3;$d_User4
+IF $_Version<"7.5"
+    $ConfigForm=EditForm($ConfigForm,"Radiobutton3","Enabled","No") 
+    $ConfigForm=EditForm($ConfigForm,"Radiobutton4","Enabled","No") 
+ENDIF
+$MacroVersion="2.0.5"
+$DummyHours=12
+$DummyMinutes=0
+Gosub name=main
+
+beginsub name=main
+gosub name=ConfigurationFile
+gosub name=DNFCaches
+gosub name=FoundCaches
+gosub name=SaveNotesFile
+gosub name=Cleanup
+endsub
+
+#***********************************
+Beginsub name=ConfigurationFile
+$SettingsFile=$_Install + "\macros\UploadFieldNotes.dat"
+IF FileExists($SettingsFile)
+	$ConfigSettings =Getfile($Settingsfile)
+	IF Left($ConfigSettings,7) ="*Error*"
+        	MsgOK msg="Data File Missing"
+        	CANCEL
+    	ENDIF
+	$FileFolder=Extract($ConfigSettings,";",1)
+	$TZOffset=(Extract($ConfigSettings,";",2))
+	$DeleteFile=StrToBool(Extract($ConfigSettings,";",3))
+	$ClearFlags=StrToBool(Extract($ConfigSettings,";",4))
+	$ClearLogs=StrToBool(Extract($ConfigSettings,";",5))
+	$RadioButton1=StrToBool(Extract($ConfigSettings,";",6))
+	$RadioButton2=StrToBool(Extract($ConfigSettings,";",7))
+	$RadioButton3=StrToBool(Extract($ConfigSettings,";",8))
+	$RadioButton4=StrToBool(Extract($ConfigSettings,";",9))
+	$RadioButton5=StrToBool(Extract($ConfigSettings,";",10))
+	$SortOrder=(Extract($ConfigSettings,";",11))
+	$MacroVersion =(Extract($ConfigSettings,";",12)) 
+	$ConfigSettings =$FileFolder +";"+ $TZOffset +";"+ BoolToStr($DeleteFile,"T","F") +";"+ BoolToStr($ClearFlags,"T","F") +";"+ BoolToStr($ClearLogs,"T","F") +";"+ BoolToStr($RadioButton1,"T","F") +";"+ BoolToStr($RadioButton2,"T","F") +";"+ BoolToStr($RadioButton3,"T","F") +";"+ BoolToStr($RadioButton4,"T","F")+";"+ BoolToStr($RadioButton5,"T","F")+";"+$SortOrder+";"+$MacroVersion
+	IF $MacroVersion <>"2.0.5"
+		FILEERASE file=$SettingsFile
+		$MsgTxt = "Config file needs updating" + $_NewLine + "Dummy time will be added to fieldnotes if find time doesn't exist in user log"
+		MsgOK msg= $MsgTxt caption="Version Changed"
+		gosub name=main
+	ENDIF
+ELSE
+	$FileFolder = $_Install +"\temp"
+	$TZOffset = "10"
+	$DeleteFile =TRUE
+	$ClearFlags =TRUE
+	$ClearLogs =TRUE
+	$RadioButton1 =TRUE
+	$Radiobutton2 =FALSE
+	$Radiobutton3 =FALSE
+	$Radiobutton4 =FALSE
+	$RadioButton4 =False
+	$RadioButton5 =False
+#	$SortOrder="UserSort"
+	$MacroVersion = "2.0.5"
+	$Formdata = form($Configform,"")
+	While True
+	Begincase
+		Case $Formdata ="SystemExit"
+			MsgOK msg="Required settings not saved, macro will now cancel"
+			CANCEL
+		Case $Formdata ="CancelButton"
+			MsgOK msg="Required settings not saved, macro will now cancel"
+			CANCEL
+		Case $Formdata ="OKButton"
+			Begincase
+				Case $RadioButton1
+					$SortOrder="UserData"
+				Case $RadioButton2
+					$SortOrder="User2"
+				Case $RadioButton3
+					$SortOrder="User3"
+				Case $RadioButton4
+					$SortOrder="User4"
+				Case $RadioButton5
+					$SortOrder="UserSort"
+			Endcase
+			$ConfigSettings =$FileFolder +";"+ $TZOffset +";"+ BoolToStr($DeleteFile,"T","F") +";"+ BoolToStr($ClearFlags,"T","F") +";"+ BoolToStr($ClearLogs,"T","F") +";"+ BoolToStr($RadioButton1,"T","F") +";"+ BoolToStr($RadioButton2,"T","F") +";"+ BoolToStr($RadioButton3,"T","F") +";"+ BoolToStr($RadioButton4,"T","F")+";"+ BoolToStr($RadioButton5,"T","F")+";"+$SortOrder+";"+$MacroVersion
+			$Data = PutFile($SettingsFile,$ConfigSettings)
+		    	IF Left($Data,7) = "*Error*"
+		        	Pause Msg="$Data"
+				CANCEL 
+		    	ENDIF
+			break
+	Endcase
+	Endwhile
+ENDIF
+	$fieldnotesfile = $FileFolder+ "\FieldNotes_" + DateToString($_Today) + Remove(Time(),":","C") + ".txt"
+	$data = ""
+	$Count = 0
+	$skipedit = False
+	$expression = "\d{1,2}?:\d\d?"
+	$RestoreSort = $_SortBy
+Endsub
+ 
+#***********************************
+Beginsub name=DNFCaches
+MFILTER Expression=$d_UserFlag AND $d_DNF
+IF $_FilterCount > 0
+	SORT by=$SortOrder
+	GOTO position=top
+	WHILE NOT($_EOL)
+		$LogFound = FALSE
+		TABLE Active=Logs Scope=parent
+		WHILE NOT($_EOL) AND NOT($LogFound)
+			IF IsOwner()
+				$lt = left($d_lType,5)
+				IF ($lt="Didn'")
+   				$LogFound= TRUE
+   			ENDIF
+			ENDIF
+			GOTO Position=Next
+		ENDWHILE
+		TABLE Active=caches
+		IF NOT($LogFound)
+			$Count = $Count + 1
+			$LogDate = $d_DNFDate
+			$NoteText = Extract($d_UserNote,"$~",1)
+			$LogText = Extract($d_UserNote,"$~",2)
+			$Text = "Didn't find it"
+			IF NOT($skipedit)
+				SPEEDMODE Status=Off
+				GOSUB name=EditLog
+				SPEEDMODE Status=On
+			ENDIF
+			$LogText = Replace($_Quote,"'",$LogText,TRUE)
+			$timestring = RegExData($expression,$LogText,0)
+
+			GOSUB name=CreateDate
+			$line = $d_Code + "," + $DateTime + "," + $Text + "," + Quote($LogText) + $_NewLine
+			$data = $data + $line
+		ENDIF
+		GOTO position=next
+	ENDWHILE
+ENDIF
+gosub Name=RestoreOrder	
+Endsub
+
+#**************************************
+Beginsub name=FoundCaches
+SpeedMode Status=off
+MFILTER Expression=$d_UserFlag AND $d_Found
+IF $_FilterCount > 0
+	SORT by=$SortOrder
+	GOTO position=top
+	WHILE NOT($_EOL)
+		$LogFound = FALSE
+		TABLE Active=Logs Scope=parent
+		WHILE NOT($_EOL) AND NOT($LogFound)
+			IF IsOwner()
+				$lt = left($d_lType,5)
+				IF ($lt="Found" OR $lt="Atten" OR $lt="Webca")
+   				$LogFound= TRUE
+   			ENDIF
+			ENDIF
+			GOTO Position=Next
+		ENDWHILE
+		TABLE Active=caches
+		IF NOT($LogFound)
+			$Count = $Count + 1
+			$LogDate = $d_FoundByMeDate
+			$NoteText = Extract($d_UserNote,"$~",1)
+			$LogText = Extract($d_UserNote,"$~",2)
+			$Text = "Found it"
+			IF $d_CacheType = "E" OR $d_CacheType = "Z" OR $d_CacheType = "C"
+				$Text = "Attended"
+			ENDIF
+			IF $d_CacheType = "W"
+				$Text = "Webcam Photo Taken"
+			ENDIF
+			IF NOT($skipedit)
+				SPEEDMODE Status=Off
+				GOSUB name=EditLog
+				SPEEDMODE Status=On
+			ENDIF
+			IF Len($LogText) < 4000
+				$LogText = Replace($_Quote,"'",$LogText,TRUE)
+				$timestring = RegExData($expression,$LogText,0)
+				GOSUB name=CreateDate
+				$line = $d_Code + "," + $DateTime + "," + $Text + "," + Quote($LogText) + $_NewLine
+				$data = $data + $line
+			ELSE
+				$Message =$d_Name + $_newline + $_newline + "This cache log contains more than 4000 characters, and will not transfer correctly into field notes." + $_newline + $_newline + "This cache will need to be logged manually."
+				Pause msg=$Message
+			ENDIF
+		ENDIF
+		GOTO position=next
+	ENDWHILE
+ENDIF
+gosub Name=RestoreOrder	
+Endsub
+
+#**********************************
+Beginsub name=SaveNotesFile
+$data = UTF16($data,"e")
+IF $count >0
+	$result = PutFile($fieldnotesfile, $data)
+	IF Left($result, 7) = "*Error*"
+		# If theres any error abort the macro
+		CANCEL Msg="Unable to write to $fieldnotesfile!"
+	ELSE
+		CLIP Data=$fieldnotesfile
+		WEB URL="http://www.geocaching.com/my/uploadfieldnotes.aspx"
+		MSGOK msg="File $fieldnotesfile created. $_newline $_newline             Clipboard contains file address ready for pasting on GC.com. $_newline $_newline                  Click OK here after loading the file on GC.com"
+	ENDIF
+ELSE
+	CANCEL Msg="No Found caches without Found logs in this database."
+ENDIF
+Endsub
+
+#****************
+Beginsub name=Cleanup
+IF $DeleteFile = True
+#	Pause Msg="Delete Field Notes File?"	
+	FILEERASE File=$fieldnotesfile
+ENDIF
+
+MFILTER Expression=$d_UserFlag
+SORT by=UserData
+IF $ClearLogs
+GOTO position=top
+WHILE NOT($_EOL)
+	$LogText = Extract($d_UserNote,"$~",2)
+	IF Len($LogText) < 4000
+		PURGENOTE Type=LogOnly Range=Current
+	ENDIF
+	Goto position=next
+Endwhile
+ENDIF
+Gosub Name=RestoreOrder
+IF $ClearFlags
+	USERFLAG type=clear range=All
+ENDIF
+#CANCEL
+Endsub
+
+#**********************
+Beginsub Name=RestoreOrder
+Speedmode status=off
+Cancelfilter
+$SortData = Extract($RestoreSort, "=",1)
+$Sequence = Extract($RestoreSort, "=",2)
+SORT By=$SortData Sequence=$Sequence 
+Speedmode status=on
+Endsub
+
+#*****************************************************
+BEGINSUB name=CreateDate
+	# Enter with $LogDate, $timestring
+	# Exit with $DateTime
+	if $timestring <>""
+		$hours = val(left($timestring,2))
+		$minutes = val(right($timestring,2))
+	else
+		$DummyMinutes=$DummyMinutes+1
+			IF $DummyMinutes >= 60
+				$DummyMinutes = $DummyMinutes - 60
+				$DummyHours = $DummyHours + 1
+			ENDIF
+		$Hours=$DummyHours
+		$Minutes=$DummyMinutes
+	endif
+
+	$HoursCorrected = $Hours - val($TZOffset)
+		
+	IF $HoursCorrected >= 24
+		$HoursCorrected = $HoursCorrected - 24
+		$LogDate = $Logdate + 1
+	ENDIF
+	
+	IF $HoursCorrected < 0
+		$HoursCorrected = $HoursCorrected + 24
+		$LogDate = $LogDate - 1
+	ENDIF
+
+	$HourString = right("00$HoursCorrected",2)
+	$MinuteString = right("00$minutes",2)
+	
+	$DateTime = DateToString($LogDate)
+	$DateTime = Left($DateTime,4) + "-" + SubStr($DateTime,5,2) + "-" + SubStr($DateTime,7,2)	
+	$DateTime = $DateTime + "T" + $HourString + ":" + $MinuteString + "Z"
+ENDSUB #createdate
+
+#*****************************************************
+BEGINSUB name=EditLog
+	$EditForm = EditForm($EditForm,"CacheName","Caption","Edit '$Text' log for: $d_code: $d_name")
+	$EditForm = EditForm($EditForm,"NoteName","Caption","Notes for: $d_code: $d_name")
+	
+	IF $Text = "Didn't find it"
+		$EditForm = Editform($EditForm,"CacheName","color","255")
+	ELSE
+		$EditForm = Editform($EditForm,"CacheName","color","16744448")
+	ENDIF
+	WHILE TRUE
+		$result = Form($EditForm,"")
+		# Reset the screen position of the menu form to where the user left it
+		$EditForm = EditForm($EditForm,"Form1","Top",$_FormTop)
+  	$EditForm = EditForm($EditForm,"Form1","Left",$_FormLeft)  	
+  	BEGINCASE #Buttons
+  		CASE $Cancel
+			Gosub name="RestoreOrder"
+   			CANCEL
+		CASE $OK
+			#Strip out double quotes
+			$LogText = Replace($_Quote,"'",$LogText,TRUE)
+			$d_UserNote = $NoteText + "$~" + $LogText
+			#$d_UserNote = Extract($d_UserNote,"$~",1) + "$~" + $LogText
+			BREAK
+		CASE $skip
+			$skipedit = TRUE
+			BREAK
+		CASE $Reset
+			FILEERASE File=$SettingsFile
+			MsgOK msg="Setting File deleted, macro will now restart"
+			Gosub Name=RestoreOrder
+			gosub name=main
+			CANCEL
+		OTHERWISE 
+			CANCEL
+		ENDCASE	
+	ENDWHILE # Form Loop
+ENDSUB
+
+#********************************************************************
+<Data> VarName=$EditForm
+
+Name = Form1
+  Type = Form
+  Height = 479
+  Width = 600
+
+Name = LogText
+  Type = Memo
+  Height = 166
+  Left = 20
+  Scrollbars = Vertical
+  Top = 211
+  Width = 551
+  Taborder = 8
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 29
+  Top = 393
+  Width = 100
+  Taborder = 9
+  Caption = OK / Next Log
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 353
+  Top = 393
+  Width = 100
+  Taborder = 10
+  Caption = Cancel Macro
+
+Name = CacheName
+  Type = Label
+  Color = 16744448
+  Height = 15
+  Left = 21
+  Size = 9
+  Style = bold
+  Top = 181
+  Width = 49
+  Caption = Log for:
+
+Name = skip
+  Type = Button
+  Height = 25
+  Left = 245
+  Top = 393
+  Width = 100
+  Taborder = 11
+  Caption = Skip Editing Logs
+
+Name = NoteText
+  Type = Memo
+  Height = 90
+  Left = 20
+  Scrollbars = Vertical
+  Top = 50
+  Width = 551
+  Taborder = 12
+
+Name = Notename
+  Type = Label
+  Color = 16744448
+  Height = 15
+  Left = 21
+  Size = 9
+  Style = bold
+  Top = 20
+  Width = 55
+  Caption = Note for:
+
+Name = SpellCheck
+  Type = Button
+  Height = 25
+  Left = 137
+  Spellcheck = LogText
+  Top = 393
+  Width = 100
+  Taborder = 13
+  Caption = Spell Check
+
+Name = Reset
+  Type = Button
+  Height = 25
+  Left = 461
+  Top = 393
+  Width = 100
+  Taborder = 14
+  Caption = Reset all Settings
+
+<enddata>
+
+#********************************************************************
+<Data> VarName=$Configform
+
+Name = ConfigForm
+  Type = Form
+  Caption = Upload Field Notes - Configuration
+  Height = 234
+  Width = 455
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Sort Field
+  Height = 121
+  Left = 312
+  Top = 32
+  Width = 105
+  Taborder = 7
+
+Name = Label1
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 12
+  Width = 120
+  Caption = Field Note Storage Folder
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 44
+  Width = 82
+  Caption = Time Zone Offset
+
+Name = Label3
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 72
+  Width = 37
+  Caption = On Exit:
+
+Name = Label4
+  Type = Label
+  Height = 13
+  Left = 104
+  Top = 74
+  Width = 122
+  Caption = Delete the Field Note file?
+
+Name = Label5
+  Type = Label
+  Height = 13
+  Left = 104
+  Top = 98
+  Width = 83
+  Caption = Clear User Flags?
+
+Name = Label6
+  Type = Label
+  Height = 13
+  Left = 104
+  Top = 122
+  Width = 101
+  Caption = Clear User Log Field?
+
+Name = FileFolder
+  Type = Folder
+  Height = 21
+  Left = 152
+  Top = 8
+  Width = 257
+  Taborder = 0
+
+Name = TZOffset
+  Type = Edit
+  Height = 21
+  Left = 152
+  Top = 40
+  Width = 25
+  Taborder = 1
+
+Name = DeleteFile
+  Type = Checkbox
+  Height = 17
+  Left = 80
+  Top = 72
+  Width = 15
+  Taborder = 2
+
+Name = ClearFlags
+  Type = Checkbox
+  Height = 17
+  Left = 80
+  Top = 96
+  Width = 15
+  Taborder = 3
+
+Name = ClearLogs
+  Type = Checkbox
+  Height = 17
+  Left = 80
+  Top = 120
+  Width = 15
+  Taborder = 4
+
+Name = OKButton
+  Type = Button
+  Height = 25
+  Left = 128
+  Top = 157
+  Width = 75
+  Taborder = 5
+  Caption = OK
+
+Name = CancelButton
+  Type = Button
+  Height = 25
+  Left = 240
+  Top = 157
+  Width = 75
+  Taborder = 6
+  Caption = Cancel
+
+Name = Label7
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 8
+  Top = 41
+  Width = 45
+  Caption = UserData
+
+Name = Label8
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 8
+  Top = 62
+  Width = 28
+  Caption = User2
+
+Name = Label9
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 8
+  Top = 83
+  Width = 28
+  Caption = User3
+
+Name = Label10
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 8
+  Top = 103
+  Width = 28
+  Caption = User4
+
+Name = Radiobutton1
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 57
+  Top = 39
+  Width = 15
+  Taborder = 0
+
+Name = Radiobutton2
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 57
+  Top = 60
+  Width = 15
+  Taborder = 1
+
+Name = Radiobutton3
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 57
+  Top = 81
+  Width = 15
+  Taborder = 2
+
+Name = Radiobutton4
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 13
+  Left = 57
+  Top = 103
+  Width = 15
+  Taborder = 3
+
+Name = Label11
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 8
+  Top = 23
+  Width = 27
+  Caption = USort
+
+Name = Radiobutton5
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 57
+  Top = 20
+  Width = 15
+  Taborder = 4
+
+<enddata>
+
+########################
+
+
+

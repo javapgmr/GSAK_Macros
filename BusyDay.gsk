@@ -1,0 +1,209 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Query your found database to determine which day you found the most Cache Types
+# MacAuthor = donbadabon
+# MacFileName = BusyDay.gsk
+# MacUrl = http://gsak.net/board/index.php?act=ST&f=37&t=12164
+#*******************************************
+
+#Check to make sure they are using a compatible version of GSAK
+	VERCHECK Version=7.5.2.10 (Note: this macro requires At least GSAK 7.5.2.10)
+
+
+#Present a quick note to the user to allow them to Cancel if accidentally run
+	$Msg = "                     Have you had a busy day caching?$_NewLine$_NewLine"
+	$Msg = $Msg + "This macro will query your found database to determine $_NewLine"
+	$Msg = $Msg + "which day you found the most Cache Types.$_NewLine $_NewLine"
+	$Msg = $Msg + "It makes no changes to your data, it is a reporting tool only.$_NewLine $_NewLine"
+	$Msg = $Msg + "Please run it against your database that contains your FOUND cache records.$_NewLine $_NewLine"
+	$Msg = $Msg + "Press Continue to run the macro, or Stop to abort the run.$_NewLine $_NewLine"
+	PAUSE Msg=$Msg
+
+	$Msg=""
+#This is the name of the new database that will store our data
+	$database = "$_install\macros\BusyDay.db3"
+
+
+#If the database already exists, we want to delete it
+	IF FileExists($database)
+    	   FILEERASE File=$database OnError=Prompt
+  	ENDIF
+
+#Create the new database
+	If not(FileExists($database))
+  	   $status = sqlite("create",$database)
+	EndIf
+
+
+#Open the new database 
+	$status = Sqlite("open",$database)
+
+
+#Put up a message so the user knows it is doing something
+	SHOWSTATUS msg="Creating tables... 25%" Width=350
+
+#Refresh the SQLite Cache temporary database so we can be sure that we are getting the most up-to-date records
+	SqliteCaches
+
+#Open the main GSAK database, but attach it as 'gsakdb' to prevent any possible corruption of the main database
+	$status = SQLite("sql","ATTACH '$_CurrentDataPath\sqlite.db3' AS gsakdb")
+
+
+
+#Before we go any further, make sure there are FOUND logs in this database. If not, then abort
+	$_sql = "SELECT count(*) from gsakdb.LogsAll WHERE lisowner and g_foundlog(ltype)"
+	$num  = Sqlite("sql",$_sql)
+		
+	if $num = "0"
+		$status = sqlite("close",$database)
+		FILEERASE File=$database OnError=Continue
+		MSGOK msg="Are you sure you have 'FOUND' logs in this database? $_NewLine $_NewLine I can't seem to find any. $_NewLine $_NewLine Macro is aborting..."
+		CANCEL
+	ENDIF
+	
+
+	
+#Create a new table called 'logs' in the BusyDay.db3 database that holds found log information
+	$_sql = "CREATE TABLE logs AS SELECT lParent,lType,lDate FROM gsakdb.LogsAll WHERE "
+	$_sql = $_sql + "lisowner and g_foundlog(ltype)"
+	$status = Sqlite("sql",$_sql)
+
+#Create a new table called 'caches' in the BusyDay.db3 database that holds found cache information
+	$_sql = "CREATE TABLE caches AS SELECT Code,CacheType,FoundByMeDate FROM gsakdb.CachesTempAll"
+	$status = Sqlite("sql",$_sql)
+
+	
+#Since the 'logs' don't contain the Cache Type, add two new columns to that table to hold the Cache Type, and the Cache Type Translation
+	$_sql = "ALTER TABLE logs add Cache_type"
+	$status = Sqlite("sql",$_sql)
+
+	$_sql = "ALTER TABLE logs add Cache_type_translation"
+	$status = Sqlite("sql",$_sql)
+
+
+#We are through with the GSAK database, so close our attached gsakdb
+	$status = SQLite("sql","DETACH gsakdb")
+
+
+
+#Create a Index on the GC Waypoint name in the Caches and Logs table (this is supposed to make it run faster, not sure though
+	$status = SQLite("sql","CREATE INDEX codel ON logs(lParent)")
+	$status = SQLite("sql","CREATE INDEX codec ON caches(code)")
+
+
+#Populate the 'Cache_Type' column in the 'logs' table with data from the 'caches' table
+	$_sql = "UPDATE logs SET Cache_type = (SELECT CacheType FROM caches WHERE caches.code = logs.lParent) "
+	$status = Sqlite("sql",$_sql)
+
+
+#Since the CACHETYPE is a single letter, we want to decode it to be full words
+	$data = sqlite("sql","Update logs set Cache_type_translation ='Traditional' where Cache_type = 'T'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='Multi' where Cache_type = 'M'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='Virtual' where Cache_type = 'V'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='Letterbox' where Cache_type = 'B'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='Earth' where Cache_type = 'R'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='Webcam' where Cache_type = 'W'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='Event' where Cache_type = 'E'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='CITO' where Cache_type = 'C'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='Mega' where Cache_type = 'Z'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='Maze' where Cache_type = 'X'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='Benchmark' where Cache_type = 'G'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='WhereIgo' where Cache_type = 'I'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='Locationless' where Cache_type = 'L'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='Ape' where Cache_type = 'A'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='Waymark' where Cache_type = 'Y'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='Other' where Cache_type = 'O'")
+	$data = sqlite("sql","Update logs set Cache_type_translation ='Puzzle' where Cache_type = 'U'")
+
+
+#Create a third table in the BusyDay database that just holds the specific data we want
+	$_sql = "CREATE TABLE dates AS SELECT lParent, lDate, Cache_type_translation "
+	$_sql = $_sql + "FROM logs GROUP BY lDate, Cache_type_translation"
+	$status = Sqlite("sql",$_sql)
+
+
+#Create a new column in the 'dates' table that holds the specific date counts
+	$_sql = "ALTER TABLE dates add Ldate_Counts"
+	$status = Sqlite("sql",$_sql)	
+
+
+#Create a View called TOTALS in the BusyDay database that holds the specific date counts
+	$_sql = "CREATE VIEW IF NOT EXISTS TOTALS AS SELECT ldate, COUNT(ldate) "
+	$_sql = $_sql + "as 'COUNTS' FROM dates GROUP BY ldate"
+	$status = Sqlite("sql",$_sql)
+
+#Put up a message so the user knows it is doing something
+	SHOWSTATUS msg="Populating data.... 50%" Width=350
+
+
+#Update the dates table to include the date totals
+	$_sql = "UPDATE dates SET ldate_Counts = "
+	$_sql = $_sql + "(SELECT COUNTS FROM TOTALS WHERE TOTALS.ldate = dates.ldate)"
+	$status = Sqlite("sql",$_sql)
+
+
+#Put up a message so the user knows it is doing something
+	SHOWSTATUS msg="Finishing up..... 95%" Width=350
+
+
+#Figure out how many dates have the maximum number of found-types
+	$_sql = "SELECT MAX(COUNTS) from TOTALS"
+	$max_count  = Val(Sqlite("sql",$_sql))
+
+	$_sql = "SELECT DISTINCT ldate FROM TOTALS where COUNTS = $max_count"
+	$date_counts = Val(Sqlite("sql",$_sql))
+	
+
+#Remove all records from the dates table that are not part of the maximum finds (Ldate_counts)
+	$data = "Delete from dates where "
+	$data = $data + "Ldate_Counts NOT in (select max(ldate_counts) from dates)"
+	$status = Sqlite("sql",$data)
+
+
+#Get a count of how many total records we will be working with, to help with the line breaks
+	$_sql = "Select count(*) from dates"
+	$total_records = Val(Sqlite("sql",$_sql))
+
+	
+#Determine the number of line breaks needed
+	$line_breaks = ($total_records / $max_count)
+
+
+#Place the caches in the text file grouped by date
+	$group_counter=0
+
+	WHILE ($group_counter < $line_breaks)
+
+		$limit_counter = ($max_count * $group_counter)
+
+		$data = "Select lParent, lDate , Cache_type_translation from dates "
+		$data = $data + "order by lDate, Cache_type_translation LIMIT $limit_counter, $max_count"
+		$status = Sqlite("sql",$data)
+		
+		$msg = $msg +$status
+		$msg = $msg +$_NewLine +$_NewLine
+		
+
+		$group_counter = $group_counter + 1	
+
+	ENDWHILE
+
+	
+#This presents a popup window with the final output
+	$text=$msg
+	$msg = "$_NewLine $_NewLine On your busiest day, you found $max_count different types of caches.$_NewLine $_NewLine $_NewLine"
+	$msg = $msg + "And you've done that $line_breaks time(s). $_NewLine $_NewLine $_NewLine"
+	$msg = $msg + "Click OK to see the results in a TXT file.$_NewLine"
+	MSGOK msg=$msg
+
+
+#This will create a text file with the output of the query
+	$data= PutFile("$_install\macros\BusyDay.txt",$text)
+	FILEOPEN File="$_install\macros\BusyDay.txt"
+
+
+#This closes the database we created.
+	$status = sqlite("close",$database)
+
+#This erases the database we created - and we are done
+	FILEERASE File=$database OnError=Continue

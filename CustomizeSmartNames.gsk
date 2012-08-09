@@ -1,0 +1,122 @@
+#*******************************************
+# MacDescription = Customize Smart Names
+# MacFileName = CustomizeSmartNames.gsk
+# MacAuthor = DuneStalker
+# MacVersion=1.10
+# MacUrl=
+#*******************************************
+#
+# This macro was created out of a need to change GSAK's Smart Names
+# for each cache to something more intuitive, which is great for a
+# PDA or GPSr with a small screen.
+#
+# Complete documentation has been relocated to follow the macro code.
+#
+
+GOTO position=top
+$count = 1
+$changed = 0
+
+WHILE Not($_EOL)
+	IF left($d_Code,2) = "GC" AND Not($d_SmartOverride)
+		$d_SmartOverride = TRUE
+		$d_SmartName = "%typ1%con1%dif1a%ter1a%drop2"
+		$changed = $changed + 1
+	ELSE
+		IF Not($d_SmartOverride)
+			$d_SmartOverride = TRUE
+			$d_SmartName = "%typ1%drop2"
+			$changed = $changed + 1
+		ENDIF
+	ENDIF
+	$Status = "                    " + Str(($count/$_count)*100,6,2) + "% complete."
+	ShowStatus Msg=$Status title="Setting Smart Names . . ."
+	$count = $count +1
+	GOTO position=next
+ENDWHILE
+
+GOTO position=top
+	
+MSGOK Caption="I'm done!" msg= $changed updates to Smart Names completed. $_NewLine Smart Names are also locked to prevent $_NewLine them from being recalculated by GSAK.
+
+#
+# V E R S I O N   H I S T O R Y
+# = = = = = = =   = = = = = = =
+#
+# v1.10	11 Sep 09
+#	Added variable to track how many SmartNames were updated, and
+#	displayed the result at the end.
+#
+# v1.01	11 Aug 09
+#	Removed a couple extraneous ELSE statements some folks said were 
+#	causing problems.
+#
+# v1.00	10 Aug 09
+#	Initial release.
+#
+#
+# D O C U M E N T A T I O N
+# = = = = = = = = = = = = =
+#
+# Essentially, what this macro does is change the Smart Name for
+# each entry in your GSAK database to a name using the following
+# format:  
+#
+#  Position Definition
+#  -------- -------------------------------------------------------
+#      1    Cache Type (T = Traditional, E=Event, etc.)
+#      2    Cache Size (M = Micro, S = Small, etc.)
+#      3    Difficulty Level (A = 1.5, B = 2.5, etc.)
+#      4    Terrain Level (A = 1.5, B = 2.5, etc.)
+#   5-End*  The GC code without the "GC"
+#  * - 'End' being the position equal to the current length of the
+#      Smart Names as you already have your installation of GSAK
+#      configured for in Tools | Options... | General tab | Smart
+#      Name | Length (typically the same number of characters as the
+#      maximum waypoint name length of your GPSr).
+#
+# For example, the cache "DoubleTrouble" or GC1499A in Bellevue, NE
+# becomes TM2A1499A, which immediately identifies the cache as a
+# Traditional cache of Micro size with a difficulty rating of '2'
+# and a Terrain rating of '1.5'.
+#
+# Also, if an entry in your GSAK database doesn't start with 'GC',
+# the waypoint's Smart Name will be set using the following format:
+#
+#  Position Definition
+#  -------- -------------------------------------------------------
+#      1    Cache Type (Y = Waymark, E=Event, etc.)
+#   2-End   The waypoint code without the first 2 characters
+#
+# For example, the WayMark "Amarillo Barbecue Restaurant" or WM1BE
+# in Bellevue, NE becomes Y1BE, which immediately identifies the
+# cache as a WayMark, with no size, difficulty, etc. 
+#
+# Once the macro has completed, you'll see a message indicating all
+# your waypoints' Smart Names have been updated, and each entry's
+# Smart Name will be locked to prevent it from being overwritten by
+# GSAK's automatic Smart Name update feature.
+#
+# Why did I want my GSAK Smart Names configured this way? Because I
+# use this same format for my waypoint names when exporting my cache
+# list to a .GPX file for use in CacheMate and to my GPSr. In this
+# way, my Smart Name column is no longer ignored as I can now look
+# at my PDA/GPSr, see the waypoint name and immediately find it in
+# GSAK.
+#
+# If you like this macro, great! If not, feel free to delete it.
+# You won't offend me - I'll still be using it. :-)
+# If you have any suggestions for ways to improve this macro, please
+# drop me a line via gc.com and I'll see about incorporating your
+# recommendation(s) into a future version.
+#
+# One last note: *Many* thanks go out to the following folks who gave
+# me the original macro to improve upon, which has become what it is
+# now:
+#  lignumaqua for the basic macro which updated *all* Smart Names
+#  Kai Team for showing me how indicate the macro is *doing* something
+#  clyde for showing me another way to update the status window
+#
+# Isn't it funny how the documentation for a program is typically
+# longer than the program itself?!?! ;-)
+

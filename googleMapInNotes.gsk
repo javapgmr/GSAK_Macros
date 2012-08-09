@@ -1,0 +1,214 @@
+$rbInsert = TRUE
+if ShowForm($ChooseAction)
+
+	if $btCancel
+		#cancelled with Cancel button
+	endif
+
+	if $btGo
+
+		#Sort to anything but the UserNote field, to avoid early exit while
+		#processing records. First, save current sort field.
+		$CurrentSort = $_SortBy
+		SORT By="Name"
+	
+		if $rbInsert
+			GOSUB Name="CreateNotes"
+		endif
+		if $rbRemove
+			GOSUB Name="ClearNotes"
+		endif
+		
+		#Restore old sort sequence
+		$SortData = Extract($CurrentSort, "=", 1)
+		$Sequence = Extract($CurrentSort, "=", 2)
+		SORT By=$SortData Sequence=$Sequence 
+		
+	endif
+
+else
+
+	#cancelled with [X] button
+
+endif
+
+<Data> Varname=$ChooseAction
+Name = Form1
+  type = form
+  left = 287
+  top = 351
+  height = 179
+  width = 236
+  caption=Google Maps in Notes
+
+Name = lbChoose
+  type = Label
+  left = 15
+  top = 13
+  height = 13
+  width = 111
+  Caption = Please choose action...
+
+Name = frmGroup
+  type = GroupBox
+  left = 14
+  top = 33
+  height = 69
+  width = 203
+
+Name = rbInsert
+  type = RadioButton
+  left = 10
+  top = 15
+  height = 17
+  width = 15
+  container = frmGroup
+
+Name = lbInsert
+  type = Label
+  left = 30
+  top = 18
+  height = 13
+  width = 134
+  container = frmGroup
+  caption = Insert Google Maps in Notes
+
+Name = rbRemove
+  type = RadioButton
+  left = 10
+  top = 40
+  height = 17
+  width = 15
+  container = frmGroup
+
+Name = lbRemove
+  type = Label
+  left = 30
+  top = 43
+  height = 13
+  width = 160
+  container = frmGroup
+  caption = Remove Google Maps from Notes
+
+Name = btGo
+  type = Button
+  left = 15
+  top = 117
+  height = 25
+  width = 79
+  caption = Go!
+
+Name = btCancel
+  type = Button
+  left = 140
+  top = 117
+  height = 25
+  width = 75
+  caption = Cancel
+<EndData>
+
+
+BEGINSUB Name="CreateNotes"
+	#*******************************************************
+	# gmapnote.txt - google maps insert into user notes    
+	# Version 0.1a 
+	# 24/01/2007 Initial version tested in Beta V7
+	#
+	# This will run against your current filter and update                                                        
+	# your database usernotes to insert a Google Map
+	# it will insert Image ref after your own notes and will 
+	# try and bypass update if Image already exists
+	#
+	#*******************************************************
+	
+	$debugcode = False
+	
+	$Gmapdata = "Google Maps insert <br>"
+	$x = 0
+	$temp = GetEnvV("temp")
+	$mapdata = ""
+	Goto Position=Top
+	
+	While .not. $_eol
+	  $x = $x + 1
+	  $gmoffset=4294967296
+	  $gmlat=Val($d_Latitude) * 1e6
+	  $gmlon=Val($d_Longitude) * 1e6
+	  If ($gmlat < 0) 
+	    $gmlat=$gmlat + $gmoffset
+	  EndIf
+	  $sgmlat=NumtoStr(Int($gmlat))
+	  $sgmlon=NumtoStr(Int($gmlon))
+	  
+	  $gmapimg="<img src='http://maps.google.com/mapdata?Point=b&Point.latitude_e6="+ $sgmlat +"&Point.longitude_e6="+ $sgmlon +"&Point.iconid=15&Point=e&latitude_e6="+ $sgmlat +"&longitude_e6="+ $sgmlon +"&zm=2000&w=300&h=280&cc=us&min_priority=1' BORDER=1>"  
+	  #$mapdata = $mapdata + $d_Name +" : "+$d_Latitude + " ," + $d_Longitude +$_NewLine + $gmapimg + $_NewLine
+	
+	  # $mapdata = $mapdata + $d_Name +" : "+$d_Latitude +"("+ NumtoStr($gmx) + ") ," + $d_Longitude + " gmy ("+ NumtoStr($gmy) + " )"+$_NewLine
+	  
+	  if At($Gmapdata,$d_UserNote) = 0
+	    $oldnote=$d_UserNote
+	    $d_UserNote=$Gmapdata +  $_NewLine + $gmapimg + $_NewLine + $oldnote
+	    $mapdata = $mapdata + "Updating Notes for: " + $d_Name  + $_NewLine
+	  else
+	    $mapdata = $mapdata + "skipped Notes update: " + $d_Name  + $_NewLine
+	  EndIf
+	  
+	  Goto Position=Next
+	  
+	EndWhile
+	
+	$mapdata = $mapdata + "Total records:"+ NumToStr($x)
+	
+	if $debugcode
+	  $FileName = $temp + "\gmapdata.txt"
+	  $Error = PutFile($FileName,$mapdata)
+	  OpenFile file="$FileName"
+	EndIf
+
+ENDSUB
+
+BEGINSUB Name="ClearNotes"
+
+	#*******************************************************
+	# cleargmapnote.txt - google maps insert into user notes    
+	# Version 0.1 
+	# 24/01/2007 Initial version tested in Beta V7
+	#
+	# This will run against your current filter and update                                                        
+	# your database usernotes to remove a Google Map
+	#
+	#*******************************************************
+	
+	$debugcode = False
+	
+	$Gmapdata = "Google Maps insert <br>"
+	$x = 0
+	$temp = GetEnvV("temp")
+	$mapdata = ""
+	Goto Position=Top
+	
+	While .not. $_eol
+	  
+		$x = $x + 1
+	  
+	  If At($Gmapdata,$d_UserNote) <> 0
+	    $oldnote=$d_UserNote
+	    $sregexp=$Gmapdata + $_NewLine + "<img.*>" + $_NewLine
+	    $newnote=RegExReplace($sregexp, $oldnote, "") 
+	    $mapdata = $mapdata + "old note: " +$oldnote +$_NewLine + "new note: " + $newnote + $_NewLine
+	    $d_UserNote=$newnote
+	  EndIf
+	  
+	  Goto Position=Next
+	  
+	EndWhile
+	
+	$mapdata = $mapdata + "Total records:"+ NumToStr($x)
+	
+	if $debugcode
+	  $FileName = $temp + "\gmapdata.txt"
+	  $Error = PutFile($FileName,$mapdata)
+	  OpenFile file="$FileName"
+	EndIf
+
+ENDSUB

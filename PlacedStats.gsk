@@ -1,0 +1,297 @@
+#***********************
+# MacDescription = Generate Stats for Placed Caches
+# MacFileName = PlacedStats.gsk
+# MacAuthor = Kai Team
+# MacVersion=2.4
+# MacURL=http://gsak.net/board/index.php?showtopic=5526&view=findpost&p=31498
+#***********************
+# Version check
+VERCHECK Version=7.1.0.38 (You can find the latest version of GSAK in the forums at http://support.gsak.net/)
+GOSUB Name=DeclareVariables
+
+#Save current environment
+$CurrentSort = $_SortBy
+$CurrentFilter = SaveFilter()
+$CurrentDB = $_CurrentDatabase
+
+# Initialize some variables
+$UserDataFile=$_Install + "\Macros\PlacedStatsUserData.dat"
+$PlacedStatsData=$_Install + "\Macros\PlacedStatsData.txt"
+$dblist=Sysinfo("Databases")
+$Data="Name" + ";" + "URL" + ";" + "Code" + ";" + "Placed" + ";" + "Age" + ";" + "Type" + ";" + "Difficulty" + ";" 
+$Data=$Data + "Terrain" + ";" + "Status" + ";" + "Finds" + ";" + "AvgDays" + ";" + "LogMin" + ";" + "LogMax" + ";" 
+$Data=$Data + "LogAverage" + ";" + "Adopted" + $_NewLine
+$OverallTotalFinds = 0
+
+#Create (or Replace) the Placed Stats Data File with header line
+$Error = PutFile($PlacedStatsData,$Data)
+IF Left($Error,7) = "*Error*"
+    Pause Msg="$Error"
+    CANCEL
+ENDIF
+
+# Main section of the macro:
+#Check for the existence of the PlacedStatsUserData file
+IF FileExists($UserDataFile)
+    FILEREAD File=$UserDataFile
+        $PlacedDatabase=Extract($line, ";", 1)
+    ENDREAD 
+ELSE
+    GOSUB name=GetUserDB
+ENDIF   
+
+GOSUB name=ChangeDB #and filter for placed caches
+GOSUB name=GatherLogs
+GOSUB name=GatherStats
+
+# Restore database, filter, and sort
+IF $CurrentDB<>$_CurrentDatabase
+    DATABASE Name=$CurrentDB Action=Select
+ENDIF
+    
+IF restorefilter($CurrentFilter, True) = 0
+    PAUSE msg="Previously-set filter would now show no records. Clearing."
+ENDIF 
+
+$sortdata = Extract($CurrentSort, "=",1)
+$sequence = Extract($CurrentSort, "=",2)
+SORT by=$sortdata Sequence=$sequence
+
+
+########################
+# Start of Subroutines #
+########################
+
+BEGINSUB Name=GetUserDB
+
+IF Showform($SelectDBForm)
+    IF $GenerateBtn
+        $PlacedDatabase=$DBCbxDB
+        #Save User Information for next time
+        $result = PutFile($UserDataFile, $PlacedDatabase + ";")
+        IF Left($result, 7) = "*Error*"
+            # If theres any error abort the macro
+            CANCEL Msg=Unable to write to $UserDataFile!
+	    ENDIF
+    ENDIF
+    IF $CancelBtn
+        CANCEL Msg="Macro Cancelled"
+    ENDIF 
+ENDIF       
+ENDSUB
+
+BEGINSUB Name=ChangeDB
+    IF $PlacedDatabase<>$_CurrentDatabase
+        DATABASE Name=$PlacedDatabase Action=Select
+    ENDIF
+    MFILTER Expression=IsOwner()
+    IF $_FilterCount=0
+        CANCEL Msg=No placed caches were found in this database.
+    ENDIF
+    GOTO Position=Top
+ENDSUB      
+
+BEGINSUB Name=GatherLogs
+    $file = $_Install + "\macros\PlacedLogs.txt"
+    $status = DbToSql("Logs","lParent,lType,lBy,lDate,lLogid,lOwnerid",$file,"")
+ENDSUB
+
+
+BEGINSUB Name=GatherStats
+    WHILE NOT($_EOL)
+        $Data=""
+        $Finds=""
+        $Finders=""
+        $Adopted="F"
+        $CacheName=Replace(";",",",$d_Name,TRUE)
+        $CacheName=Replace("'","",$CacheName,TRUE)
+        $CacheName=$CacheName + ";"
+        $CacheURL=$d_Url + ";"
+        $CacheCode=$d_Code + ";"
+        $PlacedDate=DateToString($d_PlacedDate)
+        $PlacedDate=Left($PlacedDate,4) + "-" + SubStr($PlacedDate,5,2) + "-" + Right($PlacedDate,2)
+        $PlacedDate=$PlacedDate + ";"
+        $CacheType=$d_CacheType
+        # Convert Cache Type from Abbreviation to Full Name
+        $AbbTypes="ABCELMORTUVWZ"
+        $FullTypes="Project Ape;Letterbox;CITO;Event;Locationless;Multi;Other;Earth;Traditional;Unknown/Mystery;Virtual;Webcam;Mega event;"
+        $Position = At($CacheType,$AbbTypes)
+        $CacheTypeFull = Extract($FullTypes,";",$Position)+ ";"
+        $CacheDif=NumToStr($d_Difficulty) + ";"
+        $CacheTer=NumToStr($d_Terrain) + ";"
+        $CacheStatus="Available" + ";"
+        IF $d_TempDisabled
+            $CacheStatus="Temp Disabled" + ";"
+        ENDIF
+        IF $d_Archived
+            $CacheStatus="Archived" + ";"
+        ENDIF
+        IF $d_HasUserNote
+			IF RegEx("PlacedStatsAdopted",$d_UserNote)
+				$Adopted = "T"
+			ENDIF
+		ENDIF
+
+        $AgeInDays=DateDiff($d_PlacedDate,$_Today)
+        $AgeInMonths=Alltrim(Str($AgeInDays/30.1,4,1)) + ";"
+        GOSUB Name=CountFinds
+        IF $TotalFinds>0
+            $AvgDaysPerLog=NumToStr(Int(10 * $AgeInDays/$TotalFinds))+";"
+        ELSE
+            $AvgDaysPerLog="9998"+";"
+        ENDIF     
+        IF $d_Archived
+        	$AvgDaysPerLog = "9999"+";"
+        ENDIF
+        $Finds=NumToStr($TotalFinds)+ ";"
+        $OverallTotalFinds=$OverallTotalFinds+$TotalFinds
+        $lMin = NumToStr($LogMin)+";"
+        $lMax = NumToStr($LogMax)+";"
+        $lAverage = NumToStr(Int($LogAverage)) + ";"
+        $Data=$Data + $CacheName+$CacheURL+$CacheCode+$PlacedDate+$AgeInMonths+$CacheTypeFull+$CacheDif+$CacheTer+$CacheStatus+$Finds+$AvgDaysPerLog+$lMin+$lMax+$lAverage+$Adopted+$_NewLine
+        #Write data for this cache to the file
+        $Error = AppendFile($PlacedStatsData,$Data)
+        IF Left($Error,7) = "*Error*"
+            Pause Msg="$Error"
+            CANCEL
+        ENDIF
+        GOTO Position=Next
+    ENDWHILE
+    MSGOK msg=Placed Stats Sucessfully Generated
+ENDSUB    
+
+      
+BEGINSUB Name=CountFinds
+    $TotalFinds=0
+    $LogMin = 10000
+    $LogMax = 0
+    $LogAverage = 0
+    TABLE Active=logs Scope=Parent
+    GOTO Position=Top
+    WHILE NOT($_EOL)
+        IF ($d_lType="Found it") OR ($d_lType="Webcam Photo Taken") OR ($d_lType="Attended")
+            $TotalFinds=$TotalFinds+1
+#            $Finders=$Finders +  $d_lBy + ";" + $d_lOwnerId + ";"
+				    #Word count
+				    $LogLength = RegExCount("\w+",$d_lText)
+            IF $LogLength > $LogMax
+                $LogMax = $LogLength
+            ENDIF  
+            IF $LogLength < $LogMin
+                $LogMin = $LogLength
+            ENDIF  
+            $LogAverage = $LogAverage + $LogLength
+        ENDIF 
+        GOTO Position=Next
+    ENDWHILE 
+    IF $TotalFinds>0  
+        $LogAverage = $LogAverage / $TotalFinds
+    ENDIF
+    TABLE Active=Caches
+ENDSUB    
+ 
+BEGINSUB Name=DeclareVariables
+#*******************************************************
+#   Variable declarations for
+#   PlacedStats.gsk
+#
+#   Generated 05-25-07 5:38:39 PM on GSAKVariables.gsk Rev V0.20 B4
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$AbbTypes Type=String
+Declare Var=$Adopted Type=String
+Declare Var=$AgeInDays Type=Numeric
+Declare Var=$AgeInMonths Type=String
+Declare Var=$AvgDaysPerLog Type=String
+Declare Var=$CacheCode Type=String
+Declare Var=$CacheDif Type=String
+Declare Var=$CacheName Type=String
+Declare Var=$CacheStatus Type=String
+Declare Var=$CacheTer Type=String
+Declare Var=$CacheType Type=String
+Declare Var=$CacheTypeFull Type=String
+Declare Var=$CacheURL Type=String
+Declare Var=$CurrentDB Type=String
+DECLARE Var=$CurrentFilter Type=String
+DECLARE Var=$CurrentSort Type=String
+Declare Var=$Data Type=String
+Declare Var=$dblist Type=String
+Declare Var=$Error Type=String
+DECLARE Var=$file Type=String
+Declare Var=$Finders Type=String
+Declare Var=$Finds Type=String
+Declare Var=$FullTypes Type=String
+DECLARE Var=$LogMin Type=Numeric
+Declare Var=$LogMax Type=Numeric
+Declare Var=$LogAverage Type=Numeric
+Declare Var=$lMin Type=String
+Declare Var=$lMax Type=String
+Declare Var=$lAverage Type=String
+Declare Var=$LogLength Type=Numeric
+Declare Var=$OverallTotalFinds Type=Numeric
+Declare Var=$OwnerIDEdt Type=String
+Declare Var=$OwnerIDNum Type=Numeric
+Declare Var=$OwnerName Type=String
+Declare Var=$PlacedDatabase Type=String
+Declare Var=$PlacedDate Type=String
+Declare Var=$PlacedStatsData Type=String
+Declare Var=$Position Type=Numeric
+Declare Var=$result Type=String
+Declare Var=$SelectDBForm Type=String
+DECLARE Var=$sequence Type=String
+DECLARE Var=$sortdata Type=String
+DECLARE Var=$status Type=String
+Declare Var=$TotalFinds Type=Numeric
+Declare Var=$UserDataFile Type=String
+Declare Var=$UserVariables Type=String
+
+ENDSUB
+
+<Data> Varname=$SelectDBForm
+#********************************************************************
+# Form generated by GSAK form designer on Mon 28-May-2007 11:07:29
+#********************************************************************
+
+Name = Form1
+  type = form
+  height = 158
+  width = 308
+  caption = Placed Caches Database
+
+Name = FrmLbl1
+  type = Label
+  left = 22
+  top = 18
+  height = 13
+  width = 246
+  caption = Select the database containing your placed caches:
+
+Name = DBCbxDB
+  type = ComboBox
+  left = 23
+  top = 43
+  height = 21
+  width = 255
+  values = $dblist
+
+Name = GenerateBtn
+  type = Button
+  left = 24
+  top = 83
+  height = 28
+  width = 85
+  caption = Generate Stats
+
+Name = CancelBtn
+  type = Button
+  left = 194
+  top = 83
+  height = 25
+  width = 85
+  caption = Cancel
+
+<EndData>

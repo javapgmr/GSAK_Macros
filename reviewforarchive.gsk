@@ -1,0 +1,174 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Review for Archived Caches after loading a fresh pocket query
+# MacAuthor = javapgmr
+# MacFileName = reviewforarchive.gsk
+#*******************************************#
+
+# Check that GSAK version is new enought to run this macro
+VerCheck Version=6.6.2.25 (please update GSAK to the latest version to run this macro - see http://gsak.net)
+
+# Go to subroutine to determine Database where unfound caches are kept ($NotFoundDB)
+GOSUB Name=DeclareVariables
+GOSUB Name=Saved_Data
+
+#Change to the Database where unfound caches are kept
+DATABASE Name=$NotFoundDB 
+
+#Clear all userflags
+USERFLAG type=clear range=all
+
+#Filter for Caches that were not updated since the last Pocket Query
+Mfilter IF=$d_LastGPXDate<($_Today-VAL($UpdateFrequency)) .AND. $d_OwnerId <> Str($p_ownerid)
+IF $_FilterCount=0
+Pause Msg= There are no caches to review (all caches are up-to-date). $_NewLine Click 'Continue' to return to GSAK.
+CANCEL
+EndIF
+
+#Go online to check each cache in the filter for archive status, if yes, set user flag
+SPEEDMODE STATUS=off
+GoTo Position=Top
+While not($_EoL)
+##WEB URL="http://www.geocaching.com/seek/cache_details.aspx?wp=%code"
+  INPUT Msg="Is this cache archived (Y/N)?" Default="N" VarName=$Archived
+     IF Upper($Archived)="Y"
+     USERFLAG type=set range=1
+     EndIF
+  Goto Position=Next
+EndWhile
+SPEEDMODE STATUS=on
+Mfilter IF=$d_UserFlag
+GoTo Position=Top
+
+INPUT Msg="Do you want to delete the archived caches currently shown in the GSAK grid (Y/N)?" Default="Y" VarName=$UDelete
+IF Upper($UDelete)="Y"
+MACROSET  Dialog=Delete VarName=$Delete
+DELETE Settings=<macro>
+EndIF
+
+#########################################################
+# Subroutine to determine if folder and file locations were previously saved and, if not, prompt the user and save the data.
+#########################################################
+BEGINSUB Name=Saved_Data
+
+# Set the file path
+$datafile=$_Install + "\Macros\ReviewArchived.dat"
+
+# Does the file exist?
+IF (FileExists($datafile))
+
+   # Yes? Read config values and assign to variables
+   FILEREAD File=$datafile
+      $NotFoundDB=EXTRACT($line, ";", 1)
+      $UpdateFrequency=EXTRACT($line, ";", 2)
+   ENDREAD
+
+ELSE
+
+   # Get the Database where the User's Unfound Caches are Stored
+   $NotFoundDB=""
+   $UpdateFrequency="7"
+   GoSub Name=SelectDB
+   $NotFoundDB=$DBName
+   # Determine the Frequency of the User's PQ (in days) ($UpdateFrequency)
+   INPUT Msg="Enter the frequency of your Pocket Queries, in days (e.g. weekly=7):" Default="7" VarName=$UpdateFrequency
+
+   # Save those user choices into $datafile, separated by ";"
+   $UChoices=$NotFoundDB + ";" + $UpdateFrequency + ";"
+   $SavedFile=PUTFILE($datafile, $UChoices)
+   IF Left($SavedFile, 7) = "*Error*"
+      CANCEL Msg="Unable to write to $datafile!"
+   ENDIF
+ENDIF
+ENDSUB
+
+################################################################
+#Subroutine to allow user to select from a list of avaialable GSAK databases
+################################################################
+BeginSub Name=SelectDB
+# Gather all DB names and save to $DBs variable delimited by ";"
+$DataFolder=$_Install+"\Data"
+$DirFile=$_Install+ "\Temp\DirTmp.txt"
+runpgm pgm="Cmd.exe" parms=/C dir /ad /b "$DataFolder" >"$DirFile"
+$DirTxt = GetFile($DirFile)
+$DBs = Replace($_Newline,";",$DirTxt,True)
+
+#Count the number of existing Databases, store as $DBNum
+$DBNum=RegExCount(";", $DBs)
+
+$Choice=0
+$Result=5
+
+#Iterate through available databases 4 at a time, allowing user to select from those shown
+While $Result=5
+  GoSub name=Choose
+EndWhile
+
+#Select the database per the user's choice
+$DBChosen=$Choice - (4-$Result)
+$DBName=Extract($DBs, ";", $DBChosen)
+
+BeginSub name=Choose
+$Choice=$Choice+ 1
+
+#Cancel Macro if all database choices are exhausted
+IF $Choice>$DBnum
+CANCEL  Msg="No more databases to choose - macro cancelled"
+EndIF
+
+#Assign options to the Choose command based on iteration through avaialable databases
+$Option1=Extract($DBs, ";", $Choice)
+$Choice=$Choice+1
+$Option2=Extract($DBs, ";", $Choice)
+$Choice=$Choice + 1
+$Option3=Extract($DBs, ";", $Choice)
+$Choice=$Choice + 1
+$Option4=Extract($DBs, ";", $Choice)
+
+#Assign option 5 in choose command based on availability of more choices
+IF $Choice<$DBnum
+  $Option5="Show more database choices..."
+ELSE
+  $Option5="No More Databases to Choose - Cancel Macro"
+EndIF
+
+#Allow user to choose among the four options shown
+CHOOSE Msg="Select the desired GSAK Database" opt1="$Option1" opt2="$Option2" opt3="$Option3" opt4="$Option4" opt5="$Option5" 
+EndSub
+EndSub
+
+###################################
+#Saved Delete Settings
+###################################
+
+<data> VarName=$Delete
+[TfmDelete]
+cbxStop.Checked=False
+rbtFilter.Checked=True
+rbtFlagged.Checked=False
+rbtOnly.Checked=False
+<enddata>
+
+BEGINSUB Name=DeclareVariables
+Option Explicit=Yes
+Declare Var=$Choice Type=Numeric
+Declare Var=$datafile Type=String
+Declare Var=$DataFolder Type=String
+Declare Var=$DBChosen Type=Numeric
+Declare Var=$DBName Type=String
+Declare Var=$DBNum Type=Numeric
+Declare Var=$DBs Type=String
+Declare Var=$Delete Type=String
+Declare Var=$DirFile Type=String
+Declare Var=$DirTxt Type=String
+Declare Var=$NotFoundDB Type=String
+Declare Var=$Option1 Type=String
+Declare Var=$Option2 Type=String
+Declare Var=$Option3 Type=String
+Declare Var=$Option4 Type=String
+Declare Var=$Option5 Type=String
+Declare Var=$Result Type=Numeric
+Declare Var=$SavedFile Type=String
+Declare Var=$UChoices Type=String
+Declare Var=$UpdateFrequency Type=String
+EndSub

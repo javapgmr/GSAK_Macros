@@ -1,0 +1,975 @@
+#*********************************************************************************
+# MacFileName:	 = DbTextSearch.Gsk
+# MacAuthor      = Wayne (Team Red Roo)
+# MacDescription = Database Text Search Macro
+# MacVersion     = 2.3 Beta
+# MacUrl         = http://gsak.net/board/index.php?showtopic=4462
+#*********************************************************************************
+# MacNotes: Optionally sets the User Flag or FTF flag.
+# Updates :
+# 02/05/07  Modified to preselect records using a filter.
+# 19/05/07  Added FTF flagging as optional.
+# 30/05/07  Removed Form B and modified the main form to simplify data input. Also
+#           changed the process structure to add flexibility. Renamed Form C to B.
+# 01/06/07  Added a Process Restart button.
+# 02/06/07  Removed 2nd filter due to the unnecessary screen complexity and the
+#           probability that it would not get used (I never use it).
+# 18/10/07  Added a no display option radiobutton and your Gsak Geo Id is now
+#           displayed on screen.
+# 03/07/08  Altered the UCheck routine because of a display problem detected by .
+#           Renamed several variables to be more consistent with their task.
+###################################################################################
+  VERCHECK Version=7.2.0.0 (Please update your GSAK to the current version.)
+  GOSUB Name=Initialise
+
+  WHILE $Restart
+      SHOWSTATUS Msg=x Display=Off
+      CANCELFILTER 
+      GOSUB Name=SetFormVariables
+      WHILE ShowForm($FormA)
+          $FormA = EditForm($FormA,"SearchStr","Color","16777215")
+          $Restart=False
+          $Continue=False
+          IF $Me
+              GOSUB Name=UCheck
+              $ChkAllLogs=FALSE
+              $ChkMyLogs=TRUE
+          ENDIF 
+          IF $Clear
+              $NewUserId=""
+              $Method1=FALSE
+              $Method2=FALSE
+              $Method3=FALSE
+              $Method4=TRUE
+          ENDIF 
+          IF $BeginBtn
+              $Continue=True
+              IF IsEmpty($SearchStr)
+                  $FormA = EditForm($FormA,"SearchStr","Color","8454143")
+                  $F1Error="You must enter a something to search for $CrLf  or you will continue to get this message."
+                  $Continue=False
+              ENDIF 
+          ENDIF 
+          IF $ExitBtn
+              CANCEL 
+          ENDIF 
+          IF $Continue
+              BREAK 
+          ENDIF 
+      ENDWHILE 
+      GOSUB Name=StartSearch
+  ENDWHILE 
+
+  IF $SetMFlag Or $SetBothFlags
+      MFILTER If=$d_MacroFlag
+  ELSE 
+      MFILTER If=$d_UserFlag
+  ENDIF 
+  GOSUB Name=CheckDisplayReqs
+  RETURN 
+###################################################################################
+##################################  End of Macro  #################################
+###################################################################################
+  BEGINSUB Name=StartSearch
+      SHOWSTATUS Msg="Data Base Search - working..."  Top=0 Width=400
+      GOSUB Name=ClearFlags
+      GOSUB Name=CheckUserId
+      IF $NewUserId=""
+          $ChkMyLogs=FALSE
+          $ChkAllLogs=TRUE
+      ELSE 
+          $ChkMyLogs=TRUE
+          $ChkAllLogs=FALSE
+      ENDIF 
+      GOSUB Name=SetFilter
+      GOSUB Name=CheckLogs
+      IF $FilterRun AND $_FilterCount = 0
+          MSGOK Msg="'$SearchStr' was not Found.. $CrLf$CrLf Press OK to search again."
+          $FilterRun=FALSE
+      ENDIF 
+      IF $FCnt=0
+          $Restart=True
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=UCheck
+      $UserId=AllTrim(SysInfo("gsakini;TfmConfig;EdtGeoName.Text"))
+      $NewUserId = $UserId     
+      $Method1=False
+      $Method2=False
+      $Method3=False
+      $Method4=False
+      BEGINCASE 
+          CASE SysInfo("gsakini;TfmConfig;RbtExact.Checked")="True"
+              $Method1=True
+          CASE SysInfo("gsakini;TfmConfig;RbtWild.Checked")="True"
+              $Method2=True
+          CASE SysInfo("gsakini;TfmConfig;RbtId.Checked")="True"
+              $Method3=True
+          CASE SysInfo("gsakini;TfmConfig;RbtRegex.Checked")="True"
+              $Method4=True
+      ENDCASE 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=CheckUserId
+#   If the user has entered new GC Id(s) or new Geocacher name(s), place them
+#   into the $UserId string for testing.
+#
+#   For $Method1, this routine only needs set the $Method variable.
+#   For $Method2, this routine attempts to replace Gsak wildcard codes in $UserId
+#   with alternative Regex matching codes. - Not exact but hopefully acceptable.
+#   For $Method3 or $Method4, this routine checks for and alters commas and/or
+#   semicolons to the correct separator ("|") between multiple GC Id's or between
+#   multiple geocacher names. This allows Regex testing for either method.
+#
+#   Errors will occasionally happen when matching GC Id's using the Regex method.
+#   e.g. a GC Id of 94731 will also match 194731, 294731 and 394731 etc.
+#   The advantage with Regex matching is being able to input multiple Names/GC Id's.
+      SHOWSTATUS Msg="Checking User Id"
+      IF $NewUserId <> ""
+          $UserId=$NewUserId	# Place the new GC Id/ Geocaching Name into $UserId.
+      ENDIF 
+      IF $Method1				# Exact matching
+          $Method=1
+      ENDIF 
+      IF $Method2				# Wildcard matching
+          $UserId=Replace("*",".",$UserId,True)   # any string
+          $UserId=Replace("?","\w",$UserId,True)  # any character
+          $UserId=Replace("#","\d",$UserId,True)  # any numeric
+          $UserId=Replace("$","\w",$UserId,True)  # any alphanumeric character
+          $UserId=Replace("@","\w",$UserId,True)  # any alpha
+          $UserId=Replace("~","\W",$UserId,True)  # any non-alpha
+          $Method=2
+      ENDIF 
+      IF ($Method3) Or ($Method4)		# GC Id or Regex matching
+          WHILE At(";",$UserId) > 0 Or At(",",$UserId) > 0
+              $UserId=Replace(";","|",$UserId,True)
+              $UserId=Replace(",","|",$UserId,True)
+          ENDWHILE 
+          $Method=3
+          IF $Method4
+              $Method=4
+          ENDIF 
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=ClearFlags
+      SHOWSTATUS Msg="Checking flags"
+      IF ($SetMFlag) Or ($SetBothFlags)
+          MACROFLAG Type=Clear Range=All
+      ENDIF 
+      IF ($SetFlagUF) Or ($SetBothFlags)
+          MFILTER If=$d_UserFlag=True
+          $UfCnt=$_FilterCount
+          IF ($UfCnt>0)
+              $Msg0="You have selected to set the User Flag"+$CrLf+$CrLf
+              $Msg0=$Msg0+"Currently there are $UfCnt user Flags set."+$CrLf+$CrLf
+              $Msg0=$Msg0+"Press Continue to clear the User Flag/s before continuing OR"+$CrLf
+              $Msg0=$Msg0+"Press Skip to continue but leave the User Flags as they are."
+              PAUSE Msg=$Msg0
+              USERFLAG Type=Clear Range=All
+          ENDIF 
+          CANCELFILTER 
+      ENDIF 
+      IF $SetFlagFTF
+          MFILTER If=$d_FTF=True
+          $UfCnt=$_FilterCount
+          IF ($UfCnt>0)
+              $Msg0="You have selected to set First to Find Flags"+$CrLf+$CrLf
+              $Msg0=$Msg0+"Currently there are $UfCnt FTF Flags set."+$CrLf+$CrLf
+              $Msg0=$Msg0+"Caches with the FTF Flag currently set will not be altered"+$CrLf
+              MSGOK Msg=$Msg0
+          ENDIF 
+          CANCELFILTER 
+      ENDIF 
+  ENDSUB 
+##################################################################################
+  BEGINSUB Name=SetFilter
+      IF $SearchStr <> "."
+          $FilterRun=TRUE
+          $CheckDesc=$SrchFldDesc
+          $CheckLogs=$SrchFldLogs
+          $CheckBoth=$SrchFldBoth
+          SHOWSTATUS Msg="Selecting cache records..."
+          MACROFLAG Type=Clear Range=All
+
+          $DynamicFilter=$StaticFilter
+          $DynamicFilter=$DynamicFilter+"edtFull=$SearchStr"+$CrLf
+
+          IF ($CheckDesc) Or ($CheckBoth)
+              $DynamicFilter=$DynamicFilter+"chkFullDes=True"+$CrLf
+          ELSE 
+              $DynamicFilter=$DynamicFilter+"chkFullDes=False"+$CrLf
+          ENDIF 
+
+          IF ($CheckLogs) Or ($CheckBoth)
+              $DynamicFilter=$DynamicFilter+"chkFullLogs=True"+$CrLf
+          ELSE 
+              $DynamicFilter=$DynamicFilter+"chkFullLogs=False"+$CrLf
+          ENDIF 
+
+          $DynamicFilter=$DynamicFilter+""+$CrLf
+
+          MACROSET Dialog=Filter Varname=$DynamicFilter
+          FILTER Name=<macro>
+          MACROFLAG Type=Set Range=FILTER
+          $SelectCount=$_FilterCount
+      ENDIF 
+      IF $SelectCount=0
+          $SelectCount=$_Count
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=CheckLogs
+
+      IF ($Display) Or ($Both)
+          SPEEDMODE Status=Off
+      ENDIF 
+      $FCnt=0
+      $RecCntr=0
+      GOTO Position=Top
+      WHILE Not ($_eol) And Not ($Restart)
+          $RecCntr=$RecCntr+1
+          $Check1=False
+          IF ($CheckDesc) Or ($CheckBoth)
+              IF Regex($SearchStr,$d_ShortDescription) Or Regex($SearchStr,$d_LongDescription)
+                  $Check1=True
+                  $FCnt=$FCnt+1
+              ENDIF 
+          ENDIF 
+          SHOWSTATUS Msg="Db Query - Finds: $FCnt   Record: $RecCntr"
+          IF $Check1
+              GOSUB Name=FoundData
+          ENDIF 
+          IF ($SrchFldLogs) or ($SrchFldBoth)
+              TABLE Active=Logs Scope=Parent
+              GOTO Position=Top
+              $LogCntr=0
+              WHILE Not ($_eol) And Not($Restart)
+                  $Check2=False
+                  $LogCntr=$LogCntr+1
+                  IF $ChkAllLogs
+#                      GOSUB Name=CheckText
+                      IF Regex($SearchStr,$d_LText)
+                          $Check2=True
+                          $FCnt=$FCnt+1
+                      ENDIF 
+                  ELSE 
+                      IF ($ChkMyLogs)
+                          IF $Method=1				# Exact matching
+                              IF ($UserId=$d_LBy)
+                                  GOSUB Name=CheckText
+                              ENDIF 
+                          ENDIF 
+                          IF $Method=2				# Wildcard matching
+                              IF Regex($UserId,$d_LBy)
+                                  GOSUB Name=CheckText
+                              ENDIF 
+                          ENDIF 
+                          IF $Method=3				# GC Id matching
+                              IF Regex($UserId,AllTrim(Str($d_LOwnerId,8,0)))
+                                  GOSUB Name=CheckText
+                              ENDIF 
+                          ENDIF 
+                          IF $Method=4				# Regex matching
+                              IF Regex($UserId,$d_LBy)
+                                  GOSUB Name=CheckText
+                              ENDIF 
+                          ENDIF 
+                      ENDIF 
+                  ENDIF 
+                  SHOWSTATUS Msg="Data Base Search - Found: $FCnt    Record: $RecCntr - Log: $LogCntr"
+                  IF $Check2
+                      GOSUB Name=FoundData
+#                  ELSE
+#                  	MACROFLAG Type=Clear Range=1
+                  ENDIF 
+                  GOTO Position=Next
+              ENDWHILE 
+          ENDIF 
+          TABLE Active=Caches
+          GOTO Position=Next
+      ENDWHILE 
+      SPEEDMODE Status=On
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=CheckText
+      IF Regex($SearchStr,$d_LText)
+          $Check2=True
+          $FCnt=$FCnt+1
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=FoundData
+      IF ($Display) Or ($Both)
+          GOSUB Name=DisplayLogFrm
+      ENDIF 
+      IF $SetMFlag Or $SetBothFlags	# Set the MacroFlag if selected.
+          MACROFLAG Type=Set Range=1
+      ENDIF 
+      IF $SetFlagUF Or $SetBothFlags	# Set the UserFlag if selected.
+          USERFLAG Type=Set Range=1
+      ENDIF 
+      IF $SetFlagFTF
+          $d_Ftf=True
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=DisplayLogFrm
+
+      $FormB = EditForm($FormB,"Form2","Caption","Displaying $RecCntr of $SelectCount")
+      IF $SrchFldDesc
+          $FoundLogDisplay="$d_ShortDescription"+$CrLf+$CrLf+"$d_LongDescription"
+          $FormB = EditForm($FormB,"F3Lbl1","Caption","$d_LParent   -  $d_Name")
+          $FormB = EditForm($FormB,"F3Lbl2","Caption","Placed on $d_PlacedDate   by   $d_PlacedBy")
+      ENDIF 
+      IF $SrchFldLogs
+          $FoundLogDisplay="$d_LText"
+          $FormB = EditForm($FormB,"F3Lbl1","Caption","$d_LParent   -  $d_Name   by   $d_PlacedBy   Id: $d_OwnerId")
+          $FormB = EditForm($FormB,"F3Lbl2","Caption","$d_LType   by   $d_LBy   on    $d_LDate  Id: $d_LOwnerId")
+      ENDIF 
+      IF $SrchFldBoth
+          $FormB = EditForm($FormB,"F3Lbl1","Caption","$d_LParent   -  $d_Name")
+          $FormB = EditForm($FormB,"F3Lbl2","Caption","Placed on $d_PlacedDate   by   $d_PlacedBy")
+          $FoundLogDisplay="$d_ShortDescription"+$CrLf+$CrLf+"$d_LongDescription"+$CrLf+$CrLf+"$d_LType   by   $d_LBy   on    $d_LDate"+$CrLf+$CrLf+"$d_LText"
+      ENDIF 
+      $FoundLogDisplay=RegExReplace("<[^>]*>", "$FoundLogDisplay", "")
+      IF Showform($FormB)
+          IF $F3Cancel
+              CANCEL 
+          ENDIF 
+          IF $RestartBtn
+              $Restart=True
+              GOTO Position=Bottom
+          ENDIF 
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=CheckDisplayReqs
+      IF $SplitScreen
+          $FCnt=$_FilterCount
+      ENDIF 
+      IF $SplitScreen Or $Both
+          SPLITSCREEN Display=On Format=Full Display
+      ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=SetFormVariables
+      $FCnt=0							# Record find counter
+      $SearchStr="."      # Default Regex search for anything
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=Initialise
+
+      $MacroName=Left(SysInfo("Macrofile"),AT(".",SysInfo("Macrofile"))-1)
+      $MacroVers=" v"+AllTrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath") + "\" + SysInfo("Macrofile")),1,1))
+      $FormA=EditForm($FormA,"Form1","Caption","$MacroName $MacroVers")
+
+      $Restart=True
+      $CrLf=$_NewLine      # Carriage Return/Line Feed
+      $Method4=TRUE        # Only happens here
+
+#     Initialise some form variables
+      $SrchFldLogs=True			# Default to Logs
+      $ChkMyLogs=True     # Default to My Logs
+      $ChkAllLogs=False
+      $SetMFlag=True      # Set MacroFlag
+      $SetFlagFTF=False	    	# Don't set the FTF flag.
+      $Display=True				# Set macro display as the default display method.
+
+#      $UserId=AllTrim(SysInfo("gsakini;TfmConfig;EdtGeoName.Text"))
+
+  ENDSUB 
+###################################################################################
+  <DATA> VarName=$FormA
+
+Name = Form1
+  Type = Form
+  Color = 13365758
+  Error = $F1Error
+  Height = 540
+  Top = 120
+  Width = 650
+
+Name = Grp1
+  Type = Groupbox
+  Height = 42
+  Left = 201
+  Top = 196
+  Width = 305
+  Taborder = 2
+
+Name = Grp2
+  Type = Groupbox
+  Height = 43
+  Left = 200
+  Top = 244
+  Width = 305
+  Taborder = 3
+
+Name = Grp5
+  Type = Groupbox
+  Height = 71
+  Left = 199
+  Top = 292
+  Width = 305
+  Taborder = 5
+
+Name = FrmGrp2
+  Type = Groupbox
+  Height = 75
+  Left = 115
+  Top = 57
+  Width = 483
+  Taborder = 7
+
+Name = FrmGrp1
+  Type = Groupbox
+  Height = 62
+  Left = 200
+  Top = 371
+  Width = 305
+  Taborder = 8
+
+Name = BeginBtn
+  Type = Button
+  Enter = Yes
+  Height = 24
+  Left = 98
+  Top = 459
+  Width = 139
+  Taborder = 0
+  Caption = Begin Search
+
+Name = ExitBtn
+  Type = Button
+  Escape = yes
+  Height = 24
+  Left = 370
+  Top = 459
+  Width = 141
+  Taborder = 1
+  Caption = Exit
+
+Name = Grp1Lbl0
+  Type = Label
+  Height = 13
+  Left = 86
+  Top = 212
+  Width = 84
+  Caption = Field/s to  Search
+
+Name = SrchFldDesc
+  Type = Radiobutton
+  Container = Grp1
+  Height = 17
+  Left = 5
+  Top = 15
+  Width = 15
+  Taborder = 0
+
+Name = Grp1Lbl1
+  Type = Label
+  Container = Grp1
+  Height = 13
+  Left = 25
+  Top = 17
+  Width = 63
+  Caption = Description/s
+
+Name = SrchFldLogs
+  Type = Radiobutton
+  Container = Grp1
+  Height = 17
+  Left = 100
+  Top = 15
+  Width = 15
+  Taborder = 1
+
+Name = Grp1Lbl2
+  Type = Label
+  Container = Grp1
+  Height = 13
+  Left = 120
+  Top = 17
+  Width = 23
+  Caption = Logs
+
+Name = SrchFldBoth
+  Type = Radiobutton
+  Container = Grp1
+  Height = 17
+  Left = 190
+  Top = 15
+  Width = 15
+  Taborder = 2
+
+Name = Grp1Lbl3
+  Type = Label
+  Container = Grp1
+  Height = 13
+  Left = 210
+  Top = 17
+  Width = 22
+  Caption = Both
+
+Name = Grp2Lbl0
+  Type = Label
+  Height = 13
+  Left = 88
+  Top = 260
+  Width = 75
+  Caption = Logs to  Search
+
+Name = ChkMyLogs
+  Type = Radiobutton
+  Container = Grp2
+  Height = 17
+  Left = 5
+  Top = 15
+  Width = 15
+  Taborder = 0
+
+Name = Grp2Lbl1
+  Type = Label
+  Container = Grp2
+  Height = 13
+  Left = 25
+  Top = 17
+  Width = 40
+  Caption = My Logs
+
+Name = ChkAllLogs
+  Type = Radiobutton
+  Container = Grp2
+  Height = 17
+  Left = 100
+  Top = 15
+  Width = 15
+  Taborder = 1
+
+Name = Grp2Lbl2
+  Type = Label
+  Container = Grp2
+  Height = 13
+  Left = 120
+  Top = 17
+  Width = 37
+  Caption = All Logs
+
+Name = Grp4Lbl0
+  Type = Label
+  Height = 13
+  Left = 20
+  Top = 157
+  Width = 83
+  Caption = Text to search for
+
+Name = SearchStr
+  Type = Edit
+  Height = 21
+  Left = 133
+  Top = 153
+  Width = 388
+  Taborder = 4
+
+Name = Grp5Lbl0
+  Type = Label
+  Height = 13
+  Left = 90
+  Top = 320
+  Width = 61
+  Caption = Flag/s to Set
+
+Name = SetMFlag
+  Type = Radiobutton
+  Container = Grp5
+  Height = 17
+  Left = 5
+  Top = 15
+  Width = 15
+  Taborder = 0
+
+Name = Grp5Lbl1
+  Type = Label
+  Container = Grp5
+  Height = 13
+  Left = 25
+  Top = 17
+  Width = 50
+  Caption = MacroFlag
+
+Name = SetFlagUF
+  Type = Radiobutton
+  Container = Grp5
+  Height = 17
+  Left = 100
+  Top = 15
+  Width = 15
+  Taborder = 1
+
+Name = Grp5Lbl2
+  Type = Label
+  Container = Grp5
+  Height = 13
+  Left = 119
+  Top = 16
+  Width = 45
+  Caption = User Flag
+
+Name = SetBothFlags
+  Type = Radiobutton
+  Container = Grp5
+  Height = 17
+  Left = 190
+  Top = 15
+  Width = 15
+  Taborder = 2
+
+Name = Grp5Lbl3
+  Type = Label
+  Container = Grp5
+  Height = 13
+  Left = 210
+  Top = 17
+  Width = 50
+  Caption = Both Flags
+
+Name = Grp6Lbl0
+  Type = Label
+  Height = 13
+  Left = 90
+  Top = 385
+  Width = 48
+  Caption = Display by
+
+Name = FrmLbl1
+  Type = Label
+  Color = 16711680
+  Height = 24
+  Left = 199
+  Size = 14
+  Style = bold
+  Top = 17
+  Width = 205
+  Caption = Database Text Search
+
+Name = SetFlagFTF
+  Type = Checkbox
+  Height = 20
+  Left = 206
+  Top = 335
+  Width = 10
+  Taborder = 6
+
+Name = FrmLbl5
+  Type = Label
+  Container = FrmGrp2
+  Height = 13
+  Left = 47
+  Top = 52
+  Width = 27
+  Caption = Exact
+
+Name = FrmLbl7
+  Type = Label
+  Container = FrmGrp2
+  Height = 13
+  Left = 145
+  Top = 51
+  Width = 42
+  Caption = Wildcard
+
+Name = FrmLbl9
+  Type = Label
+  Container = FrmGrp2
+  Height = 13
+  Left = 245
+  Top = 51
+  Width = 27
+  Caption = GC Id
+
+Name = FrmLbl11
+  Type = Label
+  Container = FrmGrp2
+  Height = 13
+  Left = 350
+  Top = 50
+  Width = 31
+  Caption = Regex
+
+Name = NewUserId
+  Type = Edit
+  Container = FrmGrp2
+  Height = 21
+  Left = 16
+  Top = 20
+  Width = 393
+  Taborder = 0
+
+Name = Method1
+  Type = Radiobutton
+  Container = FrmGrp2
+  Height = 17
+  Left = 20
+  Top = 50
+  Width = 15
+  Taborder = 1
+
+Name = Method2
+  Type = Radiobutton
+  Container = FrmGrp2
+  Height = 17
+  Left = 119
+  Top = 50
+  Width = 15
+  Taborder = 2
+
+Name = Method3
+  Type = Radiobutton
+  Container = FrmGrp2
+  Height = 17
+  Left = 217
+  Top = 49
+  Width = 15
+  Taborder = 3
+
+Name = Method4
+  Type = Radiobutton
+  Container = FrmGrp2
+  Height = 17
+  Left = 321
+  Top = 49
+  Width = 15
+  Taborder = 4
+
+Name = FrmLbl12
+  Type = Label
+  Height = 13
+  Left = 21
+  Top = 80
+  Width = 73
+  Caption = User Name / Id
+
+Name = FrmLbl13
+  Type = Label
+  Height = 13
+  Left = 22
+  Top = 108
+  Width = 83
+  Caption = Matching Method
+
+Name = FrmLbl3
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 31
+  Top = 16
+  Width = 58
+  Caption = Each record
+
+Name = FrmLbl4
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 123
+  Top = 16
+  Width = 57
+  Caption = Split Screen
+
+Name = FrmLbl6
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 216
+  Top = 16
+  Width = 65
+  Caption = Both methods
+
+Name = Display
+  Type = Radiobutton
+  Container = FrmGrp1
+  Height = 17
+  Left = 7
+  Top = 15
+  Width = 15
+  Taborder = 0
+
+Name = SplitScreen
+  Type = Radiobutton
+  Container = FrmGrp1
+  Height = 17
+  Left = 101
+  Top = 15
+  Width = 15
+  Taborder = 1
+
+Name = Both
+  Type = Radiobutton
+  Container = FrmGrp1
+  Height = 17
+  Left = 194
+  Top = 15
+  Width = 15
+  Taborder = 2
+
+Name = FrmLbl2
+  Type = Label
+  Container = Grp5
+  Height = 13
+  Left = 25
+  Top = 47
+  Width = 39
+  Caption = FTF flag
+
+Name = Lbl2
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 32
+  Top = 39
+  Width = 34
+  Caption = Neither
+
+Name = None
+  Type = Radiobutton
+  Container = FrmGrp1
+  Height = 17
+  Left = 8
+  Top = 36
+  Width = 15
+  Taborder = 3
+
+Name = Me
+  Type = Button
+  Container = FrmGrp2
+  Height = 21
+  Left = 421
+  Top = 15
+  Width = 45
+  Taborder = 5
+  Caption = Me
+
+Name = Clear
+  Type = Button
+  Container = FrmGrp2
+  Height = 21
+  Left = 421
+  Top = 42
+  Width = 45
+  Taborder = 6
+  Caption = Clear
+
+  <ENDDATA> 
+###################################################################################
+  <DATA> Varname=$FormB
+
+Name = Form2
+  Type = Form
+  Caption = Log Display
+  Color=11852258
+  width = 574
+  height = 422
+  Top=150
+
+Name = F3Lbl1
+  Type = Label
+  top = 25
+  left = 30
+  width = 200
+  height = 13
+
+Name = F3Lbl2
+  Type = Label
+  top = 50
+  left = 30
+  width = 200
+  height = 13
+
+Name = FoundLogDisplay
+  Type = Memo
+  top = 80
+  left = 30
+  width = 500
+  height = 250
+  Wrap = yes
+  ReadOnly = Yes
+  ScrollBars = vertical
+  Color = 16710114
+
+Name = F3Ok
+  type = Button
+  top = 350
+  left = 110
+  caption = OK
+  Enter = Yes
+  height = 25
+  width = 75
+
+Name = F3Cancel
+  type = Button
+  top = 350
+  left = 385
+  Caption = Cancel
+  Escape = yes
+  height = 25
+  width = 75
+
+Name = RestartBtn
+  type = Button
+  left = 244
+  top = 350
+  height = 25
+  width = 91
+  caption=Restart Macro
+
+  <ENDDATA> 
+
+###################################################################################
+  <DATA> VarName=$StaticFilter
+edtDesc=
+cbxDesc=0
+cbxFilter=0
+edtDistance=
+cbxDistance=0
+edtDistance2=
+edtPlacedBy=
+cbxDifficulty=0
+cbxTerrain=0
+cbxDif=8
+cbxTer=8
+cbxPlacedBy=0
+cbxDif2=8
+cbxTer2=8
+edtUserData=
+cbxUserData=0
+chkReverse=False
+edtTbugName=
+cbxTbugName=0
+cbxSource=0
+edtSource=
+cbxUser2=0
+EdtUser2=
+cbxOwnerName=0
+edtOwnerName=
+chkFound=True
+chkNotFound=True
+chkExclude=True
+chkAvailable=True
+chkArchivedOnly=True
+chkTempUnavailable=True
+chkUserFlag1=True
+chkUserFlag2=True
+chkBugNo=True
+cbxBugs=True
+chkNoteNo=True
+chkNoteYes=True
+chkFullHighlight=True
+chkRegEx=False
+chkFtfNo=True
+chkFtfyes=True
+rbtFullAll=False
+rbtFullSelect=True
+chkFullNotes=False
+
+  <ENDDATA> 

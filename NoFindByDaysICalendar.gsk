@@ -1,0 +1,1921 @@
+################################################################################
+# iCalendar for Found By Day Challenge - written by Marvin A, eric@plante.ca   #
+#                                                                              #
+# This script create a text file in iCalendar format. The format generated     #
+# is compatible with many iCalendar application, like iPhone and Outlook.      #
+# Format try to be compatible as possible with the RFC 5545.  File created     #
+# have an .ics extension.                                                      #
+#                                                                              #
+#                                                                              #
+# V1.0.0 2011-08-21  Release                                                   #
+# V1.0.1 2011-08-25  Typo                                                      #
+# V1.1.0 2011-08-28  Add Reminder                                              #
+#                    Change icalendar Title, Summary                           #
+#                    Removed Location & Description                            #
+# V1.2.0 2011-09-06  Outlook 2002 compatibility   (DTSTAMP)                    #
+#                    UID, NumberOfCache added                                  #
+# V1.3.0 2011-09-24  Language Detection (Drop words shoud contain the          #
+#						ISO 639-2/B code of the language)                      #
+#                       (http://en.wikipedia.org/wiki/List_of_ISO_639-1_codes  #
+#                    French Language Added  (Fre)                              #
+#					 Change for iCal Title (Number of cache added)			   #
+#					 Cosmetic change										   #
+#                    Added: summary in the dialog box                          #
+#                    Added: summary at the end of the macro                    #
+#                    Added: countdown in the event's description               #
+# V1.3.1 2011-09-25  Corrected: International caracteres in description        # 
+#                    Corrected: DTSTAMP now compatible Google Calendar         #
+#                    Corrected: Some french translation                        #
+# V1.3.2             Add: German Language (Deu)								   #
+#                    Corrected: Close X cancel macro                           #
+# V1.4               Add: Database selection								   #
+#                    Corrected: Some german translation 					   #
+# V1.5 2011-10-20    Add: Text Edition										   #
+#                    Corrected: Inconsistency of the counter				   #
+#                                                                              #
+# Bug reports, feature suggestions and any other comments can be posted        #
+# on the GSAK forums or by contacting me by Geocaching.com website (Marvin A)  #
+# http://www.geocaching.com/profile/?guid=41f6b365-821b-486e-8b73-b0fa2c054145 #
+#                                                                              #
+# This code is Open Source and comes with no warranty implied or otherwise.    #
+# Feel free to modify the code, but share with others!                         #
+#                                                                              #
+# MacVersion = 1.5       													   #
+# MacDescription = Generate iCalendar for Found By Day Challenge               #
+# MacAuthor = Marvin A"                                                        #
+# MacFileName = NoFindByDaysICalendar.gsk                                      #
+#                                                                              #
+################################################################################ 
+
+# Version check
+
+NOERROR SysVar=$_CurrentDataPath Functions=SqlQuote
+VERCHECK Version=7.6.0.0
+$CfgVersion=4
+
+	#$TextNoLog = "Aucun log de Géocaching pour ce jour de l'année"
+	#$TextFewLogs = "Moins de %n logs de Géocaching pour ce jour de l'année"
+
+#Detect Language
+$Language = "Eng"
+$config = ";" + upper(Sysinfo("gsakini;TfmConfig;edtSmartDrop.Text"))
+if AT(";FRE", $config) > 0
+	$Language = "Fre"
+endif
+if AT(";FRA", $config) > 0
+	$Language = "Fre"
+endif
+if AT(";DEU", $config) > 0
+	$Language = "Deu"
+endif
+if AT(";GER", $config) > 0
+	$Language = "Deu"
+endif
+	
+BeginCase 
+	case $Language = "Eng"
+		$formPrincipal = $FormsEng
+		$formTextPrincipal = $FormsTxtEng
+
+	case $Language = "Fre"
+		$formPrincipal = $FormsFre
+		$formTextPrincipal = $FormsTxtFre
+		
+	case $Language = "Deu"
+		$formPrincipal = $FormsDeu
+		$formTextPrincipal = $FormsTxtDeu
+endcase
+
+gosub Name=ResetText
+
+$GeoName = Sysinfo("gsakini;TfmConfig;EdtGeoName.Text")
+$iCalendarIdentificator = SmartName($GeoName,10)
+$Close = False
+$Databases = Sysinfo("Databases")
+$formPrincipal = EditForm($formPrincipal, "cmbDatabase", "Values", $Databases)
+$CurrentDatabase = $_CurrentDatabase
+
+$FrmSaved = False
+$FrmStartHour2 = ""
+
+$FrmVersion = 0
+MacSettings Type=R FileCheck=N
+
+if $FrmSaved = True
+	$FrmVersion = 1
+endif
+
+if $FrmVersion < 3
+	$cmbDatabase = $_CurrentDatabase
+endif
+
+if $FrmVersion < 2
+	$FrmStartHour1 = "09"
+	$FrmStartMinute1 = "00"
+	$FrmStartHour2 = "13"
+	$FrmStartMinute2 = "00"
+	$FrmStartHour3 = "17"
+	$FrmStartMinute3 = "00"
+	$FrmReminderOn2 = True
+	$FrmReminderOn3 = True
+	$FrmEnabled = False
+	$FrmDisabled = True
+endif
+
+if $FrmVersion < 1
+	$FrmNumber = "1"
+	$FrmMonth = "12"
+	$FrmFilename = $TextFileName
+endif
+
+$FrmVersion = $CfgVersion
+
+while 1=1
+
+	if $cmbDatabase <> $_CurrentDatabase
+		Database Name=$cmbDatabase Action=Select StopStartupMacro=Y
+	endif 
+
+	array(1,0) = "366"  # Total
+	array(2,0) = "366"  # By Year
+	array(1,-1) = "0"
+	array(2,-1) = "0"
+
+	# Calculate Array of found / days
+	# Find all year where you found at least one cache
+	$_sql = "Select distinct(cast(strftime('%Y',FoundByMeDate) as integer)) as Years from caches where Found = 1"
+	$Years = Sqlite("sql",$_sql)
+	# Find number of years where you found at least one cache
+	$_sql = "Select count(distinct(cast(strftime('%Y',FoundByMeDate) as integer))) as NbrYears from caches where Found = 1"
+	$NbrYears = val(Sqlite("sql",$_sql))
+
+	$NoCurrentYear = 1
+	while $NoCurrentYear <= $NbrYears
+
+		$CurrentYear = Extract($Years, $_NewLine, $NoCurrentYear)
+		# For each year, found total caches for one day
+		$_sql = "Select cast(strftime('%j',FoundByMeDate) as integer) as DayNbr, sum('1') as Total from caches where Found = 1 and cast(strftime('%Y',FoundByMeDate) as integer) = '$CurrentYear' group by DayNbr"
+		$result = Sqlite("sql",$_sql,"sqlget=yes")
+		
+		$Leap = ValidDate($CurrentYear + "0229")
+		
+		while not($_sqleol)
+			$Total  = val(sqlget("Total"))
+			$DayNbr = val(sqlget("DayNbr"))
+			if ($Leap = False) and ($DayNbr >= 60)
+				$DayNbr = $DayNbr + 1
+			endif
+			# Add total for each day of this year in the big array
+			array(1, $DayNbr) = NumToStr(val(array(1, $DayNbr)) + $Total)
+			sqlnext
+		Endwhile
+
+
+		$NoCurrentYear = $NoCurrentYear + 1
+	endwhile
+	
+	if $FrmEnabled = True
+		$formPrincipal = EditForm($formPrincipal, "FrmStartHour1", "Enabled", "Yes")
+		$formPrincipal = EditForm($formPrincipal, "FrmStartMinutes1", "Enabled", "Yes")
+		$formPrincipal = EditForm($formPrincipal, "FrmReminderOn1", "Enabled", "No")
+		$FrmReminderOn1 = True
+		$formPrincipal = EditForm($formPrincipal, "FrmStartHour2", "Enabled", "Yes")
+		$formPrincipal = EditForm($formPrincipal, "FrmStartMinutes2", "Enabled", "Yes")
+		$formPrincipal = EditForm($formPrincipal, "FrmReminderOn2", "Enabled", "Yes")
+		$formPrincipal = EditForm($formPrincipal, "FrmStartHour3", "Enabled", "Yes")
+		$formPrincipal = EditForm($formPrincipal, "FrmStartMinutes3", "Enabled", "Yes")
+		$formPrincipal = EditForm($formPrincipal, "FrmReminderOn3", "Enabled", "Yes")
+	else
+		$formPrincipal = EditForm($formPrincipal, "FrmStartHour1", "Enabled", "No")
+		$formPrincipal = EditForm($formPrincipal, "FrmStartMinutes1", "Enabled", "No")
+		$formPrincipal = EditForm($formPrincipal, "FrmReminderOn1", "Enabled", "No")
+		$FrmReminderOn1 = True
+		$formPrincipal = EditForm($formPrincipal, "FrmStartHour2", "Enabled", "No")
+		$formPrincipal = EditForm($formPrincipal, "FrmStartMinutes2", "Enabled", "No")
+		$formPrincipal = EditForm($formPrincipal, "FrmReminderOn2", "Enabled", "No")
+		$formPrincipal = EditForm($formPrincipal, "FrmStartHour3", "Enabled", "No")
+		$formPrincipal = EditForm($formPrincipal, "FrmStartMinutes3", "Enabled", "No")
+		$formPrincipal = EditForm($formPrincipal, "FrmReminderOn3", "Enabled", "No")
+	endif
+
+	#lblNbrDays
+	
+	$_sql = "SELECT strftime('%Y','now') as CurrentYear, strftime('%Y','now', '+1 year') as NextYear, strftime('%j','now') as StartDayNbr, strftime('%j','now','+364 days') as EndDayNbr"
+	$result = Sqlite("sql",$_sql, "sqlget=yes")
+	$CurrentYear = sqlget("CurrentYear")
+	$NextYear = sqlget("NextYear")
+	$StartDayNbr = val(sqlget("StartDayNbr"))
+	$EndDayNbr = val(sqlget("EndDayNbr"))
+	$CurrentLeap = ValidDate($CurrentYear + "0229")
+	$NextLeap = ValidDate($NextYear + "0229")
+	SqlGetClose
+	
+	$CurrentDayNbr = $StartDayNbr
+	$NumberOfDay = val($FrmMonth) * 31
+	$CalculNbrDays = 0
+	$NoDay = 0
+
+	while ($CurrentDayNbr <> $EndDayNbr) and ($NumberOfDay > 0)
+		if ($CurrentDayNbr >= 60) and ($CurrentLeap = False)
+			$Adjustement = 1
+		else
+			$Adjustement = 0
+		endif
+		
+		$TodayFind = val(array(1,$CurrentDayNbr + $Adjustement))
+
+		if $TodayFind < val($FrmNumber)
+			$CalculNbrDays = $CalculNbrDays + 1
+		endif
+
+		$CurrentDayNbr = $CurrentDayNbr + 1
+		if $CurrentDayNbr = 366
+			$CurrentDayNbr = 1
+			$CurrentLeap = $NextLeap
+			$CurrentYear = $NextYear
+		endif
+
+	endwhile
+
+	$TempText = Replace("%n", NumToStr($CalculNbrDays), $TextNumberOfDay)
+	$formPrincipal = EditForm($formPrincipal, "lblNbrDays", "Caption", $TempText)
+	
+	$FormResult = form($formPrincipal, "")
+
+	begincase
+
+		case $FormResult = "btnEditText"
+			$tmpTextNoLog = $TextNoLog
+			$tmpTextFewLogs = $TextFewLogs
+			$tmpTextDescription = $TextDescription
+			$tmpTextDescriptionZero = $TextDescriptionZero
+			$tmpTextICalTitle = $TextICalTitle
+			$tmpTextICalDesc = $TextICalDesc
+			$Exit=False
+			while $Exit=False
+				$FormTextResult = form($formTextPrincipal, "")
+				begincase
+					case $FormTextResult = "btnCancel"
+						$TextNoLog = $tmpTextNoLog
+						$TextFewLogs = $tmpTextFewLogs
+						$TextDescription = $tmpTextDescription
+						$TextDescriptionZero = $tmpTextDescriptionZero
+						$TextICalTitle = $tmpTextICalTitle
+						$TextICalDesc = $tmpTextICalDesc
+						$Exit=True
+					case $FormTextResult = "btnResetText"
+						Gosub Name=ResetText
+					case $FormTextResult = "btnOk"
+						$Exit=True
+				endcase
+			endwhile
+		
+		case $FormResult = "btnCancel" or $FormResult = "SystemExit"
+			Database Name=$CurrentDatabase Action=Select StopStartupMacro=Y
+			if $Close = False
+				Return Msg=$TextCancel
+			else
+				Return
+			endif
+
+		case $FormResult = "btnOk"
+			MacSettings Type=S Vars=FrmVersion,FrmNumber,FrmMonth,FrmFilename,FrmStartHour1,FrmStartMinutes1,FrmStartHour2,FrmStartMinutes2,FrmStartHour3,FrmStartMinutes3,FrmReminderOn2,FrmReminderOn3,FrmEnabled,FrmDisabled,cmbDatabase,TextNoLog,TextFewLogs,TextDescription,TextDescriptionZero,TextICalTitle,TextICalDesc
+
+			ShowStatus Msg=$TextiCalCreation
+
+			$VALARM = ""
+			if $FrmEnabled = True
+				$VALARM = $VALARM + "BEGIN:VALARM" + $_NewLine
+				$VALARM = $VALARM + "TRIGGER:PT" + $FrmStartHour1 + "H" + $FrmStartMinutes1 + "M" + $_NewLine
+				$VALARM = $VALARM + "ACTION:DISPLAY" + $_NewLine
+				$VALARM = $VALARM + "END:VALARM" + $_NewLine
+				if $FrmReminderOn2 = True
+					$VALARM = $VALARM + "BEGIN:VALARM" + $_NewLine
+					$VALARM = $VALARM + "TRIGGER:PT" + $FrmStartHour2 + "H" + $FrmStartMinutes2 + "M" + $_NewLine
+					$VALARM = $VALARM + "ACTION:DISPLAY" + $_NewLine
+					$VALARM = $VALARM + "END:VALARM" + $_NewLine
+				endif
+				if $FrmReminderOn3 = True
+					$VALARM = $VALARM + "BEGIN:VALARM" + $_NewLine
+					$VALARM = $VALARM + "TRIGGER:PT" + $FrmStartHour3 + "H" + $FrmStartMinutes3 + "M" + $_NewLine
+					$VALARM = $VALARM + "ACTION:DISPLAY" + $_NewLine
+					$VALARM = $VALARM + "END:VALARM" + $_NewLine
+				endif
+			endif
+
+			$TextICalTitle = Replace("%a", $FrmNumber, $TextICalTitle)
+			$TextICalDesc = Replace("%a", $FrmNumber, $TextICalDesc)
+			$iCalParamsCalTitle = UTF8($TextICalTitle,"e")
+			$iCalParamsCalDescription = UTF8($TextICalDesc,"e")
+
+			$BeginVCal = "BEGIN:VCALENDAR$_NewLine"
+			$BeginVCal = $BeginVCal + "PRODID:-//$iCalendarIdentificator//GSAK(.net) Marvin Macro//FR-EN-DE$_NewLine"
+			$BeginVCal = $BeginVCal + "VERSION:2.0$_NewLine"
+			$BeginVCal = $BeginVCal + "CALSCALE:GREGORIAN$_NewLine"
+			$BeginVCal = $BeginVCal + "METHOD:PUBLISH$_NewLine"
+			$BeginVCal = $BeginVCal + "X-WR-TIMEZONE:UTC$_NewLine"
+			$BeginVCal = $BeginVCal + "X-WR-CALNAME:$iCalParamsCalTitle$_NewLine"
+			$BeginVCal = $BeginVCal + "X-WR-CALDESC:$iCalParamsCalDescription$_NewLine"
+			$result = PutFile($FrmFilename, $BeginVCAL)
+
+			$_sql = "SELECT strftime('%Y','now') as CurrentYear, strftime('%Y','now', '+1 year') as NextYear, strftime('%j','now') as StartDayNbr, strftime('%j','now','+364 days') as EndDayNbr"
+			$result = Sqlite("sql",$_sql, "sqlget=yes")
+			$CurrentYear = sqlget("CurrentYear")
+			$NextYear = sqlget("NextYear")
+			$StartDayNbr = val(sqlget("StartDayNbr"))
+			$EndDayNbr = val(sqlget("EndDayNbr"))
+			$CurrentLeap = ValidDate($CurrentYear + "0229")
+			$NextLeap = ValidDate($NextYear + "0229")
+
+			$CurrentDayNbr = $StartDayNbr
+			$NumberOfDay = val($FrmMonth) * 31
+			$CalculNbrEvents = 0
+			while ($CurrentDayNbr <> $EndDayNbr) and ($NumberOfDay > 0)
+				if ($CurrentDayNbr >= 60) and ($CurrentLeap = False)
+					$Adjustement = 1
+				else
+					$Adjustement = 0
+				endif
+				
+				$TodayFind = val(array(1,$CurrentDayNbr + $Adjustement))
+				if $TodayFind < val($FrmNumber)
+
+					$CalculNbrEvents = $CalculNbrEvents + 1
+					$Event = "BEGIN:VEVENT$_NewLine"
+
+					$_sql = "SELECT strftime('%Y%m%dT%H%M%S','now') as DayDate"
+					$result = Sqlite("sql",$_sql)
+					$Event = $Event + "DTSTAMP:$result$_NewLine"
+
+					$_sql = "SELECT strftime('%Y%m%d','$CurrentYear-01-01','+$CurrentDayNbr day','-1 day') as DayDate"
+					$result = Sqlite("sql",$_sql)
+					$Event = $Event + "DTSTART;VALUE=DATE:$result$_NewLine"
+
+					$_sql = "SELECT strftime('%Y%m%d','$CurrentYear-01-01','+$CurrentDayNbr day') as DayDate"
+					$resultEnd = Sqlite("sql",$_sql)
+					$Event = $Event + "DTEND;VALUE=DATE:$resultEnd$_NewLine"
+
+					if val($FrmNumber) = 1
+						$Text = $TextNoLog
+					else
+						$Text = $TextFewLogs
+					endif
+					$Text = Replace("%a", $FrmNumber, $Text)
+					$Text = Replace("%f", NumToStr($TodayFind), $Text)
+					$Text = Replace("%r", NumToStr($CalculNbrDays), $Text)
+					$Text = UTF8($Text,"e")
+					$SubParam = "SUMMARY:$Text"
+					Gosub Name=CutLine
+					$Event = $Event + "$SubParam"
+
+					if  $TodayFind = 0
+						$Text = $TextDescriptionZero
+					else
+						$Text = $TextDescription
+					endif
+					$Text = Replace("%a", $FrmNumber, $Text)
+					$Text = Replace("%f", NumToStr($TodayFind), $Text)
+					$Text = Replace("%r", NumToStr($CalculNbrDays), $Text)
+					$Text = UTF8($Text,"e")
+					$SubParam = "DESCRIPTION:$Text"
+					Gosub Name=CutLine
+					$Event = $Event + "$SubParam"
+
+					$Event = $Event + "CLASS:PUBLIC$_NewLine"
+					$Event = $Event + "SEQUENCE:0$_NewLine"
+					$Event = $Event + "STATUS:CONFIRMED$_NewLine"
+					$Event = $Event + "TRANSP:TRANSPARENT$_NewLine"
+					$Event = $Event + "UID:$result@FoundByDay-$FrmNumber-$GeoName$_NewLine"
+					$Event = $Event + "X-MICROSOFT-CDO-ALLDAYEVENT:TRUE$_NewLine"
+					if $FrmEnabled = True
+						$Event = $Event + $VALARM
+					endif
+					$Event = $Event + "END:VEVENT$_NewLine"
+
+					$result = AppendFile($FrmFilename, $Event)
+					$CalculNbrDays = $CalculNbrDays - 1
+				endif
+
+				$CurrentDayNbr = $CurrentDayNbr + 1
+				if $CurrentDayNbr = 366
+					$CurrentDayNbr = 1
+					$CurrentLeap = $NextLeap
+					$CurrentYear = $NextYear
+				endif
+				
+				$NumberOfDay = $NumberOfDay - 1
+				
+			endWhile 
+			$result = AppendFile($FrmFilename, "END:VCALENDAR$_NewLine")
+
+			$Text = Replace("%n", NumToStr($CalculNbrEvents), $TextSummary)
+			MsgOk Msg=$Text Caption=$TextEnd
+			SqlGetClose
+			Database Name=$CurrentDatabase Action=Select StopStartupMacro=Y
+			Return
+	endcase
+endwhile
+				
+	BeginSub Name=CutLine
+		$MaxLine = 65
+		$Position = 1
+		$TempStr = ""
+		while $Position < Len($SubParam)
+			$TempStr = $TempStr + substr($SubParam, $Position, $MaxLine) + $_NewLine + " "
+			$Position = $Position + $MaxLine
+		EndWhile
+		$SubParam = left($TempStr, len($TempStr)-1)
+	EndSub
+
+	BeginSub Name=ResetText
+		BeginCase 
+			case $Language = "Eng"
+				$TextNoLog = "No geocache done on this day of the year"
+				$TextFewLogs = "Less than %a geocaches done on this day of the year"
+				$TextDescription = "You have %f find(s) for this day of year.\nWith today, there is %r day(s) of geocaching to do, before reaching the challenge!"
+				$TextDescriptionZero = "You have no find for this day of year.\nWith today, there is %r day(s) of geocaching to do, before reaching the challenge!"
+				$TextFileName = "DayWithNotFound.ics"
+				$TextICalTitle = "Finds by day Challenge (%a)"
+				$TextICalDesc = "Days without %a find(s)"
+				$TextNumberOfDay = "(Number of days that meet criteria : %n)"
+				$TextiCalCreation = "iCalendar creation"
+				$TextSummary = "iCalendar created!  %n event(s) added."
+				$TextEnd = "Done!"
+				$TextCancel = "iCal Macro Canceled."
+
+			case $Language = "Fre"
+				$TextNoLog = "Aucune cache trouvée pour ce jour de l'année."
+				$TextFewLogs = "Moins de %a cache(s) trouvée pour ce jour de l'année."
+				$TextDescription = "Vous avez trouvée %f cache(s) pour ce jour de l'année.\nAvec aujourd'hui, il reste %r jours de géocaching pour atteindre le défi!"
+				$TextDescriptionZero = "Vous n'avez pas trouvée de cache pour ce jour de l'année.\nAvec aujourd'hui, il reste %r jours de géocaching pour atteindre le défi!"
+				$TextFileName = "JourSansTrouvee.ics"
+				$TextICalTitle = "Défi ""Finds by day"" (%a)"
+				$TextICalDesc = "Jours de l'année sans %a cache(s) trouvées par jours"
+				$TextNumberOfDay = "Nombre de jours à géocacher pour le défi : %n"
+				$TextiCalCreation = "Création du calendrier"
+				$TextSummary = "Calendrier terminé!  %n événement(s) ajoutés."
+				$TextEnd = "Terminé!"
+				$TextCancel = "Macro annulée."
+				
+			case $Language = "Deu"
+				$TextNoLog = "An diesem Kalendertag wurde bisher kein Geocache gefunden"
+				$TextFewLogs = "An diesem Kalendertag wurden weniger als %a Geocaches gefunden"
+				$TextDescription = "Du hast %f Fund(e) an diesem Kalendertag.\nInklusive heute müssen noch an %r Tag(en) Geocaches gefunden werden, um diese Challenge zu erfüllen!"
+				$TextDescriptionZero = "Du hast keinen Fund an diesem Kalendertag.\nInklusive heute müssen noch an %r Tag(en) Geocaches gefunden werden, um diese Challenge zu erfüllen!"
+				$TextFileName = "TagOhneFund.ics"
+				$TextICalTitle =  "Fund pro Kalendertag Challenge (%a)"
+				$TextICalDesc = "Tage ohne %a Fund(e)"
+				$TextNumberOfDay =  "(Anzahl der Tage, die diese Voraussetzung erfüllen: %n)"
+				$TextiCalCreation = "iCalendar Erzeugung"
+				$TextSummary = "iCalendar erzeugt! %n Einträge hinzugefügt."
+				$TextEnd =  "Fertig!"
+				$TextCancel = "iCal Makro abgebrochen."
+
+		endcase
+	EndSub
+
+	
+<Data> VarName=$FormsEng
+#********************************************************************
+# Form generated by GSAK form designer on jeu. 13-oct.-2011 21:14:22
+#********************************************************************
+
+Name = FormEng
+  Type = Form
+  Caption = iCalendar Creator
+  Height = 494
+  Top = 268
+  Width = 360
+
+Name = grpReminder
+  Type = Groupbox
+  Caption = Reminder
+  Height = 113
+  Left = 39
+  Top = 230
+  Width = 265
+  Taborder = 7
+
+Name = FrmFilename
+  Type = File
+  Height = 21
+  Left = 18
+  Top = 69
+  Width = 313
+  Taborder = 0
+
+Name = lblFilename
+  Type = Label
+  Height = 13
+  Left = 22
+  Top = 52
+  Width = 97
+  Caption = iCalendar Filename
+
+Name = LblNbrEvents
+  Type = Label
+  Height = 13
+  Left = 19
+  Top = 109
+  Width = 199
+  Caption = Create with days where I found less then
+
+Name = btnOk
+  Type = Button
+  Height = 25
+  Left = 87
+  Top = 402
+  Width = 75
+  Taborder = 1
+  Caption = Ok
+
+Name = btnCancel
+  Type = Button
+  Height = 25
+  Left = 181
+  Top = 402
+  Width = 75
+  Taborder = 2
+  Caption = Cancel
+
+Name = FrmNumber
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 219
+  Top = 105
+  Values = 1;2;3;4;5;6;7;8;9;10;20;25;50;100
+  Width = 59
+  Taborder = 5
+
+Name = LblNbrEvents2
+  Type = Label
+  Height = 13
+  Left = 285
+  Top = 109
+  Width = 52
+  Caption = cache(s).
+
+Name = Create1
+  Type = Label
+  Height = 13
+  Left = 67
+  Top = 168
+  Width = 113
+  Caption = Create a calendar for :
+
+Name = FrmMonth
+  Type = Combobox
+  Height = 21
+  Left = 179
+  Top = 164
+  Values = 1;2;3;4;5;6;7;8;9;10;11;12
+  Width = 41
+  Taborder = 6
+
+Name = Create2
+  Type = Label
+  Height = 13
+  Left = 223
+  Top = 168
+  Width = 48
+  Caption = month(s)
+
+Name = Alarm1
+  Type = Label
+  Container = grpReminder
+  Height = 17
+  Left = 12
+  Top = 24
+  Visible = Yes
+  Width = 76
+  Caption = First reminder :
+
+Name = FrmStartHour1
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 114
+  Top = 22
+  Values = 01;02;03;04;05;06;07;08;09;10;11;12;13;14;15;16;17;18;19;20;21;22;23
+  Width = 41
+  Taborder = 0
+
+Name = FrmStartMinutes1
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 154
+  Top = 22
+  Values = 00;05;10;15;20;25;30;35;40;45;50;55
+  Width = 41
+  Taborder = 1
+
+Name = Alarm2
+  Type = Label
+  Container = grpReminder
+  Height = 17
+  Left = 12
+  Top = 52
+  Visible = Yes
+  Width = 94
+  Caption = Second reminder :
+
+Name = Alarm3
+  Type = Label
+  Container = grpReminder
+  Height = 17
+  Left = 12
+  Top = 78
+  Visible = Yes
+  Width = 81
+  Caption = Third reminder :
+
+Name = FrmStartMinutes2
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 154
+  Top = 50
+  Values = 00;05;10;15;20;25;30;35;40;45;50;55
+  Width = 41
+  Taborder = 2
+
+Name = FrmStartHour2
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 114
+  Top = 50
+  Values = 01;02;03;04;05;06;07;08;09;10;11;12;13;14;15;16;17;18;19;20;21;22;23
+  Width = 41
+  Taborder = 3
+
+Name = FrmStartHour3
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 113
+  Top = 77
+  Values = 01;02;03;04;05;06;07;08;09;10;11;12;13;14;15;16;17;18;19;20;21;22;23
+  Width = 41
+  Taborder = 4
+
+Name = FrmStartMinutes3
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 153
+  Top = 77
+  Values = 00;05;10;15;20;25;30;35;40;45;50;55
+  Width = 41
+  Taborder = 5
+
+Name = FrmEnabled
+  Type = Radiobutton
+  Exitonchange = Yes
+  Height = 20
+  Left = 124
+  Top = 204
+  Width = 61
+  Taborder = 8
+  Caption = Enabled
+
+Name = FrmDisabled
+  Type = Radiobutton
+  Exitonchange = Yes
+  Height = 20
+  Left = 190
+  Top = 204
+  Width = 79
+  Taborder = 9
+  Caption = Disabled
+
+Name = FrmReminderOn3
+  Type = Checkbox
+  Container = grpReminder
+  Height = 20
+  Left = 206
+  Top = 76
+  Width = 45
+  Taborder = 6
+  Caption = On
+
+Name = FrmReminderOn2
+  Type = Checkbox
+  Container = grpReminder
+  Height = 20
+  Left = 206
+  Top = 50
+  Width = 45
+  Taborder = 7
+  Caption = On
+
+Name = FrmReminderOn1
+  Type = Checkbox
+  Container = grpReminder
+  Enabled = No
+  Height = 20
+  Left = 206
+  Top = 24
+  Width = 45
+  Taborder = 8
+  Caption = On
+
+Name = lblAlarm
+  Type = Label
+  Height = 13
+  Left = 78
+  Top = 208
+  Width = 34
+  Caption = Alarm
+
+Name = lblNbrDays
+  Type = Label
+  Font = Microsoft Sans Serif
+  Height = 17
+  Left = 68
+  Top = 129
+  Width = 192
+  Caption = (Number of days that meet criteria : %n)
+
+Name = cmbDatabase
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 88
+  Top = 20
+  Width = 241
+  Taborder = 18
+
+Name = Label1
+  Type = Label
+  Height = 14
+  Left = 22
+  Top = 24
+  Width = 60
+  Caption = Database :
+
+Name = btnEditText
+  Type = Button
+  Height = 25
+  Left = 88
+  Top = 368
+  Width = 169
+  Taborder = 19
+  Caption = Edit text
+
+<enddata>
+
+
+
+
+
+
+
+<Data> VarName=$formsFre
+#********************************************************************
+# Form generated by GSAK form designer on jeu. 20-oct.-2011 11:39:25
+#********************************************************************
+
+Name = FormFre
+  Type = Form
+  Caption = iCal pour les "Find by Day Challenge"
+  Height = 488
+  Top = 286
+  Width = 360
+
+Name = grpReminder
+  Type = Groupbox
+  Caption = Alarmes
+  Height = 113
+  Left = 39
+  Top = 236
+  Width = 265
+  Taborder = 7
+
+Name = FrmFilename
+  Type = File
+  Height = 21
+  Left = 18
+  Top = 75
+  Width = 313
+  Taborder = 0
+
+Name = lblFilename
+  Type = Label
+  Height = 13
+  Left = 22
+  Top = 58
+  Width = 143
+  Caption = Nom du fichier au format iCal
+
+Name = LblNbrEvents
+  Type = Label
+  Height = 13
+  Left = 20
+  Top = 113
+  Width = 194
+  Caption = Prendre les jours où j'ai trouvé moins de
+
+Name = btnOk
+  Type = Button
+  Height = 25
+  Left = 87
+  Top = 400
+  Width = 75
+  Taborder = 1
+  Caption = Ok
+
+Name = btnCancel
+  Type = Button
+  Height = 25
+  Left = 181
+  Top = 400
+  Width = 75
+  Taborder = 2
+  Caption = Annule
+
+Name = FrmNumber
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 214
+  Top = 109
+  Values = 1;2;3;4;5;6;7;8;9;10;20;25;50;100
+  Width = 59
+  Taborder = 5
+
+Name = LblNbrEvents2
+  Type = Label
+  Height = 13
+  Left = 280
+  Top = 113
+  Width = 52
+  Caption = cache(s).
+
+Name = Create1
+  Type = Label
+  Height = 13
+  Left = 73
+  Top = 176
+  Width = 127
+  Caption = Créer un calendrier pour :
+
+Name = FrmMonth
+  Type = Combobox
+  Height = 21
+  Left = 193
+  Top = 172
+  Values = 1;2;3;4;5;6;7;8;9;10;11;12
+  Width = 41
+  Taborder = 6
+
+Name = Create2
+  Type = Label
+  Height = 13
+  Left = 238
+  Top = 176
+  Width = 32
+  Caption = mois.
+
+Name = Alarm1
+  Type = Label
+  Container = grpReminder
+  Height = 17
+  Left = 12
+  Top = 24
+  Visible = Yes
+  Width = 89
+  Caption = Première alarme :
+
+Name = FrmStartHour1
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 114
+  Top = 22
+  Values = 01;02;03;04;05;06;07;08;09;10;11;12;13;14;15;16;17;18;19;20;21;22;23
+  Width = 41
+  Taborder = 0
+
+Name = FrmStartMinutes1
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 154
+  Top = 22
+  Values = 00;05;10;15;20;25;30;35;40;45;50;55
+  Width = 41
+  Taborder = 1
+
+Name = Alarm2
+  Type = Label
+  Container = grpReminder
+  Height = 17
+  Left = 12
+  Top = 52
+  Visible = Yes
+  Width = 96
+  Caption = Deuxième Alarme :
+
+Name = Alarm3
+  Type = Label
+  Container = grpReminder
+  Height = 17
+  Left = 12
+  Top = 78
+  Visible = Yes
+  Width = 93
+  Caption = Troisième alarme :
+
+Name = FrmStartMinutes2
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 154
+  Top = 50
+  Values = 00;05;10;15;20;25;30;35;40;45;50;55
+  Width = 41
+  Taborder = 2
+
+Name = FrmStartHour2
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 114
+  Top = 50
+  Values = 01;02;03;04;05;06;07;08;09;10;11;12;13;14;15;16;17;18;19;20;21;22;23
+  Width = 41
+  Taborder = 3
+
+Name = FrmStartHour3
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 113
+  Top = 77
+  Values = 01;02;03;04;05;06;07;08;09;10;11;12;13;14;15;16;17;18;19;20;21;22;23
+  Width = 41
+  Taborder = 4
+
+Name = FrmStartMinutes3
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 153
+  Top = 77
+  Values = 00;05;10;15;20;25;30;35;40;45;50;55
+  Width = 41
+  Taborder = 5
+
+Name = FrmEnabled
+  Type = Radiobutton
+  Exitonchange = Yes
+  Height = 20
+  Left = 135
+  Top = 213
+  Width = 58
+  Taborder = 8
+  Caption = active
+
+Name = FrmDisabled
+  Type = Radiobutton
+  Exitonchange = Yes
+  Height = 20
+  Left = 194
+  Top = 213
+  Width = 71
+  Taborder = 9
+  Caption = inactive
+
+Name = FrmReminderOn3
+  Type = Checkbox
+  Container = grpReminder
+  Height = 20
+  Left = 206
+  Top = 76
+  Width = 45
+  Taborder = 6
+  Caption = On
+
+Name = FrmReminderOn2
+  Type = Checkbox
+  Container = grpReminder
+  Height = 20
+  Left = 206
+  Top = 50
+  Width = 45
+  Taborder = 7
+  Caption = On
+
+Name = FrmReminderOn1
+  Type = Checkbox
+  Container = grpReminder
+  Enabled = No
+  Height = 20
+  Left = 206
+  Top = 24
+  Width = 45
+  Taborder = 8
+  Caption = On
+
+Name = lblAlarm
+  Type = Label
+  Height = 13
+  Left = 82
+  Top = 217
+  Width = 46
+  Caption = Alarme :
+
+Name = lblNbrDays
+  Type = Label
+  Font = Microsoft Sans Serif
+  Height = 17
+  Left = 59
+  Top = 134
+  Width = 226
+  Caption = Nombre de jours à géocacher pour le défi : %n
+
+Name = cmbDatabase
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 120
+  Top = 20
+  Width = 209
+  Taborder = 18
+
+Name = Label1
+  Type = Label
+  Height = 14
+  Left = 22
+  Top = 24
+  Width = 97
+  Caption = Base de données :
+
+Name = btnEditText
+  Type = Button
+  Height = 25
+  Left = 88
+  Top = 368
+  Width = 169
+  Taborder = 19
+  Caption = Edition des textes
+
+<enddata>
+
+
+
+<Data> VarName=$formsDeu
+#********************************************************************
+# Form generated by GSAK form designer on jeu. 20-oct.-2011 14:41:43
+#********************************************************************
+
+Name = FormDeu
+  Type = Form
+  Caption = iCalendar Erzeugung
+  Height = 488
+  Top = 268
+  Width = 360
+
+Name = grpReminder
+  Type = Groupbox
+  Caption = Erinnerung
+  Height = 113
+  Left = 39
+  Top = 230
+  Width = 265
+  Taborder = 7
+
+Name = FrmFilename
+  Type = File
+  Height = 21
+  Left = 18
+  Top = 69
+  Width = 313
+  Taborder = 0
+
+Name = lblFilename
+  Type = Label
+  Height = 13
+  Left = 22
+  Top = 52
+  Width = 106
+  Caption = iCalendar Dateiname
+
+Name = LblNbrEvents
+  Type = Label
+  Height = 13
+  Left = 16
+  Top = 101
+  Width = 174
+  Caption = Erzeuge einen Kalender mit Tagen,
+
+Name = btnOk
+  Type = Button
+  Height = 25
+  Left = 87
+  Top = 398
+  Width = 75
+  Taborder = 1
+  Caption = Ok
+
+Name = btnCancel
+  Type = Button
+  Height = 25
+  Left = 182
+  Top = 398
+  Width = 75
+  Taborder = 2
+  Caption = Abbrechen
+
+Name = FrmNumber
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 189
+  Top = 105
+  Values = 1;2;3;4;5;6;7;8;9;10;20;25;50;100
+  Width = 59
+  Taborder = 5
+
+Name = Create1
+  Type = Label
+  Height = 13
+  Left = 61
+  Top = 173
+  Width = 142
+  Caption = Erzeuge einen Kalender für :
+
+Name = FrmMonth
+  Type = Combobox
+  Height = 21
+  Left = 198
+  Top = 169
+  Values = 1;2;3;4;5;6;7;8;9;10;11;12
+  Width = 41
+  Taborder = 6
+
+Name = Create2
+  Type = Label
+  Height = 13
+  Left = 242
+  Top = 173
+  Width = 44
+  Caption = Monate
+
+Name = Alarm1
+  Type = Label
+  Container = grpReminder
+  Height = 17
+  Left = 12
+  Top = 24
+  Visible = Yes
+  Width = 92
+  Caption = Erste Erinnerung :
+
+Name = FrmStartHour1
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 114
+  Top = 22
+  Values = 01;02;03;04;05;06;07;08;09;10;11;12;13;14;15;16;17;18;19;20;21;22;23
+  Width = 41
+  Taborder = 0
+
+Name = FrmStartMinutes1
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 154
+  Top = 22
+  Values = 00;05;10;15;20;25;30;35;40;45;50;55
+  Width = 41
+  Taborder = 1
+
+Name = Alarm2
+  Type = Label
+  Container = grpReminder
+  Height = 17
+  Left = 12
+  Top = 52
+  Visible = Yes
+  Width = 100
+  Caption = Zweite Erinnerung :
+
+Name = Alarm3
+  Type = Label
+  Container = grpReminder
+  Height = 17
+  Left = 12
+  Top = 78
+  Visible = Yes
+  Width = 93
+  Caption = Dritte Erinnerung :
+
+Name = FrmStartMinutes2
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 154
+  Top = 50
+  Values = 00;05;10;15;20;25;30;35;40;45;50;55
+  Width = 41
+  Taborder = 2
+
+Name = FrmStartHour2
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 114
+  Top = 50
+  Values = 01;02;03;04;05;06;07;08;09;10;11;12;13;14;15;16;17;18;19;20;21;22;23
+  Width = 41
+  Taborder = 3
+
+Name = FrmStartHour3
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 113
+  Top = 77
+  Values = 01;02;03;04;05;06;07;08;09;10;11;12;13;14;15;16;17;18;19;20;21;22;23
+  Width = 41
+  Taborder = 4
+
+Name = FrmStartMinutes3
+  Type = Combobox
+  Container = grpReminder
+  Height = 21
+  Left = 153
+  Top = 77
+  Values = 00;05;10;15;20;25;30;35;40;45;50;55
+  Width = 41
+  Taborder = 5
+
+Name = FrmEnabled
+  Type = Radiobutton
+  Exitonchange = Yes
+  Height = 20
+  Left = 138
+  Top = 204
+  Width = 37
+  Taborder = 8
+  Caption = An
+
+Name = FrmDisabled
+  Type = Radiobutton
+  Exitonchange = Yes
+  Height = 20
+  Left = 182
+  Top = 204
+  Width = 51
+  Taborder = 9
+  Caption = Aus
+
+Name = FrmReminderOn3
+  Type = Checkbox
+  Container = grpReminder
+  Height = 20
+  Left = 206
+  Top = 76
+  Width = 45
+  Taborder = 6
+  Caption = Aus
+
+Name = FrmReminderOn2
+  Type = Checkbox
+  Container = grpReminder
+  Height = 20
+  Left = 206
+  Top = 50
+  Width = 45
+  Taborder = 7
+  Caption = Aus
+
+Name = FrmReminderOn1
+  Type = Checkbox
+  Container = grpReminder
+  Enabled = No
+  Height = 20
+  Left = 206
+  Top = 24
+  Width = 45
+  Taborder = 8
+  Caption = Aus
+
+Name = lblAlarm
+  Type = Label
+  Height = 13
+  Left = 92
+  Top = 208
+  Width = 40
+  Caption = Alarm :
+
+Name = lblNbrDays
+  Type = Label
+  Font = Microsoft Sans Serif
+  Height = 17
+  Left = 37
+  Top = 137
+  Width = 270
+  Caption = (Anzahl der Tage, die diese Voraussetzung erfüllen: %n)
+
+Name = LblNbrEvents1
+  Type = Label
+  Font = Microsoft Sans Serif
+  Height = 17
+  Left = 58
+  Top = 114
+  Width = 132
+  Caption = an denen ich weniger als :
+
+Name = HTMLabel2
+  Type = Label
+  Font = Microsoft Sans Serif
+  Height = 17
+  Left = 254
+  Top = 114
+  Width = 80
+  Caption = gefunden habe
+
+Name = HTMLabel3
+  Type = Label
+  Height = 13
+  Left = 254
+  Top = 101
+  Width = 50
+  Caption = Cache(s)
+
+Name = cmbDatabase
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 88
+  Top = 20
+  Width = 241
+  Taborder = 18
+
+Name = Label1
+  Type = Label
+  Height = 14
+  Left = 22
+  Top = 24
+  Width = 61
+  Caption = Datenbank
+
+Name = btnEditText
+  Type = Button
+  Height = 25
+  Left = 88
+  Top = 366
+  Width = 169
+  Taborder = 19
+  Caption = Editions von Texten
+
+<enddata>
+
+
+<Data> VarName=$formsTxtEng
+#********************************************************************
+# Form generated by GSAK form designer on jeu. 20-oct.-2011 14:35:03
+#********************************************************************
+
+Name = FormTxtEng
+  Type = Form
+  Caption = Text
+  Height = 425
+  Width = 470
+
+Name = Label1
+  Type = Label
+  Height = 17
+  Left = 116
+  Top = 29
+  Width = 48
+  Caption = iCal Title
+
+Name = Label2
+  Type = Label
+  Height = 17
+  Left = 83
+  Top = 55
+  Width = 81
+  Caption = iCal Description
+
+Name = HTMLabel2
+  Type = Label
+  Height = 17
+  Left = 51
+  Top = 81
+  Width = 113
+  Caption = Event Title (no cache)
+
+Name = HTMLabel3
+  Type = Label
+  Height = 17
+  Left = 51
+  Top = 107
+  Width = 113
+  Caption = Event Title (>0 cache)
+
+Name = HTMLabel4
+  Type = Label
+  Height = 17
+  Left = 18
+  Top = 160
+  Width = 146
+  Caption = Event Description (>0 cache)
+
+Name = HTMLabel5
+  Type = Label
+  Height = 17
+  Left = 18
+  Top = 133
+  Width = 146
+  Caption = Event Description (no cache)
+
+Name = TextICalTitle
+  Type = Edit
+  Height = 21
+  Left = 168
+  Top = 22
+  Width = 265
+  Taborder = 10
+
+Name = TextICalDesc
+  Type = Edit
+  Height = 21
+  Left = 168
+  Top = 49
+  Width = 265
+  Taborder = 11
+
+Name = TextFewLogs
+  Type = Edit
+  Height = 21
+  Left = 168
+  Top = 103
+  Width = 265
+  Taborder = 13
+
+Name = TextDescription
+  Type = Edit
+  Height = 21
+  Left = 168
+  Top = 157
+  Width = 265
+  Taborder = 15
+
+Name = TextDescriptionZero
+  Type = Edit
+  Height = 21
+  Left = 168
+  Top = 130
+  Width = 265
+  Taborder = 14
+
+Name = TextNoLog
+  Type = Edit
+  Height = 21
+  Left = 168
+  Top = 76
+  Width = 265
+  Taborder = 12
+
+Name = Label3
+  Type = Label
+  Height = 17
+  Left = 132
+  Top = 202
+  Width = 198
+  Caption = %a = Number of cache for the challenge
+
+Name = HTMLabel6
+  Type = Label
+  Height = 17
+  Left = 132
+  Top = 220
+  Width = 149
+  Caption = %f = Number of finds for a day
+
+Name = HTMLabel7
+  Type = Label
+  Height = 17
+  Left = 132
+  Top = 238
+  Width = 153
+  Caption = %r = Number of days remaining
+
+Name = HTMLabel8
+  Type = Label
+  Height = 17
+  Left = 132
+  Top = 256
+  Width = 198
+  Caption = \n = New line (only in Event Description)
+
+Name = btnOk
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 132
+  Top = 322
+  Width = 75
+  Taborder = 16
+  Caption = Ok
+
+Name = btnCancel
+  Type = Button
+  Escape = Yes
+  Height = 25
+  Left = 242
+  Top = 322
+  Width = 75
+  Taborder = 17
+  Caption = Cancel
+
+Name = btnResetText
+  Type = Button
+  Height = 25
+  Left = 132
+  Top = 290
+  Width = 185
+  Taborder = 18
+  Caption = Default Texts
+
+<enddata>
+
+
+<Data> VarName=$formsTxtFre
+#********************************************************************
+# Form generated by GSAK form designer on jeu. 20-oct.-2011 15:06:54
+#********************************************************************
+
+Name = FormTxtFre
+  Type = Form
+  Caption = Text
+  Height = 482
+  Width = 470
+
+Name = Label1
+  Type = Label
+  Height = 17
+  Left = 18
+  Top = 27
+  Width = 96
+  Caption = Titre du iCalendrier
+
+Name = Label2
+  Type = Label
+  Height = 17
+  Left = 18
+  Top = 55
+  Width = 128
+  Caption = Description du iCalendrier
+
+Name = HTMLabel2
+  Type = Label
+  Height = 17
+  Left = 24
+  Top = 115
+  Width = 91
+  Caption = Titre (zéro cache)
+
+Name = HTMLabel3
+  Type = Label
+  Height = 17
+  Left = 24
+  Top = 141
+  Width = 117
+  Caption = Titre (plusieurs caches)
+
+Name = HTMLabel4
+  Type = Label
+  Height = 17
+  Left = 24
+  Top = 194
+  Width = 149
+  Caption = Description (plusieurs caches)
+
+Name = HTMLabel5
+  Type = Label
+  Height = 17
+  Left = 24
+  Top = 167
+  Width = 123
+  Caption = Description (zéro cache)
+
+Name = TextICalTitle
+  Type = Edit
+  Height = 21
+  Left = 168
+  Top = 22
+  Width = 265
+  Taborder = 10
+
+Name = TextICalDesc
+  Type = Edit
+  Height = 21
+  Left = 168
+  Top = 49
+  Width = 265
+  Taborder = 11
+
+Name = TextFewLogs
+  Type = Edit
+  Height = 21
+  Left = 168
+  Top = 137
+  Width = 265
+  Taborder = 13
+
+Name = TextDescription
+  Type = Edit
+  Height = 21
+  Left = 168
+  Top = 191
+  Width = 265
+  Taborder = 15
+
+Name = TextDescriptionZero
+  Type = Edit
+  Height = 21
+  Left = 168
+  Top = 164
+  Width = 265
+  Taborder = 14
+
+Name = TextNoLog
+  Type = Edit
+  Height = 21
+  Left = 168
+  Top = 110
+  Width = 265
+  Taborder = 12
+
+Name = Label3
+  Type = Label
+  Height = 17
+  Left = 132
+  Top = 241
+  Width = 212
+  Caption = %a = Nombre de cache par jour pour le défi
+
+Name = HTMLabel6
+  Type = Label
+  Height = 17
+  Left = 132
+  Top = 259
+  Width = 205
+  Caption = %f = Nombre de trouvée pour une journée
+
+Name = HTMLabel7
+  Type = Label
+  Height = 17
+  Left = 132
+  Top = 277
+  Width = 178
+  Caption = %r = Nombre de jours restant au défi
+
+Name = HTMLabel8
+  Type = Label
+  Height = 17
+  Left = 132
+  Top = 295
+  Width = 197
+  Caption = \n = Nouvelle ligne   (Seulement dans la
+
+Name = btnOk
+  Type = Button
+  Enter = Yes
+  Height = 44
+  Left = 130
+  Top = 367
+  Width = 75
+  Taborder = 16
+  Caption = Ok
+
+Name = btnCancel
+  Type = Button
+  Escape = Yes
+  Height = 44
+  Left = 240
+  Top = 367
+  Width = 75
+  Taborder = 17
+  Caption = Cancel
+
+Name = Label4
+  Type = Label
+  Height = 17
+  Left = 18
+  Top = 91
+  Width = 68
+  Caption = Événement :
+
+Name = HTMLabel9
+  Type = Label
+  Height = 17
+  Left = 154
+  Top = 307
+  Width = 141
+  Caption = description d'un événement)
+
+Name = btnResetText
+  Type = Button
+  Height = 25
+  Left = 130
+  Top = 335
+  Width = 185
+  Taborder = 18
+  Caption = Textes par défaut
+
+<enddata>
+
+
+
+<Data> VarName=$formsTxtDeu
+#********************************************************************
+# Form generated by GSAK form designer on jeu. 20-oct.-2011 14:55:03
+#********************************************************************
+
+Name = FormTxtDeu
+  Type = Form
+  Caption = Texte
+  Height = 482
+  Width = 492
+
+Name = Label1
+  Type = Label
+  Height = 17
+  Left = 18
+  Top = 27
+  Width = 93
+  Caption = Titel des Kalendar
+
+Name = Label2
+  Type = Label
+  Height = 17
+  Left = 18
+  Top = 55
+  Width = 143
+  Caption = Beschreibung des Kalenders
+
+Name = HTMLabel2
+  Type = Label
+  Height = 17
+  Left = 24
+  Top = 115
+  Width = 89
+  Caption = Titel (Null-Cache)
+
+Name = HTMLabel3
+  Type = Label
+  Height = 17
+  Left = 24
+  Top = 141
+  Width = 114
+  Caption = Titel (mehrere Caches)
+
+Name = HTMLabel4
+  Type = Label
+  Height = 17
+  Left = 24
+  Top = 194
+  Width = 159
+  Caption = Beschreibung (mehrere Caches)
+
+Name = HTMLabel5
+  Type = Label
+  Height = 17
+  Left = 24
+  Top = 167
+  Width = 134
+  Caption = Beschreibung (Null-Cache)
+
+Name = TextICalTitle
+  Type = Edit
+  Height = 21
+  Left = 180
+  Top = 22
+  Width = 265
+  Taborder = 10
+
+Name = TextICalDesc
+  Type = Edit
+  Height = 21
+  Left = 180
+  Top = 49
+  Width = 265
+  Taborder = 11
+
+Name = TextFewLogs
+  Type = Edit
+  Height = 21
+  Left = 180
+  Top = 137
+  Width = 265
+  Taborder = 13
+
+Name = TextDescription
+  Type = Edit
+  Height = 21
+  Left = 180
+  Top = 191
+  Width = 265
+  Taborder = 15
+
+Name = TextDescriptionZero
+  Type = Edit
+  Height = 21
+  Left = 180
+  Top = 164
+  Width = 265
+  Taborder = 14
+
+Name = TextNoLog
+  Type = Edit
+  Height = 21
+  Left = 180
+  Top = 110
+  Width = 265
+  Taborder = 12
+
+Name = Label3
+  Type = Label
+  Height = 17
+  Left = 94
+  Top = 239
+  Width = 291
+  Caption = %a = Die Anzahl der Cache pro Tag für die Herausforderung
+
+Name = HTMLabel6
+  Type = Label
+  Height = 17
+  Left = 94
+  Top = 257
+  Width = 179
+  Caption = %f = Gefunden für manch einen Tag
+
+Name = HTMLabel7
+  Type = Label
+  Height = 17
+  Left = 94
+  Top = 275
+  Width = 296
+  Caption = %r = Anzahl der verbleibenden Tage auf die Herausforderung
+
+Name = HTMLabel8
+  Type = Label
+  Height = 17
+  Left = 94
+  Top = 293
+  Width = 197
+  Caption = \n = New Line (nur in der Beschreibung)
+
+Name = btnOk
+  Type = Button
+  Enter = Yes
+  Height = 44
+  Left = 142
+  Top = 373
+  Width = 75
+  Taborder = 16
+  Caption = Ok
+
+Name = btnCancel
+  Type = Button
+  Escape = Yes
+  Height = 44
+  Left = 252
+  Top = 373
+  Width = 75
+  Taborder = 17
+  Caption = Abbrechen
+
+Name = Label4
+  Type = Label
+  Height = 17
+  Left = 18
+  Top = 91
+  Width = 79
+  Caption = Veranstaltung :
+
+Name = btnResetText
+  Type = Button
+  Height = 25
+  Left = 142
+  Top = 341
+  Width = 185
+  Taborder = 18
+  Caption = Standard-Text
+
+<enddata>
+
+
+
+
+

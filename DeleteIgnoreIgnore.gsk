@@ -1,0 +1,265 @@
+#*******************************************
+# MacDescription = Delete a waypoint, add to ignore list, and add to gc.com ignore list
+# MacFileName = DeleteIgnoreIgnore.gsk
+# MacAuthor = Kai Team
+# MacVersion=2.0
+# MacUrl=
+#*******************************************
+VERCHECK Version=8.0.0.133 (Update GSAK to version 8.0.0.133 or later to run this macro: http://gsak.net/board/index.php?showtopic=14859&view=findpost&p=101819)
+$ThisWaypointRB=TRUE
+$PreventLockedCB=TRUE
+$AddCodes=""
+
+WHILE TRUE
+    $FormExit = form($Form,"")
+    BEGINCASE
+        CASE $FormExit = "SystemExit"
+        CANCEL Msg="Macro Canceled"
+
+        CASE $FormExit = "OK"
+        GOSUB Name=Run
+        BREAK
+
+        CASE $FormExit = "Cancel"
+        CANCEL Msg="Macro Canceled"
+    ENDCASE
+ENDWHILE
+
+BEGINSUB Name=Run
+    BEGINCASE
+        CASE $ThisWaypointRB AND $PreventLockedCB
+            $Delete=$Delete + $_NewLine + "cbxStop.Checked=True" + $_NewLine + "rbtFilter.Checked=False" + $_NewLine + "rbtFlagged.Checked=False" + $_NewLine + "rbtOnly.Checked=True"  + $_NewLine + "rbtAll.Checked=False" + $_NewLine + "chkKeepLock.Checked=True"
+            GOSUB Name=Single
+
+        CASE $ThisWaypointRB AND $PreventLockedCB=FALSE
+            $Delete=$Delete + $_NewLine + "cbxStop.Checked=True" + $_NewLine + "rbtFilter.Checked=False" + $_NewLine + "rbtFlagged.Checked=False" + $_NewLine + "rbtOnly.Checked=True" + $_NewLine + "rbtAll.Checked=False" + $_NewLine + "chkKeepLock.Checked=False"
+            GOSUB Name=Single
+
+        CASE $FilterRB AND $PreventLockedCB
+            $Delete=$Delete + $_NewLine + "cbxStop.Checked=True" + $_NewLine + "rbtFilter.Checked=True" + $_NewLine + "rbtFlagged.Checked=False" + $_NewLine + "rbtOnly.Checked=False"  + $_NewLine + "rbtAll.Checked=False" + $_NewLine + "chkKeepLock.Checked=True"
+            GOSUB Name=Filter
+
+        CASE $FilterRB AND $PreventLockedCB=FALSE
+            $Delete=$Delete + $_NewLine + "cbxStop.Checked=True" + $_NewLine + "rbtFilter.Checked=True" + $_NewLine + "rbtFlagged.Checked=False" + $_NewLine + "rbtOnly.Checked=False"  + $_NewLine + "rbtAll.Checked=False" + $_NewLine + "chkKeepLock.Checked=False"
+             GOSUB Name=Filter
+
+        CASE $UserFlagRB AND $PreventLockedCB
+            $Delete=$Delete + $_NewLine + "cbxStop.Checked=True" + $_NewLine + "rbtFilter.Checked=False" + $_NewLine + "rbtFlagged.Checked=True" + $_NewLine + "rbtOnly.Checked=False" + $_NewLine + "rbtAll.Checked=False" + $_NewLine + "chkKeepLock.Checked=True"
+            GOSUB Name=Flagged
+
+        CASE $UserFlagRB AND $PreventLockedCB=FALSE
+            $Delete=$Delete + $_NewLine + "cbxStop.Checked=True" + $_NewLine + "rbtFilter.Checked=False" + $_NewLine + "rbtFlagged.Checked=True" + $_NewLine + "rbtOnly.Checked=False"  + $_NewLine + "rbtAll.Checked=False" + $_NewLine + "chkKeepLock.Checked=False"
+            GOSUB Name=Flagged
+    ENDCASE
+ENDSUB
+
+BEGINSUB Name=Single
+    GOSUB Name=Ignore
+    MACROSET Dialog=Delete VarName=$Delete
+    DELETE Settings=<macro>
+ENDSUB
+
+BEGINSUB Name=FILTER
+    GOSUB Name=Ignore
+    IF Not($_FilterActive)
+        RETURN Msg=No filter is set. Macro canceled.
+    ENDIF
+    MACROSET Dialog=Delete VarName=$Delete
+    DELETE Settings=<macro>
+ENDSUB
+
+BEGINSUB Name=Flagged
+    GOSUB Name=Ignore
+    MFILTER Where=USERFLAG=1
+    MACROSET Dialog=Delete VarName=$Delete
+    DELETE Settings=<macro>
+ENDSUB
+
+BEGINSUB Name=Ignore
+    #Get User's list of Bookmark lists, including GUID's, and extract GUID for Ignore List
+    $data = GcApi("GetBookmarkListsForUser")
+    IF $_GcApiError
+        MSGOK msg=$data
+    ELSE
+        $_sql="SELECT data FROM gcapi WHERE key LIKE '%/ListGUID' AND rowid < "
+        $_sql=$_sql + "(SELECT rowid FROM gcapi WHERE key LIKE '%/ListName' AND data='Ignore List') ORDER BY rowid DESC LIMIT 1"
+        $GUID=Sqlite("sql",$_sql)
+    ENDIF
+
+    #Get List of cache codes in the Ignore List Bookmark List, using GUID
+    $APIData=Replace("~~GUID~~",$GUID,$APIData)
+    $BookmarkData = GcApi("GetBookmarkListByGuid",$APIData)
+    IF $_GcApiError
+        MSGOK msg= Error: $data
+    ELSE
+        $GCIgnoreCodes = sqlite("sql","select data from GcApi where g_Contains('CacheCode',key)")
+    ENDIF
+
+    #Count the number of caches on the ignore List
+    $NumIgnored=RegExCount($_CrLf,$GCIgnoreCodes) + 1
+
+    IF $NumIgnored>=1000
+        RETURN Msg=You have 1000 or more caches on your geocaching.com ignore List.  Additional caches will not be addded to the online ignore list.
+    ENDIF
+
+    #Format list of codes on Ignore List to be used in SQLite IN() statement
+    $GCICInList=Replace($_CrLf,"','",$GCIgnoreCodes)
+    $GCICInList="'" + $GCICInList + "'"
+
+    #Get the list of codes in GSAK's ignore list that are not in geocaching.com ignore list, if any
+    BEGINCASE
+        CASE $ThisWaypointRB
+                $_sql="Select Code from Caches WHERE Code='$d_Code' AND Code Not IN($GCICInList)"
+                $GSAKOnlyCodesList=Sqlite("sql",$_sql)
+
+        CASE $FilterRB
+                $_sql="Select Code from Caches WHERE $_Where AND Code Not IN($GCICInList)"
+                $GSAKOnlyCodesList=Sqlite("sql",$_sql)
+
+        CASE $UserFlagRB
+                $_sql="Select Code from Caches WHERE UserFlag=1" #AND Code NOT IN($GCICInList)"
+                $GSAKOnlyCodesList=Sqlite("sql",$_sql)
+    ENDCASE
+
+    #Modify list for easier extraction
+    $GSAKOnlyCodesList=Replace($_CrLf,";",$GSAKOnlyCodesList) + ";"
+
+    #Extract codes from results and construct XML statement for API data statement
+    $Count=RegExCount(";",$GSAKOnlyCodesList)
+
+    $x=1
+    WHILE $x<=$Count
+        $ThisCode=Extract($GSAKOnlyCodesList,";",$x)
+        $ThisCode=Replace(";","",$ThisCode)
+        $AddCodes=$AddCodes + "<string xmlns=" + $_Quote + "http://schemas.microsoft.com/2003/10/Serialization/Arrays" + $_Quote + ">" + $ThisCode + "</string>" + $_CrLf
+        $x=$x+1
+    ENDWHILE
+
+    #Update API data statement to contain GUID and List of Codes to be ignored
+    IF $GSAKOnlyCodesList<>";"
+        $AddtoIgnoreList=Replace("~~GUID~~",$GUID,$AddtoIgnoreList)
+        $AddtoIgnoreList=Replace("~~Codes~~",$AddCodes,$AddtoIgnoreList)
+
+        $Status=GcApi("AddGeocachesToBookmarkList",$AddtoIgnoreList)
+        IF $_GcApiError
+            MSGOK msg=$data
+        ELSE
+            MSGOK Msg=Selected caches were added to your geocaching.com ignore lsit
+        ENDIF
+    ELSE
+        MSGOK Msg=No caches were selected to be added to your online ignore list.
+    ENDIF
+ENDSUB
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sun 15-Jan-2012 21:10:50
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Delete Waypoint(s), Ignore in GSAK, Ignore at Geocaching.com
+  Color = 16774120
+  Height = 208
+  Top = 426
+  Width = 436
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 89
+  Top = 127
+  Width = 75
+  Taborder = 8
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 255
+  Top = 127
+  Width = 75
+  Taborder = 9
+  Caption = Cancel
+
+Name = ThisWaypointRB
+  Type = Radiobutton
+  Height = 17
+  Left = 13
+  Top = 18
+  Width = 113
+  Taborder = 10
+  Caption = This waypoint only
+
+Name = FilterRB
+  Type = Radiobutton
+  Height = 17
+  Left = 153
+  Top = 18
+  Width = 113
+  Taborder = 11
+  Caption = All waypoints in filter
+
+Name = UserFlagRB
+  Type = Radiobutton
+  Height = 17
+  Left = 313
+  Top = 18
+  Width = 93
+  Taborder = 12
+  Caption = User Checked
+
+Name = PreventLockedCB
+  Type = Checkbox
+  Captionposition = Left
+  Height = 17
+  Left = 86
+  Top = 54
+  Width = 247
+  Taborder = 13
+  Caption = Prevent Locked Waypoints from being deleted
+
+Name = Label1
+  Type = Label
+  Color = 255
+  Height = 16
+  Left = 13
+  Size = 10
+  Top = 90
+  Width = 401
+  Caption = These waypoints will be deleted.  Are you sure you want to do this?
+
+Name = Label2
+  Type = Label
+  Height = 17
+  Left = 390
+  Size = 7
+  Top = 156
+  Width = 30
+  Caption = V 2.0
+
+<enddata>
+
+
+
+<data> VarName=$Delete
+[TfmDelete]
+<enddata>
+
+<Data> Varname=$APIData
+<GetBookmarkListByGuidRequest xmlns="http://www.geocaching.com/Geocaching.Live/data">
+<AccessToken>{ACCESSTOKEN}</AccessToken>
+<BookmarkListGuid>~~GUID~~</BookmarkListGuid>
+</GetBookmarkListByGuidRequest>
+<enddata>
+
+<Data> Varname=$AddtoIgnoreList
+<AddGeocachesToBookmarkListRequest xmlns="http://www.geocaching.com/Geocaching.Live/data">
+  <AccessToken>{ACCESSTOKEN}</AccessToken>
+  <BookmarkListGuid>~~GUID~~</BookmarkListGuid>
+  <CacheCodes>
+    ~~Codes~~
+  </CacheCodes>
+</AddGeocachesToBookmarkListRequest>
+<enddata>
+

@@ -1,0 +1,364 @@
+#*******************************************
+# MacDescription = Flag Changed Caches from a GPX load
+# MacFileName = FlagStatusChanges.gsk 
+# MacAuthor = Kai Team
+# MacVersion=1.0
+# MacUrl=http://gsak.net/board/index.php?showtopic=11447&view=findpost&p=75381
+#*******************************************
+#Initialize Variables
+$SendSettings=SysInfo("S_Load")
+$SendSettings=RegExReplace("<macro>;",$SendSettings,"")
+$Form=EditForm($Form, "Combobox1", "Values", $SendSettings) 
+$Count=0
+$Mark=""
+$Archived=0
+$Tempdisabled=0
+$EOLine=";"+ $_NewLine
+$Database=$_CurrentDataPath + "\sqlite.db3"
+$CheckBox1=TRUE
+
+#Retrieve saved settings (if they exist) 
+MACSETTINGS Type=R FileCheck=N
+
+#Retrieve a list of all caches in the DB that are either archived or temp disabled at the start
+SQLITECACHES
+$Sql=Sqlite("open", $Database)
+$StartList=Sqlite("sql","Select Code, Archived, TempDisabled from CachesTempAll where Archived='1' OR TempDisabled='1' Order by Code")
+$Sql=Sqlite("close",$Database)
+
+#Modify the list to add a CR/LF to the last line and to add semi colons to the end of all lines
+IF $StartList<>""
+	$StartList=$StartList + $_Newline
+	$StartList=Replace($_NewLine,$EOLine,$StartList)
+ENDIF
+
+#Count the number of lines (codes) in the Start List
+$StartCount=RegExCount($_NewLine,$StartList)
+
+#Display the form
+WHILE TRUE
+    $FormExit = form($Form,"")
+    BEGINCASE 
+        CASE $FormExit = "SystemExit"
+        CANCEL
+
+        CASE $FormExit = "OK"
+        	MACSETTINGS Type=S Vars=Combobox1,File1,CheckBox1,Checkbox2,RadioButton1,RadioButton2,RadioButton3,RadioButton4
+        GOSUB Name=Run
+        BREAK 
+
+        CASE $FormExit = "Cancel"
+        CANCEL
+    ENDCASE 
+ENDWHILE
+
+
+#Run the macro
+BEGINSUB Name=Run
+		#Add the date to the Mark if that option is selected
+    IF $Checkbox2
+    		$Mark="~" + DateFormat($_Today)
+    ENDIF
+		#Load the selected GPX file with the selected saved Load settings
+		IF $File1<>""
+			LOAD Settings=$Combobox1 File=$File1 database=$_CurrentDatabase
+		ELSE
+			LOAD Settings=$Combobox1 database=$_CurrentDatabase
+		ENDIF
+		
+		#Retrieve a list of all caches in the DB that are either archived or temp disabled after the Load
+		SQLITECACHES
+		$Sql=Sqlite("open", $Database)	
+	  $EndList=Sqlite("sql","Select Code, Archived, TempDisabled from CachesTempAll where Archived='1' OR TempDisabled='1' Order by Code")
+		$Sql=Sqlite("close",$Database)
+		
+		#Modify the list to add a CR/LF to the last line and to add semi colons to the end of all lines
+		IF $EndList<>""
+			$EndList=$EndList + $_Newline
+			$EndList=Replace($_NewLine,$EOLine,$EndList)	
+		ENDIF
+		
+		#Count the number of lines (codes) in the End List
+		$EndCount=RegExCount($_NewLine,$EndList)
+		IF $Checkbox1
+			USERFLAG Type=Clear Range=All
+		ENDIF
+		
+		#Check changes in Start List by extrating each code and archived and temp disabled status at the start
+		$x=1
+		WHILE $x<=($StartCount*3)
+			#Extract Code and status
+			$Code=AllTrim(Extract($StartList,";",$x)) 
+			$Archived=Val(Extract($StartList,";",$x+1))
+			$TempDisabled=Val(Extract($StartList,";",$x+2))
+			
+			#Position the pointer to that cache in the database, mark cache if status has changed
+    	IF Seek($Code)
+    		BEGINCASE
+    			CASE Not($d_Archived OR $d_TempDisabled)
+    				$Mark="AV" + $Mark
+    				GOSUB Name=MarkCache
+    			CASE $d_Archived AND $Archived=0
+    				$Mark="AR" + $Mark
+    				GOSUB Name=MarkCache
+    			CASE $d_TempDisabled AND $TempDisabled=0
+    				$Mark="TD" + $Mark
+    				GOSUB Name=MarkCache
+    		ENDCASE
+    	ELSE
+    		PAUSE Msg=$Code Code Not Found
+      ENDIF
+			$x=$x+3
+		ENDWHILE
+		
+		#Check changes in End List by extrating each code for archived and temp disabled after the load
+		$x=1
+		WHILE $x<=($EndCount*3)
+			$Code=AllTrim(Extract($EndList,";",$x))
+			$Archived=Val(Extract($EndList,";",$x+1))
+			$TempDisabled=Val(Extract($EndList,";",$x+2))
+
+			#Position the pointer to that cache in the database, mark status changes
+			#Mark caches in the end list but not in the start list (i.e. available to unavailable)
+    	IF Seek($Code) AND RegExCount($Code,$StartList)=0
+				BEGINCASE
+					CASE $d_Archived
+						$Mark="AR" + $Mark
+						GOSUB Name=MarkCache
+					CASE $d_TempDisabled
+						$Mark="TD" + $Mark
+						GOSUB Name=MarkCache
+					ENDCASE
+    	ENDIF
+    	
+    	#Check caches that are in both start & end lists for changes from archive to temp dis or vice versa
+    	IF Seek($Code) AND RegExCount($Code,$StartList)>0
+    		BEGINCASE
+    			CASE $d_Archived AND $Archived=0
+    				$Mark="AR" + $Mark
+    				GOSUB Name=MarkCache
+    			CASE $d_TempDisabled AND $TempDisabled=0
+    				$Mark="TD" + $Mark
+    				GOSUB Name=MarkCache
+    		ENDCASE
+    	ENDIF
+			$x=$x+3
+		ENDWHILE
+		
+		#Position the pointer at the top of the grid and report the number of waypoints that changed.
+		GOTO Position=Top
+		MSGOK Msg=Status changed on $Count waypoints.
+ENDSUB
+
+#Mark caches whose status has changed, user flag is checked, or user data is selected. 
+BEGINSUB Name=MarkCache
+	$Count=$Count + 1
+	IF $Checkbox1
+		USERFLAG Type=SET Range=1
+	ENDIF
+	BEGINCASE
+		CASE $RadioButton1
+			$d_UserData=$Mark
+		CASE $RadioButton2
+			$d_User2=$Mark
+		CASE $RadioButton3
+			$d_User3=$Mark
+		CASE $RadioButton4
+			$d_User4=$Mark
+	ENDCASE
+ENDSUB
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sat 04-Apr-2009 09:19:45
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Flag Caches with Status Changes
+  Height = 331
+  Width = 427
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Add Status Change to:
+  Height = 79
+  Left = 14
+  Top = 156
+  Width = 391
+  Taborder = 5
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 94
+  Top = 255
+  Width = 75
+  Taborder = 0
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 250
+  Top = 255
+  Width = 75
+  Taborder = 1
+  Caption = Cancel
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 14
+  Size = 10
+  Top = 18
+  Width = 225
+  Caption = Select the saved Load settings to use:
+
+Name = Combobox1
+  Type = Combobox
+  Height = 21
+  Left = 245
+  Top = 18
+  Width = 157
+  Taborder = 2
+
+Name = Label2
+  Type = Label
+  Height = 16
+  Left = 14
+  Size = 10
+  Top = 54
+  Width = 352
+  Caption = Select the file(s) to Load (if different from the saved settings):
+
+Name = File1
+  Type = File
+  Height = 21
+  Left = 14
+  Top = 78
+  Width = 391
+  Taborder = 3
+
+Name = Checkbox1
+  Type = Checkbox
+  Height = 17
+  Left = 14
+  Top = 115
+  Width = 15
+  Taborder = 4
+
+Name = Label3
+  Type = Label
+  Height = 16
+  Left = 33
+  Size = 10
+  Top = 115
+  Width = 333
+  Caption = Clear user flags; set flags for caches with changed status
+
+Name = Checkbox2
+  Type = Checkbox
+  Container = Groupbox1
+  Height = 17
+  Left = 48
+  Top = 47
+  Width = 15
+  Taborder = 4
+
+Name = Label5
+  Type = Label
+  Container = Groupbox1
+  Height = 16
+  Left = 68
+  Size = 10
+  Top = 47
+  Width = 262
+  Caption = Include today's date in the status change tag
+
+Name = Radiobutton1
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 4
+  Top = 20
+  Width = 15
+  Taborder = 0
+
+Name = Label6
+  Type = Label
+  Container = Groupbox1
+  Height = 16
+  Left = 19
+  Size = 10
+  Top = 20
+  Width = 61
+  Caption = User Data
+
+Name = RadioButton2
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 94
+  Top = 20
+  Width = 15
+  Taborder = 1
+
+Name = Label7
+  Type = Label
+  Container = Groupbox1
+  Height = 16
+  Left = 109
+  Size = 10
+  Top = 20
+  Width = 71
+  Caption = User Data 2
+
+Name = RadioButton3
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 194
+  Top = 20
+  Width = 15
+  Taborder = 2
+
+Name = Label9
+  Type = Label
+  Container = Groupbox1
+  Height = 16
+  Left = 209
+  Size = 10
+  Top = 20
+  Width = 71
+  Caption = User Data 3
+
+Name = RadioButton4
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 297
+  Top = 20
+  Width = 15
+  Taborder = 3
+
+Name = Label10
+  Type = Label
+  Container = Groupbox1
+  Height = 16
+  Left = 312
+  Size = 10
+  Top = 20
+  Width = 71
+  Caption = User Data 4
+
+<enddata>
+
+
+
+
+
+
+
+
+

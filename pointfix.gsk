@@ -1,0 +1,151 @@
+################################
+# PointFilter.txt v.1.0-20060418
+# by Pasha Phares
+#
+# Requires: => v.6.6.0
+#
+# By default this macro shows
+# only unfound, available
+# caches.
+################################
+#DEBUG Status=On
+
+# Version check
+$RequiredVersion = "6.6.0.40"
+GOSUB Name=VersionCheck
+
+# Filter for user-flagged caches
+MFILTER If=$d_UserFlag
+
+# If there are no user-flagged caches, error out.
+IF $_FilterCount < 1
+	PAUSE Msg="No records User Flagged! Unable to contine."
+	CANCEL
+
+# If there are, proceed.
+ELSE
+
+	# Set current position to the first flagged cache
+	GOTO Position=Top
+	$pointfilterline = "ArcFilter="
+	
+	# Add the lat/long of each flagged cache to the point filter
+	WHILE NOT ($_EOL)
+		$pointfilterline = $pointfilterline + "~" + $d_Latitude + ", " + $d_Longitude
+		GOTO Position=Next
+	ENDWHILE
+	
+	# Ask the user how far out to set the filter
+	$pointdistancemsg = $_NewLine + "Enter distance in miles from each point to include caches:"
+	INPUT Msg=$pointdistancemsg Default=".5" VarName=$pointdistance
+	
+	# Keep asking until they enter a valid number
+	WHILE IsEmpty($pointdistance) OR RegEx("[^0-9.]", $pointdistance)
+		INPUT Msg="Invalid distance entered. Please enter a positive decimal value (e.g. .5 or 5). $pointdistancemsg" Default=".5" VarName=$pointdistance
+	ENDWHILE
+	
+	# Add the distance to the point filter
+	$pointdistanceline = "edtArcDistance=" + $pointdistance
+	
+	# Put the full point filter together
+	$PointFilter = $PointFilter + $pointdistanceline + $_NewLine + $pointfilterline + $_NewLine
+	
+	# Set the Filter dialog with the point filter
+	MACROSET Dialog=Filter VarName=$PointFilter
+	
+	# Run the filter
+	FILTER Name=<macro>
+	
+	# If there's no results, say so and exit
+	IF $_FilterCount < 1
+		PAUSE Msg="No records match the filter. Clearing and exiting."
+		CANCEL
+	ENDIF
+ENDIF
+CANCEL
+
+#*****************************************************************
+# Subroutine to make sure macro can run in this version of GSAK
+#*****************************************************************
+BEGINSUB Name="VersionCheck"
+# Get required version as a number we can compare
+	$work = extract($RequiredVersion,".",1)
+	$RequiredNumber = Val($work) * 10000
+	$work = extract($RequiredVersion,".",2)
+	$RequiredNumber = $RequiredNumber + (Val($work) * 1000)
+	$work = extract($RequiredVersion,".",3)
+	$RequiredNumber = $RequiredNumber + (Val($work) * 100)
+	$work = extract($RequiredVersion,".",4)
+	$RequiredNumber = $RequiredNumber + Val($work)
+# Get current version as a number we can compare
+	$work = extract($_Version,".",1)
+	$CurrentNumber = Val($work) * 10000
+	$work = extract($_Version,".",2)
+	$CurrentNumber = $CurrentNumber + (Val($work) * 1000)
+	$work = extract($_Version,".",3)
+	$CurrentNumber = $CurrentNumber + (Val($work) * 100)
+	$work = extract($_Version,".",4)
+	$CurrentNumber = $CurrentNumber + Val($work)
+	If $RequiredNumber > $CurrentNumber
+		$msg = "*Error* - This macro requires version $RequiredVersion or Higher." + $_NewLine + $_NewLine
+		$msg = $msg + "You are currently running GSAK version: $_Version"
+		pause msg=$msg
+		Cancel
+	EndIf
+ENDSUB
+
+# Variable structure to store the Filter dialog options,
+# minus the distance and points themselves
+<data> VarName=$PointFilter
+edtDesc=
+cbxDesc=0
+cbxFilter=0
+edtDistance=
+cbxDistance=0
+edtDistance2=
+edtPlacedBy=
+cbxDifficulty=0
+cbxTerrain=0
+cbxDif=8
+cbxTer=8
+cbxPlacedBy=0
+cbxDif2=8
+cbxTer2=8
+edtUserData=
+cbxUserData=0
+chkReverse=False
+edtTbugName=
+cbxTbugName=0
+cbxSource=0
+edtSource=
+cbxUser2=0
+EdtUser2=
+cbxOwnerName=0
+edtOwnerName=
+chkArcExclude=False
+chkFound=False
+chkNotFound=True
+chkExclude=True
+chkAvailable=True
+chkArchivedOnly=False
+chkTempUnavailable=False
+chkUserFlag1=True
+chkUserFlag2=True
+chkBugNo=True
+cbxBugs=True
+chkNoteNo=True
+chkNoteYes=True
+edtFull=
+chkFullHighlight=True
+chkRegEx=False
+chkFullNotes=False
+chkFullLogs=False
+chkFullDes=False
+RbtFullAll=True
+rbtFullSelect=False
+chkFtfNo=True
+chkFtfyes=True
+rbtArc=False
+rbtPoly=False
+rbtPoint=True
+<enddata>

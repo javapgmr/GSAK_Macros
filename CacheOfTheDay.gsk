@@ -1,0 +1,834 @@
+# MacVersion = 1.2
+# MacDescription = Pick a random cache for the day
+# MacAuthor = Bronstein
+# MacFileName = CacheOfTheDay.gsk
+# MacURL = http://gsak.net/board/index.php?showtopic=9615&view=findpost&p=62080
+
+# V1.1
+# - Fixed: "'" or ";" in cache names
+# - Fixed: Removed the required space in locations
+#
+# V1.2
+# - Fixed: test code for a single quote in the history (name has been shown with "test'" at the beginning)
+
+# ToDo
+# - Show last log types
+
+VERCHECK Version=7.2.4.13 (Note: this macro requires the latest GSAK "patch" - please see the 7.2.4 Updates thread here: http://gsak.net/board/index.php?showforum=6)
+
+ShowStatus msg="Initializing ..."
+Gosub Name=DeclareVar
+Gosub Name=Init
+
+$COD_FormExit=""
+While ($COD_FormExit <> "COD_F_OK") and ($COD_FormExit <> "SystemExit") and ($COD_FormExit <> "COD_F_Online")
+	If IsEmpty($COD_Code)
+		Gosub Name=GetNewCache
+	EndIf
+	Gosub Name=CheckMaxHistory
+	$COD_FormExit = "COD_F_Settings"
+	While $COD_FormExit = "COD_F_Settings"
+		Gosub Name=PrepareCacheForm
+		ShowStatus msg="" Display=Off
+		$COD_FormExit = Form($COD_Form_ShowCache,"")
+		BeginCase
+			Case $COD_FormExit = "COD_F_AnotherOne"
+				$COD_code=""
+			Case $COD_FormExit = "COD_F_Settings"
+				Gosub Name=Settings
+				$COD_FormExit = "COD_F_Settings"
+			Case $COD_FormExit = "COD_F_History"
+				Gosub Name=History
+				If $COD_FormExit <> "COD_FH_OK"
+					$COD_FormExit = "COD_F_Settings"
+				EndIf
+		EndCase
+	EndWhile
+EndWhile
+
+ShowStatus msg="Exiting..."
+If $COD_FormExit = "COD_F_Online"
+	Web URL=$d_Url
+EndIf
+If $COD_Prev_Database <> $_CurrentDatabase
+	Database Name=$COD_Prev_Database
+EndIf
+If RestoreFilter($COD_SavedFilter,True)>0
+EndIf
+
+Return
+
+#########################################################
+#
+# Subroutines
+#
+#########################################################
+
+BeginSub Name=Settings
+	$COD_FormExit = ""
+	While $COD_FormExit = ""
+		$_sql = "SELECT count(code) FROM CachesHistory"
+		$COD_Status = SQLite("sql",$_sql)
+		$COD_Form_Settings=Editform($COD_Form_Settings,"COD_FS_HistSize","Caption","$COD_Status caches in history")
+		$COD_FormExit = Form($COD_Form_Settings, "")
+		BeginCase
+			Case $COD_FormExit = "COD_FS_ClrHist"
+				$_sql = "DELETE FROM CachesHistory"
+				$COD_status = SQLite("sql",$_sql)
+				$COD_FormExit = ""
+			Case $COD_FormExit = "COD_FS_OK"
+			Case $COD_FormExit = "SystemExit"
+		EndCase
+	EndWhile
+	ShowStatus msg="Processing settings..."
+	$COD_Home_CO = RegExSub($COD_FS_Home+", ([^;]*);",$COD_Locations,1,1)
+	$_sql = "UPDATE Settings SET value = '$COD_FS_Home' WHERE setting = 'Home';"
+	$_sql = $_sql + "UPDATE Settings SET value = '$COD_FS_Filter' WHERE setting = 'Filter';"
+	$_sql = $_sql + "UPDATE Settings SET value = '$COD_FS_Database' WHERE setting = 'Database'"
+	$COD_Status = SQLite("sql",$_sql)
+	If $_CurrentDatabase <> $COD_FS_Database
+		Database Name=$COD_FS_Database
+	EndIf
+EndSub
+
+BeginSub Name=History
+	$_sql = "SELECT day,code,name FROM CachesHistory ORDER BY day DESC"
+	$COD_Status = SQLite("sql",$_sql) + $_NewLine
+	$COD_FH_List = ""
+	$COD_FH_HistoryList =""
+	While $COD_Status <> ""
+		$COD_FH_HistoryList = $COD_FH_HistoryList + DateFormat(StringToDate(Extract($COD_Status,"-",1))) + "   "
+		$COD_FH_HistoryList = $COD_FH_HistoryList + Extract(Extract($COD_Status,$_NewLine,1),";",2) + "   "
+		$COD_FH_HistoryList = $COD_FH_HistoryList + Extract(Extract($COD_Status,$_NewLine,1),";",3) + ";"
+		$COD_Status = Replace(Extract($COD_Status,$_NewLine,1)+$_NewLine,"",$COD_Status,False)
+	EndWhile
+	$_sql = "SELECT count(code) FROM CachesHistory"
+	$COD_Status = SQLite("sql",$_sql)
+	$COD_Form_History=Editform($COD_Form_History,"COD_FH_HistSize","Caption","$COD_Status caches in history")
+	$COD_FormExit = Form($COD_Form_History, "")
+	BeginCase
+		Case $COD_FormExit = "COD_FH_OK"
+			$COD_code = Extract($COD_FH_List,"   ",2)
+			$COD_day = Extract($COD_FH_List,"   ",1)
+			If not(Seek($COD_code))
+				MsgOK msg="Cache of the day $COD_code is not yet available in the actual filter.$_NewLine Choosing a new one"
+				$COD_code = ""
+			EndIf
+		Case $COD_FormExit = "COD_FH_Cancel"
+		Case $COD_FormExit = "SystemExit"
+	EndCase
+EndSub
+
+BeginSub name=Html2PlainText
+	# Simple conversion, GSAK V7.3 shall support HTML in forms, waiting for that
+  $COD_PlainText = RegExReplace("<[^>]+>", $COD_HtmlText, "")
+EndSub
+
+BeginSub Name=GetRandom
+	$COD_status = Sqlite("open",$COD_sqlfile)
+	$_sql = "DROP TABLE IF EXISTS RandomNumber;"
+	$_sql = $_sql + "create table RandomNumber (rnd number);"
+	$_sql = $_sql + "INSERT INTO RandomNumber Values (random());"
+	$_sql = $_sql + "Select rnd from RandomNumber Limit 1;"
+	$_sql = $_sql + "DROP TABLE IF EXISTS RandomNumber;"
+	$COD_status = SQLite("sql",$_sql)
+EndSub
+
+BeginSub Name=Init
+	$COD_SavedFilter = SaveFilter()
+	$COD_MAX_HISTORY = 350
+	$COD_MAX_RANDOM = 9223372036854775808
+	$COD_code = ""
+	$COD_Images = $_Install+"\images\"
+	$COD_FS_FilterList = "NONE ;"+Replace("...Last active filter;<macro>;","",SysInfo("Filters"),TRUE)
+	$COD_FS_Centre = SysInfo("center")
+	$COD_Locations = sysinfo("locations")
+	$COD_FS_HomeList = RegexReplace(",.*?;",$COD_Locations,";")
+	# Check if the centre point is included in the locations, otherwise it is a name of a cache
+	If At($COD_FS_Centre, $COD_FS_HomeList)=0
+		# Take now the first locations entry, but it would be better to get the coordinates from the cache
+		MFILTER expression=$d_distance=0
+		$COD_Centre_CO = $d_latitude + "," + $d_longitude
+	Else
+		$COD_Centre_CO = RegExSub($COD_FS_Centre+",(.*?);",$COD_Locations,1,1)
+	EndIf
+	$COD_FS_Database = $_CurrentDatabase
+	$COD_Prev_Database = $_CurrentDatabase
+	$COD_FS_DBList = SysInfo("Databases")
+
+	$COD_SQLfile = SysInfo("MacroPath")+"\CacheOfTheDay.db3"
+	IF NOT(FileExists($COD_SQLfile))
+		$COD_status = Sqlite("create",$COD_SQLfile)
+		$COD_status = Sqlite("open",$COD_SQLfile)
+		$_sql = "CREATE TABLE CachesHistory (code TEXT, day TEXT, name TEXT);"
+		$_sql = $_sql + "CREATE TABLE Settings (setting TEXT, value TEXT)"
+		$COD_status = SQLite("sql",$_sql)
+		$COD_tempS = "Version;1"+$_NewLine+"Filter;"+Extract($COD_FS_FilterList,";",1)+$_NewLine+"Home;$COD_FS_Centre"+$_NewLine+"Database;$COD_FS_Database"
+		$COD_status = SQLite("import",$COD_tempS,"table=Settings delim=;")
+	Else
+		$COD_status = Sqlite("open",$COD_SQLfile)
+	ENDIF
+	#Read Settings
+	$_sql = "SELECT value FROM Settings WHERE setting='Filter'"
+	$COD_FS_Filter = SQLite("sql",$_sql)
+	$_sql = "SELECT value FROM Settings WHERE setting='Home'"
+	$COD_FS_Home = SQLite("sql",$_sql)
+	$_sql = "SELECT value FROM Settings WHERE setting='Database'"
+	$COD_FS_Database = SQLite("sql",$_sql)
+	$_sql = "SELECT day, code FROM CachesHistory ORDER BY day DESC LIMIT 1"
+	$COD_status = SQLite("sql",$_sql)
+
+	$COD_Home_CO = RegExSub($COD_FS_Home+", ([^;]*);",$COD_Locations,1,1)
+	
+	If $COD_FS_Database <> $_CurrentDatabase
+		Database Name=$COD_FS_Database
+	EndIf
+	CancelFilter
+	# Check if today is already in the List
+	If $_SqlRows>0
+		# Get the newest entry and check for today
+		If DateToString($_Today) = Extract($COD_status, "-", 1)
+			# Same day, so show the same Cache
+			$COD_code = Extract($COD_status, ";", 2)
+			$COD_day = DateFormat($_Today)
+			If not(Seek($COD_code))
+				MsgOK msg="Cache of the day $COD_code is not yet available in the actual filter.$_NewLine Choosing a new one"
+				$COD_code = ""
+			EndIf
+		EndIf
+	EndIf
+EndSub
+
+BeginSub Name=CheckMaxHistory
+	# Check if the maximum history depth is reached
+	$_sql = "SELECT count(code) FROM CachesHistory"
+	$COD_Status = SQLite("sql",$_sql)
+	While Val($COD_Status)>$COD_MAX_HISTORY
+		$_sql = "SELECT code FROM CachesHistory ORDER BY day ASC LIMIT 1"
+		$COD_Status = SQLite("sql",$_sql)
+		$_sql = "DELETE FROM CachesHistory WHERE code='$COD_Status';"
+		$_sql = $_sql + "SELECT count(code) FROM CachesHistory"
+		$COD_Status = SQLite("sql",$_sql)
+	EndWhile
+EndSub
+
+BeginSub Name=GetNewCache
+	ShowStatus msg="Calculating a new Cache of the day..." Display=On
+	If ($COD_FS_Filter <> "") and ($COD_FS_Filter <> "NONE ")
+		Filter Name=$COD_FS_Filter
+	Else
+		CancelFilter
+	EndIf
+	# Get max number of tries before allowing to use a cache which is in the history
+	$COD_count = 0
+	$COD_count_max = $COD_MAX_HISTORY
+	If $_FilterActive
+		If $COD_count_max>$_FilterCount
+			$COD_count_max = $_FilterCount
+		EndIf
+	Else
+		If $COD_count_max>$_Count
+			$COD_count_max = $_Count
+		EndIf
+	EndIf
+	# Now try to find a cache which is not already shown
+	While IsEmpty($COD_code) and ($COD_count < $COD_Count_max)
+		$COD_count = $COD_count + 1
+		# Generate a new Cache of the Day
+		$COD_date = DateToString($_Today) + "-" + TIME()
+		$_sql = "INSERT INTO CachesHistory Values (random(), '$COD_date', '')"
+		$COD_status = SQLite("sql",$_sql)
+		$_sql = "SELECT code FROM CachesHistory ORDER BY day DESC LIMIT 1"
+		$COD_code = SQLite("sql",$_sql)
+		$COD_day = DateFormat($_Today)
+		$COD_random = Abs(val($COD_code)/$COD_MAX_RANDOM)
+		If $_FilterActive
+			$COD_random = Round($COD_random * $_FilterCount,0)
+		Else
+			$COD_random = Round($COD_random * $_Count,0)
+		EndIf
+		# Get the GC-code of the cache, jump to the position.
+		Goto Position=Top
+		If $COD_random>0
+			Goto Position=$COD_random - 1
+		EndIf
+		# Check if code is already in the history list
+		$_sql = "SELECT code FROM CachesHistory WHERE code='$d_code'"
+		$COD_Status = SQLite("sql",$_sql)
+		If ($_SqlRows>0) and ($COD_count < $COD_count_max)
+			# Was already used, so do the loop again after deleting the latest created
+			$_sql = "DELETE FROM CachesHistory WHERE code='$COD_code'"
+			$COD_Status = SQLite("sql",$_sql)
+			$COD_code = ""
+		Else
+			# If new or all tries done, then take it
+			$COD_TempS = $d_name
+			$COD_TempS = Replace("'","''",$COD_TempS,TRUE)
+			$COD_TempS = Replace(";",",",$COD_TempS,TRUE)
+			$_sql = "UPDATE CachesHistory SET name = '$COD_tempS' WHERE CODE = '$COD_Code';"
+			$_sql = $_sql + "UPDATE CachesHistory SET code = '$d_code' WHERE CODE = '$COD_Code';"
+			$COD_Status = SQLite("sql",$_sql)
+		EndIf
+	EndWhile
+EndSub
+
+BeginSub Name=PrepareCacheForm
+	# Put all the data to the form
+	$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_Date","Caption",$COD_day)
+	$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_code","Caption",$d_code)
+	$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_name","Caption",$d_Name)
+	IF left($d_container,1) = "N"
+		$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_Size","File",$COD_Images + "cacheSizeU.gif")
+	ELSE
+		$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_Size","File",$COD_Images + "cacheSize" + LEFT($d_container,1) + ".gif")
+	ENDIF
+	$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_type","File",$COD_Images + "cache" + $d_CacheType + ".gif")
+	$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_Diff","File",$COD_images + "stars" + replace(",","_",replace(".","_",numtostr($d_Difficulty),true),true) + ".gif")
+	$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_Terr","File",$COD_images + "stars" + replace(",","_",replace(".","_",numtostr($d_Terrain),true),true) + ".gif")
+	$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_SizeT","Caption",$d_container)
+	$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_Owner","Caption",$d_PlacedBy)
+	$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_Hidden","Caption",DateFormat($d_PlacedDate))
+	# Now the distance including the unit
+	$COD_TempS = GCalc($COD_Centre_CO + ";" + $d_latitude + " " + $d_longitude,"CalcDistance")
+	If StrToBool(Sysinfo("gsakini;TfmConfig;rbtKms.Checked"))
+		If val($COD_tempS)>1
+			$COD_tempS = NumToStr(Round(val($COD_tempS),1)) + "km"
+		Else
+			$COD_tempS = NumToStr(Round(1000*val($COD_tempS),0)) + "m"
+		EndIf
+	Else
+		$COD_tempS = NumToStr(Round(val($COD_tempS),2)) + "miles"
+	EndIf
+	$COD_TempS = GCalc($COD_Centre_CO + ";" + $d_latitude + " " + $d_longitude,"CalcBearing2") + " " + $COD_TempS
+	$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_Centre","Caption",$COD_TempS)
+	# Now show also the distance to Home if the current centre is not home
+	If $COD_FS_Centre <> $COD_FS_Home
+		# Different, so calculate and show the distance
+		$COD_TempS = GCalc($COD_Home_CO + ";" + $d_latitude + " " + $d_longitude,"CalcDistance")
+		If StrToBool(Sysinfo("gsakini;TfmConfig;rbtKms.Checked"))
+			If val($COD_tempS)>1
+				$COD_tempS = NumToStr(Round(val($COD_tempS),1)) + "km"
+			Else
+				$COD_tempS = NumToStr(Round(1000*val($COD_tempS),0)) + "m"
+			EndIf
+		Else
+			$COD_tempS = NumToStr(Round(val($COD_tempS),2)) + "miles"
+		EndIf
+		$COD_TempS = GCalc($COD_Home_CO + ";" + $d_latitude + " " + $d_longitude,"CalcBearing2") + " " + $COD_TempS
+		$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_Dist","Caption",$COD_TempS)
+		$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_Dist","Visible","Yes")
+		$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_Dist_Label","Visible","Yes")
+	Else
+		# Same, disable the text on the form
+		$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_Dist","Visible","No")
+		$COD_Form_ShowCache=Editform($COD_Form_ShowCache,"COD_F_Dist_Label","Visible","No")
+	EndIf
+	
+	# Now the short and long text. Remove HTML code if needed.
+	If $d_ShortHtm
+		$COD_HTMLText = $d_ShortDescription
+		Gosub Name=Html2PlainText
+		$COD_F_Short = $COD_PlainText
+	Else
+		$COD_F_Short = $d_ShortDescription
+	EndIf
+	While At($_NewLine+$_NewLine,$COD_F_Short)>0
+		$COD_F_Short = Replace($_NewLine+$_NewLine,$_NewLine,$COD_F_Short,True)
+	EndWhile
+	While Left($COD_F_Short,2)=$_NewLine
+		$COD_F_Short = SubStr($COD_F_Short, 3, len($COD_F_Short)-2)
+	EndWhile
+	If $d_LongHtm
+		$COD_HTMLText = $d_LongDescription
+		Gosub Name=Html2PlainText
+		$COD_F_Long = $COD_PlainText
+	Else
+		$COD_F_Long = $d_LongDescription
+	EndIf
+	While At($_NewLine+$_NewLine,$COD_F_Long)>0
+		$COD_F_Long = Replace($_NewLine+$_NewLine,$_NewLine,$COD_F_Long,True)
+	EndWhile
+	While Left($COD_F_Long,2)<=$_NewLine
+		$COD_F_Long = SubStr($COD_F_Long, 3, len($COD_F_Long)-2)
+	EndWhile
+EndSub
+
+
+#*******************************************************
+#   Variable declarations for
+#   C:\Programme\gsak\Macros\CacheOfTheDay.gsk
+#
+#   Generated 03.10.2008 10:30:17 on GSAKVariables.gsk Rev V0.20 B15
+#
+#*******************************************************
+
+BeginSub Name=DeclareVar
+
+	Option Explicit=Yes
+
+	Declare Var=$COD_Centre_CO Type=String
+	Declare Var=$COD_code Type=String
+	Declare Var=$COD_count Type=Numeric
+	Declare Var=$COD_count_max Type=Numeric
+	Declare Var=$COD_date Type=String
+	Declare Var=$COD_day Type=String
+	Declare Var=$COD_F_Long Type=String
+	Declare Var=$COD_F_Short Type=String
+	Declare Var=$COD_FH_HistoryList Type=String
+	Declare Var=$COD_FH_List Type=String
+	Declare Var=$COD_Form_History Type=String
+	Declare Var=$COD_Form_Settings Type=String
+	Declare Var=$COD_Form_ShowCache Type=String
+	Declare Var=$COD_FormExit Type=String
+	Declare Var=$COD_FS_Centre Type=String
+	Declare Var=$COD_FS_Database Type=String
+	Declare Var=$COD_FS_DBList Type=String
+	Declare Var=$COD_FS_Filter Type=String
+	Declare Var=$COD_FS_FilterList Type=String
+	Declare Var=$COD_FS_Home Type=String
+	Declare Var=$COD_FS_HomeList Type=String
+	Declare Var=$COD_Home_CO Type=String
+	Declare Var=$COD_HTMLText Type=String
+	Declare Var=$COD_Images Type=String
+	Declare Var=$COD_Locations Type=String
+	Declare Var=$COD_MAX_HISTORY Type=Numeric
+	Declare Var=$COD_MAX_RANDOM Type=Numeric
+	Declare Var=$COD_PlainText Type=String
+	Declare Var=$COD_Prev_Database Type=String
+	Declare Var=$COD_random Type=Numeric
+	Declare Var=$COD_SavedFilter Type=String
+	Declare Var=$COD_SQLfile Type=String
+	Declare Var=$COD_Status Type=String
+	Declare Var=$COD_tempS Type=String
+EndSub
+
+
+<Data> VarName=$COD_Form_ShowCache
+#********************************************************************
+# Form generated by GSAK form designer on Fr 03-Okt-2008 01:01:32
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 439
+  Width = 500
+
+Name = COD_F_name
+  Type = Label
+  Height = 20
+  Left = 64
+  Size = 12
+  Style = bold
+  Top = 86
+  Width = 113
+
+Name = COD_F_type
+  Type = Image
+  File = C:\Programme\gsak\images\cacheM.gif
+  Height = 32
+  Left = 24
+  Source = File
+  Top = 80
+  Width = 32
+	Transparent = Yes
+
+Name = COD_F_Size
+  Type = Image
+  File = C:\Programme\gsak\images\cacheSizeL.gif
+  Height = 12
+  Left = 104
+  Source = File
+  Top = 120
+  Width = 45
+	Transparent = Yes
+
+Name = COD_F_Diff
+  Type = Image
+  File = C:\Programme\gsak\images\stars1.gif
+  Height = 13
+  Left = 240
+  Source = File
+  Top = 120
+  Width = 61
+	Transparent = Yes
+
+Name = COD_F_Terr
+  Type = Image
+  File = C:\Programme\gsak\images\stars1_5.gif
+  Height = 13
+  Left = 386
+  Source = File
+  Top = 120
+  Width = 61
+	Transparent = Yes
+
+Name = COD_F_Dist_Label
+  Type = Label
+  Height = 13
+  Left = 294
+  Top = 168
+  Width = 86
+  Caption = Distance to home:
+
+Name = COD_F_Dist
+  Type = Label
+  Height = 13
+  Left = 386
+  Style = bold
+  Top = 168
+  Width = 69
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 120
+  Width = 23
+  Caption = Size:
+
+Name = COD_F_SizeT
+  Type = Label
+  Height = 13
+  Left = 56
+  Style = bold
+  Top = 120
+  Width = 31
+  Caption = Micro
+
+Name = Label3
+  Type = Label
+  Height = 13
+  Left = 192
+  Top = 120
+  Width = 43
+  Caption = Difficulty:
+
+Name = Label4
+  Type = Label
+  Height = 13
+  Left = 344
+  Top = 120
+  Width = 36
+  Caption = Terrain:
+
+Name = Label5
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 144
+  Width = 15
+  Caption = By:
+
+Name = COD_F_Owner
+  Type = Label
+  Height = 13
+  Left = 56
+  Style = bold
+  Top = 144
+  Width = 83
+
+Name = Label6
+  Type = Label
+  Height = 13
+  Left = 344
+  Top = 144
+  Width = 37
+  Caption = Hidden:
+
+Name = COD_F_Hidden
+  Type = Label
+  Height = 13
+  Left = 386
+  Style = bold
+  Top = 144
+  Width = 87
+
+Name = COD_F_Short
+  Type = Memo
+  Enabled = Yes
+  Height = 41
+  Left = 24
+  Readonly = Yes
+  Scrollbars = Vertical
+  Top = 200
+  Width = 441
+  Wrap = Yes
+  Taborder = 8
+
+Name = COD_F_Long
+  Type = Memo
+  Enabled = Yes
+  Height = 103
+  Left = 24
+  Readonly = Yes
+  Scrollbars = Vertical
+  Top = 250
+  Width = 441
+  Wrap = Yes
+  Taborder = 9
+
+Name = COD_F_OK
+  Type = Button
+  Enter = Yes
+  Escape = Yes
+  Height = 25
+  Left = 24
+  Top = 368
+  Width = 75
+  Taborder = 0
+  Caption = Close
+
+Name = COD_F_AnotherOne
+  Type = Button
+  Height = 25
+  Left = 208
+  Top = 368
+  Width = 75
+  Taborder = 1
+  Caption = Another One
+
+Name = Label7
+  Type = Label
+  Height = 31
+  Left = 24
+  Size = 20
+  Style = bold
+  Top = 8
+  Width = 221
+  Caption = Cache of the day
+
+Name = COD_F_Date
+  Type = Label
+  Height = 31
+  Left = 264
+  Size = 20
+  Style = bold
+  Top = 8
+  Width = 221
+
+Name = COD_F_Code
+  Type = Label
+  Color = 10485760
+  Height = 25
+  Left = 197
+  Size = 16
+  Style = bold
+  Top = 48
+  Width = 33
+  Caption = GC
+
+Name = COD_F_Settings
+  Type = Button
+  Height = 25
+  Left = 392
+  Top = 368
+  Width = 75
+  Taborder = 12
+  Caption = Settings
+
+Name = COD_F_Centre_Label
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 168
+  Width = 90
+  Caption = Distance to centre:
+
+Name = COD_F_Centre
+  Type = Label
+  Height = 13
+  Left = 120
+  Style = bold
+  Top = 168
+  Width = 69
+
+Name = COD_F_Online
+  Type = Button
+  Height = 25
+  Left = 116
+  Top = 368
+  Width = 75
+  Taborder = 13
+  Caption = Open online
+
+Name = COD_F_History
+  Type = Button
+  Height = 25
+  Left = 300
+  Top = 368
+  Width = 75
+  Taborder = 14
+  Caption = History
+
+<enddata>
+
+<Data> VarName=$COD_Form_Settings
+#********************************************************************
+# Form generated by GSAK form designer on Fr 03-Okt-2008 10:11:45
+#********************************************************************
+
+Name = Form_Settings
+  Type = Form
+  Caption = Settings
+  Height = 306
+  Width = 288
+
+Name = Label1
+  Type = Label
+  Height = 20
+  Left = 24
+  Size = 12
+  Style = bold
+  Top = 16
+  Width = 219
+  Caption = Cache of the day - Settings
+
+Name = COD_FS_OK
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 96
+  Top = 232
+  Width = 75
+  Taborder = 0
+  Caption = OK
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 32
+  Top = 54
+  Width = 22
+  Caption = Filter
+
+Name = Label3
+  Type = Label
+  Height = 13
+  Left = 32
+  Top = 138
+  Width = 28
+  Caption = Home
+
+Name = COD_FS_Filter
+  Type = Combobox
+  Height = 21
+  Left = 104
+  Top = 50
+  Values = $COD_FS_FilterList
+  Width = 145
+  Taborder = 9
+
+Name = COD_FS_Home
+  Type = Combobox
+  Height = 21
+  Left = 104
+  Top = 134
+  Values = $COD_FS_HomeList
+  Width = 145
+  Taborder = 10
+
+Name = COD_FS_ClrHist
+  Type = Button
+  Height = 25
+  Left = 176
+  Top = 184
+  Width = 75
+  Taborder = 11
+  Caption = Clear History
+
+Name = COD_FS_HistSize
+  Type = Label
+  Height = 13
+  Left = 32
+  Top = 190
+  Width = 89
+  Caption = 0 Caches in history
+
+Name = COD_FS_Database
+  Type = Combobox
+  Height = 21
+  Left = 104
+  Top = 92
+  Values = $COD_FS_DBList
+  Width = 145
+  Taborder = 12
+
+Name = Label5
+  Type = Label
+  Height = 13
+  Left = 32
+  Top = 96
+  Width = 46
+  Caption = Database
+
+<enddata>
+
+<Data> VarName=$COD_Form_History
+#********************************************************************
+# Form generated by GSAK form designer on Fr 03-Okt-2008 01:06:50
+#********************************************************************
+
+Name = Form_History
+	Type = Form
+  Caption = Settings
+  Height = 300
+  Width = 288
+
+Name = Label1
+  Type = Label
+  Height = 20
+  Left = 24
+  Size = 12
+  Style = bold
+  Top = 16
+  Width = 208
+  Caption = Cache of the day - History
+
+Name = COD_FH_OK
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 32
+  Top = 224
+  Width = 75
+  Taborder = 0
+  Caption = OK
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 32
+  Top = 56
+  Width = 32
+  Caption = History
+
+Name = COD_FH_List
+  Type = Combobox
+  Height = 21
+  Left = 32
+  Top = 76
+  Values = $COD_FH_HistoryList
+  Width = 217
+  Taborder = 9
+	Display = 20
+
+Name = COD_FH_HistSize
+  Type = Label
+  Height = 13
+  Left = 160
+  Top = 56
+  Width = 89
+  Caption = 0 Caches in history
+
+Name = CODE_FH_Cancel
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 178
+  Top = 226
+  Width = 75
+  Taborder = 10
+  Caption = Cancel
+
+<enddata>
+

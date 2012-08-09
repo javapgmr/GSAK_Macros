@@ -1,0 +1,449 @@
+#================================================================================================#
+# MacVersion = 0.5.1
+# MacDescription = Yet Another Google Earth Export Macro
+# MacAuthor = janhuddel
+# MacFileName = yagem.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=11389&view=getlastpost
+#================================================================================================#
+#                         yagem Change History                                                   #
+#================================================================================================#
+# 03/29/09 - v0.5                                                                                #
+#  - first release                                                                               #
+#================================================================================================#
+# 03/29/09 - v0.5.1                                                                              #
+#  - file-header changed                                                                         #
+#================================================================================================#
+
+#debug status="on" height=800
+
+# Now build the name of the dat file to store the form data in
+# This will have the same path and name as the macro but will end in .dat
+$macroName=sysinfo("MacroFile")
+$dataFile=sysinfo("MacroPath") + "\" + SubStr($macroName, 1, Len($macroName) - 4) + ".dat"
+GoSub name="LoadDatFile"
+
+# cache-type-map (in case gc.com introduces new cache type: AT results is 0 -> add 1 to result and extract "Unknown cache type")
+$cacheTypeKeys="BCEGLMORTUVWI"
+$cacheTypeDecs="Unknown Cache Type;Letterbox;Cache in Trash Out;Event;Benchmark;Locationless;Multi;Other;Earth;Traditional;Unknown;Virtual;Webcam;WhereIGo;"
+$cacheTypeImages="8.gif;5.gif;13.gif;6.gif;8.gif;4.gif;3.gif;8.gif;137.gif;2.gif;8.gif;4.gif;11.gif;1858.gif;"
+
+# global vars for subroutines
+$cleanStr=""
+
+# valid characters for cache-name/owner...
+$validchars="[°€{}\w\s\x21-\x25\x27-\x2E\xBA-\xFF]*"
+
+# show form
+While true  # Infinite loop to display main form until exit conditions are chosen
+  $FormExit = form($form,"Form1")
+  #### Actions for buttons on main form when clicked ###
+  BeginCase
+    Case ($FormExit = "btnCancel") or ($FormExit = "SystemExit")
+      Cancel
+    Case ($FormExit = "btnOk")
+      $outFile=$txtExportTo
+      GoSub name="SaveDatFile"
+      GoSub name="CreateKML"
+      Break
+  EndCase
+EndWhile
+
+# ======================================================
+# S U B R O U T I N E S
+# ======================================================
+#----------------------------------------------------
+
+BeginSub name="LoadDatFile"
+  $txtDocName = ""
+  If (FileExists($dataFile))
+    FileRead file=$dataFile
+      $txtExportTo=Extract($line,";", 1)
+      $chkOpen=StrToBool(Extract($line,";", 2))
+      $txtDocName=Extract($line,";", 3)
+    EndRead
+  EndIf
+  If ($txtDocName = "")
+    $txtDocName="GSAK KML export"
+  EndIf
+EndSub
+
+BeginSub name="SaveDatFile"
+  $data=$txtExportTo + ";" + BoolToStr($chkOpen, "true", "false") + ";" + $txtDocName
+  $res=PutFile($dataFile, $data)
+EndSub
+
+BeginSub name="CreateKML"
+  # open target-file and write header
+  $header=$tmpl_kmlheader
+  $header=Replace("[DOC_NAME]", $txtDocName, $header)
+  $res=PutFile($outFile,$header)
+  
+  # dummy chache-type for inital folder-creation
+  $previousCacheType="@"
+  
+  # keep current sort-order for later restoring
+  $sort_orig=$_SortBy
+  
+  # sort by cachetype (needed for folder-creation in kml-file)
+  Sort by="cachetype;description"
+  
+  # counter
+  $totalRecordCount   = $_Count
+  $currentRecordCount = 1
+  
+  # loop through caches in current filter
+  GoTo position="Top"
+  While not($_EOL)  # Loop through the entire file
+    $msg = "Processing record $currentRecordCount of $totalRecordCount..."
+    ShowStatus msg="$msg"
+    $currentRecordCount = $currentRecordCount + 1
+    
+    # determine cache type and prepare folder name and icon number
+    # ------------------------------------------------------------
+    
+    $cacheType=$d_CacheType
+    
+    $int=at($cacheType, $cacheTypeKeys) + 1
+    $currentCacheType=Extract($cacheTypeDecs, ";", $int)
+    $cacheSmallImage=Extract($cacheTypeImages, ";", $int)
+  
+    # is this the first cache of a new type (traditional, multi,...)
+    # then create new folder within KML document
+    # --------------------------------------------------------------
+  
+    If  ($previousCacheType <> $currentCacheType)
+      # close previous folder (unless this is the first folder in the output file)
+      If $previousCacheType <> "@"
+        $res=AppendFile($outFile, $tmpl_folder_end)
+      EndIf
+      
+      # create the new folder 
+      $Folder=Replace("[FOLDERNAME]", $currentCacheType, $tmpl_folder_begin)
+      $res=AppendFile($outFile,$Folder)
+    EndIf
+    $previousCacheType=$currentCacheType
+    
+    GoSub name="CreatePlacemark"
+    
+    GoTo position="next"
+  EndWhile
+  
+  # write tail of kml-file
+  $res=AppendFile($outFile, $tmpl_folder_end)
+  $res=AppendFile($outFile, $tmpl_kmlfooter)
+  
+  # restore sort-column
+  $sortData=Extract($sort_orig, "=", 1)
+  $sortSeq=Extract($sort_orig, "=", 2)
+  Sort by=$sortData Sequence=$sortSeq 
+  GoTo position="top"
+  
+  # open kml-file with default application
+  If ($chkOpen)
+    OpenFile file=$outFile
+  EndIf
+EndSub
+
+BeginSub name="CreatePlacemark"
+  $body=$tmpl_placemark
+
+  $cleanStr=$d_Name
+  GoSub name="CleanString"
+  $cacheName=$cleanStr
+
+  $body=Replace("[GCCODE]", $d_Code, $body)
+  $body=Replace("[STYLE]", $cacheType, $body)
+  $body=Replace("[DESCRIPTION]", $cacheName, $body)
+  $body=Replace("[LAT]", $d_Latitude,  $body)
+  $body=Replace("[LON]", $d_Longitude, $body)
+  $body=Replace("[CREATED_BY]", $d_OwnerName, $body)
+  $body=Replace("[CACHE_URL]", $d_Url, $body)
+  $body=Replace("[PLACED]", DateFormat($d_PlacedDate), $body)
+  $body=Replace("[CONTAINER]", $d_Container, $body)
+  $body=Replace("[SM_IMG]", $cacheSmallImage, $body)
+
+  $diff=Replace(",", ".", NumToStr($d_Difficulty))
+  $diff_img=Replace(",", "_", NumToStr($d_Difficulty))
+  $body=Replace("[DIFF]", $diff, $body)
+  $body=Replace("[DIFF_IMG]",$diff_img, $body)
+
+  $terr=Replace(",", ".", NumToStr($d_Terrain))
+  $terr_img=Replace(",", "_", NumToStr($d_Terrain))
+  $body=Replace("[TERR]", $terr, $body)
+  $body=Replace("[TERR_IMG]", $terr_img, $body)
+
+  $res=AppendFile($outFile,$body)
+EndSub
+
+BeginSub name="CleanString"
+  $count=RegExCount($validchars, $cleanStr)
+  $cleaned=""
+  $int=1
+  While $int <= $count
+    $good=RegExData($validChars,$cleanStr,$int)
+    $cleaned=$cleaned + $good
+    $int=$int + 1
+  EndWhile
+  $cleanStr=$cleaned
+EndSub
+
+
+# ======================================================
+# F O R M S
+# ======================================================
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on So 29-Mrz-2009 14:24:16
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 216
+  Width = 291
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = KML-Options
+  Height = 65
+  Left = 8
+  Top = 72
+  Width = 257
+  Taborder = 4
+
+Name = btnOk
+  Type = Button
+  Height = 25
+  Left = 192
+  Top = 144
+  Width = 75
+  Taborder = 0
+  Caption = OK
+
+Name = btnCancel
+  Type = Button
+  Height = 25
+  Left = 112
+  Top = 144
+  Width = 75
+  Taborder = 1
+  Caption = Cancel
+
+Name = lblExportTo
+  Type = Label
+  Height = 13
+  Left = 8
+  Top = 8
+  Width = 64
+  Caption = Export to File:
+
+Name = txtExportTo
+  Type = File
+  Height = 21
+  Left = 8
+  Top = 24
+  Width = 265
+  Taborder = 2
+
+Name = chkOpen
+  Type = Checkbox
+  Height = 17
+  Left = 8
+  Top = 48
+  Width = 15
+  Taborder = 3
+
+Name = lblOpen
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 50
+  Width = 135
+  Caption = open with default application
+
+Name = txtDocName
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 8
+  Top = 32
+  Width = 241
+  Taborder = 0
+
+Name = lblDocName
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 8
+  Top = 16
+  Width = 83
+  Caption = Document-Name:
+
+<enddata>
+
+
+
+# ======================================================
+# D A T A   V A R I A B L E S
+# ======================================================
+
+<data> varname=$tmpl_placemark
+      <Placemark id="[GCCODE]">
+          <name>[DESCRIPTION]</name>
+          <styleUrl>#[STYLE]</styleUrl>
+          <description>
+            <![CDATA[ 
+            <div style="font-family:Verdana,Arial,Sans-Serif;font-size:12px;margin:0;padding:3px">
+              <table cellpadding="0" cellspacing="0" width="340px">
+                <tr valign="middle">
+                  <td width="50%">
+                    <img src="http://www.geocaching.com/images/WptTypes/sm/[SM_IMG]"/> <a target="_blank" href="[CACHE_URL]">[DESCRIPTION]</a>
+                  </td>
+                  <td width="50%" align="right"><span style="color:red;font-size:110%;font-weight:700;text-align:right">[GCCODE]</span></td>
+                </tr>
+                <tr valign="middle">
+                  <td colspan="2">
+                    <b>Created by:</b> [CREATED_BY]
+                  </td>
+                </tr>
+                <tr valign="middle">
+                  <td align="left"><b>Difficulty:</b> <img title="[DIFF] out of 5" alt="[DIFF] out of 5" src="http://www.geocaching.com/images/stars/stars[DIFF_IMG].gif"/></td>
+                  <td align="right"><b>Terrain:</b> <img title="[TERR] out of 5" alt="[TERR] out of 5" src="http://www.geocaching.com/images/stars/stars[TERR_IMG].gif"/></td>
+                </tr>
+                <tr valign="middle">
+                  <td align="left"><b>Date Hidden:</b> [PLACED]</td>
+                  <td align="right"><b>Cache Size:</b> <img border="0" title="Size: [CONTAINER]" alt="Size: [CONTAINER]" src="http://www.geocaching.com/images/icons/container/[CONTAINER].gif"/></td>
+                </tr>
+              </table>
+            </div>
+            ]]>
+          </description>
+          <Point>
+            <coordinates>[LON], [LAT]</coordinates>
+          </Point>
+      </Placemark>
+<enddata>
+
+<data> varname=$tmpl_kmlheader
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
+  <Document>
+    <name>[DOC_NAME]</name>
+
+    <!-- Tradi -->
+    <Style id="T">
+      <IconStyle id="mystyle">
+        <Icon>
+          <href>http://www.geocaching.com/images/kml/2.png</href>
+          <scale>0.1</scale>
+        </Icon>
+      </IconStyle>
+    </Style>
+    
+    <!-- Multi -->    
+    <Style id="M">
+      <IconStyle id="mystyle">
+        <Icon>
+          <href>http://www.geocaching.com/images/kml/3.png</href>
+          <scale>0.1</scale>
+        </Icon>
+      </IconStyle>
+    </Style>
+    
+    <!-- Virtual -->
+    <Style id="V">
+      <IconStyle id="mystyle">
+        <Icon>
+          <href>http://www.geocaching.com/images/kml/4.png</href>
+          <scale>0.1</scale>
+        </Icon>
+      </IconStyle>
+    </Style>
+    
+    <!-- Unknown/Mysterie -->
+    <Style id="U">
+      <IconStyle id="mystyle">
+        <Icon>
+          <href>http://www.geocaching.com/images/kml/8.png</href>
+          <scale>0.1</scale>
+        </Icon>
+      </IconStyle>
+    </Style>
+
+    <!-- Event -->
+    <Style id="E">
+      <IconStyle id="mystyle">
+        <Icon>
+          <href>http://www.geocaching.com/images/kml/6.png</href>
+          <scale>0.1</scale>
+        </Icon>
+      </IconStyle>
+    </Style>
+    
+    <!-- Letterbox -->
+    <Style id="B">
+      <IconStyle id="mystyle">
+        <Icon>
+          <href>http://www.geocaching.com/images/kml/5.png</href>
+          <scale>0.1</scale>
+        </Icon>
+      </IconStyle>
+    </Style>
+
+    <!-- Where-I-Go -->
+    <Style id="I">
+      <IconStyle id="mystyle">
+        <Icon>
+          <href>http://www.geocaching.com/images/WptTypes/1858.gif</href>
+          <scale>0.1</scale>
+        </Icon>
+      </IconStyle>
+    </Style>
+    
+    <!-- Webcam -->
+    <Style id="W">
+      <IconStyle id="mystyle">
+        <Icon>
+          <href>http://www.geocaching.com/images/WptTypes/11.gif</href>
+          <scale>0.1</scale>
+        </Icon>
+      </IconStyle>
+    </Style>
+    
+    <!-- Earth -->
+    <Style id="R">
+      <IconStyle id="mystyle">
+        <Icon>
+          <href>http://www.geocaching.com/images/WptTypes/137.gif</href>
+          <scale>0.1</scale>
+        </Icon>
+      </IconStyle>
+    </Style>
+    
+    <!-- CITO -->
+    <Style id="C">
+      <IconStyle id="mystyle">
+        <Icon>
+          <href>http://www.geocaching.com/images/WptTypes/13.gif</href>
+          <scale>0.1</scale>
+        </Icon>
+      </IconStyle>
+    </Style>
+
+    <!-- Placemarks -->
+<enddata>
+
+<data> varname=$tmpl_kmlfooter
+  </Document>
+</kml>
+<enddata>
+
+<data> varname=$tmpl_folder_begin
+    <Folder>
+      <name>[FOLDERNAME]</name>
+<enddata>
+
+<data> varname=$tmpl_folder_end
+    </Folder>
+<enddata>
+
+

@@ -1,0 +1,169 @@
+DECLARE VAR=$INCResults Type=String
+DECLARE VAR=$INCCurrGrid Type=String
+DECLARE VAR=$INCCodes Type=String
+DECLARE VAR=$INCMSCodes Type=String
+DECLARE VAR=$INCUSCodes Type=String
+DECLARE VAR=$INCGridStore Type=String
+DECLARE VAR=$DB1File Type=String
+DECLARE VAR=$DebugInfo Type=String
+DECLARE VAR=$FormDebugInfo Type=String
+#######################################################################################
+#######################################################################################
+BEGINSUB Name=SaveGrid
+   $_sql="SELECT Code FROM Caches where RowId in (Select * from GridTemp)"
+   $INCResults=Sqlite("sql",$_sql)
+   $INCCurrGrid="'" + Replace($_CrLf,"','",$INCResults) + "'"
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB Name=RestoreGrid
+  $_sql = "Code IN($INCCurrGrid)"
+  MFILTER Where=$_sql
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB Name=ClearGridStore
+$INCGridStore=""
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB NAME=SaveToGridStore
+GOSUB Name=SaveGrid
+$INCGridStore=$IncGridStore+$INCCurrGrid
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB NAME=RestoreGridStore
+$INCCurrGrid=$INCGridStore
+GOSUB Name=RestoreGrid
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB  Name=MacroFilterSet
+$INCMSCodes = sqlite("sql","Select code from Caches where RowId in (Select * from GridTemp)")
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB Name=MacroFilterRestore
+macroflag type=clear range=all
+$INCMSCodes = codematch($INCMSCodes,$_NewLine,"M")
+MFILTER where=MACROFLAG
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB  Name=UserFilterSet
+$INCUSCodes = sqlite("sql","Select code from Caches where RowId in (Select * from GridTemp)")
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB Name=UserFilterRestore
+UserFlag type=clear range=all
+$INCUSCodes = codematch($INCUSCodes,$_NewLine,"U")
+MFILTER where=USERFLAG
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB Name=MacroSaveRestore
+GOSUB Name=MacroFilterSet
+GOSUB Name=MacroFilterRestore
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB Name=CreateTempTable
+$_sql = "DROP TABLE IF EXISTS gccodes"
+$status = Sqlite("sql",$_sql)
+$_sql = "CREATE TABLE gsak_mem.gccodes (gccode,gcdistance)"
+$status = Sqlite("sql",$_sql)
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB Name=InsertGridInToTempTable
+$_sql="insert into gccodes (gccode,gcdistance) select code, distance from Caches where RowId in (Select * from GridTemp)"
+$status = sqlite("sql", $_sql)
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB Name=RemoveGridFromTempTable
+$_sql="delete from gccodes where gccode in (select code from Caches where RowId in (Select * from GridTemp))"
+$status = sqlite("sql", $_sql )
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB Name=FilterByTempTable
+MFILTER where=code in (select gccode from gccodes)
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB Name=ResetGridIntoTempTable
+$_sql="delete from gccodes"
+$status = sqlite("sql", $_sql )
+$_sql="insert into gccodes (gccode, gcdistance) select code, distance from Caches where RowId in (Select * from GridTemp)"
+$status = sqlite("sql", $_sql)
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB Name=DeleteTempTable
+$_sql = "DROP TABLE IF EXISTS gccodes"
+$status = Sqlite("sql",$_sql)
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB Name=AttachDB1
+$DB1File=$_dbPath + "\" + "$_CurrentDatabase" + "\sqlite.db3"
+$_sql="ATTACH '$DB1File' AS DBOne"
+$status=Sqlite("sql",$_sql)
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB Name=DetachDB1
+$_sql="DETACH DBOne"
+$status=Sqlite("sql",$_sql)
+ENDSUB
+#######################################################################################
+#######################################################################################
+BEGINSUB Name=Debug
+$FormDebugInfo=$DebugInfo
+
+WHILE TRUE
+   $FormExit = form($DebugForm,"")
+   BEGINCASE
+       CASE $FormExit = "SystemExit"
+       CANCEL Msg="Macro Cancelled"
+
+       CASE $FormExit = "OK"
+       BREAK
+
+       CASE $FormExit = "Cancel"
+       CANCEL
+   ENDCASE
+ENDWHILE
+RETURN
+ENDSUB
+
+<Data> VarName=$DebugForm
+#********************************************************************
+# Form generated by GSAK form designer on Tue 23-Dec-2008 18:00:33
+#********************************************************************
+
+Name = DebugForm
+ Type = Form
+ Height = 300
+ Width = 733
+
+Name = FormDebugInfo
+ Type = Memo
+ Height = 119
+ Left = 20
+ Scrollbars = Both
+ Top = 18
+ Width = 685
+ Taborder = 8
+
+Name = OK
+ Type = Button
+ Height = 25
+ Left = 174
+ Top = 183
+ Width = 75
+ Taborder = 9
+<enddata> 

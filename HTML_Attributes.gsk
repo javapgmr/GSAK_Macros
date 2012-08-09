@@ -1,0 +1,25 @@
+#*******************************************
+# MacVersion = 1.2
+# MacDescription = Attribute list
+# MacAuthor = clyde
+# MacFileName = HTML_Attributes.gsk
+# MacUrl =
+# HTMLName=Attributes Only
+# SplitScreen=Yes
+# Export=No
+# Offline=No
+# Condensed=No
+#*******************************************
+
+Vercheck Version=7.7.0.67
+$h = sqlite("sql","select aid as Code, g_attributename(aid) as Name ,aInc from attributes where acode = '$d_code'","Headings=Yes")
+if $h = ""
+  $_Html = "<b>No attributes for this cache</b>"
+  return
+Endif
+
+$h = sqltohtml($h,"Attribute list","n")
+$h = html("attributes","") + "<br>" +"<br>" + $h
+$h = RegExReplace("(?s)<div>.*<br>",$h,"")
+$_Html = $h
+

@@ -1,0 +1,657 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<meta http-equiv="X-UA-Compatible" content="IE=EmulateIE7">
+<HTML>
+<head>
+<!-- saved from url=(0014)about:internet -->
+<title>GSAK Map GMap V3</title>
+<style type="text/css">
+      body {
+        margin: 0;
+        font-family: Arial;
+        font-size: 16px;
+      }
+
+    #map {
+      background-color: #e5e3df;
+      height: 100%;
+    }
+    img{
+      border-style: none;
+    }
+</style>
+    
+<!-----external references----->
+
+<script type="text/javascript" src="http://www.google.com/jsapi"></script>
+<script type="text/javascript" src="http://gsak.net/stats/maps/markerclusterer_packed.js"></script>
+<script type="text/javascript" src="http://gsak.net/stats/maps/mytopo.js"></script>
+
+<script type="text/javascript">
+
+
+google.load('maps', '3', {other_params: 'sensor=false'});
+google.setOnLoadCallback(initialize);
+
+var markerClusterer = null;
+var map = null;
+var markers = [];
+
+ var styles = [[{
+        url: 'http://gsak.net/stats/maps/m1.png',
+        height: 53,
+        width: 53
+      }, {
+        url: 'http://gsak.net/stats/maps/m2.png',
+        height: 56,
+        width: 56
+      }, {
+        url: 'http://gsak.net/stats/maps/m3.png',
+        height: 66,
+        width: 66
+      }, {
+        url: 'http://gsak.net/stats/maps/m4.png',
+        height: 78,
+        width: 78
+      }, {
+        url: 'http://gsak.net/stats/maps/m5.png',
+        height: 90,
+        width: 90
+      }]];
+
+function writecookie(cookiename,k) { document.cookie=cookiename+'='+k+'; expires=Fri, 31 Dec 2020 00:00:00 UTC' };
+
+function clearcookie(cookiename,k) { document.cookie=cookiename+'='+k+'; expires=Fri, 31 Dec 2000 00:00:00 UTC' };
+
+function readCookie(cookieName){
+   var searchName = cookieName + "="
+   var cookies = document.cookie
+   var start = cookies.indexOf(cookieName)
+   if (start == -1){ // cookie not found
+      return "-1"
+   }
+   start += searchName.length //start of the cookie data
+   var end = cookies.indexOf(";", start)
+   if (end == -1){
+      end = cookies.length
+   }
+   return cookies.substring(start, end)
+}
+
+function initialize() {
+
+//------- Initialize label class -------
+
+// Define the overlay, derived from google.maps.OverlayView
+function Label(opt_options) {
+ // Initialization
+ this.setValues(opt_options);
+
+ // Label specific
+ var span = this.span_ = document.createElement('span');
+ span.style.cssText = 'position: relative; left: -50%; top: -45px; ' +
+                      'white-space: pre; border: 1px solid black; ' +
+                      'font-size: 10px; ' +
+                      'padding: 1px 2px 1px 2px; background-color: white';
+
+ var div = this.div_ = document.createElement('div');
+ div.appendChild(span);
+ div.style.cssText = 'position: absolute; display: none';
+};
+Label.prototype = new google.maps.OverlayView;
+
+// Implement onAdd
+Label.prototype.onAdd = function() {
+ var pane = this.getPanes().overlayLayer;
+ pane.appendChild(this.div_);
+
+ // Ensures the label is redrawn if the text or position is changed.
+ var me = this;
+ this.listeners_ = [
+   google.maps.event.addListener(this, 'position_changed',
+       function() { me.draw(); }),
+   google.maps.event.addListener(this, 'visible_changed',
+          function() { me.draw(); }),
+   google.maps.event.addListener(this, 'text_changed',
+       function() { me.draw(); })
+ ];
+};
+
+// Implement onRemove
+Label.prototype.onRemove = function() {
+ this.div_.parentNode.removeChild(this.div_);
+
+ // Label is removed from the map, stop updating its position/text.
+ for (var i = 0, I = this.listeners_.length; i < I; ++i) {
+   google.maps.event.removeListener(this.listeners_[i]);
+ }
+};
+
+// Implement draw
+Label.prototype.draw = function() {
+ var projection = this.getProjection();
+ var position = projection.fromLatLngToDivPixel(this.get('position'));
+
+ var div = this.div_;
+ div.style.left = position.x + 'px';
+ div.style.top = position.y + 'px';
+   var visible = this.get('visible');
+   div.style.display = visible ? 'block' : 'none';
+
+ this.span_.innerHTML = this.get('text').toString();
+};
+
+//------- END of label.js -------
+
+
+
+
+   //-----icon references----->
+   
+   var iconName = new Array('A','B','C','E','G','I','L','M','O','R','T','U','V','W','X','Y','Z');
+   var imageName = new Array('ape1','le1','ci1','ev1','be1','wh1','lo1','mu1','other1','ea1','tr1','un1','vi1','we1','maze1','wm1','mega1');
+   
+   for (i=0;i<=16;i++)
+      {
+      window[iconName[i] + "_icon"] = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/" + imageName[i] + ".png",
+      new google.maps.Size(27,34),
+      new google.maps.Point(0,0),
+      new google.maps.Point(4,34));
+      
+      window[iconName[i] + "_f_icon"] = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/" + imageName[i] + "_f" + ".png",
+      new google.maps.Size(27,34),
+      new google.maps.Point(0,0),
+      new google.maps.Point(4,34));
+      
+      window[iconName[i] + "_e_icon"] = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/" + imageName[i] + "_e" + ".png",
+      new google.maps.Size(27,34),
+      new google.maps.Point(0,0),
+      new google.maps.Point(4,34));
+      
+      window[iconName[i] + "_f_e_icon"] = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/" + imageName[i] + "_f_e" + ".png",
+      new google.maps.Size(27,34),
+      new google.maps.Point(0,0),
+      new google.maps.Point(4,34));
+      
+      }
+   
+
+   var shadow = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/shadow1.png",
+   new google.maps.Size(45,34),
+   new google.maps.Point(0,0),
+   new google.maps.Point(4,34));
+
+   var found_icon = new google.maps.MarkerImage("http://gsak.net/stats/maps/cacheicons/found1.png",
+   new google.maps.Size(27,34),
+   new google.maps.Point(0,0),
+   new google.maps.Point(4,34));
+
+   var childicon = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/waypoint1.png",
+   new google.maps.Size(27,34),
+   new google.maps.Point(0,0),
+   new google.maps.Point(4,34));
+
+   var correctedicon = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/traffic_cone.png",
+   new google.maps.Size(16,16),
+   new google.maps.Point(0,0),
+   new google.maps.Point(8,16));
+
+
+   var options = {
+      scrollwheel: false,
+      scaleControl: true,
+      streetViewControl: true,
+      mapTypeControlOptions: {style: google.maps.MapTypeControlStyle.DROPDOWN_MENU}
+   };
+   map = new google.maps.Map(document.getElementById("map"), options);
+   
+   
+   map.enableKeyDragZoom({
+          visualEnabled: true,
+          visualPosition: google.maps.ControlPosition.LEFT,
+          visualPositionOffset: new google.maps.Size(35, 0),
+          visualPositionIndex: null,
+          visualSprite: "http://gsak.net/stats/maps/dragzoom_btn.png",
+          visualSize: new google.maps.Size(20, 20),
+          visualTips: {
+            off: "Turn on",
+            on: "Turn off"
+          }
+   });
+   
+   
+   
+   map.setCenter(new google.maps.LatLng(30, -97));
+   map.setZoom(12);
+   
+   
+   
+   map.setMapTypeId(google.maps.MapTypeId.ROADMAP);
+
+var is_chrome = navigator.userAgent.toLowerCase().indexOf('chrome') > -1;
+
+//----read cookie and set maptype accordingly---
+
+   if (!is_chrome) {
+         //alert("Not Chrome");
+         var typecookie = readCookie("maptypev3");
+         //alert (typecookie);
+         if (typecookie == "-1") {typecookie = "roadmap"};
+         map.setMapTypeId(typecookie);
+   }
+
+
+// Add listener to see if map type changes and store it, use local storage if we can
+  google.maps.event.addListener(map, "maptypeid_changed", function() {
+        k = map.getMapTypeId();
+        if (!is_chrome) {
+       writecookie('maptypev3',k);
+         }
+    }); 
+
+
+   // add OCM to mapTypes
+//return"http://a.andy.sandbox.cloudmade.com/tiles/cycle/"+b+"/"+a.x%(1<<b)+"/"+a.y+".png"
+   var openCycle = new google.maps.ImageMapType({
+      getTileUrl:function(a,b){
+         return"http://" + ["a","b","c"][Math.floor(Math.random()*3)] + ".tile.opencyclemap.org/cycle/"+b+"/"+a.x%(1<<b)+"/"+a.y+".png"
+      },
+      tileSize:new google.maps.Size(256,256),
+      isPng:true,
+      minZoom:1,
+      maxZoom:18,
+      name:"OCM",
+      alt:"Open Cycle Map"
+   });
+map.mapTypes.set('ocm', openCycle);
+
+
+   // add OSM to mapTypes
+   var openStreet = new google.maps.ImageMapType({
+      getTileUrl: function(ll, z) {
+         var X = ll.x % (1 << z);  // wrap
+         return "http://" + ["a","b","c"][Math.floor(Math.random()*3)] + ".tile.openstreetmap.org/" + z + "/" + X + "/" + ll.y + ".png";
+      },
+      tileSize: new google.maps.Size(256, 256),
+      isPng: true,
+      maxZoom: 18,
+      name: "OSM",
+      alt: "Open Streetmap tiles"
+   });
+map.mapTypes.set('osm', openStreet);
+
+
+// add MapQuest to mapTypes
+var mapQuest = new google.maps.ImageMapType({
+   getTileUrl:function(a,b){
+      return" http://"+["otile1","otile2","otile3","otile4"][Math.floor(Math.random()*4)]+".mqcdn.com/tiles/1.0.0/osm/"+b+"/"+a.x%(1<<b)+"/"+a.y+".png"
+      },
+      tileSize:new google.maps.Size(256,256),
+      isPng:true,
+      minZoom:1,
+      maxZoom:18,
+      name:"MapQuest",
+      alt:"Map Quest"
+   });
+map.mapTypes.set('mpq', mapQuest);
+
+
+   // add Bing to mapTypes
+var bing = new google.maps.ImageMapType({
+      getTileUrl:function(a,b){
+         for(var k=a.x%(1<<b),l=a.y,g=[],e=b;e>0;e--){
+            var d=0,h=1<<e-1;
+            (k&h)!=0&&d++;
+            if((l&h)!=0){
+               d++;d++
+            }
+            g.push(d)
+         }
+         return"http://ecn.t0.tiles.virtualearth.net/tiles/r"+g.join("")+"?g=604&mkt=en-us&lbl=l1&stl=h&shading=hill&n=z";
+      },
+      tileSize:new google.maps.Size(256,256),
+      isPng:true,
+      minZoom:1,
+      maxZoom:18,
+      name:"Bing",
+      alt:"Bing"
+   });
+map.mapTypes.set('bing', bing);
+
+   // add BingOS to mapTypes
+var bingos = new google.maps.ImageMapType({
+      getTileUrl:function(a,b){
+         for(var k=a.x%(1<<b),l=a.y,g=[],e=b;e>0;e--){
+            var d=0,h=1<<e-1;
+            (k&h)!=0&&d++;
+            if((l&h)!=0){
+               d++;d++
+            }
+            g.push(d)
+         }
+         
+         if (b >= 12 && b < 16) 
+         {
+            return"http://ecn.t0.tiles.virtualearth.net/tiles/r"+g.join("")+".png?g=41&productSet=mmOS";
+         } else {
+            return"http://ecn.t0.tiles.virtualearth.net/tiles/r"+g.join("")+"?g=604&mkt=en-us&lbl=l1&stl=h&shading=hill&n=z";
+         }
+         },
+         tileSize:new google.maps.Size(256,256),
+         isPng:true,
+         minZoom:1,
+         maxZoom:18,
+         name:"Ord. Survey",
+         alt:"Ordnance Survey"
+      });
+map.mapTypes.set('bingos', bingos);
+
+
+   // Add MyTopo to mapTypes
+   var myTopo = new google.maps.ImageMapType({
+      getTileUrl: function(ll, z) {
+         var X = ll.x % (1 << z);  // wrap
+         //return "http://maps.mytopo.com/mytopo/tilecache.py/1.0.0/topoG/" + z + "/" + X + "/" + ll.y + ".png";
+         //return "http://maps.mytopo.com/mt20100826/tilecache.py/1.0.0/topoG/" + z + "/" + X + "/" + ll.y + ".jpg";
+         //return "http://maps.mytopo.com/mytopoK55Zc3L/tilecache.py/1.0.0/topoG/" + z + "/" + X + "/" + ll.y + ".jpg";
+
+
+         // mytopo.js contains a variable definition for 'mytopourl' for the current url of the mytopo data
+         
+         return mytopourl + z + "/" + X + "/" + ll.y + ".jpg";         
+      },
+      tileSize: new google.maps.Size(256, 256),
+      isPng: true,
+      maxZoom: 16,
+      name: "MyTopo",
+      alt: "MyTopo tiles"
+   });
+map.mapTypes.set('mytopo', myTopo);
+
+
+   map.setOptions({
+      mapTypeControlOptions: {
+         mapTypeIds: [
+         'roadmap',
+         google.maps.MapTypeId.TERRAIN,
+         google.maps.MapTypeId.SATELLITE,
+         google.maps.MapTypeId.HYBRID,
+         'osm',
+         'ocm',
+         'mytopo',
+         'mpq',
+         'bing',
+         'bingos'
+         ],
+         style: google.maps.MapTypeControlStyle.DROPDOWN_MENU
+      },
+      streetViewControl: true
+   });
+
+   var bounds = new google.maps.LatLngBounds();
+   
+
+   //   // Add a marker at cache position
+   //   var latlng = new google.maps.LatLng(30, -97);
+   //   marker1 = new google.maps.Marker({position: latlng, map: map, icon: T_icon, shadow: shadow, title: "Cache", draggable: false});
+   //
+   //   bounds.extend(latlng);
+   //   markers.push(marker1);
+   //
+   //   var infomsg = "Cache Title";
+   //
+   //   var infowindow = new google.maps.InfoWindow({content: infomsg});
+   //
+   //   google.maps.event.addListener(marker1, 'click', function() {infowindow.open(map,marker1);});
+
+   var latlng = new google.maps.LatLng(38.137232959,-88.999499995);m1 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Edward Teach (Blackbeard)", draggable: false}); markers.push(m1); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.135533025,-88.998050010);m2 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Dirk Chivers", draggable: false}); markers.push(m2); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.133882964,-88.999450039);m3 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Nicholas Brown", draggable: false}); markers.push(m3); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.136267029,-89.003582988);m4 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt John Bowen", draggable: false}); markers.push(m4); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.131266972,-88.999382984);m5 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Flora Burn", draggable: false}); markers.push(m5); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.136150017,-89.007517034);m6 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt George Booth", draggable: false}); markers.push(m6); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.132883003,-89.003533032);m7 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Samuel Bellamy (Black Bel", draggable: false}); markers.push(m7); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.128649974,-88.999582976);m8 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Thomas Cocklyn", draggable: false}); markers.push(m8); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.137382995,-89.011449991);m9 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Hector Barbossa", draggable: false}); markers.push(m9); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.134866999,-89.008650016);m10 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Bartholomew Roberts (Blac", draggable: false}); markers.push(m10); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.125150027,-88.998016985);m11 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt William Conden", draggable: false}); markers.push(m11); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.126549972,-89.003666975);m12 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Major Stede Bonnet", draggable: false}); markers.push(m12); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.135899985,-89.015600039);m13 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Thomas Anstis", draggable: false}); markers.push(m13); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.110916968,-88.987133000);m14 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Henry Every", draggable: false}); markers.push(m14); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.122417023,-89.002016997);m15 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Chris Condent", draggable: false}); markers.push(m15); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.119332986,-88.998783007);m16 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Alexander Datzeel", draggable: false}); markers.push(m16); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.122750036,-89.004532993);m17 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Anne Bonny", draggable: false}); markers.push(m17); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.120017033,-89.002832975);m18 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Robert Culliford", draggable: false}); markers.push(m18); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.107967041,-88.989033010);m19 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt William Fly", draggable: false}); markers.push(m19); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.105117027,-88.987283036);m20 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt John Halsey", draggable: false}); markers.push(m20); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.112583039,-88.997333022);m21 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Arabella Drummond", draggable: false}); markers.push(m21); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.116582967,-89.003549963);m22 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Howell Davis", draggable: false}); markers.push(m22); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.107300010,-88.995049959);m23 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt John Evans", draggable: false}); markers.push(m23); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.101567039,-88.988966960);m24 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Thomas Howard", draggable: false}); markers.push(m24); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.102817032,-88.991399975);m25 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Miguel Henriquez", draggable: false}); markers.push(m25); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.050116990,-88.930950025);m26 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Black Spot", draggable: false}); markers.push(m26); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.107850030,-89.005217040);m27 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Edward England", draggable: false}); markers.push(m27); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.095017001,-88.990382999);m28 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt William Kidd", draggable: false}); markers.push(m28); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.102067020,-89.000216983);m29 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Charles Harris", draggable: false}); markers.push(m29); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.046849975,-88.932117037);m30 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Yo Ho Ho and a Bottle of Rum", draggable: false}); markers.push(m30); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.045182982,-88.930617012);m31 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Come About", draggable: false}); markers.push(m31); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.103733007,-89.003482992);m32 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt John Fenn", draggable: false}); markers.push(m32); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.090382982,-88.987167031);m33 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt James Misson", draggable: false}); markers.push(m33); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.098600013,-88.998016985);m34 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Benjamin Hornigold", draggable: false}); markers.push(m34); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.091883007,-88.989932975);m35 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Edward Lowe", draggable: false}); markers.push(m35); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.093232997,-88.992782990);m36 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Olivier Lavasseur", draggable: false}); markers.push(m36); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.045199998,-88.933182964);m37 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Shipshape", draggable: false}); markers.push(m37); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.055266999,-88.945933012);m38 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Three Sheets to the Wind", draggable: false}); markers.push(m38); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.055882985,-88.948567025);m39 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Thar She Blows", draggable: false}); markers.push(m39); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.097433001,-89.000767004);m40 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Jack Rackham(Calico Jack]", draggable: false}); markers.push(m40); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.094000025,-88.998600030);m41 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt James Kelly", draggable: false}); markers.push(m41); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.054499971,-88.950783033);m42 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Scallywag", draggable: false}); markers.push(m42); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.088850016,-88.993667029);m43 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt George Lowther", draggable: false}); markers.push(m43); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.086899966,-88.992517032);m44 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt John Phillips", draggable: false}); markers.push(m44); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.036200013,-88.929783013);m45 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Scurvy Dog", draggable: false}); markers.push(m45); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.094533030,-89.003333040);m46 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt John Julien", draggable: false}); markers.push(m46); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.083700007,-88.989832979);m47 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt John Quelch", draggable: false}); markers.push(m47); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.053950034,-88.953116974);m48 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Old Salt", draggable: false}); markers.push(m48); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.084117007,-88.993117008);m49 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt James Plaintain", draggable: false}); markers.push(m49); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.033516966,-88.930482985);m50 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Pieces of Eight", draggable: false}); markers.push(m50); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.080983013,-88.989749998);m51 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Mary Read", draggable: false}); markers.push(m51); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.078800030,-88.990067001);m52 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Jack Sparrow", draggable: false}); markers.push(m52); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.033800023,-88.936982984);m53 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Batten Down the Hatches", draggable: false}); markers.push(m53); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.078216985,-88.993066968);m54 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Francis Spriggs", draggable: false}); markers.push(m54); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.076667003,-88.991750004);m55 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt John Taylor", draggable: false}); markers.push(m55); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.074766994,-88.990850039);m56 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Teague", draggable: false}); markers.push(m56); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.034033040,-88.944600038);m57 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"The Flying Dutchman", draggable: false}); markers.push(m57); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.040032974,-88.952399986);m58 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Davy Jones' Locker", draggable: false}); markers.push(m58); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.036517017,-88.948316993);m59 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Dead Man's Chest", draggable: false}); markers.push(m59); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.069883026,-88.991250023);m60 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Richard Worley", draggable: false}); markers.push(m60); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.073433014,-88.996032989);m61 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Thomas Tew", draggable: false}); markers.push(m61); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.071433008,-88.994700015);m62 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Charles Vane", draggable: false}); markers.push(m62); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.035800029,-88.950767023);m63 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"The Kraken", draggable: false}); markers.push(m63); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.073799973,-89.001100017);m64 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Bilge Rat", draggable: false}); markers.push(m64); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.067699960,-88.994549979);m65 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Eric Cobham", draggable: false}); markers.push(m65); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.034533020,-88.953132983);m66 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Walk the Plank", draggable: false}); markers.push(m66); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.071416998,-88.999349959);m67 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"The Black Pearl", draggable: false}); markers.push(m67); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.035216983,-88.954967028);m68 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Drink Up, Me Hearties", draggable: false}); markers.push(m68); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.068782985,-88.999049971);m69 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Capt Emanuel Wynne", draggable: false}); markers.push(m69); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.070966974,-89.002432991);m70 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Take in the Sails", draggable: false}); markers.push(m70); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.035183037,-88.957832968);m71 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Silent as the Grave", draggable: false}); markers.push(m71); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.032482974,-88.956450038);m72 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Isla De Muerta", draggable: false}); markers.push(m72); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.072367003,-89.006217001);m73 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Gangway!", draggable: false}); markers.push(m73); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.059383016,-88.990067001);m74 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Hoist the Colours", draggable: false}); markers.push(m74); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.034967035,-88.959767008);m75 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Code of the Brethren", draggable: false}); markers.push(m75); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.032566961,-88.959216988);m76 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Tortuga", draggable: false}); markers.push(m76); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.053799998,-88.985932963);m77 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Seadog", draggable: false}); markers.push(m77); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.073150041,-89.011032991);m78 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Loaded to the Gunwales", draggable: false}); markers.push(m78); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.069632994,-89.006716982);m79 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"And Ye May Lay to That!", draggable: false}); markers.push(m79); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.033367014,-88.961616978);m80 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Port Royal", draggable: false}); markers.push(m80); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.051717011,-88.985800026);m81 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Run a Shot Across the Bow", draggable: false}); markers.push(m81); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.070849963,-89.010650022);m82 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Grog", draggable: false}); markers.push(m82); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.054099986,-88.990633031);m83 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Weigh Anchor", draggable: false}); markers.push(m83); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.056499977,-88.994483007);m84 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Bung Hole", draggable: false}); markers.push(m84); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.049750030,-88.987632981);m85 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Keelhaul", draggable: false}); markers.push(m85); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.068132969,-89.011349995);m86 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Doubloons", draggable: false}); markers.push(m86); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.051249972,-88.990982976);m87 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Shark Bait", draggable: false}); markers.push(m87); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.046383020,-88.985817041);m88 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Dead Men Tell No Tales", draggable: false}); markers.push(m88); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.028317001,-88.963450016);m89 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Pirate Shantyman & His Bonny L", draggable: false}); markers.push(m89); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.057849966,-89.001100017);m90 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Gentlemen O' Fortune", draggable: false}); markers.push(m90); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.049117029,-88.990633031);m91 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Savvy?", draggable: false}); markers.push(m91); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.054567026,-88.997633010);m92 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Cast Off", draggable: false}); markers.push(m92); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.047033036,-88.988249972);m93 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Heave-Ho", draggable: false}); markers.push(m93); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.063866999,-89.011567002);m94 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Swab the Deck", draggable: false}); markers.push(m94); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.045399990,-88.990482995);m95 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Hornswaggle", draggable: false}); markers.push(m95); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.057700014,-89.006949998);m96 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Look Lively", draggable: false}); markers.push(m96); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.040800001,-88.986582980);m97 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Shiver Me Timbers", draggable: false}); markers.push(m97); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.053850038,-89.004267035);m98 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Fiddlers Green", draggable: false}); markers.push(m98); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.043133020,-88.991616983);m99 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Hang 'Im from the Yardarm", draggable: false}); markers.push(m99); bounds.extend(latlng);
+var latlng = new google.maps.LatLng(38.055400020,-89.009549981);m100 = new google.maps.Marker({position: latlng, icon:T_icon, shadow:shadow, title:"Motherlode", draggable: false}); markers.push(m100); bounds.extend(latlng);
+   
+   
+   
+   //Create infowindow instance. This ensures we only have 1 infowindow throughout application
+  var infowindow = new google.maps.InfoWindow();
+  
+  // Add listener to close it if you click on the map
+  google.maps.event.addListener(map, "click", function() {
+       if (infowindow) {
+            infowindow.close();
+       }
+    }); 
+   
+   google.maps.event.addListener(m1, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBF7</a><br />Capt Edward Teach (Blackbeard) </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBF7/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBF7/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBF7\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m1);});
+google.maps.event.addListener(m2, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBFB</a><br />Capt Dirk Chivers </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBFB/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBFB/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBFB\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m2);});
+google.maps.event.addListener(m3, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBF8</a><br />Capt Nicholas Brown </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBF8/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBF8/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBF8\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m3);});
+google.maps.event.addListener(m4, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBF5</a><br />Capt John Bowen </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBF5/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBF5/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBF5\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m4);});
+google.maps.event.addListener(m5, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBFA</a><br />Capt Flora Burn </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBFA/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBFA/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBFA\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m5);});
+google.maps.event.addListener(m6, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBF4</a><br />Capt George Booth </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBF4/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBF4/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBF4\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m6);});
+google.maps.event.addListener(m7, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBF6</a><br />Capt Samuel Bellamy (Black Bel </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBF6/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBF6/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBF6\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m7);});
+google.maps.event.addListener(m8, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBFD</a><br />Capt Thomas Cocklyn </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBFD/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBFD/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBFD\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m8);});
+google.maps.event.addListener(m9, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBF2</a><br />Capt Hector Barbossa </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBF2/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBF2/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBF2\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m9);});
+google.maps.event.addListener(m10, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBF3</a><br />Capt Bartholomew Roberts (Blac </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBF3/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBF3/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBF3\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m10);});
+google.maps.event.addListener(m11, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBFJ</a><br />Capt William Conden </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBFJ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBFJ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBFJ\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m11);});
+google.maps.event.addListener(m12, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBF9</a><br />Major Stede Bonnet </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBF9/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBF9/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBF9\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m12);});
+google.maps.event.addListener(m13, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBF0</a><br />Capt Thomas Anstis </b><br /><i>by:  </i><br /><br />Difficulty: 2.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBF0/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBF0/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBF0\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m13);});
+google.maps.event.addListener(m14, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBFY</a><br />Capt Henry Every </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBFY/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBFY/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBFY\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m14);});
+google.maps.event.addListener(m15, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBFF</a><br />Capt Chris Condent </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBFF/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBFF/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBFF\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m15);});
+google.maps.event.addListener(m16, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBFM</a><br />Capt Alexander Datzeel </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBFM/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBFM/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBFM\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m16);});
+google.maps.event.addListener(m17, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBFE</a><br />Capt Anne Bonny </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBFE/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBFE/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBFE\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m17);});
+google.maps.event.addListener(m18, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBFK</a><br />Capt Robert Culliford </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBFK/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBFK/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBFK\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m18);});
+google.maps.event.addListener(m19, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBFZ</a><br />Capt William Fly </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBFZ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBFZ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBFZ\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m19);});
+google.maps.event.addListener(m20, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBG1</a><br />Capt John Halsey </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBG1/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBG1/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBG1\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m20);});
+google.maps.event.addListener(m21, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBFQ</a><br />Capt Arabella Drummond </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBFQ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBFQ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBFQ\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m21);});
+google.maps.event.addListener(m22, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBFP</a><br />Capt Howell Davis </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBFP/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBFP/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBFP\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m22);});
+google.maps.event.addListener(m23, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBFV</a><br />Capt John Evans </b><br /><i>by:  </i><br /><br />Difficulty: 3.0 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBFV/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBFV/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBFV\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m23);});
+google.maps.event.addListener(m24, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBG5</a><br />Capt Thomas Howard </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBG5/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBG5/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBG5\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m24);});
+google.maps.event.addListener(m25, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBG2</a><br />Capt Miguel Henriquez </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBG2/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBG2/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBG2\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m25);});
+google.maps.event.addListener(m26, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJK</a><br />Black Spot </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJK/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJK/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJK\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m26);});
+google.maps.event.addListener(m27, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBFT</a><br />Capt Edward England </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBFT/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBFT/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBFT\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m27);});
+google.maps.event.addListener(m28, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBG9</a><br />Capt William Kidd </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 3.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBG9/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBG9/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBG9\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m28);});
+google.maps.event.addListener(m29, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBG0</a><br />Capt Charles Harris </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBG0/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBG0/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBG0\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m29);});
+google.maps.event.addListener(m30, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJH</a><br />Yo Ho Ho and a Bottle of Rum </b><br /><i>by:  </i><br /><br />Difficulty: 2.5 Terrain: 3.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJH/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJH/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJH\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m30);});
+google.maps.event.addListener(m31, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJJ</a><br />Come About </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJJ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJJ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJJ\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m31);});
+google.maps.event.addListener(m32, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBFX</a><br />Capt John Fenn </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBFX/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBFX/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBFX\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m32);});
+google.maps.event.addListener(m33, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBGE</a><br />Capt James Misson </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBGE/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBGE/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBGE\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m33);});
+google.maps.event.addListener(m34, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBG3</a><br />Capt Benjamin Hornigold </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBG3/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBG3/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBG3\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m34);});
+google.maps.event.addListener(m35, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBGB</a><br />Capt Edward Lowe </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBGB/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBGB/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBGB\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m35);});
+google.maps.event.addListener(m36, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBGA</a><br />Capt Olivier Lavasseur </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 3.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBGA/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBGA/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBGA\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m36);});
+google.maps.event.addListener(m37, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJC</a><br />Shipshape </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 3.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJC/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJC/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJC\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m37);});
+google.maps.event.addListener(m38, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJE</a><br />Three Sheets to the Wind </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJE/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJE/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJE\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m38);});
+google.maps.event.addListener(m39, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJD</a><br />Thar She Blows </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJD/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJD/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJD\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m39);});
+google.maps.event.addListener(m40, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBG4</a><br />Capt Jack Rackham(Calico Jack] </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBG4/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBG4/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBG4\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m40);});
+google.maps.event.addListener(m41, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBG8</a><br />Capt James Kelly </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBG8/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBG8/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBG8\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m41);});
+google.maps.event.addListener(m42, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJ7</a><br />Scallywag </b><br /><i>by:  </i><br /><br />Difficulty: 1.0 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJ7/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJ7/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJ7\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m42);});
+google.maps.event.addListener(m43, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBGC</a><br />Capt George Lowther </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBGC/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBGC/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBGC\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m43);});
+google.maps.event.addListener(m44, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBGF</a><br />Capt John Phillips </b><br /><i>by:  </i><br /><br />Difficulty: 2.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBGF/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBGF/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBGF\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m44);});
+google.maps.event.addListener(m45, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJ9</a><br />Scurvy Dog </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJ9/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJ9/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJ9\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m45);});
+google.maps.event.addListener(m46, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBG7</a><br />Capt John Julien </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBG7/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBG7/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBG7\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m46);});
+google.maps.event.addListener(m47, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBGJ</a><br />Capt John Quelch </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBGJ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBGJ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBGJ\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m47);});
+google.maps.event.addListener(m48, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJ1</a><br />Old Salt </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJ1/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJ1/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJ1\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m48);});
+google.maps.event.addListener(m49, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBGG</a><br />Capt James Plaintain </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBGG/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBGG/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBGG\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m49);});
+google.maps.event.addListener(m50, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJ3</a><br />Pieces of Eight </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJ3/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJ3/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJ3\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m50);});
+google.maps.event.addListener(m51, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBGK</a><br />Capt Mary Read </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBGK/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBGK/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBGK\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m51);});
+google.maps.event.addListener(m52, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBGP</a><br />Capt Jack Sparrow </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBGP/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBGP/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBGP\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m52);});
+google.maps.event.addListener(m53, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBHR</a><br />Batten Down the Hatches </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBHR/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBHR/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBHR\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m53);});
+google.maps.event.addListener(m54, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBGM</a><br />Capt Francis Spriggs </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBGM/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBGM/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBGM\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m54);});
+google.maps.event.addListener(m55, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBGR</a><br />Capt John Taylor </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBGR/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBGR/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBGR\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m55);});
+google.maps.event.addListener(m56, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBGV</a><br />Capt Teague </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBGV/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBGV/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBGV\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m56);});
+google.maps.event.addListener(m57, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBHN</a><br />The Flying Dutchman </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBHN/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBHN/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBHN\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m57);});
+google.maps.event.addListener(m58, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBHH</a><br />Davy Jones' Locker </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBHH/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBHH/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBHH\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m58);});
+google.maps.event.addListener(m59, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBHJ</a><br />Dead Man's Chest </b><br /><i>by:  </i><br /><br />Difficulty: 1.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBHJ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBHJ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBHJ\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m59);});
+google.maps.event.addListener(m60, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBH1</a><br />Capt Richard Worley </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBH1/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBH1/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBH1\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m60);});
+google.maps.event.addListener(m61, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBGW</a><br />Capt Thomas Tew </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBGW/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBGW/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBGW\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m61);});
+google.maps.event.addListener(m62, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBGX</a><br />Capt Charles Vane </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBGX/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBGX/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBGX\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m62);});
+google.maps.event.addListener(m63, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBHG</a><br />The Kraken </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBHG/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBHG/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBHG\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m63);});
+google.maps.event.addListener(m64, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBK4</a><br />Bilge Rat </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBK4/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBK4/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBK4\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m64);});
+google.maps.event.addListener(m65, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBH2</a><br />Capt Eric Cobham </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBH2/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBH2/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBH2\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m65);});
+google.maps.event.addListener(m66, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBHF</a><br />Walk the Plank </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBHF/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBHF/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBHF\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m66);});
+google.maps.event.addListener(m67, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJY</a><br />The Black Pearl </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJY/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJY/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJY\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m67);});
+google.maps.event.addListener(m68, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBHE</a><br />Drink Up, Me Hearties </b><br /><i>by:  </i><br /><br />Difficulty: 1.0 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBHE/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBHE/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBHE\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m68);});
+google.maps.event.addListener(m69, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBGZ</a><br />Capt Emanuel Wynne </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBGZ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBGZ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBGZ\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m69);});
+google.maps.event.addListener(m70, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBK1</a><br />Take in the Sails </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBK1/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBK1/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBK1\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m70);});
+google.maps.event.addListener(m71, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBHD</a><br />Silent as the Grave </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBHD/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBHD/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBHD\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m71);});
+google.maps.event.addListener(m72, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBHC</a><br />Isla De Muerta </b><br /><i>by:  </i><br /><br />Difficulty: 1.0 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBHC/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBHC/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBHC\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m72);});
+google.maps.event.addListener(m73, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBK6</a><br />Gangway! </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBK6/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBK6/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBK6\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m73);});
+google.maps.event.addListener(m74, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJP</a><br />Hoist the Colours </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJP/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJP/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJP\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m74);});
+google.maps.event.addListener(m75, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBH9</a><br />Code of the Brethren </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBH9/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBH9/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBH9\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m75);});
+google.maps.event.addListener(m76, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBH7</a><br />Tortuga </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBH7/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBH7/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBH7\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m76);});
+google.maps.event.addListener(m77, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJA</a><br />Seadog </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJA/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJA/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJA\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m77);});
+google.maps.event.addListener(m78, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBK8</a><br />Loaded to the Gunwales </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBK8/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBK8/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBK8\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m78);});
+google.maps.event.addListener(m79, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBK2</a><br />And Ye May Lay to That! </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBK2/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBK2/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBK2\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m79);});
+google.maps.event.addListener(m80, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBH6</a><br />Port Royal </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBH6/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBH6/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBH6\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m80);});
+google.maps.event.addListener(m81, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJ4</a><br />Run a Shot Across the Bow </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJ4/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJ4/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJ4\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m81);});
+google.maps.event.addListener(m82, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBK7</a><br />Grog </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBK7/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBK7/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBK7\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m82);});
+google.maps.event.addListener(m83, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJG</a><br />Weigh Anchor </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJG/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJG/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJG\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m83);});
+google.maps.event.addListener(m84, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJM</a><br />Bung Hole </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJM/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJM/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJM\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m84);});
+google.maps.event.addListener(m85, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJ0</a><br />Keelhaul </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJ0/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJ0/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJ0\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m85);});
+google.maps.event.addListener(m86, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBK5</a><br />Doubloons </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBK5/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBK5/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBK5\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m86);});
+google.maps.event.addListener(m87, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJB</a><br />Shark Bait </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJB/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJB/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJB\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m87);});
+google.maps.event.addListener(m88, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBHT</a><br />Dead Men Tell No Tales </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBHT/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBHT/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBHT\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m88);});
+google.maps.event.addListener(m89, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBH4</a><br />Pirate Shantyman & His Bonny L </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBH4/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBH4/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBH4\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m89);});
+google.maps.event.addListener(m90, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJR</a><br />Gentlemen O' Fortune </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJR/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJR/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJR\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m90);});
+google.maps.event.addListener(m91, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJ6</a><br />Savvy? </b><br /><i>by:  </i><br /><br />Difficulty: 2.0 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJ6/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJ6/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJ6\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m91);});
+google.maps.event.addListener(m92, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJN</a><br />Cast Off </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJN/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJN/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJN\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m92);});
+google.maps.event.addListener(m93, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBHX</a><br />Heave-Ho </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBHX/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBHX/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBHX\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m93);});
+google.maps.event.addListener(m94, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJZ</a><br />Swab the Deck </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJZ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJZ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJZ\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m94);});
+google.maps.event.addListener(m95, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBHY</a><br />Hornswaggle </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBHY/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBHY/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBHY\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m95);});
+google.maps.event.addListener(m96, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJT</a><br />Look Lively </b><br /><i>by:  </i><br /><br />Difficulty: 1.0 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJT/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJT/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJT\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m96);});
+google.maps.event.addListener(m97, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBHQ</a><br />Shiver Me Timbers </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBHQ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBHQ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBHQ\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m97);});
+google.maps.event.addListener(m98, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJQ</a><br />Fiddlers Green </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.0<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJQ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJQ/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJQ\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m98);});
+google.maps.event.addListener(m99, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBHW</a><br />Hang 'Im from the Yardarm </b><br /><i>by:  </i><br /><br />Difficulty: 1.5 Terrain: 2.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBHW/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBHW/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBHW\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m99);});
+google.maps.event.addListener(m100, "click", function() { infowindow.setContent("<div style='width:200px;overflow:hidden;font-family:Verdana;font-size:10px;'><center><b><a href='' target='geo'>GC2PBJW</a><br />Motherlode </b><br /><i>by:  </i><br /><br />Difficulty: 1.0 Terrain: 1.5<br />Size: Regular<br /><br /><b>View:</b><a href=\"gsak://%FF/search/GC2PBJW/Moga2011_Test\"><img src='http://gsak.net/stats/maps/viewicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Flag:</b><a href=\"gsak://%FF/flagtoggle/GC2PBJW/Moga2011_Test\"><img src='http://gsak.net/stats/maps/flagicon.gif' align='top' hspace='4'></a>&nbsp;&nbsp;<b>Sort:</b><a href=\"gsak://%FF/macro/incsort?GC2PBJW\"><img src='http://gsak.net/stats/maps/incsorticon.gif' align='top' hspace='4'></a><br><br /></center></div>");infowindow.open(map,m100);});
+
+   markerClusterer = new MarkerClusterer(map, markers, {
+      gridSize: 50,
+      maxZoom: 12,
+      styles: styles[0]
+   });
+
+   map.fitBounds(bounds);
+
+
+
+} // End of initialize
+
+
+</script>
+
+<script type="text/javascript" src="http://gsak.net/stats/maps/keydragzoom_packed.js"></script>
+
+<style type="text/css">
+
+   html, body {
+   height: 100%;
+   overflow: hidden;
+   font-family: Verdana;
+   font-size: 8pt;
+}
+
+body {
+background-color: white;
+margin: 0;
+}
+</style>
+
+</head>
+
+<body>
+   <div id="map"></div>
+</body>
+</html>

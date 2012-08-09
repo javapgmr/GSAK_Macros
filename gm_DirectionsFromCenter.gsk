@@ -1,0 +1,27 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Get Directions from Center for Google Map
+# MacAuthor = javapgmr
+# MacFileName = gm_DirectionsFromCenter.gsk
+# MacUrl =
+#*******************************************
+$dblist="-Select Macro-;Directions;"
+
+$Form = EditForm($Form,"label1","Caption","GM Selection Menu")
+$Form = EditForm($Form,"Sel","Display","10")
+$exit = form($form,"")
+IF  $exit = "SystemExit"
+  RETURN
+ENDIF
+
+BEGINCASE
+  CASE $Sel="Directions"
+    WEB URL=http://maps.google.com/maps?f=d&hl=en&saddr=%macro="GetCenter.gsk"&daddr=$_GoogleLat,$_GoogleLon
+
+  OTHERWISE
+    $exit = form($errorForm,"")
+    RETURN
+ENDCASE
+
+INCLUDE File="menudialog.include"
+

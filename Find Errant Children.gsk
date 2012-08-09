@@ -1,0 +1,29 @@
+################################################################################
+# MacVersion = 1.0
+# MacDescription = Find children further than 100 mi/km from the parent
+# MacAuthor = bushman4
+# MacFileName = Find Errant Children.gsk
+################################################################################
+#
+#
+#
+
+$intMaxDistance = 100
+UserFlag Type=clear Range=all
+Goto Position=Top
+While not($_EOL)
+	ShowStatus Msg="$d_Code - $d_Name"
+	Table Active=Waypoints Scope=Parent
+	While Not($_EOL)
+		$intDistance = val(GCalc("$d_Latitude $d_Longitude;$d_cLat $d_cLon", "CalcDistance"))
+		If $intDistance > $intMaxDistance
+			$d_UserFlag = True
+			Break			
+		EndIf
+		Goto Position=Next		
+	EndWhile
+	Table Active=Caches
+	Goto Position=Next
+EndWhile
+
+MFilter Expression=$d_UserFlag=True

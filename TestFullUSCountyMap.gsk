@@ -1,0 +1,73 @@
+#*******************************************
+# MacVersion = 0.2
+# MacDescription = Test Full US County Map
+# MacAuthor = Lignumaqua
+# MacFileName = TestFullUSCountyMap.gsk
+# MacUrl =
+#*******************************************
+
+# 0.1 - Initial release
+# 0.2 - Works with full state names as well as abbreviations
+
+VERCHECK Version=7.7.3.18 (Note: this macro requires the latest GSAK 7.7 "patch")
+
+# Set up the SQL tables
+$sqlfile = $_Install + "\macros\FoundStatsSQLLite.db3"
+
+IF NOT(FileExists($sqlfile))
+	MSGOK msg="You must run FindStatGen to generate the SQLite database before running this macro"
+	RETURN
+ELSE
+	$status = Sqlite("open",$sqlfile)
+ENDIF
+
+
+
+$file = $_ExePath + "\bb.db3"
+$file = SqlQuote($file)
+$_sql = "ATTACH $file AS bb"
+$status = Sqlite("sql",$_sql)
+
+$_sql = "select avg(length(state)) from allfinds where country = 'United States'"
+$statelength = Val(Sqlite("sql",$_sql))
+
+IF $statelength > 2
+	$_sql = "SELECT cId FROM uscountylist WHERE State||County IN (select state||county from allfinds WHERE country= 'United States' group by state||county)"
+ELSE
+	$_sql = "SELECT cId FROM uscountylist WHERE Abbr||County IN (select state||county from allfinds WHERE country= 'United States' group by state||county)"
+ENDIF
+
+$status = Sqlite("sql",$_sql)
+
+$polygons = Replace($_NewLine,",",$status)
+
+#Make best guess at OwnerID
+$_sql = "SELECT lOwnerid FROM (SELECT lOwnerid, Count(lOwnerID) AS c FROM Allfinds GROUP BY lownerid ORDER BY c DESC LIMIT 1)"
+$OwnerID = Sqlite("sql",$_sql)
+
+# Get settings number
+$_sql = "SELECT SaveText FROM SavedSettings WHERE SaveName = 'Settings'"
+$Settings = Val(Sqlite("sql",$_sql))
+IF $Settings = 0
+	$Settings = 1
+ENDIF
+
+# Background color
+$color2 = "93CEED"
+
+$URL = "http://gsak.info/stats2/polymaps/usacountymaptest.php"
+$PostData = "'id','$polygons','name','$OwnerID','settings','$Settings','color2','$color2'"
+$result = PostUrl($url,$PostData)
+
+#MSGOK msg=$result
+
+$imageurl = "http://gsak.info/stats2/polymaps/usamaps/" + $OwnerID + "_" + "$Settings" + ".png"
+
+$width = 740
+$height = 422
+
+$html = "<img src='$imageurl' border='0' width='$width' height='$height' alt='US County Map' title='US County Map' />"
+
+CLIP data=$html
+
+WEB url=$imageurl

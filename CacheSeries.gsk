@@ -1,0 +1,425 @@
+# MacVersion = 1.7
+# MacDescription = Find cache series. Set selected user flags. Open map to visualize.
+# MacAuthor = Lignumaqua & Image Maker
+# MacFileName = CacheSeries.gsk
+# MacURL = http://gsak.net/board/index.php?showtopic=9585
+
+# V1.1 Initial release
+# V1.2 - 4-10-11 - Convert numerics to zeroes before searching
+# V1.3 - 4-11-11 - Ownership changed from Lignumaqua to Image Maker
+#                  Change single memo window to two checkbox windows -> one for "starts", one for "ends"
+#                  New checkbox to reset all user flags. New button to set user flags for all selected series
+# V1.4 - 4-14-11 - Change to using native SQLite tables
+# V1.5 - 4-15-11 - Add buttons to allow an installed mapping macro to be auto-started after user flags are set
+# V1.6 - 5-25-11 - Only search in current filter (Return to original behaviour before V1.4)
+#                  Reduced default number of matching characters and minimum series size
+# V1.7 - 5-27-11 - Show all common characters in cache names
+#                  Show search status as it now takes longer
+#                  (Currently not possible to highlight $matchLen as bold => ToDo when variable fonts are supported)
+
+
+
+VERCHECK Version=7.7.3.53 (Note: this macro requires the latest 7.7 GSAK release - see http://gsak.net for the download link)
+
+Option Explicit=Yes
+
+Declare Var=$CacheList Type=String
+Declare Var=$ChosenDb Type=String
+Declare Var=$counter Type=Numeric
+Declare Var=$CountS Type=String
+Declare Var=$form Type=String
+Declare Var=$formExit Type=String
+Declare Var=$matchLen Type=String
+Declare Var=$members Type=String
+Declare Var=$MySQLor Type=String
+Declare Var=$RC Type=String
+Declare Var=$searchresultvalues Type=String
+Declare Var=$SeriesName Type=String
+Declare Var=$sqlResult Type=String
+Declare Var=$sqlStatus Type=String
+Declare Var=$testMatchLen Type=String
+
+$matchLen = "10"
+$members = "6"
+GOSUB name=SearchCaches
+
+If FileExists("$_AppData\Macros\Google_Map_V3.gsk")
+	$form = EditForm($form,"ButtonGoogleMapV3","Enabled","Yes")
+Endif
+
+If FileExists("$_AppData\Macros\myGMEv3.gsk")
+	$form = EditForm($form,"ButtonMyGME","Enabled","Yes")
+Endif
+
+#-------------------------------------------------------------------------------------------------------#
+# Show form, refreshing values if Match or Members changed, until Cancel or "Set User Flags" is pressed #
+#-------------------------------------------------------------------------------------------------------#
+WHILE TRUE
+	$formExit = Form($form,"")
+	# Reset the screen position of the menu form to where the user left it
+	$Form = EditForm($Form,"Form1","Top",$_FormTop)
+	$Form = EditForm($Form,"Form1","Left",$_FormLeft)
+	BEGINCASE 
+		CASE $Cancel
+			CANCEL
+		CASE ($formExit = "matchLen") OR ($formExit = "members")
+			GOSUB name=SearchCaches
+		CASE $SetUserFlags
+			GOSUB name=SelectCaches
+                        BREAK	# End Macro
+		CASE $ButtonMyGME
+			GOSUB name=SelectCaches
+			MACRO File="$_AppData\Macros\myGMEv3.gsk" VarScope=Local
+                        BREAK	# End Macro
+		CASE $ButtonGoogleMapV3
+			GOSUB name=SelectCaches
+			MACRO File="$_AppData\Macros\Google_Map_V3.gsk" VarScope=Local
+                        BREAK	# End Macro
+		OTHERWISE 
+			CANCEL msg="Macro cancelled"
+	ENDCASE
+ENDWHILE 
+
+
+#---------------------------------#
+# FUNCTION Find + display series  #
+#---------------------------------#
+
+BEGINSUB name=SearchCaches
+
+	#--------------------------------------------------#
+	# Add list of series to "Starts with" checkboxlist #
+	#--------------------------------------------------#
+
+	$_sql = "DROP TABLE IF EXISTS series1"
+	$sqlStatus = Sqlite("sql",$_sql)
+
+	$_sql =          "CREATE temp TABLE series1 AS "
+        $_sql = $_sql +              "SELECT count(name) as count, "
+        $_sql = $_sql +                     "g_RegexReplace('\d',name,'0','') as fullName, "
+        $_sql = $_sql +                     "substr(g_RegexReplace('\d',name,'0',''), 1, $matchLen) as matchName, "
+        $_sql = $_sql +                     "$matchLen as maxCommon "
+        $_sql = $_sql +              "FROM caches WHERE $_Where "
+        $_sql = $_sql +              "GROUP BY matchName COLLATE NOCASE HAVING count>=$members AND length(matchName)=$matchLen ORDER BY count DESC"
+	$sqlStatus = Sqlite("sql",$_sql)
+
+        $testMatchLen = $matchLen
+
+	WHILE TRUE 
+
+	   SHOWSTATUS msg="Max common characters (left) = $testMatchLen" Width=350 Title="Searching ..."
+
+	   $testMatchLen = NumToStr( Val($testMatchLen)+1 )
+
+	   $_sql = "UPDATE series1 SET maxCommon = $testMatchLen WHERE matchName IN ("
+	   $_sql = $_sql + "SELECT series1.matchName FROM series1,"
+	   $_sql = $_sql + "   (  SELECT count(name) as count, "
+	   $_sql = $_sql +           "substr(g_RegexReplace('\d',name,'0',''), 1, $testMatchLen) as matchName "
+	   $_sql = $_sql +           "FROM caches WHERE $_Where "
+	   $_sql = $_sql +           "GROUP BY matchName COLLATE NOCASE HAVING count>=$members AND length(matchName)=$testMatchLen "
+	   $_sql = $_sql +           "ORDER BY count DESC "
+	   $_sql = $_sql + "   ) AS series2 "
+	   $_sql = $_sql + "WHERE series1.count = series2.count AND series1.matchName = substr(series2.matchName,1,$matchLen)" 
+	   $_sql = $_sql + ")"
+	   $sqlStatus = Sqlite("sql",$_sql)
+
+	   IF VAL( Sqlite("sql","SELECT changes()") ) = 0
+	      $testMatchLen = NumToStr( Val($testMatchLen)-1 )
+	      BREAK
+	   ENDIF
+		
+	ENDWHILE
+
+	$_sql = "UPDATE series1 SET fullName=g_Left(fullName,maxCommon)||'...' WHERE length(g_Left(fullName,maxCommon))<length(fullName)"
+	$sqlStatus = Sqlite("sql",$_sql)
+  
+	$_sql = "SELECT count,fullName FROM series1"
+	$sqlResult = Sqlite("sql",$_sql)
+	
+	$searchresultvalues = Replace(";"," - ",$sqlResult, TRUE)
+	$searchresultvalues = Replace($_NewLine,";",$searchresultvalues, TRUE)
+
+	$form = EditForm($form,"SearchResultStarts","Values",$searchresultvalues)
+
+	$_sql = "DROP TABLE IF EXISTS series1"
+	$sqlStatus = Sqlite("sql",$_sql)
+
+	#------------------------------------------------#
+	# Add list of series to "Ends with" checkboxlist #
+	#------------------------------------------------#
+
+	$_sql = "DROP TABLE IF EXISTS series1"
+	$sqlStatus = Sqlite("sql",$_sql)
+
+	$_sql =          "CREATE temp TABLE series1 AS "
+        $_sql = $_sql +              "SELECT count(name) as count, "
+        $_sql = $_sql +                     "g_RegexReplace('\d',name,'0','') as fullName, "
+        $_sql = $_sql +                     "substr(g_RegexReplace('\d',name,'0',''), -$matchLen, $matchLen) as matchName, "
+        $_sql = $_sql +                     "$matchLen as maxCommon "
+        $_sql = $_sql +              "FROM caches WHERE $_Where "
+        $_sql = $_sql +              "GROUP BY matchName COLLATE NOCASE HAVING count>=$members AND length(matchName)=$matchLen ORDER BY count DESC"
+	$sqlStatus = Sqlite("sql",$_sql)
+
+        $testMatchLen = $matchLen
+
+	WHILE TRUE 
+
+	   SHOWSTATUS msg="Max common characters (right) = $testMatchLen" Width=350 Title="Searching ..."
+
+	   $testMatchLen = NumToStr( Val($testMatchLen)+1 )
+
+	   $_sql = "UPDATE series1 SET maxCommon = $testMatchLen WHERE matchName IN ("
+	   $_sql = $_sql + "SELECT series1.matchName FROM series1,"
+	   $_sql = $_sql + "   (  SELECT count(name) as count, "
+	   $_sql = $_sql +           "substr(g_RegexReplace('\d',name,'0',''), -$testMatchLen, $testMatchLen) as matchName "
+	   $_sql = $_sql +           "FROM caches WHERE $_Where "
+	   $_sql = $_sql +           "GROUP BY matchName COLLATE NOCASE HAVING count>=$members AND length(matchName)=$testMatchLen "
+	   $_sql = $_sql +           "ORDER BY count DESC "
+	   $_sql = $_sql + "   ) AS series2 "
+	   $_sql = $_sql + "WHERE series1.count = series2.count AND series1.matchName = substr(series2.matchName,-$matchLen,$matchLen)" 
+	   $_sql = $_sql + ")"
+	   $sqlStatus = Sqlite("sql",$_sql)
+
+	   IF VAL( Sqlite("sql","SELECT changes()") ) = 0
+	      $testMatchLen = NumToStr( Val($testMatchLen)-1 )
+	      BREAK
+	   ENDIF
+
+	ENDWHILE
+
+	$_sql = "UPDATE series1 SET fullName='...'||g_Right(fullName,maxCommon) WHERE length(g_Right(fullName,maxCommon))<length(fullName)"
+	$sqlStatus = Sqlite("sql",$_sql)
+  
+	$_sql = "SELECT count,fullName FROM series1"
+	$sqlResult = Sqlite("sql",$_sql)
+	
+	$searchresultvalues = Replace(";"," - ",$sqlResult, TRUE)
+	$searchresultvalues = Replace($_NewLine,";",$searchresultvalues, TRUE)
+
+	$form = EditForm($form,"SearchResultEnds","Values",$searchresultvalues)
+
+	$_sql = "DROP TABLE IF EXISTS series1"
+	$sqlStatus = Sqlite("sql",$_sql)
+
+	SHOWSTATUS msg="End" Width=350 Display=Off
+
+ENDSUB
+
+
+#-----------------------------------------------------------#
+# FUNCTION Set user flags of all caches in selected series  #
+#-----------------------------------------------------------#
+
+BEGINSUB name=SelectCaches
+
+	Declare Var=$counter	Type=Numeric
+
+	$_sql = ""
+	$MySQLor = ""
+
+	$ChosenDb = list("chosen","create",";")
+
+	#--------------------------------------------------------------------------------------------------#
+	# Extract names of selected cache series from "Starts with" checkboxlist into SQL SELECT statement #
+	#--------------------------------------------------------------------------------------------------#
+
+	$ChosenDb = list("chosen","replace",$SearchResultStarts)
+	$counter  = Val(list("chosen","count",""))
+
+	WHILE ($counter > 0)
+		$SeriesName = Replace("0","_",RegexReplace("...$",RegexReplace("^\d* - ",list("chosen","item",NumToStr($counter)),""),"%"),TRUE)
+		$SeriesName = Replace("'","''",$SeriesName,TRUE)
+		$_sql = $_sql + "$MySQLor Name LIKE '$SeriesName'"
+		$MySQLor = " OR"
+		$counter = $counter - 1
+	ENDWHILE
+
+	#------------------------------------------------------------------------------------------------#
+	# Extract names of selected cache series from "Ends with" checkboxlist into SQL SELECT statement #
+	#------------------------------------------------------------------------------------------------#
+
+	$ChosenDb = list("chosen","replace",$SearchResultEnds)
+	$counter  = Val(list("chosen","count",""))
+
+	WHILE ($counter > 0)
+		$SeriesName = Replace("0","_",RegExReplace("^\d* - ...",List("chosen","item",NumToStr($counter)),"%"),TRUE)
+		$SeriesName = Replace("'","''",$SeriesName,TRUE)
+		$_sql = $_sql + "$MySQLor Name LIKE '$SeriesName'"
+		$MySQLor = " OR"
+		$counter = $counter - 1
+	ENDWHILE
+
+	IF ($_sql = "")
+		CANCEL msg="Nothing Selected"
+	ELSE
+		$_sql = "SELECT Code FROM caches WHERE " + $_sql
+	ENDIF
+
+	#---------------------------------------------#
+	# Run SQL + Set user flags of matching caches #
+	#---------------------------------------------#
+
+	$RC = Sqlite("sql",$_sql,"sqlget=yes")
+
+	$RC = List("matching","create",",")
+
+	WHILE NOT($_sqleol)
+	  $CacheList = List("matching","add",sqlget("code"))
+	  SQLNEXT
+	ENDWHILE
+
+	IF $ClearFlags            # Reset all user flags if "First clear user flags" checkbox is selected
+		USERFLAG type=clear range=all
+	ENDIF
+
+	$CountS = CodeMatch($CacheList,",","U")   # Set user flags
+
+	MFILTER Where=UserFlag    # Show only caches with user flag set
+
+ENDSUB
+
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Mo 30-Mai-2011 19:45:56
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Cache Series
+  Height = 484
+  Width = 721
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 583
+  Top = 352
+  Width = 75
+  Taborder = 8
+  Caption = Cancel
+
+Name = SearchResultStarts
+  Type = Checklistbox
+  Height = 279
+  Left = 26
+  Top = 130
+  Values = "Values are set at run time"
+  Width = 239
+  Taborder = 9
+
+Name = matchLen
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 287
+  Top = 70
+  Values = 30;26;24;22;20;18;16;14;12;10;8;6;4
+  Width = 50
+  Taborder = 10
+
+Name = LabelCommon
+  Type = Label
+  Height = 13
+  Left = 135
+  Top = 73
+  Width = 140
+  Caption = Minimum common characters:
+
+Name = LabelTitle
+  Type = Label
+  Color = 16744448
+  Height = 24
+  Left = 238
+  Size = 14
+  Style = bold
+  Top = 20
+  Width = 197
+  Caption = Cache Series Search
+
+Name = members
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 523
+  Top = 70
+  Values = 10;9;8;7;6;5;4
+  Width = 50
+  Taborder = 11
+
+Name = LabelMembers
+  Type = Label
+  Height = 13
+  Left = 385
+  Top = 73
+  Width = 131
+  Caption = Minimum members of series:
+
+Name = SearchResultEnds
+  Type = Checklistbox
+  Height = 279
+  Left = 288
+  Top = 130
+  Values = "Values are set at run time"
+  Width = 244
+  Taborder = 12
+
+Name = LabelStartsWith
+  Type = Label
+  Height = 13
+  Left = 27
+  Top = 112
+  Width = 111
+  Caption = Series size - Starts with:
+
+Name = LabelEndsWith
+  Type = Label
+  Height = 13
+  Left = 288
+  Top = 113
+  Width = 108
+  Caption = Series size - Ends with:
+
+Name = SetUserFlags
+  Type = Button
+  Height = 25
+  Left = 572
+  Top = 192
+  Width = 90
+  Taborder = 13
+  Caption = Only set user flags
+
+Name = ClearFlags
+  Type = Checkbox
+  Height = 17
+  Left = 551
+  Top = 161
+  Width = 127
+  Taborder = 14
+  Caption = First clear all user flags
+
+Name = ButtonMyGME
+  Type = Button
+  Enabled = No
+  Height = 25
+  Left = 544
+  Top = 230
+  Visible = Yes
+  Width = 145
+  Taborder = 15
+  Caption = User flags + myGMEv3
+
+Name = ButtonGoogleMapV3
+  Type = Button
+  Enabled = No
+  Height = 25
+  Left = 544
+  Top = 268
+  Visible = Yes
+  Width = 145
+  Taborder = 16
+  Caption = User flags + Google_Map_V3
+
+<enddata>
+
+

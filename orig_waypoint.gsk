@@ -1,0 +1,37 @@
+#################################################################################
+# orig_waypoint.txt - Used to add a Note to an unknown cache record with the    #
+#                     Original  posted Cache coordinates                        #
+#                                                                               #
+# This GSAK macro will run against your current database.                       #
+# It will perform the following:                                                #
+#                                                                               #
+# 1 - Start at the 1st record                                                   #
+# 2 - Check to see if the record is an Unknown Cache, has never been found, and #
+#     does not already contain a Note from this macro                           #
+# 3 - If Step 2 passes, then it will add a Note to the cache with the Original  #
+#     posted coords. It will not change your corrected coords.                  #
+# 4 - If Step 2 fails, it will go to the next record and repeat Step 2          #
+# 5 - It will set the User Flag on any record that was changed                  #
+# 6 - Once completed, it will filter on all records that have the User Flag set #                                                                              #
+#################################################################################
+
+
+$ThisRecord = 0
+$ChangedRecord=0
+USERFLAG type=CLEAR range=all
+Goto Position=Top
+While not($_Eol)
+  $ThisRecord = $ThisRecord + 1
+  $status = "Cache: " + "$ThisRecord" + " of " + "$_Count" + " and updated " + "$ChangedRecord" 
+  ShowStatus msg="$status"
+	if $d_CacheType ="U" and $d_FoundCount =0 and at("Original Coords",$d_UserNote) = 0
+	$coords=$d_LatOriginal+" ; "+$d_LonOriginal
+	$savedCoords=geocalc($coords, "FormatMinutes")
+	$d_UserNote = $_NewLine + $d_UserNote + $_NewLine + "Original Coords - " + $savedCoords
+	$d_UserFlag = true
+	$ChangedRecord=$ChangedRecord+1
+	endIf
+  GOTO Position=Next
+EndWHILE
+MFILTER If=$d_UserFlag
+Goto Position=Top	

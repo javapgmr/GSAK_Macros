@@ -1,0 +1,53 @@
+#*******************************************************
+# MacVersion = 1.0
+# MacDescription = Fixes tags that give GPXSonar trouble and exports as GPX
+# MacAuthor = Jeff Struven (Blitzkrieg)
+# MaxFileName = GpxSonarExp.gsk
+#
+# The following macro fixes empty tags in the long and short descriptions
+# It then exports the waypoints in the current filter as a zipped gpx
+# file.
+#
+# NOTE: Please set the $sPath variable to your preference in the 
+#       configuration section below.
+#*******************************************************
+#DEBUG Status=On
+
+# Start Configuration
+$sPath = "C:\Documents and Settings\jeff\My Documents\Geocaching\"
+# End Configuration
+
+$sExportFile = $sPath + $_CurrentDatabase + "R.gpx"
+$sZipFile = $sPath + $_CurrentDatabase + "R.zip"
+$sBadLongs = ""
+$sBadShorts = ""
+$nPos = 0
+$nBadCount = 0
+Goto Position=Top
+While .not. $_eol
+    $nPos = $nPos + 1
+
+    If $d_LongDescription = ""
+      $d_LongDescription = $_NewLine
+      $sBadLongs = $sBadLongs + $d_Name + ", "
+      $nBadCount = $nBadCount + 1
+    Endif
+    If $d_ShortDescription = ""
+      $d_ShortDescription = $_NewLine
+      $sBadShorts = $sBadShorts + $d_Name + ", "
+      $nBadCount = $nBadCount + 1
+    Endif
+  
+    Goto Position=Next
+  
+EndWhile
+Export Type=GPX File=$sExportFile
+$sStatus = ZipFile( "zip", $sZipFile, $sExportFile )
+If left($sStatus,7) = "*Error*"
+  Cancel Msg=$sStatus
+EndIf
+FileErase File=$sExportFile
+$sMsg = "Total records repaired: " + "$nBadCount" + $_NewLine + $_NewLine
+$sMsg = $sMsg + "Bad short descriptions: " + $sBadShorts + $_NewLine + $_NewLine
+$sMsg = $sMsg + "Bad long descriptions:  " + $sBadLongs + $_NewLine
+Pause Msg=$sMsg

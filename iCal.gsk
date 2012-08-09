@@ -1,0 +1,1061 @@
+################################################################################
+#                                                                              #
+# Bug reports, feature suggestions and any other comments should be posted     # 
+# on the GSAK forums.                                                          # 
+#                                                                              # 
+# This macro is Open Source and comes with no warranty, implied or otherwise.  # 
+#______________________________________________________________________________#
+# MacVersion = 1.0.5                                                           # 
+# MacDescription = Create calendar entries for events in Google or Outlook     #
+# MacURL = http://gsak.net/board/index.php?showtopic=18154&view=getnewpost     #
+# MacAuthor = Big Wolf                                                         #
+# MacFileName = iCal.gsk                                                       #
+#                                                                              #
+# Version History:                                                             #
+# V1.0.5  07-04-11   A) Stop outlook hang                                      #
+#                                                                              #
+# V1.0.4  06-04-11   A) Changes re adding the macro in to the Macro library    #
+#                    B) Code tidy                                              #
+#                    C) Use Ctrl key for configuration                         #
+#                                                                              #
+# V1.0.3  05-04-11   A) Added in google calendar                               #
+#                    B) Included Configuration, Update and About screens       #
+#                                                                              #
+# V1.0.2  13-03-11   A) Added in user note                                     #
+#                                                                              #
+# V1.0.1  12-03-11   A) Inital release :  outlook only                         #
+################################################################################
+
+# Version check for ver 7.7.0.0 or greater
+VERCHECK Version=7.7.0.0 (You can find the latest version of GSAK at http://gsak.net)
+
+GOSUB Name=MacroName                #Check macro name ends in gsk or txt
+GOSUB Name=DeclareVariables         #Declare all the variables
+GOSUB Name=Initalise Variables      #kind of obvious what this sub does!
+GOSUB Name=GetVer                   #set $CurrentVersion from MacVersion
+GOSUB Name=CheckDatFile             #check datfile exists and create if not
+GOSUB Name=CheckForUpdates          #check macro version if option set
+       
+#set form caption
+$form = EditForm($form,"Form1","Caption","iCal Entry generator:  v" + $CurrentVersion)
+
+WHILE TRUE # Infinite loop to display main form until exit conditions are chosen
+	 $FormExit = Form($form,"")
+   BEGINCASE    		
+        CASE $_CtrlKey = TRUE
+            GOSUB Name="Configure"
+            BREAK
+          
+        CASE $FormExit = "DelayExit"
+            BREAK            
+              
+        CASE $FormExit = "SystemExit"
+            CANCEL                          
+   ENDCASE     
+ENDWHILE
+    
+
+#check to see if current waypoint is an event
+IF RegExCount($d_CacheType, "CEXZ") =0
+	MSGOK msg="This is not an event so a calendar entry has not been created."  Caption="Not an Event Cache"
+	CANCEL
+ENDIF
+
+#Generate iCal file
+GOSUB Name=iCalFileCreate
+	
+#check to see if the current waypoint is has already been added to the User Notes i.e. its already been exported
+$Ok2Proceed=FALSE
+IF RegExCount("iCal\.gsk",$d_UserNote) > 0
+	IF YesNo(" This event has already been exported. $_newline $_newline Are you sure you want to do this?","Event previously added" )
+	   $Ok2Proceed=TRUE
+	ENDIF
+ELSE
+	$Ok2Proceed=TRUE
+ENDIF
+	
+
+IF $Ok2Proceed
+	BEGINCASE    		
+      CASE $rbnGoogle = TRUE
+          GOSUB Name=Add2Google
+          BREAK
+        
+      CASE $rbnOutlook = TRUE
+      	  GOSUB Name=Add2Outlook
+          BREAK            
+                     
+   ENDCASE  
+ENDIF
+   
+
+
+
+########################### Subroutines  & Data ########################################
+
+#----------------------------------------------------
+BEGINSUB Name=iCalFileCreate
+#----------------------------------------------------               	
+$op=""
+$op=$op+"BEGIN:VCALENDAR"+$_NewLine +"VERSION:1.0"+$_NewLine +"BEGIN:VEVENT"+$_NewLine
+$op=$op+"DTSTART:"+ DateToString($d_placeddate)+"T090000"+$_NewLine
+$op=$op+"DTEND:"  + DateToString($d_placeddate)+"T100000"+$_NewLine
+$op=$op+"LOCATION;ENCODING=QUOTED-PRINTABLE:"+   replace(";","  ",GCalc( $d_Latitude + " "+ $d_Longitude, "FormatMinutes")) +$_NewLine
+$op=$op+"DESCRIPTION;ENCODING=QUOTED-PRINTABLE:Click the link to open up the cache page for the event http://coord.info/" + $d_Code +$_NewLine
+IF $d_placedby=$d_OwnerName 
+	$op=$op+"SUMMARY;ENCODING=QUOTED-PRINTABLE:Geocaching Event: "+$d_name+ " by " + $d_PlacedBy +$_NewLine
+ELSE
+	$op=$op+"SUMMARY;ENCODING=QUOTED-PRINTABLE:Geocaching Event: "+$d_name+ " by " + $d_PlacedBy + " (" + $d_OwnerName+")"+$_NewLine
+ENDIF	
+$op=$op+"END:VEVENT"+$_NewLine +"END:VCALENDAR"+$_NewLine
+
+#save the ics file
+$result=PutFile($icsFile, $op)
+IF Left($result, 7) = "*Error*"
+   CANCEL Msg="Unable to save the .ics file: $icsFile!"
+ENDIF
+
+ENDSUB 
+
+
+#----------------------------------------------------
+BEGINSUB Name=Configure
+#----------------------------------------------------
+WHILE TRUE # Infinite loop to display main form until exit conditions are chosen
+	IF $rbnGoogle
+        $frmConfigure = EditForm($frmConfigure,"chkOpenCal","enabled","Yes")
+        $frmConfigure = EditForm($frmConfigure,"chkFPathtoClip","enabled","Yes")
+  ELSE
+      	$frmConfigure = EditForm($frmConfigure,"chkOpenCal","enabled","No")
+        $frmConfigure = EditForm($frmConfigure,"chkFPathtoClip","enabled","No")
+      	
+  ENDIF	
+  
+	 $FormExit = Form($frmConfigure,"")
+   BEGINCASE    		
+       CASE $FormExit = "btn2Run" 
+        	  GOSUB Name=SaveDatFile
+            BREAK
+            
+        CASE $FormExit = "btnUpdate"    
+	           GOSUB Name=CheckUpdates           
+              
+        CASE ($FormExit = "btn2Cancel") OR ($FormExit = "SystemExit") 
+        	  GOSUB Name=SaveDatFile            
+            CANCEL  
+            
+        CASE $FormExit="btnAbout"
+             GOSUB Name="DisplayAbout"   
+                          
+   ENDCASE  
+   
+ENDWHILE
+ENDSUB
+
+#----------------------------------------------------
+BEGINSUB Name=Add2Outlook
+#----------------------------------------------------
+#add info to user notes for the event
+$d_UserNote=REPLACE("BBBB","Outlook",REPLACE("AAAA",substr($_Time,1,5) + " on " + DateFormat($_Today),$Note1))+$d_UserNote
+  
+#run the .ics file to create the apointment.
+FILEOPEN File="$icsFile" Wait=No
+ENDSUB
+
+
+#----------------------------------------------------
+BEGINSUB Name=Add2Google
+#----------------------------------------------------
+#add info to user notes for the event
+$d_UserNote=REPLACE("BBBB","Google",REPLACE("AAAA",substr($_Time,1,5) + " on " + DateFormat($_Today),$Note1))+$d_UserNote
+  
+IF $chkFPathtoClip
+	CLIP data="$icsFile"
+ENDIF	
+
+IF $chkOpenCal
+	 WEB URL="https://www.google.com/calendar?tab=mc"
+ENDIF
+ENDSUB
+
+
+#----------------------------------------------------
+BEGINSUB Name=MacroName
+#----------------------------------------------------
+#Check that this macro file ends with .txt OR .gsk
+$MN=Lower(sysinfo("MacroFile"))  #Get MacroName in lowercase
+$MNend=substr($MN,len($MN)-3,4)
+IF ($MNend = ".txt") OR ($MNend = ".gsk")
+    #then do nothing as the ending is ok
+ELSE 
+    #Abort macro
+    $opstr="Macro name must end with .gsk OR .txt" + $_NewLine + $_NewLine + "Please change the macro name AND re-run it"
+    MSGOK  msg=$opstr caption=Error: Macro Name
+    CANCEL
+ENDIF 
+
+ENDSUB
+
+
+
+#----------------------------------------------------
+BEGINSUB Name=CheckForUpdates
+#----------------------------------------------------
+IF $chk22    #Then check to see if update is available
+    GOSUB Name=CheckUpdatesAuto          
+ENDIF
+
+ENDSUB
+
+
+#----------------------------------------------------
+BEGINSUB Name=Initalise Variables
+#----------------------------------------------------
+#inital variables
+vsub status=off
+
+$MacroLibraryURL="http://gsak.net/board/index.php?showtopic=18154&view=getnewpost"
+$MacroLatestVersion="http://www.rumach.com/version/icalversion.txt?random="
+$xmlFile=sysinfo("macropath")+ "\" +substr($MN,1,len($MN)-4)+ ".xml"
+$icsFile=sysinfo("macropath")+ "\" +substr($MN,1,len($MN)-4)+ ".ics"
+$LastCheck=""
+
+
+vsub status=on
+
+ENDSUB
+
+
+#----------------------------------------------------
+BEGINSUB Name=DeclareVariables
+#----------------------------------------------------
+#*******************************************************
+#   Variable declarations for
+#   C:\Users\Angus\AppData\Roaming\gsak77\Macros\ical.gsk
+#
+#   Generated 06/04/2011 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+#Option Explicit=Yes
+
+Declare Var=$calendar Type=String
+Declare Var=$chk22 Type=Boolean
+Declare Var=$chkFPathtoClip Type=Boolean
+Declare Var=$chkOpenCal Type=Boolean
+Declare Var=$CurrentVersion Type=String
+Declare Var=$datFileVer Type=String
+Declare Var=$form Type=String
+Declare Var=$FormExit Type=String
+Declare Var=$FormExit4 Type=String
+Declare Var=$FormUpdate Type=String
+Declare Var=$frmAbout Type=String
+Declare Var=$frmConfigure Type=String
+Declare Var=$icsFile Type=String
+Declare Var=$LastCheck Type=String
+Declare Var=$lastUpdateCheck Type=String
+Declare Var=$LatestVersion Type=String
+Declare Var=$MacroLatestVersion Type=String
+Declare Var=$MacroLibraryURL Type=String
+Declare Var=$memAbourtxt Type=String
+Declare Var=$MN Type=String
+Declare Var=$MNend Type=String
+Declare Var=$Note1 Type=String
+Declare Var=$Ok2Proceed Type=Boolean
+Declare Var=$old_chk22 Type=Boolean
+Declare Var=$op Type=String
+Declare Var=$opstr Type=String
+Declare Var=$ParamList Type=String
+Declare Var=$psuinque Type=String
+Declare Var=$rbnGoogle Type=Boolean
+Declare Var=$rbnOutlook Type=Boolean
+Declare Var=$result Type=String
+Declare Var=$temp Type=Boolean
+Declare Var=$tmpN Type=Numeric
+Declare Var=$tmpN1 Type=Numeric
+Declare Var=$tmpS Type=String
+Declare Var=$wolf Type=String
+Declare Var=$xmlFile Type=String
+
+ENDSUB
+
+
+#----------------------------------------------------
+BEGINSUB Name=CheckDatFile
+#----------------------------------------------------
+# Does the data file already exist?
+
+#$ParamList="datFileVer,LastUpdateCheck,rbnOutlook,rbnGoogle,chk22,chkOpenCal,chkFPathtoClip"  #v1.01
+$ParamList="datFileVer,LastUpdateCheck,rbnOutlook,rbnGoogle,chk22,chkOpenCal,chkFPathtoClip,uid"  #v1.02
+IF (FileExists($xmlFile))
+   #read in data file version number
+   MacSettings Type=R Vars=datFileVer FileCheck=N
+   BEGINCASE    		
+       CASE $datFileVer = "1.01" 
+       	  MACSETTINGS Type=R FileCheck=N
+       	  $uid="12345"
+       	  $datFileVer = "1.02" 
+       	  MacSettings Type=S Vars=$ParamList FileCheck=N
+                 
+       CASE $datFileVer = "1.02"     
+          MacSettings Type=R Vars=$ParamList FileCheck=N
+          
+       OTHERWISE
+          MSGOK msg="Invalid datafile version detected, recreating with default values"
+					GOSUB Name=SetDefaultXMLdata
+					GOSUB Name=SaveDatFile         	  
+   ENDCASE
+   
+ELSE
+	#create Datafile with default values
+	GOSUB Name=SetDefaultXMLdata
+	GOSUB Name=SaveDatFile
+ENDIF
+   
+ENDSUB   
+
+#----------------------------------------------------
+BEGINSUB Name=SetDefaultXMLdata
+#----------------------------------------------------
+	$datFileVer="1.02"
+	$rbnOutlook=TRUE
+  $rbnGoogle=FALSE
+  $chk22=TRUE 
+  $lastUpdateCheck="20110401"
+  $chkOpenCal=TRUE
+  $chkFPathtoClip=TRUE
+  $uid="12345"
+
+ENDSUB
+
+#----------------------------------------------------
+BEGINSUB Name=SaveDatFile
+#----------------------------------------------------
+ MacSettings Type=S Vars=$ParamList FileCheck=N
+ENDSUB
+
+#---------------------------------------------------- 
+BEGINSUB Name=DisplayAbout
+#----------------------------------------------------
+#Display the macroname AND version 
+$frmAbout = EditForm($frmAbout,"lblAbout1","Caption",sysinfo("MacroFile") + ":-   v" + $CurrentVersion)
+$frmAbout = EditForm($frmAbout,"lblaboutDatVer","Caption","Data file:-    v"+$datFileVer)
+
+IF $lastUpdateCheck="20110401"
+    $frmAbout = EditForm($frmAbout,"lblaboutLastRun","Caption","Last update check:-   Not checked")
+ELSE 
+    $frmAbout = EditForm($frmAbout,"lblaboutLastRun","Caption","Last update check:-   "+DateFormAt( StringToDate($lastUpdateCheck)))
+ENDIF 
+
+$memAbourtxt = "This macro was origionally written by Big Wolf. " + $_CrLf
+$memAbourtxt=$memAbourtxt + "Thanks to everyone who has helped contribute along the way." 
+
+WHILE TRUE # Infinite loop to redisplay form as required
+	$FormExit4 = Form($frmAbout,"")
+	BEGINCASE        
+	  CASE $FormExit4 = "SystemExit"
+	     #exit x pressed
+	     BREAK              
+	  
+	  CASE $FormExit4 = "btnAboutOk"
+	      BREAK
+	      
+	  CASE $FormExit4 = "btnAboutWWW"
+	        WEB URL="http://www.bigwolf.co.uk"   
+	ENDCASE
+ENDWHILE
+  
+ENDSUB
+
+
+#----------------------------------------------------
+BEGINSUB Name=GetVer
+#----------------------------------------------------
+ $CurrentVersion=MacHeader("MacVersion")
+ENDSUB
+
+
+#----------------------------------------------------
+BEGINSUB Name=CheckUpdates
+#----------------------------------------------------
+IF SysInfo("Internet")="yes"   #check there is an internet connection
+
+		$old_chk22=$chk22
+		SHOWSTATUS msg="Checking for updates, please wait..." Width=400
+		$FormUpdate = EditForm($FormUpdate,"form7","Caption","iCal Update check")
+
+		#save todays date to the dat file.
+		$LastUpdateCheck=DateToString($_Today)
+		GOSUB Name="SaveDatFile"
+
+		#create pseudo unique string to force a download rather than use the IE cache copy
+		$psuinque=DateToString($_today) + Replace(":","",time(),true)
+		$result = GetUrl($MacroLatestVersion+$psuinque)
+		SHOWSTATUS Msg="Done" Display=off  Width=400
+
+		IF Len($result) < 15
+			$tmpN = 10000*Val(Extract($result,".",1)) + 100*Val(Extract($result,".",2)) + Val(Extract($result,".",3))
+			$tmpN1 = 10000*Val(Extract($CurrentVersion,".",1)) + 100*Val(Extract($CurrentVersion,".",2)) + Val(Extract($CurrentVersion,".",3))
+			# MSGOK msg="$tmpN, $tmpN1"
+			IF $tmpN > $tmpN1
+				$tmpS = "You currently have  v$CurrentVersion  but  v$result  is available."
+				$FormUpdate = Editform($FormUpdate,"UpdateText","caption","$tmpS")
+				$FormUpdate = Editform($FormUpdate,"UpdateCaption","Color","213")
+				$FormUpdate = Editform($FormUpdate,"UpdateCaption","Caption","Update Avilable")
+				$FormUpdate = Editform($FormUpdate,"GetUpdate","Caption","Get Update")
+				$FormUpdate = Editform($FormUpdate,"GetUpdate","Visible","Yes")
+				IF ShowForm($FormUpdate)
+					# store the current screen position of the form within it
+	  			$FormUpdate = EditForm($FormUpdate,"Form7","Top",$_FormTop)
+	  			$FormUpdate = EditForm($FormUpdate,"Form7","Left",$_FormLeft)
+	  			IF $GetUpdate
+	    			# open Web page
+					  WEB URL=$MacroLibraryURL
+					  CANCEL #ends the macro and returns to the GSAK GUI so that the new version can be downloaded.
+	  			ENDIF
+	  		ENDIF
+			ELSE
+			  IF $tmpN1>$tmpN 
+			  	$tmpS = "This macro is newer than the one in the macro library."
+				  $FormUpdate = Editform($FormUpdate,"UpdateText","caption","$tmpS")
+				  $FormUpdate = Editform($FormUpdate,"UpdateCaption","Color","4227327")
+				  $FormUpdate = Editform($FormUpdate,"UpdateCaption","Caption","Beta v$CurrentVersion in use")
+				  $FormUpdate = Editform($FormUpdate,"GetUpdate","Caption","Downgrade")
+				  $FormUpdate = Editform($FormUpdate,"GetUpdate","Visible","Yes")
+				  $temp=ShowForm($FormUpdate)
+					IF $GetUpdate
+	    			# open Web page
+					  WEB URL=$MacroLibraryURL
+					  CANCEL #ends the macro and returns to the GSAK GUI so that the new version can be downloaded.
+	  			ENDIF
+			  ELSE	
+			  	 $tmpS = "You currently have v$CurrentVersion which is the latest version."
+				   $FormUpdate = Editform($FormUpdate,"UpdateText","caption","$tmpS")
+				   $FormUpdate = Editform($FormUpdate,"UpdateCaption","Color","32768")
+				   $FormUpdate = Editform($FormUpdate,"UpdateCaption","Caption","Latest Version")
+				$FormUpdate = Editform($FormUpdate,"GetUpdate","Visible","No")
+				   $temp=ShowForm($FormUpdate)
+
+			  ENDIF
+			ENDIF
+		ELSE
+				MSGOK msg=Error getting latest version number.  Caption=Version Check
+		ENDIF
+
+
+		IF $old_chk22=$chk22
+			 #Just the same so do nothing
+		ELSE
+			 #$chk22 changed so save the value	 
+		
+				# Now save the screen values 
+				GOSUB Name="SaveDatFile"  
+				
+				IF $chk22  #if set 
+				  GOSUB Name=CheckUpdatesAuto     #check to see if update is available
+				ELSE
+				  $form = EditForm($form,"lblupdate","Visible","No")  
+				ENDIF
+				
+		ENDIF
+ELSE
+	MSGOK Msg=Unable to check as no Internet connection detected.  Caption=Version Check
+ENDIF
+
+ENDSUB
+
+
+
+#----------------------------------------------------
+BEGINSUB Name=CheckUpdatesAuto
+#----------------------------------------------------
+$LatestVersion="Random string to check"
+
+IF (SysInfo("Internet")="yes") # internet is active 
+
+	 #create pseudo unique string to force a download rather than use the browsers cached copy
+   $psuinque=DateToString($_today) + Replace(":","",time(),true)
+
+	 $LatestVersion = GetUrl($MacroLatestVersion+$psuinque)
+
+	 	IF Len($LatestVersion) < 15
+
+      #save todays date to the dat file.
+		  $LastUpdateCheck=DateToString($_Today)
+		  GOSUB Name="SaveDatFile"
+
+			$tmpN = 10000*Val(Extract($LatestVersion,".",1)) + 100*Val(Extract($LatestVersion,".",2)) + Val(Extract($LatestVersion,".",3))
+			$tmpN1 = 10000*Val(Extract($CurrentVersion,".",1)) + 100*Val(Extract($CurrentVersion,".",2)) + Val(Extract($CurrentVersion,".",3))
+			#MSGOK msg="$tmpN, $tmpN1"
+			BEGINCASE
+          CASE  $tmpN > $tmpN1					 
+							$tmpS = "( New Version Available )"
+							$form = EditForm($form,"lblupdate","Caption",$tmpS)
+							$form = EditForm($form,"lblupdate","Color","213")
+							$form = EditForm($form,"lblupdate","Left","87")
+							$form = EditForm($form,"lblupdate","Visible","Yes")
+							
+			    CASE $tmpN1 > $tmpN 
+							$tmpS = "( Beta Version )"
+							$form = EditForm($form,"lblupdate","Caption",$tmpS)
+							$form = EditForm($form,"lblupdate","Color","4227327")
+							$form = EditForm($form,"lblupdate","Left","110")
+							$form = EditForm($form,"lblupdate","Visible","Yes")
+							
+			    CASE $tmpN1 = $tmpN 
+							$tmpS = "( Latest Version )"
+							$form = EditForm($form,"lblupdate","Caption",$tmpS)
+							$form = EditForm($form,"lblupdate","Color","0")
+							$form = EditForm($form,"lblupdate","Left","110")
+							$form = EditForm($form,"lblupdate","Visible","Yes")										
+			ENDCASE
+
+		ELSE
+				MSGOK msg=Error getting latest version number.    Caption=Version Check
+		ENDIF
+ELSE
+	MSGOK Msg=Unable to check as no Internet connection detected.  Caption=Version Check
+ENDIF
+
+ENDSUB
+
+
+
+######### Forms #########
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Thu 07-Apr-2011 00:00:32
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = iCal
+  Delay = 2
+  Exitonclick = No
+  Height = 125
+  Width = 426
+
+Name = Label1
+  Type = Label
+  Height = 20
+  Left = 13
+  Size = 12
+  Top = 22
+  Width = 291
+  Caption = Calendar entry generator is initalising . . . .
+
+Name = lblupdate
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 86
+  Top = 2
+  Visible = No
+  Width = 43
+
+Name = Image1
+  Type = Image
+  Autosize = Yes
+  Exitonclick = Yes
+  File = C:\_Geocaching info\gsak presentation\gsak macro graphics\offline-calendar.png
+  Height = 0
+  Left = 322
+  Top = 4
+  Transparent = No
+  Width = 0
+
+Name = Label2
+  Type = Label
+  Height = 15
+  Left = 46
+  Size = 9
+  Top = 66
+  Width = 211
+  Caption = ( Press and hold the Ctrl key for set up )
+
+Name = calendar
+  Type = Image
+  Exitonclick = No
+  File = calendar.gif
+  Height = 88
+  Left = 310
+  Source = macro
+  Top = 2
+  Transparent = Yes
+  Width = 100
+
+<enddata>
+
+
+
+
+
+<Data> VarName=$frmConfigure
+#********************************************************************
+# Form generated by GSAK form designer on Wed 06-Apr-2011 01:42:19
+#********************************************************************
+
+Name = frmConf
+  Type = Form
+  Caption = iCal Configure Options
+  Height = 195
+  Width = 290
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Calendar type
+  Height = 105
+  Left = 17
+  Top = 10
+  Width = 147
+  Taborder = 2
+
+Name = btn2Run
+  Type = Button
+  Height = 25
+  Left = 175
+  Top = 128
+  Width = 75
+  Taborder = 0
+  Caption = Run
+
+Name = btn2Cancel
+  Type = Button
+  Height = 25
+  Left = 44
+  Top = 126
+  Width = 75
+  Taborder = 1
+  Caption = Cancel
+
+Name = rbnGoogle
+  Type = Radiobutton
+  Captionposition = Left
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 17
+  Left = 11
+  Top = 43
+  Width = 119
+  Taborder = 0
+  Caption = Google
+
+Name = rbnOutlook
+  Type = Radiobutton
+  Captionposition = Left
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 17
+  Left = 10
+  Top = 17
+  Width = 119
+  Taborder = 1
+  Caption = Outlook
+
+Name = btnAbout
+  Type = Button
+  Height = 20
+  Left = 178
+  Top = 17
+  Width = 80
+  Taborder = 3
+  Caption = About
+
+Name = btnUpdate
+  Type = Button
+  Height = 20
+  Left = 179
+  Top = 44
+  Width = 80
+  Taborder = 4
+  Caption = Update Check
+
+Name = chkOpenCal
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox1
+  Enabled = No
+  Height = 17
+  Left = 24
+  Top = 60
+  Width = 106
+  Taborder = 3
+  Caption = Open Calendar
+
+Name = chkFPathtoClip
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox1
+  Enabled = No
+  Height = 17
+  Left = 24
+  Top = 76
+  Width = 106
+  Taborder = 2
+  Caption = File path to clipbrd
+
+<enddata>
+
+
+
+
+
+<Data> VarName=$frmAbout
+#********************************************************************
+# Form generated by GSAK form designer on Mon 10-Dec-2007 23:37:49
+#********************************************************************
+
+Name = frmAbout
+  Type = Form
+  Caption = iCal About
+  Height = 186
+  Width = 379
+
+Name = btnAboutOk
+  Type = Button
+  Height = 25
+  Left = 146
+  Top = 131
+  Width = 75
+  Caption = OK
+
+Name = wolf
+  Type = Image
+  File = wolf.gif
+  Height = 86
+  Left = 272
+  Source = Macro
+  Top = 5
+  Width = 85
+
+Name = lblAbout1
+  Type = Label
+  Height = 13
+  Left = 10
+  Top = 5
+  Width = 210
+
+Name = btnAboutWWW
+  Type = Button
+  Height = 25
+  Left = 263
+  Top = 99
+  Width = 102
+  Caption = www.bigwolf.co.uk
+
+Name = memAbourtxt
+  Type = Memo
+  Color = 13160660
+  Height = 71
+  Left = 8
+  Readonly = Yes
+  Top = 53
+  Width = 246
+  Wrap = Yes
+
+Name = lblaboutDatVer
+  Type = Label
+  Height = 13
+  Left = 10
+  Top = 19
+  Width = 65
+  Caption = XML file format
+
+Name = lblaboutLastRun
+  Type = Label
+  Height = 13
+  Left = 10
+  Top = 33
+  Width = 89
+  Caption = Last update check
+
+<enddata>
+
+
+
+<Data> VarName=$formUpdate
+
+Name = Form7
+  Type = Form
+  Height = 146
+  Width = 306
+
+Name = UpdateOK
+  Type = Button
+  Height = 25
+  Left = 215
+  Top = 83
+  Width = 75
+  Taborder = 8
+  Caption = Close
+
+Name = GetUpdate
+  Type = Button
+  Height = 25
+  Left = 215
+  Top = 7
+  Width = 75
+  Taborder = 9
+  Caption = Get Update
+
+Name = UpdateCaption
+  Type = Label
+  Color = 16711680
+  Height = 20
+  Left = 9
+  Size = 12
+  Style = bold
+  Top = 8
+  Width = 136
+  Caption = Update Available
+
+Name = UpdateText
+  Type = Label
+  Height = 15
+  Left = 7
+  Size = 9
+  Top = 37
+  Width = 260
+  Caption = You have version xx.xx.xx but yy.yy.yy is available
+
+Name = chk22
+  Type = Checkbox
+  Height = 17
+  Left = 121
+  Top = 85
+  Width = 15
+  Taborder = 10
+
+Name = Label1
+  Type = Label
+  Height = 13
+  Left = 7
+  Top = 77
+  Width = 104
+  Caption = Check version status
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 7
+  Top = 92
+  Width = 80
+  Caption = when the macro starts
+
+<enddata>
+
+
+######### Mime Data ##########
+
+<data> VarName=$Note1
+iCal.gsk 
+***********************************************************
+Added this event to BBBB at AAAA 
+***********************************************************
+
+<enddata>
+
+
+
+<data> VarName=$wolf
+R0lGODlhVwBXAPcAAP///9TQyElKO1JTQklMQFpbSUFDOUxQQjk6MkFBM1RZSmNhTDtAOUNJQURHO2tp
+U2NkUTM4MTIzKktSSTk4KmtsWlpZQ1JVSWpjS3t1WnJsUlxgTHVyW1tiUiswKllUQNDMxGFdSVFMOlNa
+UYR8YmVoU5WLc1NQPIyEbGJbQkhDMmJoWmNrYrSee5yLbGhlUUA7KzI0L62be21oTXNqTCoqIDg8OMfE
+vDw+MzEwJHFuWWptYlxjWkA9L1VXRJ2SfFtUPGxyaqSTc4t+YouLfYuFc3tyVHR0Yn19c1lcUXt2YmFl
+WTc0KJSJbIuCZJOMfMWrhSktKJOFar6mhMC8tIR6XKWjm4RzU66adYSFep6RdLWmlMzIwDxCP3N1apR9
+W6uWdKSUe5OEZbeifEBFP0lOR25xW315YqOdk3x7bEtHM6yejcatipyNcWxiRLy4s8PAuIR9apSTi4uM
+gzQ5N3VxVWxxYkdFOLakhK6klZyTg3V6c83JwrOupoSDdc60kqSKY7a0rFBVUU5QPKWXg82yi3pqTVFL
+NJybk3JjSYN1Wp2Xi4l1Vq2cg315Xaymn4x7W7ykfLWkjb6pir2vnaGfmpyHY5GOhGlcQ62ro9W0i253
+dDAtISQpI62ijdCwg5uCW3lsUYp/a6SQbsCxpNW3k1hWS4uGed++lKOdiiUlG6WLaufOx6KPcn6Bd0E+
+LENMR5yOe5V/YrOgg19lYqSbhbOcdGVgRMqzn5KQgt67jnR5bZaDXb+phZmHanBuYqqOZd/LxiswL15X
+PDQ2K09OQMayl4x6Vaehk4aBbWFdU2Zxa6qSbdq4jb6rlquYeWVvaZx8VWJWQLesmHhvV01ZUGpuaSUs
+KEVRSoJ/c3t1alZdV4NvUru1r0dALJN8VpF2TtC3qnp+eLKfiqOGXceyi7SXbC0uIktXTdTCw1hdWtS/
+uLugfVZPM4+JdVdRNV9TN1tnXY+Ia4N3YJCHcDU+PGt4dJaWkYeIgYOFgMOoh7qgdzYzJMSqfYN4VDtG
+QSH5BAEAAAAALAAAAABXAFcAAAj/AAMIHEiwoMGDCBMqXMiwocOHECNKnEixosWLGDNqpMiFC4iNCkFQ
+yXQDpMM+OjSQQAbHJEE4iI5YOAFhEReXCUG8gKHiEKYZeXAiWiBCRY8eAkR44YPzoJUEOSRIgCEixZOP
+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
+<enddata>
+
+
+<data> VarName=$calendar
+R0lGODlhZABYAPcAAP///9DQ0ABgzLlaW7uChMKsrpVudrGdotLR0pWRm6imrX6AjQAXawAbbQAhcgAf
+cAAkdQAkcwAjcgAicQAmdAAqdwEteRlBhiVLjWaArnSMtsfP3QUxfAo1fw05ghM9gxpIkB1FiSFIiyFI
+hSNKiyZMjSlPjzFWkzZalz5hm0dpoFFxplt5qmiDrwFCoCZTlzRkqS1TilN7tFyBtmSGuAFQthFNoG2O
+u3WWwn2fy3qUuIOcv5Wqx7jJ3+fx/gBbyQRZwCNktj1hj5yyzKi70sfW6cDN3dHc6eTv/N/p9eny/QBj
+0ABhzgBhzQJhzQNizgRjzgdlzgln0Axp0RBr0hRu1Btz1hxvziV52DaE20iP3laY4mGe422l5HWq5Xqu
+54Cx6Ye265bA8Impzp7C6X6bupW22qPF66TG66fI7Iqlw63O86rK7a3M7qO+3LHO7rjV9LXR8K3H5LzY
+9rjT8LrU8b3W8sfg+8DY88be+MTb9LDE27zR6cbc9Mjd9cne9cvf9szg9snc8c7h9qe2x9Hj98/f8eDt
+/Nbi7+fy/tvl8Or0/+fx/Oz1/+rz/ez0/fH3/qDG7pi84o+x1KbK8L7a9sLc98La88ri+sjf98Xc88LY
+787k+8rf9dLm+7LC09Pl+NXm+Nrr/djo+dzr+uXx/efy/ev0/eXu9+72/u31/e/2/fP5/+vx99vg5eTo
+7Pj7/sXHyfv9//L09u3v8f3+//z9/vn6+9Xp/LnH1O73/3aTrG2InnKNpGqDmKqyufD4/2R9kIKWpoCT
+oY+hr5WntYucqYmap4eXo6KxvJajrbjEzaOttc7X3tTc4re8wPX6/r7CxXuQn3iMmoWbqpGfqZypsuT0
+/+z3/7G4vbC+x8DL0cfR1vb8//n9//X3+NDU1dDW19Db29DS0v7//9DR0czNzdLV1NLS0dHR0N7b2NnX
+1dbV1NXU09TT0trY19SfnN0OCNgbFtsvKNlFP9VkYNaDgNK3tuADAM00MbsuLdDGxtPS0v7+/tHR0f//
+/yH5BAEAAP8ALAAAAABkAFgAAAj/AP8JHEiwoMGDCBMqXMiwocOHEBdqyECRh0AiETNq3HhQg4kKHFKI
+PEHyhIgQKE2UFKlCRIUOLDRwnMlRTYYLFjx0sGCBQgQHFSo8CMqTJ4ejHIoKffCgwQMHFCpY4NDhw4cK
+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
+8B7v8j7v9F7v9n7v+D4TAQEAOw==
+<enddata>

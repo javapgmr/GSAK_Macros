@@ -1,0 +1,297 @@
+#*******************************************
+# MacVersion = 1.0.0
+# MacDescription=Streets and Trips export SQL
+# MacAuthor=javapgmr
+# MacFileName=SWBS&TEXportSQL.gsk
+# MacUrl =
+#*******************************************
+GOSUB Name=DECLARE
+
+$currentsort = $_SortBy
+$currentfilter = SAVEFILTER()
+$currentdb = $_CurrentDatabase
+
+$List = List("sql","create",$_NewLine)
+$DBfile = ":memory:"
+#Filter to be used for all caches 
+MFILTER Expression=not $d_found and not $d_Archived AND NOT $d_TempDisabled Join=AND
+
+$baselocation="C:\s_and_t\"
+
+IF NOT (FOLDEREXISTS($baselocation))
+  PAUSE msg="Destination location does not exist.  Cancelling Macro"
+  CANCEL
+Endif
+
+$Header="Name,Latitude,Longitude,Name2,URL,Type,Container,Difficulty,Terrain" + $_NewLine
+
+
+#A = Project Ape
+#B = Letterbox
+#C = Cache In Trash Out
+#E = Event
+#G = BenchMark
+#L = Locationless
+#M = Multi
+#O = Other
+#R = Earth
+#T = Traditional
+#U = Unknown/Mystery
+#V = Virtual
+#W = Webcam
+#X = Wherigo
+#Z = Mega event
+
+GOSUB Name=LoadCaches
+
+#Traditional
+$rs= SQLite("sql","SELECT * FROM caches where CacheType = 'T' and Container = 'Micro' Order by Code","")
+$List = List("sql","replace",$rs)
+$OutFile= $baselocation + "Traditional_Micro.csv" 
+FILEERASE File=$OutFile OnError=Continue
+If $_SQLRows > 0
+  SHOWSTATUS MSG=Exporting  $OutFile  Width=500
+  GOSUB Name=Extract
+ENDIF
+
+#Micro
+$rs= SQLite("sql","SELECT * FROM caches where CacheType = 'T' and Container <> 'Micro' Order by Code","")
+$List = List("sql","replace",$rs)
+$OutFile= $baselocation + "Traditional.csv" 
+FILEERASE File=$OutFile OnError=Continue
+If $_SQLRows > 0
+  SHOWSTATUS MSG=Exporting  $OutFile  Width=500
+  GOSUB Name=Extract
+ENDIF
+
+#Other
+$rs= SQLite("sql","SELECT * FROM caches where CacheType = 'O' Order by Code","")
+$List = List("sql","replace",$rs)
+$OutFile= $baselocation + "Other.csv" 
+FILEERASE File=$OutFile OnError=Continue
+If $_SQLRows > 0
+  SHOWSTATUS MSG=Exporting  $OutFile  Width=500
+  GOSUB Name=Extract
+ENDIF
+
+#Multi
+$rs= SQLite("sql","SELECT * FROM caches where CacheType = 'M' Order by Code","")
+$List = List("sql","replace",$rs)
+$OutFile= $baselocation + "Multicache.csv" 
+FILEERASE File=$OutFile OnError=Continue
+If $_SQLRows > 0
+  SHOWSTATUS MSG=Exporting  $OutFile  Width=500
+  GOSUB Name=Extract
+ENDIF
+
+#Unknown/Mystery
+$rs= SQLite("sql","SELECT * FROM caches where CacheType = 'U' Order by Code","")
+$List = List("sql","replace",$rs)
+$OutFile= $baselocation + "Mystery.csv" 
+FILEERASE File=$OutFile OnError=Continue
+If $_SQLRows > 0
+  SHOWSTATUS MSG=Exporting  $OutFile  Width=500
+  GOSUB Name=Extract
+ENDIF
+
+#Letterbox
+$rs= SQLite("sql","SELECT * FROM caches where CacheType = 'B' Order by Code","")
+$List = List("sql","replace",$rs)
+$OutFile= $baselocation + "Letterbox.csv" 
+FILEERASE File=$OutFile OnError=Continue
+If $_SQLRows > 0
+  SHOWSTATUS MSG=Exporting  $OutFile  Width=500
+  GOSUB Name=Extract
+ENDIF
+
+#Virtual
+$rs= SQLite("sql","SELECT * FROM caches where CacheType = 'V' Order by Code","")
+$List = List("sql","replace",$rs)
+$OutFile= $baselocation + "Virtual.csv" 
+FILEERASE File=$OutFile OnError=Continue
+If $_SQLRows > 0
+  SHOWSTATUS MSG=Exporting  $OutFile  Width=500
+  GOSUB Name=Extract
+ENDIF
+
+#Earth
+$rs= SQLite("sql","SELECT * FROM caches where CacheType = 'R' Order by Code","")
+$List = List("sql","replace",$rs)
+$OutFile= $baselocation + "Earth.csv" 
+FILEERASE File=$OutFile OnError=Continue
+If $_SQLRows > 0
+  SHOWSTATUS MSG=Exporting  $OutFile  Width=500
+  GOSUB Name=Extract
+ENDIF
+
+#Event
+$rs= SQLite("sql","SELECT * FROM caches where CacheType = 'E' Order by Code","")
+$List = List("sql","replace",$rs)
+$OutFile= $baselocation + "Event.csv" 
+FILEERASE File=$OutFile OnError=Continue
+If $_SQLRows > 0
+  SHOWSTATUS MSG=Exporting  $OutFile  Width=500
+  GOSUB Name=Extract
+ENDIF
+
+#Cache In Trash Out
+$rs= SQLite("sql","SELECT * FROM caches where CacheType = 'C' Order by Code","")
+$List = List("sql","replace",$rs)
+$OutFile= $baselocation + "CITO.csv" 
+FILEERASE File=$OutFile OnError=Continue
+If $_SQLRows > 0
+  SHOWSTATUS MSG=Exporting  $OutFile  Width=500
+  GOSUB Name=Extract
+ENDIF
+
+
+#Mega Event
+$rs= SQLite("sql","SELECT * FROM caches where CacheType = 'Z' Order by Code","")
+$List = List("sql","replace",$rs)
+$OutFile= $baselocation + "Mega Event.csv" 
+FILEERASE File=$OutFile OnError=Continue
+If $_SQLRows > 0
+  SHOWSTATUS MSG=Exporting  $OutFile  Width=500
+  GOSUB Name=Extract
+ENDIF
+
+#Webcam
+$rs= SQLite("sql","SELECT * FROM caches where CacheType = 'W' Order by Code","")
+$List = List("sql","replace",$rs)
+$OutFile= $baselocation + "Webcam.csv" 
+FILEERASE File=$OutFile OnError=Continue
+If $_SQLRows > 0
+  SHOWSTATUS MSG=Exporting  $OutFile  Width=500
+  GOSUB Name=Extract
+ENDIF
+
+
+#Wherigo
+$rs= SQLite("sql","SELECT * FROM caches where CacheType = 'I' Order by Code","")
+$List = List("sql","replace",$rs)
+$OutFile= $baselocation + "Whereigo.csv"
+FILEERASE File=$OutFile OnError=Continue 
+If $_SQLRows > 0
+  SHOWSTATUS MSG=Exporting  $OutFile  Width=500
+  GOSUB Name=Extract
+ENDIF
+
+#Maze
+$rs= SQLite("sql","SELECT * FROM caches where CacheType = 'X' Order by Code","")
+$List = List("sql","replace",$rs)
+$OutFile= $baselocation + "Maze.csv" 
+FILEERASE File=$OutFile OnError=Continue
+If $_SQLRows > 0
+  SHOWSTATUS MSG=Exporting  $OutFile  Width=500
+  GOSUB Name=Extract
+ENDIF
+
+CANCELFILTER
+
+# Return to original database, if different
+IF $_CurrentDatabase <> $currentdb
+DATABASE Name=$currentdb Action=select
+ENDIF
+
+IF RESTOREFILTER($currentfilter, True) = 0
+PAUSE Msg="Previously-set filter would now show no records. Clearing."
+ENDIF
+
+
+BeginSub Name=LoadCaches
+# Create the caches and waypoints tables within the Database. If the database doesn't exist yet it will automatically be created. Same with the Tables - they will be overwritten if they exist or created if they don't.
+SHOWSTATUS Msg="Loading Caches." Display=On
+$rs = DbToSQLite("caches","SmartName,CacheType,Container,Difficulty,Terrain,Code,PlacedDate,LastFoundDate,PlacedBy,OwnerName,Archived,TempDisabled,DNF,Found,Hints,Latitude,Longitude,HasCorrected,UserNote,Name,OwnerID,Url",$DBfile)
+#                          1        ,2        ,3        ,4         ,5      ,6   ,7         ,8            ,9       ,10       ,11      ,12          ,13 ,14   ,15   ,16      ,17       ,18          ,19       ,20 ,21     ,22 
+ENDSUB
+
+BEGINSUB Name=Extract
+  $error = Appendfile($OutFile, $Header)
+  $I = 1
+  WHILE $I <= $_sqlRows
+	$TmpS = NumToStr($I)
+  $row = List("sql","item",$TmpS)
+
+  $SmartName     = Extract($row,";",1)
+  $CacheType     = Extract($row,";",2)
+  $Container     = Extract($row,";",3)
+  $Difficulty    = Extract($row,";",4)
+  $Terrain       = Extract($row,";",5)
+  $Code          = Extract($row,";",6) 
+  $PlacedDate    = Extract($row,";",7)
+  $LastFoundDate = Extract($row,";",8)
+  $PlaceBy       = Extract($row,";",9)
+  $OwnerName     = Extract($row,";",10)
+  $Archived      = StrToBool(Extract($row,";",11))
+  $TempDisabled  = StrToBool(Extract($row,";",12))
+  $DNF           = StrToBool(Extract($row,";",13))
+  $Found         = StrToBool(Extract($row,";",14))
+  $Hints         = Extract($row,";",15)
+  $Latitude      = Extract($row,";",16)
+  $Longitude     = Extract($row,";",17)
+  $HasCorrected  = Extract($row,";",18)
+  $UserNote      = Extract($row,";",19)
+  $Name          = Extract($row,";",20)
+  $OwnerId       = Extract($row,";",21)  
+  $Url           = Extract($row,";",22)
+  
+  $NewName       = "[$Code] $Name by $PlaceBy ($Difficulty/$Terrain)  $Container    HINT IS- $hints"
+
+  $VarOut = $SmartName + "," + $Latitude + "," + $Longitude + "," + Quote($NewName) + "," + Quote($URL) + "," + $CacheType + "," + $Container + "," + Quote($Difficulty) + "," + Quote($Terrain) + $_NewLine
+  $error = Appendfile($OutFile, $VarOut)
+  
+  $I = $I + 1
+ENDWHILE
+  
+ENDSUB 
+
+#*******************************************************
+#   Variable declarations for
+#   SWBS&TExportSQL.gsk
+#
+#   Generated 07/03/2008 9:46:02 PM on GSAKVariables.gsk Rev V0.20 B15
+#
+#*******************************************************
+
+
+BEGINSUB Name=Declare
+Option Explicit=Yes
+
+Declare Var=$Archived Type=Boolean
+Declare Var=$baselocation Type=String
+Declare Var=$CacheType Type=String
+Declare Var=$Code Type=String
+Declare Var=$Container Type=String
+Declare Var=$currentdb Type=String
+Declare Var=$currentfilter Type=String
+Declare Var=$currentsort Type=String
+Declare Var=$DBfile Type=String
+Declare Var=$Difficulty Type=String
+Declare Var=$DNF Type=Boolean
+Declare Var=$error Type=String
+Declare Var=$Found Type=Boolean
+Declare Var=$HasCorrected Type=String
+Declare Var=$Header Type=String
+Declare Var=$Hints Type=String
+Declare Var=$I Type=Numeric
+Declare Var=$LastFoundDate Type=String
+Declare Var=$Latitude Type=String
+Declare Var=$List Type=String
+Declare Var=$Longitude Type=String
+Declare Var=$Name Type=String
+Declare Var=$NewName Type=String
+Declare Var=$OutFile Type=String
+Declare Var=$OwnerId Type=String
+Declare Var=$OwnerName Type=String
+Declare Var=$PlaceBy Type=String
+Declare Var=$PlacedDate Type=String
+Declare Var=$row Type=String
+Declare Var=$rs Type=String
+Declare Var=$SmartName Type=String
+Declare Var=$TempDisabled Type=Boolean
+Declare Var=$Terrain Type=String
+Declare Var=$TmpS Type=String
+Declare Var=$Url Type=String
+Declare Var=$UserNote Type=String
+Declare Var=$VarOut Type=String
+ENDSUB

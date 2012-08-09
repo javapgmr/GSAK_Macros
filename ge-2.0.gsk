@@ -1,0 +1,787 @@
+# -------------------------------------------------------------------------------------
+# GOOGLE EARTH EXPORT MACRO
+# -------------------------------------------------------------------------------------
+# This macro will export the currently filtered caches to a Google Earth (*.KML) file.
+# The file is stored at a fixed location, the filename can be fixed too or can be
+# provided individually for each export.
+# Icons to be used by Google Earth are embedded in the macro, so there is no need to
+# put an icon file at a specific location manually.
+# The Google Earth file contains a subcategory for each cache type (traditional,
+# multi,...) which allows to view/hide specific cache types in Google Earth.
+# In Google Earth, you can double click the cache name to visit the cachepage at 
+# geoaching.com.
+# Behaviour of the macro can be changed by editing some variables, all located at the
+# top part of the macro code.
+# -------------------------------------------------------------------------------------
+# Version 2.0 - April 2006 - Coding by Bert Geenen (Binkie)
+#               Icons by geocaching.com, modified by Heiner Lieth
+# Visit the Belgian geocaching community at www.geocaching.be
+# -------------------------------------------------------------------------------------
+# History of changes:
+# 2.0: using new macro features of GSAK 6.6.0
+#      icons created using embedded MIME data
+#      options to specify filename and destination of Google Earth export file
+#      icons for found and/or unavailable caches
+#      macro runs in "silent mode" by default
+# 1.5: using local Google Earth icons, using stylesheets instead of specifying
+#      each icon individually
+# 1.3: special icon/subcategory for found caches
+#      added display name choices: no name (only icon), xxxx (GCxxxx with 'GC' dropped)
+# 1.2: variables adjusted by Clyde to prevent changing variable type
+#      (which will not be possible anymore in future version of macro engine)
+# 1.1: added choice of waypoint identification
+# 1.0: initial release
+# -------------------------------------------------------------------------------------
+
+#*******************************************************
+#   Variable declarations for
+#   ge-2.0.gsk
+#
+#   Generated 06/23/2007 10:00:39 PM on GSAKVariables.gsk Rev V0.20 B8
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$body Type=String
+Declare Var=$bodyTemplate Type=String
+Declare Var=$cacheName Type=String
+Declare Var=$cacheType Type=String
+Declare Var=$cacheTypeDecs Type=String
+Declare Var=$cacheTypeIcon Type=String
+Declare Var=$cacheTypeKeys Type=String
+Declare Var=$cachteTypeOrig Type=String
+Declare Var=$cleaned Type=String
+Declare Var=$config_auto_create_icons Type=Boolean
+Declare Var=$config_found_caches Type=Numeric
+Declare Var=$config_icon_path Type=String
+Declare Var=$config_icon_size Type=Numeric
+Declare Var=$config_kml_filename Type=String
+Declare Var=$config_kml_folder Type=String
+Declare Var=$config_label_size Type=Numeric
+Declare Var=$config_unavail_caches Type=Numeric
+Declare Var=$config_user_interaction Type=Boolean
+Declare Var=$config_wp_ident Type=Numeric
+Declare Var=$count Type=Numeric
+Declare Var=$currentCacheType Type=String
+Declare Var=$currentRecordCount Type=Numeric
+Declare Var=$data_icons Type=String
+Declare Var=$diff Type=String
+Declare Var=$endOfFolder Type=String
+Declare Var=$Folder Type=String
+Declare Var=$footer Type=String
+Declare Var=$good Type=String
+Declare Var=$header Type=String
+Declare Var=$icons Type=String
+Declare Var=$ident Type=String
+Declare Var=$int Type=Numeric
+Declare Var=$launchGoogle Type=String
+Declare Var=$msg Type=String
+Declare Var=$outFile Type=String
+Declare Var=$placedBy Type=String
+Declare Var=$previousCacheType Type=String
+Declare Var=$res Type=String
+Declare Var=$resultge Type=String
+Declare Var=$string Type=String
+Declare Var=$terrain Type=String
+Declare Var=$totalRecordCount Type=Numeric
+Declare Var=$validchars Type=String
+
+
+
+#=========================================================#
+#                                                         #
+# Start of user editable area                             #
+#                                                         #
+#=========================================================#
+
+# This macro can run without any user interaction. No dialogue boxes are displayed,
+# and your export file will open in Google Earth.
+# Specify if you want user interaction (True) or not (False)
+# If you choose user interaction, then 4 additional dialogue boxes will be displayed
+# each time you run the macro, requesting you how to process your data.
+
+$config_user_interaction = False
+
+# If you run the macro without user interaction, then the following default settings
+# will be used. You can change these defaults to reflect the way that you want the
+# macro to behave.
+
+$config_wp_ident = 4        # 1 = no name, only an icon
+                            # 2 = GCxxxx
+                            # 3 = xxxx, 'GC' dropped
+                            # 4 = Waypoint Name
+                            # 5 = Smart Name
+
+$config_found_caches = 2    # 1 = Do NOT put found caches in a separate category
+                            # 2 = Use a separate category for your found caches.
+                            #     This enables to toggle your found caches in Google Earth.
+
+$config_unavail_caches = 2  # 1 = Do not export unavailable caches
+                            # 2 = Export unavailable caches and use a special icon to display them
+
+# Path that contains the icon file to be used
+# Modify if necessary, to reflect location on your PC
+# Specify full path, including filename and extension
+
+$config_icon_path = "C:\Program Files\Google\Google Earth\res\gsak.png"
+
+# Do you want to create the icons file automatically, using the icons embedded
+# in this macro? By default, each time the macro is run, the icons will be created
+# to make sure that you use the proper icons. However, if you have changed
+# the icons, then you may want to switch off automatic creation, because
+# you want to prevent that your edited icons will be overwritten with the
+# default ones. 
+# Default: $config_auto_create_icons = True
+# Set to  False  to prevent auto creation of icons
+
+$config_auto_create_icons = True
+
+# Path to folder where Google Earth export file should be created.
+# Default: do not specify (use an empty string: "") to use the
+# installation directory of GSAK.
+#
+# ATTENTION: when you specify a path yourself, make sure that it
+# ends with a backslash (\).
+
+$config_kml_folder   = ""
+
+# Name of the Google Earth file to be generated.
+# Specify an empty string ("") and the macro will prompt you for a filename.
+# E.g. $config_kml_filename = ""
+# If you do specify a filename, then you will not be prompted and the file will
+# be overwritten on successive launches of the macro. If you specify the filename,
+# then make sure to include the extension .kml in the filename.
+# Default: myGoogleEarth.kml
+# The file is created in the folder that is specified in $config_kml_folder.
+
+$config_kml_filename = "myGoogleEarth.kml"
+
+# Icon size (use 1 for 100%, 0.5 for 50% etc.)
+# If you want to increase or decrease the size of the icons used,
+# then change accordingly (default = 1)
+# ATTENTION: make sure to include a leading zero, so use 0.75 instead of .75
+
+$config_icon_size = 1
+
+# Size of the cachename displayed on the map (use 1 for 100%, 0.8 for 80% etc.)
+# ATTENTION: sizes smaller than 0.7 (70%) makes the labels completely disappear
+# (default = 1)
+# ATTENTION: make sure to include a leading zero, so use 0.75 instead of .75
+
+$config_label_size = 1
+
+#=========================================================#
+#                                                         #
+# DO NOT CHANGE BEYOND THIS POINT                         #
+#                                                         #
+#=========================================================#
+
+# debug status="on" height=800
+VSUB status="on"
+
+GOSUB name="CheckOutputDestination"
+$outFile = $config_kml_folder + $config_kml_filename
+
+GOSUB name="CreateIcons"
+
+# regexp used to determine valid characters in cacheName
+# if you choose to have the cache name cleaned by GSAK, only those valid characters will remain
+#  \w   any alphanumeric character, including _
+#  \s   any space
+#  \x21-\x25, \x27-\x2E any character between chr(33) and chr(46) (numbers, round brackets, calculation symbols (except / ),...)
+#      \x26 is excluded from the valid characters, it's the & symbol
+#  \xBA-\xFF  any character between chr(186) and chr(255) (accented and special chars)
+
+$validchars = "[°€{}\w\s\x21-\x25\x27-\x2E\xBA-\xFF]*"
+
+# if the macro is not running in auto configuration mode,
+# then ask the user how to process the data
+
+IF $config_user_interaction
+	# ask how to output the cache names
+	CHOOSE msg="Choose waypoint identification" opt1="No name, only an icon" opt2="GCxxxx" opt3="xxxx (GCxxxx, 'GC' dropped)" opt4="Waypoint Name" opt5="Smart Name"
+	$config_wp_ident = $resultge
+	
+	# ask how to process found caches
+	CHOOSE msg="How to process FOUND caches" opt1="Nothing special" opt2="Put them in a separate subcategory"
+	$config_found_caches = $resultge
+	
+	# ask how to process unavailable caches
+	CHOOSE msg="How to process UNAVAILABLE/ARCHIVED caches" opt1="Do not export them" opt2="Use special icons"
+	$config_unavail_caches = $resultge
+ENDIF
+
+# sort db in order to create proper subcategories within export file
+# if found caches need to be stored in a separate subcategory, then sort
+#   on found status / cachetype, otherwise, sort on cachetype
+# -----------------------------------------------------------------------
+
+IF $config_found_caches = 2
+  sort by="found;cachetype;description"
+ELSE
+  sort by="cachetype;description"
+ENDIF
+GOTO position=top
+
+# write head of output file
+# -------------------------
+
+$header = replace("[ICONPATH]", $config_icon_path, $header, true)
+$header = replace("[ICONSIZE]", numtostr($config_icon_size), $header, true)
+IF $config_wp_ident = 1
+  $config_label_size = 0
+ENDIF
+$header = replace("[LABELSIZE]", numtostr($config_label_size), $header, true)
+
+$res = PutFile($outFile,$header)
+$previousCacheType = "@"
+
+$totalRecordCount   = $_Count
+$currentRecordCount = 1
+
+# loop through selected caches
+# ----------------------------
+
+WHILE .not. $_EOL
+
+ $msg = "Processing record $currentRecordCount of $totalRecordCount..."
+ SHOWSTATUS msg="$msg"
+ $currentRecordCount = $currentRecordCount + 1
+ 
+ # determine cache type and prepare folder name and icon number
+ # ------------------------------------------------------------
+
+ $cacheType     = $d_CacheType
+ $cacheTypeKeys = "BCEGLMORTUVW"
+ $cacheTypeDecs = "Unknown Cache Type;Letterbox;Cache in Trash Out;Event;Benchmark;Locationless;Multi;Other;Earth;Traditional;Unknown;Virtual;Webcam;"
+ #in case gc.com introduces new cache type: AT resultgesgege is 0 -> add 1 to resultge and extract "Unknown cache type"
+ $int = at($cacheType, $cacheTypeKeys) + 1
+ $currentCacheType = Extract($cacheTypeDecs, ";", $int)
+ $cachteTypeOrig = $currentCacheType
+ #keep the original cache type (it can be changed into Found) to display in cache description tooltip
+
+ $cacheTypeIcon = $d_CacheType
+
+ #if it is a FOUND cache, modify subcategory 
+ #according to the choosen processing options
+ # --------------------------------------------------
+ IF $d_Found
+   #change subcategory if applicable
+   IF $config_found_caches = 2
+     $currentCacheType = "Found Caches"
+   ENDIF
+   #change icon to reflect found Cache
+   $cacheTypeIcon = $cacheTypeIcon + "F"
+ ELSE
+   #change icon to reflect a NOT found Cache
+   $cacheTypeIcon = $cacheTypeIcon + "N"
+ ENDIF
+ 
+ # change icon to reflect Available or Unavailable cache
+ IF $d_Archived or $d_TempDisabled
+   $cacheTypeIcon = $cacheTypeIcon + "U"
+ ELSE
+   $cacheTypeIcon = $cacheTypeIcon + "A"
+ ENDIF
+ 
+ # is this the first cache of a new type (traditional, multi,...)
+ # then create new folder within KML document
+ # --------------------------------------------------------------
+
+ IF ($previousCacheType <> $currentCacheType)
+   # close previous folder (unless this is the first folder in the output file)
+   IF $previousCacheType <> "@"
+     $res = AppendFile($outFile,$endOfFolder)
+   ENDIF
+   # create the new folder
+   $Folder = replace("[FOLDER]",$currentCacheType,"<Folder><name>[FOLDER]</name>",true)
+   $res = AppendFile($outFile,$Folder)
+ ENDIF
+
+ $previousCacheType = $currentCacheType
+
+ # determine cache identification to be displayed
+ # ----------------------------------------------
+ $ident = $d_SmartName
+ IF $config_wp_ident = 2
+   $ident =$d_Code
+ ENDIF
+ IF $config_wp_ident = 3
+   $ident = substr($d_Code,3,99)
+ ENDIF
+ IF $config_wp_ident = 4
+   $ident = $d_Name
+ ENDIF
+ IF $config_wp_ident = 5
+   $ident = $d_SmartName
+ ENDIF
+
+ #clean up the cache identification by removing invalid characters 
+ # ---------------------------------------------------------------
+ 
+ $count = RegExCount($validChars, $ident)
+ $cleaned = ""
+ $int = 1
+ WHILE $int <= $count
+   $good = RegExData($validChars,$ident,$int)
+   $cleaned = $cleaned + $good
+   $int = $int + 1
+ ENDWHILE
+ $ident = $cleaned
+
+ $cacheName = $d_Name
+ $placedBy  = $d_PlacedBy
+ $diff      = NumToStr($d_Difficulty)
+ $terrain   = NumToStr($d_Terrain)
+ 
+ #clean up the cache name by removing invalid characters 
+ # -----------------------------------------------------
+ 
+ $count = RegExCount($validChars, $cacheName)
+ $cleaned = ""
+ $int = 1
+ WHILE $int <= $count
+   $good = RegExData($validChars,$cacheName,$int)
+   $cleaned = $cleaned + $good
+   $int = $int + 1
+ ENDWHILE
+ $cacheName = $cleaned
+ 
+ # clean the name of the owner by removing invalid characters 
+ # ----------------------------------------------------------
+ 
+ $count = RegExCount($validChars, $placedBy)
+ $cleaned = ""
+ $int = 1
+ WHILE $int <= $count
+   $good = RegExData($validChars,$placedBy,$int)
+   $cleaned = $cleaned + $good
+   $int = $int + 1
+ ENDWHILE
+ $placedBy = $cleaned
+ 
+ # fill body template with cache data
+ # ----------------------------------
+
+ $body = $bodyTemplate
+
+ $body = replace("[IDENT]",       $ident,          $body, true)
+ $body = replace("[GCCODE]",      $d_Code,         $body, true)
+ $body = replace("[CACHETYPE]",   $cacheTypeIcon,  $body, true)
+ $body = replace("[DESCRIPTION]", $cacheName,      $body, true)
+ $body = replace("[TYPE]",        $cachteTypeOrig, $body, true)
+ $body = replace("[PLACEDBY]",    $placedBy,       $body, true)
+ $body = replace("[DIFF]",        $diff,           $body, true)
+ $body = replace("[TERRAIN]",     $terrain,        $body, true)
+ 
+ $string = $d_Latitude
+ $body = replace("[LAT]",$string,$body,true)
+ $string = $d_Longitude
+ $body = replace("[LON]",$string,$body,true)
+
+ # export only if cache is available, otherwise export only if user
+ # wants that unavailable caches are exported
+ 
+ IF ($d_Archived or $d_TempDisabled) and ($config_unavail_caches = 1)
+	# do not export
+ ELSE
+	$res = AppendFile($outFile,$body)
+ ENDIF
+ 	
+ GOTO position="next"
+
+ENDWHILE
+
+SHOWSTATUS msg="Finished processing $totalRecordCount records."
+
+# write the tail of the file
+# --------------------------
+$res = AppendFile($outFile,$footer)
+
+SORT by="description"
+GOTO position="top"
+
+IF $config_user_interaction
+	$msg = $outFile + $launchGoogle
+	INPUT msg="$msg" default="Y"
+	IF upper($resultge) = "Y"
+		openfile file=$outFile
+	ENDIF
+ELSE
+	openfile file=$outFile
+ENDIF
+
+CANCEL
+
+# ======================================================
+# S U B R O U T I N E S
+# ======================================================
+
+BEGINSUB name="CreateIcons"
+  # This routine takes care of creating/checking the icons file that will be used
+  # by Google Earth.
+	
+	# In case the icons must not be created automatically, check if they already exist
+	# at the location specified in $config_icon_path.
+	IF (not($config_auto_create_icons)) and (not(FileExists($config_icon_path)))
+		VSUB status="off"
+		$msg = "The location of your icons file does not exists." + $_NewLine + $_NewLine + "Edit the macro file and correct the contents of variable $config_icon_path." + $_NewLine + $_NewLine + "(It currently contains " + $config_icon_path + ")."
+		VSUB status="on"
+		PAUSE msg=$msg	
+		CANCEL			
+	ENDIF
+	# In case the icons must be created, try to do so and check for successful creation.
+	IF $config_auto_create_icons
+		$icons = MimeDecode($data_icons)
+		$resultge = PutFile($config_icon_path, $icons)
+		IF $resultge <> "*OK*"
+			VSUB status="off"
+			$msg = "The icons could not be created at the location specified in the macro." + $_NewLine + $_NewLine + "Edit the macro file and correct the contents of variable $config_icon_path." + $_NewLine + $_NewLine + "(It currently contains " + $config_icon_path + ")."
+			VSUB status="on"
+			PAUSE msg=$msg	
+			CANCEL			
+		ENDIF
+	ENDIF
+ENDSUB
+
+
+BEGINSUB name="CheckOutputDestination"
+  # if outputdirectory is empty, then use gsak installation directory
+  IF $config_kml_folder = ""
+  	$config_kml_folder = $_Install + "\"
+  ENDIF
+
+	# check if $config_kml_folder end with a backslashes
+	IF Right($config_kml_folder,1) <> "\"
+		VSUB status="off"
+		$msg = "The location of destination folder for your KML-file must end with a backslash." + $_NewLine + $_NewLine + "Edit the macro file and correct the contents of variable $config_kml_folder." + $_NewLine + $_NewLine + "(It currently contains " + $config_kml_folder + ")."
+		VSUB status="on"
+		PAUSE msg=$msg	
+		CANCEL
+	ENDIF
+
+	# check if $config_kml_folder points to an existing folder
+	IF .not.(FolderExists($config_kml_folder))
+		VSUB status="off"
+		$msg = "Your destination folder for the KML-file does not exist." + $_NewLine + $_NewLine + "Edit the macro file and correct the contents of variable $config_kml_folder, or create the folder that is specified in $config_kml_folder." + $_NewLine + $_NewLine + "(It currently contains " + $config_kml_folder + ")."
+		VSUB status="on"
+		PAUSE msg=$msg	
+		CANCEL	
+	ENDIF
+
+	# ask for filename if a name has not been predefined
+	IF $config_kml_filename = ""
+		$msg = "Specify the name for your KML-file. Do not type the extension '.KML' as it will be added to your filename automatically."
+		INPUT msg=$msg
+		$resultge = trim($resultge)
+		IF upper(right($resultge,4)) <> ".KML"
+			$resultge = $resultge + ".KML"
+		ENDIF
+		$config_kml_filename = $resultge
+	ELSE
+		#check if filename eind with .kml
+		IF right(trim(upper($config_kml_filename)),4) <> ".KML"
+			VSUB status="off"
+			$msg = "The KML-filename that you have specified in the macro, does not end with '.KML'." + $_NewLine + $_NewLine + "Edit the macro file and correct the contents of variable $config_kml_filename." + $_NewLine + $_NewLine + "(It currently contains " + $config_kml_filename + ")."
+			VSUB status="on"
+			PAUSE msg=$msg	
+			CANCEL	
+		ENDIF
+	ENDIF
+ENDSUB
+
+# ======================================================
+# D A T A   V A R I A B L E S
+# ======================================================
+
+<data> varname=$header
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<kml creator="GSAK Google Earth Export Macro" xmlns="http://earth.google.com/kml/2.0">
+<Document>
+<name>GSAK Export</name>
+<Style id="TNA"><IconStyle id="iconTNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>0</x><y>0</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelTNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="MNA"><IconStyle id="iconMNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>32</x><y>0</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelMNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="BNA"><IconStyle id="iconBNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>64</x><y>0</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelBNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="LNA"><IconStyle id="iconLNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>96</x><y>0</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelLNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="VNA"><IconStyle id="iconVNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>128</x><y>0</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelVNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="CNA"><IconStyle id="iconCNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>160</x><y>0</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelCNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="ONA"><IconStyle id="iconONA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>192</x><y>0</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelONA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="UNA"><IconStyle id="iconUNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>192</x><y>0</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelUNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="WNA"><IconStyle id="iconWNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>224</x><y>0</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelWNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="ENA"><IconStyle id="iconENA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>256</x><y>0</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelENA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="RNA"><IconStyle id="iconRNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>288</x><y>0</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelRNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="?NA"><IconStyle id="icon?NA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>320</x><y>0</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="label?NA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="GNA"><IconStyle id="iconGNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>352</x><y>0</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelGNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="TFA"><IconStyle id="iconTFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>0</x><y>32</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelTFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="MFA"><IconStyle id="iconMFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>32</x><y>32</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelMFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="BFA"><IconStyle id="iconBFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>64</x><y>32</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelBFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="LFA"><IconStyle id="iconLFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>96</x><y>32</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelLFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="VFA"><IconStyle id="iconVFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>128</x><y>32</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelVFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="CFA"><IconStyle id="iconCFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>160</x><y>32</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelCFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="OFA"><IconStyle id="iconOFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>192</x><y>32</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelOFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="UFA"><IconStyle id="iconUFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>192</x><y>32</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelUFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="WFA"><IconStyle id="iconWFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>224</x><y>32</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelWFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="EFA"><IconStyle id="iconEFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>256</x><y>32</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelEFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="RFA"><IconStyle id="iconRFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>288</x><y>32</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelRFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="xFA"><IconStyle id="iconxFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>320</x><y>32</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelxFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="GFA"><IconStyle id="iconGFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>352</x><y>32</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelGFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="TNU"><IconStyle id="iconTNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>0</x><y>64</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelTNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="MNU"><IconStyle id="iconMNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>32</x><y>64</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelMNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="BNU"><IconStyle id="iconBNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>64</x><y>64</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelBNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="LNU"><IconStyle id="iconLNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>96</x><y>64</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelLNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="VNU"><IconStyle id="iconVNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>128</x><y>64</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelVNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="CNU"><IconStyle id="iconCNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>160</x><y>64</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelCNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="ONU"><IconStyle id="iconONU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>192</x><y>64</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelONU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="UNU"><IconStyle id="iconUNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>192</x><y>64</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelUNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="WNU"><IconStyle id="iconWNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>224</x><y>64</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelWNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="ENU"><IconStyle id="iconENU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>256</x><y>64</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelENU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="RNU"><IconStyle id="iconRNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>288</x><y>64</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelRNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="?NU"><IconStyle id="icon?NU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>320</x><y>64</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="label?NU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="GNU"><IconStyle id="iconGNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>352</x><y>64</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelGNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="TFU"><IconStyle id="iconTFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>0</x><y>96</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelTFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="MFU"><IconStyle id="iconMFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>32</x><y>96</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelMFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="BFU"><IconStyle id="iconBFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>64</x><y>96</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelBFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="LFU"><IconStyle id="iconLFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>96</x><y>96</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelLFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="VFU"><IconStyle id="iconVFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>128</x><y>96</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelVFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="CFU"><IconStyle id="iconCFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>160</x><y>96</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelCFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="OFU"><IconStyle id="iconOFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>192</x><y>96</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelOFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="UFU"><IconStyle id="iconUFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>192</x><y>96</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelUFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="WFU"><IconStyle id="iconWFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>224</x><y>96</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelWFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="EFU"><IconStyle id="iconEFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>256</x><y>96</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelEFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="RFU"><IconStyle id="iconRFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>288</x><y>96</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelRFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="xFU"><IconStyle id="iconxFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>320</x><y>96</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelxFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<Style id="GFU"><IconStyle id="iconGFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]</href><x>352</x><y>96</y><w>32</w><h>32</h></Icon></IconStyle><LabelStyle id="labelGFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<enddata>
+
+
+<data> varname=$footer
+</Folder>
+</Document>
+</kml>
+<enddata>
+
+
+<data> varname=$bodyTemplate
+<Placemark>
+<name>[IDENT]</name>
+<styleUrl>#[CACHETYPE]</styleUrl>
+<description><![CDATA[<a href='http://www.geocaching.com/seek/cache_details.aspx?wp=[GCCODE]'>[DESCRIPTION]</a>, [TYPE] ([DIFF]/[TERRAIN]) by [PLACEDBY]]]></description>
+<Point><coordinates>[LON], [LAT]</coordinates></Point>
+</Placemark>
+<enddata>
+
+
+<data> varname=$endOfFolder
+</Folder>
+<enddata>
+
+
+<data> varname=$launchGoogle
+
+has been created.
+
+Do you want to launch Google Earth and open your file?
+
+Please enter: (Y)es or (N)o
+<enddata>
+
+# The following lines are the MIME encoded icons that will be used to create
+# the icons file for Google Earth.
+#
+# !!! DO NOT MODIFY !!!
+
+<data> VarName=$data_icons
+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
+<enddata>

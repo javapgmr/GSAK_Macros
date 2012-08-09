@@ -1,0 +1,764 @@
+################################################################################
+# MacDescription = Include GCVote into HTML generation
+# MacFileName = GCVote_HTML_Include.gsk
+# MacAuthor = hulmgulm
+# MacVersion = 1.5.0
+# MacUrl = http://gsak.net/board/index.php?showtopic=11781&view=getlastpost
+################################################################################
+
+################################################################################
+#
+# This macro adds the cache voting of http://GCVote.com/index_en.php
+# to the GSAK offline HTML output
+#
+# How to use it:
+# Add the following two lines of code to the HTML Splitscreen Macro you use to
+# generate your offline pages.
+#
+# MACRO File="GCVote_HTML_Include"
+# $_HTML = $_HTML + $gcv
+#
+# If you don't use a splitscreen macro yet, see this help on how to create on:
+# http://gsak.net/help/hs21090.htm
+#
+# Notes:
+# * You must not use $gcv or $gcv_* as variable names in your splitscreen macro
+# * Your splittscreen macro must use "OPTION Explicit=Yes" but must not declare
+#   the gcv variable
+# * You can force the configuration dialog to show by pressing CTRL while selecting
+#   another cache in the grid
+# * The password is *NOT* your geocaching.com password. It is the password you
+#   sent to the owner of GCVote (geocaching.com user "BonnerGuido")
+#
+# Version history:
+# 0.5 - 090428
+#        Proof of concept
+# 0.6 - 090405
+# Added: Automatic download of missing image file from geocaching.com
+# Added: Macro asks for geocaching.com username and stores it in a config file.
+#        Please remove the username parameter from the macro call.
+# Fixed: Handling of user names with ampersand
+# 1.0 - 090509
+# Added: Added vote results to HTML Export
+# Fixed: Compatible with GSAK 7.6.0
+# Changed: More exact display of current vote as tool tip
+# 1.0.1 - 090515
+# Fixed: Works with changed server reply
+# 1.1.0 - 090518
+# Added: Display of vote distribution for splitscreen/dualscreen view. Just
+#        click on the vote stars.
+# 1.2.0 - 090531
+# Fixed: HTML export works if more then 999 caches are exported
+# Added: Config dialog (press CTRL)
+# Added: Two possible averages to show: mean (default)and median (new)
+# Added: Setting of votes can be password protected
+# Fixed: More robust to changes in server reply
+# 1.2.1 - 090601
+# Fixed: Added (optional) password to vote retrieval
+# 1.2.2 - 090601
+# Fixed: Works again with GSAK 7.5.x
+# 1.3.0 - 090722
+# Changed: The password is not optional anymore
+# 1.4.0 - 100228
+# Fixed: New URL for the vote server
+# Added: Possibility to rate "half" stars
+# 1.4.1 - 100410
+# Fixed: compatible with GSAK 7.7.1.21
+# 1.4.2 - 100527
+# Fixed: problem with downloading zero stars image
+# Changed: Rating descriptions
+# Changed: URL for vote server
+# 1.5.0 - 100528
+# Added: Possibility to close vote distribution by clicking the "popup"
+# Added: Choose between chart and stars view of vote distribution
+################################################################################
+
+#DEBUG Status=on
+
+PREPROCESS Ctrl=$gcv_showConfig
+
+################################################################################
+#  Variable Declarations
+################################################################################
+
+#OPTION Explicit=Yes
+DECLARE Var=$gcv Type=String
+DECLARE Var=$gcv_DataFile Type=String
+DECLARE Var=$gcv_DatabaseFile Type=String
+DECLARE Var=$gcv_dualscreen Type=String
+DECLARE Var=$gcv_guid Type=String
+DECLARE Var=$gcv_i Type=Numeric
+DECLARE Var=$gcv_j Type=Numeric
+DECLARE Var=$gcv_imagesPath Type=String
+DECLARE Var=$gcv_result Type=String
+DECLARE Var=$gcv_tmpGuid Type=String
+DECLARE Var=$gcv_tmpUsername Type=String
+DECLARE Var=$gcv_url Type=String
+DECLARE Var=$gcv_query Type=String
+DECLARE Var=$gcv_userName Type=String
+DECLARE Var=$gcv_Password Type=String
+DECLARE Var=$gcv_useMedian Type=Boolean
+DECLARE Var=$gcv_useDispChart Type=Boolean
+DECLARE Var=$gcv_halfStars Type=Boolean
+DECLARE Var=$gcv_voteAvg Type=Numeric
+DECLARE Var=$gcv_voteMedian Type=Numeric
+DECLARE Var=$gcv_voteCnt Type=String
+DECLARE Var=$gcv_voteUser Type=Numeric
+DECLARE Var=$gcv_newVoteUser Type=String
+DECLARE Var=$gcv_vTitles Type=String
+DECLARE Var=$gcv_vValues Type=String
+DECLARE Var=$gcv_vStars Type=String
+DECLARE Var=$gcv_waypoint Type=String
+DECLARE Var=$gcv_ignore Type=String
+DECLARE Var=$gcv_countWaypoints Type=Numeric
+DECLARE Var=$gcv_version Type=String
+DECLARE Var=$gcv_vote1 Type=String
+DECLARE Var=$gcv_vote2 Type=String
+DECLARE Var=$gcv_vote3 Type=String
+DECLARE Var=$gcv_vote4 Type=String
+DECLARE Var=$gcv_vote5 Type=String
+DECLARE Var=$gcv_n_vote1 Type=Numeric
+DECLARE Var=$gcv_n_vote15 Type=Numeric
+DECLARE Var=$gcv_n_vote2 Type=Numeric
+DECLARE Var=$gcv_n_vote25 Type=Numeric
+DECLARE Var=$gcv_n_vote3 Type=Numeric
+DECLARE Var=$gcv_n_vote35 Type=Numeric
+DECLARE Var=$gcv_n_vote4 Type=Numeric
+DECLARE Var=$gcv_n_vote45 Type=Numeric
+DECLARE Var=$gcv_n_vote5 Type=Numeric
+DECLARE Var=$gcv_n_vote_max Type=Numeric
+DECLARE Var=$gcv_ToggleScript Type=String
+DECLARE Var=$gcv_Form Type=String
+DECLARE Var=$gcv_FormExit Type=String
+DECLARE Var=$gcv_eUsername Type=String
+DECLARE Var=$gcv_ePassword Type=String
+DECLARE Var=$gcv_rbMedian Type=Boolean
+DECLARE Var=$gcv_rbMean Type=Boolean
+DECLARE Var=$gcv_rbDispStars Type=Boolean
+DECLARE Var=$gcv_rbDispChart Type=Boolean
+DECLARE Var=$gcv_cbHalfstars Type=Boolean
+DECLARE Var=$gcv_sTmp Type=String
+
+################################################################################
+#  Definitions
+################################################################################
+
+$gcv = "<br />"
+$gcv_DataFile = $_Install + "\Macros\GCVote_HTML_Include.xml"
+$gcv_DatabaseFile = $_Install + "\Macros\GCVote_HTML_Include.db3"
+$gcv_version = "GSAK " + Alltrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath")+ "\" + SysInfo("Macrofile")),1,1))
+
+# On GSAK 7.5 set this variable to be compatible with GSAK 7.6
+IF VarExists("_exePath")= false
+    DECLARE Var=$_exePath Type=String
+    $_exePath = $_Install
+ENDIF
+
+################################################################################
+#  Main macro
+################################################################################
+
+# Check if the data-file exists?
+IF FileExists($gcv_DataFile)
+	# If the file exists read the saved values and assign them to variables
+	MACSETTINGS Type=R
+ENDIF
+
+# Show config?
+IF (FileExists($gcv_DataFile) = FALSE) OR (($gcv_showConfig = TRUE) AND ($_HtmlFormat<>"Export")) OR ($gcv_userName = "") OR ($gcv_Password = "")
+
+    $gcv_eUsername = $gcv_userName
+    $gcv_ePassword = $gcv_Password
+    $gcv_rbMedian = $gcv_useMedian
+    IF $gcv_useMedian = FALSE
+        $gcv_rbMean = TRUE
+    ENDIF
+	$gcv_rbDispChart = $gcv_useDispChart
+    IF $gcv_useDispChart = FALSE
+        $gcv_rbDispStars = TRUE
+    ENDIF
+    $gcv_cbHalfstars = $gcv_halfStars
+
+    $gcv_FormExit = form($gcv_fSettings,"")
+    BEGINCASE
+        CASE $gcv_FormExit = "SystemExit"
+
+        CASE $gcv_FormExit = "gcv_btnSave"
+            $gcv_userName = $gcv_eUsername
+            $gcv_Password = $gcv_ePassword
+            $gcv_useMedian = $gcv_rbMedian
+			$gcv_useDispChart = $gcv_rbDispChart
+            $gcv_halfStars = $gcv_cbHalfstars
+    ENDCASE
+
+    IF Len($gcv_userName) > 0 AND Len($gcv_Password) > 0
+    	MACSETTINGS Type=S Vars=gcv_userName,gcv_useMedian,gcv_Password,gcv_halfStars,gcv_useDispChart
+    ELSE
+        # Abort if user name is not set
+        MSGOK msg=You have to enter a user name and password. Please select another cache and enter these in the settings dialog.
+        RETURN
+    ENDIF
+ENDIF
+
+# Check if user voted
+IF Extract($_MacroParms,"~",1) = "doGcVote"
+
+    # Extract parameters
+    $gcv_guid = Extract($_MacroParms,"~",2)
+    $gcv_waypoint = Extract($_MacroParms,"~",3)
+    $gcv_newVoteUser = Extract($_MacroParms,"~",4)
+
+    # send vote
+    $gcv_url = "http://gcvote.com/setVote.php?voteUser=" + $gcv_newVoteUser + "&userName=" + HttpEncode($gcv_userName) + "&cacheId=" + $gcv_guid + "&waypoint=" + $gcv_waypoint
+    IF $gcv_Password <> ""
+        $gcv_url = $gcv_url + "&password=" + HttpEncode($gcv_Password)
+    ENDIF
+
+    $gcv_result = GetUrl($gcv_url,"")
+
+    # Print error if result is not OK
+    IF $gcv_result <> "OK"
+        MSGOK msg="Error while sending your rating! Message from server: $gcv_result"
+    ELSE
+        # refresh splitscreen and dualscreen if visible
+        IF $_Splitscreen
+            SPLITSCREEN Display=on
+        ENDIF
+        $gcv_dualscreen = SysInfo("gsakini;gsakDual;Active")
+        IF $gcv_dualscreen = "true"
+            DUALSCREEN Display=on
+        ENDIF
+    ENDIF
+ELSE
+    # We can only rate gc.com caches and we need the GUID of the cache
+    IF Substr($d_Url,1,55) = "http://www.geocaching.com/seek/cache_details.aspx?guid="
+        $gcv_guid = Substr($d_Url,56,0)
+
+        IF $_HTMLFormat="Export"
+            # HTML Export mode
+            GOSUB Name=GetMultipleVotes
+        ELSE
+            # Splitscreen mode
+            GOSUB Name=GetSingleVote
+        ENDIF
+    ENDIF
+ENDIF
+
+# END OF MACRO
+RETURN
+
+################################################################################
+#  Get vote for a single cache(Splitscreen Mode)
+################################################################################
+
+BEGINSUB Name=GetSingleVote
+    # get the vote
+    $gcv_url = "http://gcvote.com/getVotes.php?version=" + HttpEncode($gcv_version) + "&userName=" + HttpEncode($gcv_userName) + "&cacheIds=" + $gcv_guid + "&waypoints=" + $d_Code
+    IF $gcv_Password <> ""
+        $gcv_url = $gcv_url + "&password=" + HttpEncode($gcv_Password)
+    ENDIF
+
+    $gcv_result = GetUrl($gcv_url,"")
+#    $gcv = $gcv + $_NewLine + $_NewLine + $gcv_url
+#    $gcv = $gcv + $_NewLine + $_NewLine + $gcv_result + $_NewLine + $_NewLine
+    $gcv_tmpUsername = Extract(RegExData("userName='[^']*'",$gcv_result,1),"'",2)
+    $gcv_tmpGuid = Extract(RegExData("cacheId='[^']*'",$gcv_result,1),"'",2)
+
+    # Check if valid response
+    IF $gcv_tmpUsername = $gcv_username AND $gcv_tmpGuid = $gcv_guid
+        # Extract information from server reply
+
+        IF $gcv_useMedian = TRUE
+            $gcv_voteAvg = Val(Extract(RegExData("voteMedian='[^']*'",$gcv_result,1),"'",2))
+        ELSE
+            $gcv_voteAvg = Val(Extract(RegExData("voteAvg='[^']*'",$gcv_result,1),"'",2))
+        ENDIF
+        $gcv_voteCnt = Extract(RegExData("voteCnt='[^']*'",$gcv_result,1),"'",2)
+        $gcv_voteUser = Val(Extract(RegExData("voteUser='[^']*'",$gcv_result,1),"'",2))
+
+		$gcv_n_vote_max = 0
+		
+		$gcv_vote1 = Extract(RegExData("vote1='[^']*'",$gcv_result,1),"'",2)
+		$gcv_n_vote1 = Val($gcv_vote1)
+        IF $gcv_vote1 <> "0 votes"
+            $gcv_vote1 = "<b>" + $gcv_vote1 + " votes</b>"
+        ENDIF
+		IF $gcv_n_vote1 > $gcv_n_vote_max
+			$gcv_n_vote_max = $gcv_n_vote1
+		ENDIF
+		        		
+		$gcv_sTmp = Extract(RegExData("rawVotes='[^']*'",$gcv_result,1),"'",2)
+        $gcv_sTmp = RegExData("(1.5:[^)]*)",$gcv_sTmp,1)
+		IF $gcv_sTmp <> ""
+			$gcv_n_vote15 = Val(Replace(")","",Extract($gcv_sTmp,":",2)))
+		ENDIF
+		IF $gcv_n_vote15 > $gcv_n_vote_max
+			$gcv_n_vote_max = $gcv_n_vote15
+		ENDIF
+		
+        $gcv_vote2 = Extract(RegExData("vote2='[^']*'",$gcv_result,1),"'",2)
+		$gcv_n_vote2 = Val($gcv_vote2)
+        IF $gcv_vote2 <> "0 votes"
+            $gcv_vote2 = "<b>" + $gcv_vote2 + " votes</b>"
+        ENDIF
+		IF $gcv_n_vote2 > $gcv_n_vote_max
+			$gcv_n_vote_max = $gcv_n_vote2
+		ENDIF
+		
+		$gcv_sTmp = Extract(RegExData("rawVotes='[^']*'",$gcv_result,1),"'",2)
+        $gcv_sTmp = RegExData("(2.5:[^)]*)",$gcv_sTmp,1)
+		IF $gcv_sTmp <> ""
+			$gcv_n_vote25 = Val(Replace(")","",Extract($gcv_sTmp,":",2)))
+		ENDIF
+		IF $gcv_n_vote25 > $gcv_n_vote_max
+			$gcv_n_vote_max = $gcv_n_vote25
+		ENDIF
+		
+        $gcv_vote3 = Extract(RegExData("vote3='[^']*'",$gcv_result,1),"'",2)
+		$gcv_n_vote3 = Val($gcv_vote3)
+        IF $gcv_vote3 <> "0 votes"
+            $gcv_vote3 = "<b>" + $gcv_vote3 + " votes</b>"
+        ENDIF
+		IF $gcv_n_vote3 > $gcv_n_vote_max
+			$gcv_n_vote_max = $gcv_n_vote3
+		ENDIF
+		
+		$gcv_sTmp = Extract(RegExData("rawVotes='[^']*'",$gcv_result,1),"'",2)
+        $gcv_sTmp = RegExData("(3.5:[^)]*)",$gcv_sTmp,1)
+		IF $gcv_sTmp <> ""
+			$gcv_n_vote35 = Val(Replace(")","",Extract($gcv_sTmp,":",2)))
+		ENDIF
+		IF $gcv_n_vote35 > $gcv_n_vote_max
+			$gcv_n_vote_max = $gcv_n_vote35
+		ENDIF
+		
+        $gcv_vote4 = Extract(RegExData("vote4='[^']*'",$gcv_result,1),"'",2)
+		$gcv_n_vote4 = Val($gcv_vote4)
+        IF $gcv_vote4 <> "0 votes"
+            $gcv_vote4 = "<b>" + $gcv_vote4 + " votes</b>"
+        ENDIF
+		IF $gcv_n_vote4 > $gcv_n_vote_max
+			$gcv_n_vote_max = $gcv_n_vote4
+		ENDIF
+		
+		$gcv_sTmp = Extract(RegExData("rawVotes='[^']*'",$gcv_result,1),"'",2)
+        $gcv_sTmp = RegExData("(4.5:[^)]*)",$gcv_sTmp,1)
+		IF $gcv_sTmp <> ""
+			$gcv_n_vote45 = Val(Replace(")","",Extract($gcv_sTmp,":",2)))
+		ENDIF
+		IF $gcv_n_vote45 > $gcv_n_vote_max
+			$gcv_n_vote_max = $gcv_n_vote45
+		ENDIF
+		
+        $gcv_vote5 = Extract(RegExData("vote5='[^']*'",$gcv_result,1),"'",2)
+		$gcv_n_vote5 = Val($gcv_vote5)
+        IF $gcv_vote5 <> "0 votes"
+            $gcv_vote5 = "<b>" + $gcv_vote5 + " votes</b>"
+        ENDIF
+		IF $gcv_n_vote5 > $gcv_n_vote_max
+			$gcv_n_vote_max = $gcv_n_vote5
+		ENDIF
+		
+        $gcv = $gcv + $gcv_ToggleScript
+        $gcv = $gcv + "Quality:&nbsp;&nbsp;<img title=""" + Str($gcv_voteAvg,3,1) + " out of 5"" alt=""" + Str($gcv_voteAvg,3,1) + " out of 5"" id=""gcvoteStars" + $gcv_guid + """ style=""cursor: pointer;"" onclick=""toggle_visibility('" + $gcv_guid + "');"" src=""file:///"
+        $gcv_imagesPath = Replace("\","/",$_ExePath) + "/images/"
+        BEGINCASE
+            CASE $gcv_voteAvg < 0.25
+                $gcv = $gcv + Replace("\","/",$_Install) + "/Macros/stars0.gif"" align=""absmiddle"">"
+                # make sure we have the picture
+                $gcv_imagesPath = $_Install + "/Macros/stars0.gif"
+                IF Not(FileExists($gcv_imagesPath))
+                    $gcv_result = GetUrl("http://www.geocaching.com/images/stars/stars0.gif","")
+                    $gcv_ignore = PutFile($gcv_imagesPath,$gcv_result)
+                ENDIF
+            CASE $gcv_voteAvg < 0.75
+                $gcv = $gcv + $gcv_imagesPath + "stars0_5.gif"" align=""absmiddle"" />"
+            CASE $gcv_voteAvg < 1.25
+                $gcv = $gcv + $gcv_imagesPath + "stars1.gif"" align=""absmiddle"" />"
+            CASE $gcv_voteAvg < 1.75
+                $gcv = $gcv + $gcv_imagesPath + "stars1_5.gif"" align=""absmiddle"" />"
+            CASE $gcv_voteAvg < 2.25
+                $gcv = $gcv + $gcv_imagesPath + "stars2.gif"" align=""absmiddle"" />"
+            CASE $gcv_voteAvg < 2.75
+                $gcv = $gcv + $gcv_imagesPath + "stars2_5.gif"" align=""absmiddle"" />"
+            CASE $gcv_voteAvg < 3.25
+                $gcv = $gcv + $gcv_imagesPath + "stars3.gif"" align=""absmiddle"" />"
+            CASE $gcv_voteAvg < 3.75
+                $gcv = $gcv + $gcv_imagesPath + "stars3_5.gif"" align=""absmiddle"" />"
+            CASE $gcv_voteAvg < 4.25
+                $gcv = $gcv + $gcv_imagesPath + "stars4.gif"" align=""absmiddle"" />"
+            CASE $gcv_voteAvg < 4.75
+                $gcv = $gcv + $gcv_imagesPath + "stars4_5.gif"" align=""absmiddle"" />"
+            OTHERWISE
+                $gcv = $gcv + $gcv_imagesPath + "stars5.gif"" align=""absmiddle"" />"
+        ENDCASE
+		
+        # Add vote distribution overview
+        $gcv_imagesPath = Replace("\","/",$_ExePath) + "/images/"
+        $gcv = $gcv + "<div id=""gcvoteDetails" + $gcv_guid + """ style=""border: 1px solid rgb(192, 206, 227); position: absolute; visibility: hidden; background-color: rgb(239, 244, 249); top: 736px; left: 799px;"" onclick=""toggle_visibility('" + $gcv_guid + "');"">"
+        $gcv = $gcv + "<div style=""font-weight: bold;"">Distribution of votes:</div>"
+		IF $gcv_useDispChart
+			$gcv = $gcv + "<div aling=""center""><img src=""http://chart.apis.google.com/chart?chxt=x&cht=bvs&chco=F06B2A&chs=150x100&chbh=12,4,0&chxl=0:|1|1.5|2|2.5|3|3.5|4|4.5|5&chf=bg,s,F0F4F9&chm=N,000000,0,-1,11&chd=t:"
+			$gcv = $gcv + AllTrim(Str($gcv_n_vote1,3,0)) + ","
+			$gcv = $gcv + AllTrim(Str($gcv_n_vote15,3,0)) + ","
+			$gcv = $gcv + AllTrim(Str($gcv_n_vote2,3,0)) + ","
+			$gcv = $gcv + AllTrim(Str($gcv_n_vote25,3,0)) + ","
+			$gcv = $gcv + AllTrim(Str($gcv_n_vote3,3,0)) + ","
+			$gcv = $gcv + AllTrim(Str($gcv_n_vote35,3,0)) + ","
+			$gcv = $gcv + AllTrim(Str($gcv_n_vote4,3,0)) + ","
+			$gcv = $gcv + AllTrim(Str($gcv_n_vote45,3,0)) + ","
+			$gcv = $gcv + AllTrim(Str($gcv_n_vote5,3,0))
+			# Set max height
+			$gcv = $gcv + "&chds=0,"
+			$gcv = $gcv + AllTrim(Str(($gcv_n_vote_max/10+2.5)*10,3,0))
+			$gcv = $gcv + """></div>"
+		ELSE
+			$gcv = $gcv + "<table>"
+			$gcv = $gcv + "    <tr><td><img src=""" + $gcv_imagesPath + "stars1.gif""/></td><td>" + $gcv_vote1 + "</td></tr>"
+			$gcv = $gcv + "    <tr><td><img src=""" + $gcv_imagesPath + "stars2.gif""/></td><td>" + $gcv_vote2 + "</td></tr>"
+			$gcv = $gcv + "    <tr><td><img src=""" + $gcv_imagesPath + "stars3.gif""/></td><td>" + $gcv_vote3 + "</td></tr>"
+			$gcv = $gcv + "    <tr><td><img src=""" + $gcv_imagesPath + "stars4.gif""/></td><td>" + $gcv_vote4 + "</td></tr>"
+			$gcv = $gcv + "    <tr><td><img src=""" + $gcv_imagesPath + "stars5.gif""/></td><td>" + $gcv_vote5 + "</td></tr>"
+			$gcv = $gcv + "</table>"
+		ENDIF
+		$gcv = $gcv + "</div>"
+		
+
+        $gcv = $gcv + "<small>&nbsp;<em>(" + $gcv_voteCnt + " votes)</em></small>"
+        $gcv = $gcv + "<br />"
+        $gcv = $gcv + "<small><em> your vote:</em></small>&nbsp;"
+
+        $gcv_i = 0
+        IF $gcv_halfStars
+            $gcv_vTitles = "not rated yet~poor~worthless~below average~not so bad~average~not bad at all~better than average~very good~awesome"
+            $gcv_vStars = "?~1~½~2~½~3~½~4~½~5"
+            $gcv_vValues = "0~1~1.5~2~2.5~3~3.5~4~4.5~5"
+            $gcv_j = 10
+        ELSE
+            $gcv_vTitles = "not rated yet~poor~below average~average~better than average~awesome"
+            $gcv_vStars = "?~1~2~3~4~5"
+            $gcv_vValues = "0~1~2~3~4~5"
+            $gcv_j = 6
+        ENDIF
+        WHILE $gcv_i < $gcv_j
+            $gcv = $gcv + "<a style=""font-weight: normal;"
+            IF $gcv_voteUser = Val(Extract($gcv_vValues,"~",$gcv_i+1))
+                $gcv = $gcv + " background-color: orange;"
+            ENDIF
+            $gcv = $gcv + """ title=""" + Extract($gcv_vTitles,"~",$gcv_i+1) + """ href=""gsak://%FF/macro/GCVote_HTML_Include?doGcVote~" + $gcv_guid + "~" + $d_Code + "~" + Extract($gcv_vValues,"~",$gcv_i+1) + """>" + Extract($gcv_vStars,"~",$gcv_i+1) + "</a>"
+            $gcv_i = $gcv_i + 1
+        ENDWHILE
+    ELSE
+        $gcv = $gcv + "<font color=""red""><em>Unable to get voting! Message: " + $gcv_result + "</em></font>"
+    ENDIF
+ENDSUB
+
+################################################################################
+#  Get vote for a multiple caches(HTML Export Mode)
+################################################################################
+
+BEGINSUB Name=GetMultipleVotes
+    # Check if the database-file exists?
+    IF FileExists($gcv_DatabaseFile)
+        $gcv_ignore = Sqlite("open",$gcv_DatabaseFile,"")
+   	    $gcv_result = Sqlite("sql","SELECT voteMedian, voteAvg, voteCnt, voteUser FROM caches WHERE code='" + $d_Code + "'","error=trap")
+
+        # Create new DB if result is not found
+	    IF Len($gcv_result)= 0 OR Left($gcv_result,7) = "*Error*"
+            $gcv_ignore = Sqlite("close","","")
+            GOSUB Name=CreateNewDatabase
+
+    	    $gcv_result = Sqlite("sql","SELECT voteMedian, voteAvg, voteCnt, voteUser FROM caches WHERE code='" + $d_Code + "'","")
+	    ENDIF
+    ELSE
+        # If not, create new DB
+        GOSUB Name=CreateNewDatabase
+    	$gcv_result = Sqlite("sql","SELECT voteMedian, voteAvg, voteCnt, voteUser FROM caches WHERE code='" + $d_Code + "'","")
+    ENDIF
+
+    # Extract the result
+    IF $gcv_useMedian = TRUE
+        $gcv_voteAvg = Val(Extract($gcv_result,";",1))
+    ELSE
+        $gcv_voteAvg = Val(Extract($gcv_result,";",2))
+    ENDIF
+    $gcv_voteCnt = Extract($gcv_result,";",3)
+    $gcv_voteUser = Val(Extract($gcv_result,";",4))
+
+    $gcv_ignore = Sqlite("sql","DELETE FROM caches WHERE code='" + $d_Code + "'")
+
+    $gcv = $gcv + "Quality:&nbsp;&nbsp;<img title=""" + Str($gcv_voteAvg,3,1) + " out of 5"" alt=""" + Str($gcv_voteAvg,3,1) + " out of 5"" src=""file:///"
+    $gcv_imagesPath = Replace("\","/",$_ExePath,TRUE)+ "/images/"
+    BEGINCASE
+        CASE $gcv_voteAvg < 0.25
+            $gcv = $gcv + Replace("\","/",$_Install,TRUE) + "/Macros/stars0.gif"" align=""absmiddle"">"
+            # make sure we have the picture
+            $gcv_imagesPath = $_Install + "/Macros/stars0.gif"
+            IF Not(FileExists($gcv_imagesPath))
+                $gcv_result = GetUrl("http://www.geocaching.com/images/stars/stars0.gif","")
+                $gcv_ignore = PutFile($gcv_imagesPath,$gcv_result)
+            ENDIF
+        CASE $gcv_voteAvg < 0.75
+            $gcv = $gcv + $gcv_imagesPath + "stars0_5.gif"" align=""absmiddle"">"
+        CASE $gcv_voteAvg < 1.25
+            $gcv = $gcv + $gcv_imagesPath + "stars1.gif"" align=""absmiddle"">"
+        CASE $gcv_voteAvg < 1.75
+            $gcv = $gcv + $gcv_imagesPath + "stars1_5.gif"" align=""absmiddle"">"
+        CASE $gcv_voteAvg < 2.25
+            $gcv = $gcv + $gcv_imagesPath + "stars2.gif"" align=""absmiddle"">"
+        CASE $gcv_voteAvg < 2.75
+            $gcv = $gcv + $gcv_imagesPath + "stars2_5.gif"" align=""absmiddle"">"
+        CASE $gcv_voteAvg < 3.25
+            $gcv = $gcv + $gcv_imagesPath + "stars3.gif"" align=""absmiddle"">"
+        CASE $gcv_voteAvg < 3.75
+            $gcv = $gcv + $gcv_imagesPath + "stars3_5.gif"" align=""absmiddle"">"
+        CASE $gcv_voteAvg < 4.25
+            $gcv = $gcv + $gcv_imagesPath + "stars4.gif"" align=""absmiddle"">"
+        CASE $gcv_voteAvg < 4.75
+            $gcv = $gcv + $gcv_imagesPath + "stars4_5.gif"" align=""absmiddle"">"
+        OTHERWISE
+            $gcv = $gcv + $gcv_imagesPath + "stars5.gif"" align=""absmiddle"">"
+    ENDCASE
+
+    $gcv = $gcv + "<small>&nbsp;<em>(" + $gcv_voteCnt + " votes)</em></small>"
+    $gcv = $gcv + "<br />"
+    $gcv = $gcv + "<small><em>your vote: " + Str($gcv_voteUser,1,0) + "</em></small>"
+
+    $gcv_ignore = Sqlite("close","","")
+ENDSUB
+
+################################################################################
+#  Creates the DB for HTML Export Mode
+################################################################################
+
+BEGINSUB Name=CreateNewDatabase
+    # Initialize Database
+    $gcv_ignore = DbToSqlite("caches","code",$gcv_DatabaseFile,"")
+    $gcv_ignore = Sqlite("open",$gcv_DatabaseFile,"")
+	$gcv_ignore = Sqlite("sql","ALTER TABLE caches ADD COLUMN voteMedian text","")
+	$gcv_ignore = Sqlite("sql","ALTER TABLE caches ADD COLUMN voteAvg text","")
+	$gcv_ignore = Sqlite("sql","ALTER TABLE caches ADD COLUMN voteUser text","")
+	$gcv_ignore = Sqlite("sql","ALTER TABLE caches ADD COLUMN voteCnt text","")
+	$gcv_ignore = Sqlite("sql","UPDATE caches SET voteCnt='0', voteUser='0', voteAvg='0'","")
+
+	$gcv_countWaypoints = Val(Sqlite("sql","SELECT count(code)FROM caches",""))
+	$gcv_i = Round($gcv_countWaypoints / 100,0)
+	$gcv_j = $gcv_countWaypoints - 100 * $gcv_i
+
+	IF $gcv_j > 0
+	    $gcv_i = $gcv_i + 1
+	ENDIF
+
+	WHILE $gcv_i > 0
+
+        # Get chunk of votes
+	    $gcv_query = "SELECT code FROM caches LIMIT 150 OFFSET " + Str(($gcv_i - 1)* 150,5,0)
+	    $gcv_result = Replace($_NewLine,",",Sqlite("sql",$gcv_query,""),TRUE)
+
+        $gcv_url = "http://gcvote.com/getVotes.php?version=" + HttpEncode($gcv_version) + "&userName=" + HttpEncode($gcv_userName) + "&waypoints=" + $gcv_result
+        IF $gcv_Password <> ""
+            $gcv_url = $gcv_url + "&password=" + HttpEncode($gcv_Password)
+        ENDIF
+        $gcv_result = GetUrl($gcv_url,"Getting votes ...")
+
+        # Update database for each received vote
+        $gcv_countWaypoints = RegExCount("voteAvg='[^']*'",$gcv_result)
+        $gcv_j = 0
+        $gcv_ignore = Sqlite("sql","begin","")
+        WHILE $gcv_countWaypoints > $gcv_j
+            $gcv_j = $gcv_j + 1
+            $gcv_voteMedian = Val(Extract(RegExData("voteMedian='[^']*'",$gcv_result,$gcv_j),"'",2))
+            $gcv_voteAvg = Val(Extract(RegExData("voteAvg='[^']*'",$gcv_result,$gcv_j),"'",2))
+            $gcv_voteCnt = Extract(RegExData("voteCnt='[^']*'",$gcv_result,$gcv_j),"'",2)
+            $gcv_voteUser = Val(Extract(RegExData("voteUser='[^']*'",$gcv_result,$gcv_j),"'",2))
+            $gcv_waypoint = Extract(RegExData("waypoint='[^']*'",$gcv_result,$gcv_j),"'",2)
+   	        $gcv_query = "UPDATE caches SET voteAvg='" + Str($gcv_voteAvg,3,1) + "', voteCnt='" + $gcv_voteCnt + "', voteUser='" + Str($gcv_voteUser,1,0) + "' WHERE code='" + $gcv_waypoint + "'"
+            $gcv_ignore = Sqlite("sql",$gcv_query,"")
+        ENDWHILE
+        $gcv_ignore = Sqlite("sql","commit","")
+
+	    $gcv_i = $gcv_i - 1
+	ENDWHILE
+
+ENDSUB
+
+<data> VarName=$gcv_ToggleScript
+<script type="text/javascript">
+<!--
+    function toggle_visibility(cacheId){
+       var detailsDiv = document.getElementById("gcvoteDetails"+cacheId);
+       var p = document.getElementById("gcvoteStars"+cacheId);
+       if(detailsDiv.style.visibility == 'visible'){
+          detailsDiv.style.visibility = 'hidden';
+       } else {
+          detailsDiv.style.visibility = 'visible';
+
+            // compute position of popup
+            var top  = p.offsetHeight+2;
+            var left = 0;
+
+            for(; p ; p = p.offsetParent)
+            {
+                top  += p.offsetTop;
+                left += p.offsetLeft;
+            }
+
+            detailsDiv.style.position   = "absolute";
+            detailsDiv.style.top        = top +'px';
+            detailsDiv.style.left       = left+'px';
+            detailsDiv.style.visibility = "visible";
+       }
+    }
+//-->
+</script>
+<EndData>
+
+<Data> VarName=$gcv_fSettings
+Name = gcv_fSettings
+  Type = Form
+  Caption = GCVote Settings
+  Height = 260
+  Width = 417
+
+Name = gcv_gbAverage
+  Type = Groupbox
+  Caption = Average to display:
+  Height = 41
+  Left = 8
+  Top = 72
+  Width = 393
+  Taborder = 2
+
+Name = gcv_gbDispDistribution
+  Type = Groupbox
+  Caption = Vote distribution display style:
+  Height = 41
+  Left = 8
+  Top = 120
+  Width = 393
+  Taborder = 5
+
+Name = gcv_eUsername
+  Type = Edit
+  Height = 21
+  Left = 168
+  Top = 8
+  Width = 233
+  Taborder = 0
+
+Name = gcv_ePassword
+  Type = Edit
+  Height = 21
+  Left = 168
+  Top = 40
+  Width = 233
+  Taborder = 1
+
+Name = gcv_rbMean
+  Type = Radiobutton
+  Container = gcv_gbAverage
+  Height = 17
+  Left = 26
+  Top = 20
+  Width = 17
+  Taborder = 0
+
+Name = gcv_rbMedian
+  Type = Radiobutton
+  Container = gcv_gbAverage
+  Height = 17
+  Left = 218
+  Top = 20
+  Width = 17
+  Taborder = 1
+
+Name = Label1
+  Type = Label
+  Height = 13
+  Left = 8
+  Top = 12
+  Width = 133
+  Caption = geocaching.com Username:
+
+Name = gcv_btnSave
+  Type = Button
+  Height = 25
+  Left = 155
+  Top = 192
+  Width = 99
+  Taborder = 3
+  Caption = Save Settings
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 8
+  Top = 44
+  Width = 104
+  Caption = Password for GCVote:
+
+Name = Label3
+  Type = Label
+  Container = gcv_gbAverage
+  Height = 13
+  Left = 48
+  Top = 22
+  Width = 27
+  Caption = Mean
+
+Name = Label4
+  Type = Label
+  Container = gcv_gbAverage
+  Height = 13
+  Left = 240
+  Top = 22
+  Width = 35
+  Caption = Median
+
+Name = gcv_cbHalfstars
+  Type = Checkbox
+  Height = 17
+  Left = 24
+  Top = 168
+  Width = 145
+  Taborder = 4
+  Caption = Allow to vote half stars
+
+Name = gcv_rbDispStars
+  Type = Radiobutton
+  Container = gcv_gbDispDistribution
+  Height = 17
+  Left = 26
+  Top = 20
+  Width = 17
+  Taborder = 0
+
+Name = gcv_rbDispChart
+  Type = Radiobutton
+  Container = gcv_gbDispDistribution
+  Height = 17
+  Left = 218
+  Top = 20
+  Width = 17
+  Taborder = 1
+
+Name = Label5
+  Type = Label
+  Container = gcv_gbDispDistribution
+  Height = 13
+  Left = 48
+  Top = 22
+  Width = 24
+  Caption = Stars
+
+Name = Label6
+  Type = Label
+  Container = gcv_gbDispDistribution
+  Height = 13
+  Left = 240
+  Top = 22
+  Width = 43
+  Caption = Bar chart
+
+<enddata>
+

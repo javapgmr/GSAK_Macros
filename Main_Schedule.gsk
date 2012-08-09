@@ -1,0 +1,414 @@
+################################################################################ 
+# MSM (Maintenance Schedule Macro)
+#                                                                              
+# Written by KiwiGary@geocache.co.nz
+#
+# Feel free to make any recommendations for ways the macro can be improved
+# This has to run on Database that includes all your caches                                                                             
+# MacDescription =  Macro to produce a Maintenance Schedule to help Cache Placers                           
+# MacAuthor = KiwiGary
+# MacVersion=1.20                                                             
+################################################################################
+# History
+# 15 Feb 09 - Added auto reading of users GC ID - Thanks Vyrembi for the idea
+# 15 Feb 09 - Fixed Bug in DNF Log checking, and added DNF up to five now.
+# 15 Feb 09 - Change date in disabled caches to be Last Log not Last Found
+# 15 Mar 09 - Added Message if No DNF's Listed
+# 15 Mar 09 - Fixed Bug in Unfound Caches, was checking lastlog not last found.  Ignores #             OwnerMaintaintance Logs
+#
+#
+#
+################################################################################
+
+
+DEBUG Status=Off
+SPEEDMODE STATUS=on
+# Set Var for Delimter
+$CtlDelim=":-:"
+
+# Reads in User Setting file if exists
+$datafile=sysinfo("macropath")+ "\" +substr(sysinfo("MacroFile"),1,len(sysinfo("MacroFile"))-4)+ ".dat"
+IF (FileExists($datafile))
+	# Yes? Read config values
+	FILEREAD File=$datafile
+	$NumberofDNF=EXTRACT($line,$CtlDelim, 1)
+	$myUserName=EXTRACT($line,$CtlDelim, 2)
+	$AgeUnfound=EXTRACT($line,$CtlDelim, 3)
+	$DeadCache=EXTRACT($line,$CtlDelim, 4)
+	$FilePath=EXTRACT($line,$CtlDelim, 5)
+	ENDREAD
+ELSE    
+	# Edit the below value to match your Username with Geocaching.com
+	# User Setup
+	
+	$myUserName = Sysinfo("gsakini;TfmConfig;EdtGeoName.Text")
+	$AgeUnfound="120"
+	$NumberofDNF="3"
+	$DeadCache="365"
+	# Edit the below value to match the location you want the Schedule File to be written.
+	#
+	$FilePath= "c:\temp\Main_Schedule.html"
+ENDIF
+
+#
+# Displays the Form
+#
+<Data> VarName=$form
+Name = Form1
+Type = Form
+Height = 288
+Width = 362
+Caption = MSM - Maintenance Schedule Macro
+
+Name = NumberofDNF
+Type = Combobox
+Height = 21
+Left = 136
+Top = 110
+Values = 1;2;3;4;5
+Width = 57
+Taborder = 8
+
+Name = Label1
+Type = Label
+Height = 13
+Left = 16
+Top = 82
+Width = 76
+Caption = User ID Number
+
+Name = Label2
+Type = Label
+Height = 13
+Left = 16
+Top = 116
+Width = 100
+Caption = Number of DNF Logs
+
+Name = Label3
+Type = Label
+Height = 13
+Left = 16
+Top = 150
+Width = 112
+Caption = Age of unfound Caches
+
+Name = myUserName 
+Type = Edit
+Height = 21
+Left = 136
+Top = 80
+Width = 121
+Taborder = 9
+
+Name = AgeUnfound
+Type = Edit
+Height = 21
+Left = 136
+Top = 140
+Width = 49
+Taborder = 10
+
+Name = ButtOK
+Type = Button
+Height = 25
+Left = 24
+Top = 216
+Width = 75
+Taborder = 11
+Caption = OK
+
+Name = ButtCancel
+Type = Button
+Height = 25
+Left = 149
+Top = 216
+Width = 75
+Taborder = 12
+Caption = Cancel
+
+Name = ButtSave
+Type = Button
+Height = 25
+Left = 272
+Top = 216
+Width = 75
+Taborder = 13
+Caption = Save Settings
+
+Name = Label4
+Type = Label
+Color = 16711680
+Font = Arial Black
+Height = 15
+Left = 32
+Style = bold
+Top = 16
+Width = 235
+Caption = Version 1.0 - Written by KiwiGary
+
+Name = FilePath
+Type = File
+Height = 21
+Left = 136
+Top = 48
+Width = 209
+Taborder = 14
+
+Name = Label5
+Type = Label
+Height = 13
+Left = 16
+Top = 56
+Width = 92
+Caption = Schedule FileName
+
+Name = Label6
+Type = Label
+Height = 13
+Left = 16
+Top = 184
+Width = 111
+Caption = Age of unloved Caches
+
+Name = DeadCache
+Type = Edit
+Height = 21
+Left = 136
+Top = 176
+Width = 49
+Taborder = 15
+<enddata>
+#
+# Default values on Form
+#
+$SchFile="C:\temp\Schedule.html"
+While True # Infinite loop to redisplay form as required
+	$FormExit = form($form,"")
+	BeginCase
+		Case $FormExit = "DelayExit"
+			MsgOk msg="Form exit via Delay"
+			break
+		Case $FormExit = "SystemExit"
+			break
+		Case $FormExit = "ButtCancel"
+			break
+		Case $FormExit = "ButtOK"
+			GoSub Name=WriteSchFile
+			BREAK
+		Case $FormExit = "ButtSave"
+			GoSub Name=SaveUserSettings
+	EndCase
+EndWhile
+
+
+#
+# Report Writing Sub Routine
+#
+BeginSub Name=WriteSchFile
+# Cancel Filter to display entire DB
+cancelfilter
+# Erase old Maintance Schedule File
+FILEERASE File=$FilePath OnError=Continue
+$TextWrite="<font size='+2'><B>Cache Maintenance Schedule</B></font>"
+GoSub Name=WriteTextToFile
+$TextWrite="<BR><B>Caches to Replace or Repair (Currently Disabled)</B>"
+GoSub Name=WriteTextToFile
+# Filter to display Disabled Caches
+MFILTER IF=$d_Ownerid=$myUserName and $d_archived <> TRUE and $d_TempDisabled
+IF $_FilterCount > 0
+	goto position=Top
+	while not ($_eol)
+# Checks to see if Last Found is in DB
+	$CorrectLastFound=dateformat($d_LastLog)
+	IF $CorrectLastFound="30/12/1899"
+		$CorrectLastFound="**Date Not in DB**"
+	ENDIF
+	$TextWrite=$d_name + " <a href='" + $d_Url + "'>" + $d_code + "</a> Last Log " + $CorrectLastFound
+	GoSub Name=WriteTextToFile
+	goto position=next
+	endwhile
+ELSE
+	$TextWrite="No Caches currently disabled"
+	GoSub Name=WriteTextToFile
+ENDIF
+#
+# Filter to display Caches that haven't been visited for four months
+#
+# Checks if Field has a number
+IF LEN($AgeUnfound)=0
+	$AgeUnFound="120"
+ENDIF
+IF VAL($AgeUnfound)<=1
+	$AgeUnFound="120"
+ENDIF
+$TextWrite="<BR><B>Caches to Check - Last Find over " + $AgeUnFound+" days ago</B>"
+GoSub Name=WriteTextToFile
+$HelpText = False
+MFILTER IF=$d_Ownerid=$myUserName and $d_archived <> TRUE and $d_TempDisabled = FALSE and $d_LastFoundDate < $_Today-Val($AgeUnfound)
+IF $_FilterCount > 0
+	goto position=Top
+	while not ($_eol)
+# Checks to see if Last Found is in DB
+	$CorrectLastFound=dateformat($d_LastFoundDate)
+	IF $CorrectLastFound="30/12/1899"
+		$CorrectLastFound="**Date Not in DB**"
+	ENDIF
+	$UnLoved=DateDiff ($d_PlacedDate,$_Today)
+	IF $UnLoved <= VAL($DeadCache)
+		$TextWrite="   "+ $d_name + " <a href='" + $d_Url + "'>" + $d_code + "</a> Last found " + $CorrectLastFound
+	ELSE
+		$TextWrite="***" + $d_name + " <a href='" + $d_Url + "'>" + $d_code + "</a> Last found " + $CorrectLastFound+" Placed " + numtostr($UnLoved) + " days ago"
+		$HelpText = True
+	ENDIF
+
+# Checks to see if last Log was a Maintance Log
+IF $d_LastLog > $_Today-Val($AgeUnfound)
+	Table Active=Logs scope=parent
+	If $d_ltype <> "Owner Maintenance"
+	GoSub Name=WriteTextToFile
+	ENDIF 
+ELSE
+	GoSub Name=WriteTextToFile
+ENDIF
+Table Active=caches
+	goto position=next
+	endwhile
+ELSE
+	$TextWrite="No old Caches"
+	GoSub Name=WriteTextToFile
+ENDIF
+IF $HelpText = True
+	$TextWrite="*** Cache is Unloved, Placed over "+$DeadCache+" days ago"
+	GoSub Name=WriteTextToFile
+endif
+# Filter so that we only show caches that may be archived.
+$TextWrite="<BR><B>Caches to Check - Last Log was a DNF, Checking " + $NumberofDNF+" Logs</B>"
+GoSub Name=WriteTextToFile
+IF VAL($NumberofDNF) <1
+	$NumberofDNF="1"
+ENDIF
+$DNFCount = FALSE
+MFILTER IF=$d_Ownerid=$myUserName and $d_archived <> TRUE and $d_TempDisabled = FALSE
+IF $_FilterCount > 0
+	goto position=Top
+	$ThisRecord= 1
+	while not ($_eol)
+	DEBUG Status=off
+		$status = "Now processing: $ThisRecord of $_Count" 
+		ShowStatus msg=$status Title="Checking for DNF logs"
+		$Count=0
+		Table Active=logs Scope=parent
+		$LogCount=0
+		While $LogCount<VAL($NumberofDNF) and not ($_EoL)
+		IF $d_LType = "Didn't find it"
+			$Count = $Count + 1 
+		EndIF
+		$LogCount=$LogCount+1
+		GOTO Position=Next
+	EndWhile
+	# If DNF Logs Write to Text File
+	IF $Count=VAL($NumberofDNF)
+	$DNFCount=TRUE
+	$TextWrite=$d_Name + " <a href='" + $d_Url + "'>" + $d_code + "</a> Last DNF " + dateformat($d_LastLog)
+	GoSub Name=WriteTextToFile
+	endif
+	$Count=0
+	Table Active=caches
+	$ThisRecord=$ThisRecord+1
+	GOTO Position=Next
+	EndWhile
+ELSE
+	$TextWrite="This user has no caches placed"
+	GoSub Name=WriteTextToFile
+ENDIF
+
+IF $DNFCount = FALSE
+$TextWrite="No caches have DNF's reported"
+GoSub Name=WriteTextToFile
+ENDIF
+
+
+
+$TextWrite="<BR><B>Caches that have a Needs Maintenance log</B>"
+GoSub Name=WriteTextToFile
+MFILTER IF=$d_Ownerid=$myUserName and $d_archived <> TRUE and $d_TempDisabled = FALSE
+IF $_FilterCount > 0
+	$ThisRecord = 0
+	$LogDetails=""
+	$MainLogs=False
+	Goto position=top
+	While not($_eol)
+	$ThisRecord = $ThisRecord + 1
+	$status = "Now processing: $ThisRecord of $_Count"
+	ShowStatus msg=$status Title="Checking For Maintenance Logs"
+	Table Active=Logs scope=parent
+	While not($_Eol)
+	# exit out of log loop if "Owner Maintenance" found before "Needs Maintenance"
+	$LogDetails=""
+	If $d_ltype = "Owner Maintenance"
+		$LogDetails=$d_Name + " <a href='" + $d_Url + "'>" + $d_code + "</a> "+dateformat($d_lDate)+" by " +$d_lBy  
+		BREAK
+	ENDIF 
+	# we have found a "Needs Maintenace" before any "Owner Maintenance"
+	# so add cache to Report and exit the loop
+	IF $d_lType = "Needs Maintenance"
+		$MainLogs=True
+		$TextWrite=$d_Name + " <a href='" + $d_Url + "'>" + $d_code + "</a> "+dateformat($d_lDate)+" by " +$d_lBy  
+		GoSub Name=WriteTextToFile
+		Break
+	endif
+	goto position=next
+	EndWhile
+	Table Active=caches
+	GoTo Position=Next
+	EndWhile
+	If $MainLogs=False
+		$TextWrite="No caches with 'Needs Maintenance' logs found, Good Work!!!"
+		GoSub Name=WriteTextToFile
+	EndIf
+	# Cancel Filter to display entire DB
+	cancelfilter
+ELSE
+	$TextWrite="This user has no caches placed"
+	GoSub Name=WriteTextToFile
+ENDIF
+SHOWSTATUS Display=Off
+MsgOk msg=Maintenance Schedule Written to: $FilePath, Will try and open report now in your browser. Caption="MSM Macro Has Finished"
+$TextWrite="<p><i>Report Generated " + dateformat($_Today) + " by MSM (Maintenance Schedule Macro)</i></p>"
+GoSub Name=WriteTextToFile
+# Opens the Report
+FILEOPEN File="$FilePath"
+
+EndSub
+
+
+#
+# Routine to Write text to File
+#
+BeginSub Name=WriteTextToFile
+SET $Data = AppendFile($FilePath,$TextWrite+"<BR>")
+IF Left($Data,7) = "*Error*"
+Pause Msg="$Data"
+Cancel
+ENDIF
+EndSub
+
+
+#
+# Routine to Save User Settings
+#
+BeginSub Name=SaveUserSettings
+$line=""
+$line=$line + $NumberofDNF+ $CtlDelim
+$line=$line + $myUserName + $CtlDelim
+$line=$line + $AgeUnfound + $CtlDelim
+$line=$line + $DeadCache + $CtlDelim
+$line=$line + $FilePath
+$result=PUTFILE($datafile, $line)
+IF Left($result, 7) = "*Error*"
+	CANCEL Msg="Unable to save form values to $datafile!"
+ELSE
+	MsgOk msg=Settings File has been written to: $datafile Caption="Settings File Saved"
+ENDIF
+ENDSUB
