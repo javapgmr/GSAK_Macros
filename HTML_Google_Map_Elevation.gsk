@@ -1,7 +1,7 @@
 # MacDescription = Google Maps with Elevation profile
-# MacFileName =HTML_Google_Map_Elevation.gsk
+# MacFileName =HTML_Google Map Elevation.gsk
 # MacAuthor = Lignumaqua
-# MacVersion=0.8
+# MacVersion=0.6
 # MacUrl = http://gsak.net/board/index.php?showtopic=15008
 
 #***************************************
@@ -25,8 +25,6 @@
 #   v0.4  (4/8/10)  Avoid grabbed images issue.
 #   v0.5  (4/11/10) Maptype cookie
 #   v0.6  (8/7/12)  Remove deprecated HTML()
-#   v0.7  (8/8/12)  Fix MyTopo maps
-#   v0.8  (8/8/12)  Fix cookies
 #
 #===========================================================================#
 #   This GSAK macro creates a split screen format
@@ -324,23 +322,19 @@ $split_tmpB = Seek($split_SavedCode)
    $split_html = $split_html + "</script>" + $_NewLine
    $split_html = $split_html + "</body></html>"
 
-
-$hash = GetUrl("http://gsak.net/stats/maps/MyTopoTileService.php")
-
 #----Search and replace variables in the final $html string----------#
       
-   $split_html = Replace("!!lat!!",$d_Latitude,$split_html,true)
-   $split_html = Replace("!!lon!!",$d_Longitude,$split_html,true)
-   $split_html = Replace("!!lat2!!",$lat2,$split_html,true)
-   $split_html = Replace("!!lon2!!",$lon2,$split_html,true)
-   $split_html = Replace("!!distunits!!",$distunits,$split_html)
-   $split_html = Replace("!!infomsg!!",$infomsg,$split_html)
-   $split_html = Replace("!!correctedtext!!",$correctedtext,$split_html)
-   $split_html = Replace("!!childtext!!",$childtext,$split_html)
-   $split_html = Replace("!!icon!!",$split_icon,$split_html)
-   $split_html = Replace("!!points!!",$points,$split_html)
-   $split_html = Replace("!!cache!!",$split_cacheName_Jscript,$split_html)
-   $split_html = Replace("!!HashGoesHere!!",$hash,$split_html)
+   $split_html = REPLACE("!!lat!!",$d_Latitude,$split_html,true)
+   $split_html = REPLACE("!!lon!!",$d_Longitude,$split_html,true)
+   $split_html = REPLACE("!!lat2!!",$lat2,$split_html,true)
+   $split_html = REPLACE("!!lon2!!",$lon2,$split_html,true)
+   $split_html = REPLACE("!!distunits!!",$distunits,$split_html)
+   $split_html = REPLACE("!!infomsg!!",$infomsg,$split_html)
+   $split_html = REPLACE("!!correctedtext!!",$correctedtext,$split_html)
+   $split_html = REPLACE("!!childtext!!",$childtext,$split_html)
+   $split_html = REPLACE("!!icon!!",$split_icon,$split_html)
+   $split_html = REPLACE("!!points!!",$points,$split_html)
+   $split_html = REPLACE("!!cache!!",$split_cacheName_Jscript,$split_html)
    
    
       
@@ -506,7 +500,7 @@ var pathshadow = new google.maps.MarkerImage("http://gsak.info/stats2/elevation/
 		
 		
 		//----read cookie and override maptype accordingly---
-		var typecookie = readCookie("maptypeelev3");
+		var typecookie = readCookie("maptypev3");
 		//alert (typecookie);
 		if (typecookie == "-1") {typecookie = "roadmap"};
 		map.setMapTypeId(typecookie);
@@ -514,11 +508,7 @@ var pathshadow = new google.maps.MarkerImage("http://gsak.info/stats2/elevation/
 		// Add listener to see if map type changes and store in cookie
   	google.maps.event.addListener(map, "maptypeid_changed", function() {
   		k = map.getMapTypeId();
-			writecookie('maptypeelev3',k);
-		// Update the custom MyTopo copyright if needed
-			if(!(typeof hash=="undefined" || hash == "")) {
-				updateCopyright();
-			}
+			writecookie('maptypev3',k);
     }); 
 
 		chart = new google.visualization.ColumnChart(document.getElementById('chart_div'));
@@ -558,63 +548,19 @@ var pathshadow = new google.maps.MarkerImage("http://gsak.info/stats2/elevation/
 
 		map.mapTypes.set('osm', openStreet);
 
-// Add MyTopo to mapTypes
-	//hash = '63aeebc1b09f824313e4135865db20c3';
-	hash = '!!HashGoesHere!!';
-	if(!(typeof hash=="undefined" || hash == "")) {
-	var myTopo = new google.maps.ImageMapType({
-		getTileUrl: function(ll, z) {
-			var X = ll.x % (1 << z);  // wrap
-						
-			return "http://tileserver.mytopo.com/SecureTile/TileHandler.ashx?mapType=Topo&partnerID=12355&hash=" + hash + "&x=" + X + "&y=" + ll.y + "&z=" + z;
-		},
-		tileSize: new google.maps.Size(256, 256),
-		isPng: true,
-		maxZoom: 16,
-		name: "MyTopo",
-		alt: "MyTopo tiles"
-	});
-map.mapTypes.set('mytopo', myTopo);
+		var myTopo = new google.maps.ImageMapType({
+			getTileUrl: function(ll, z) {
+				var X = ll.x % (1 << z);  // wrap
+				return "http://maps.mytopo.com/mytopo/tilecache.py/1.0.0/topoG/" + z + "/" + X + "/" + ll.y + ".png";
+			},
+			tileSize: new google.maps.Size(256, 256),
+			isPng: true,
+			maxZoom: 16,
+			name: "MyTopo",
+			alt: "MyTopo tiles"
+		});
 
-	copyrightDiv = document.createElement('div');
-	copyrightDiv.id = 'mytopo-copyright-control';
-	copyrightDiv.style.fontSize = '11px';
-	copyrightDiv.style.fontFamily = 'Arial, sans-serif';
-	copyrightDiv.style.margin = '0 2px 2px 0';
-	copyrightDiv.style.whiteSpace = 'nowrap';
-	copyrightDiv.style.color = '#FF4500';
-	copyrightDiv.style.textAlign = 'center';
-	copyrightDiv.index = 0;
-	copyrightDiv.innerHTML = getBannerHtml();
-
-	map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(copyrightDiv);
-	updateCopyright();
-
-}
-
-
- function printMap() {
-   var lat = map.getCenter().lat();
-   var lng = map.getCenter().lng();
-   var printurl = 'http://www.mytopo.com/searchgeo.cfm?lat=' + lat + '&lon=' + lng + '&partnerid=12355';
-   window.open(printurl);
-   return false;
- }
-
-
-function getBannerHtml() {
-		var scriptBaseUrl = 'http://www.mytopo.com/TileService';
-		return "<a href='#printMap' onclick='printMap();' ><img src='" + scriptBaseUrl + "/Images/button_print.png' alt='Print MyTopo Map' border='0' /></a>" +
-		"<br/><a href='http://get.it/trimbleoutdoors/8pAD' target='_blank'><img src='" + scriptBaseUrl + "/Images/button_get.png' id='Get MyTopo App' border='0' /></a>" +
-		"<br/><a href='http://www.mytopo.com/' target='_blank'><img src='" + scriptBaseUrl + "/Images/SmallMyTopoLogo.png' alt='MyTopo Logo' border='0'/></a><br/>" +
-		"<a href='http://mytopo.com/about/terms.cfm' target='_blank'><b>(Terms of Use)</b></a>";
-
-	}
-
-function updateCopyright() {
-	copyrightDiv.style.display = (map.getMapTypeId() == 'mytopo') ? "inline" : "none";
-}
-
+		map.mapTypes.set('mytopo', myTopo);
 
 		map.setOptions({
 			mapTypeControlOptions: {
@@ -983,7 +929,6 @@ Declare Var=$DataFile Type=String
 Declare Var=$datafilepath Type=String
 Declare Var=$distunits Type=String
 Declare Var=$Form Type=String
-Declare Var=$hash Type=String
 Declare Var=$infomsg Type=String
 Declare Var=$lat2 Type=String
 Declare Var=$lon2 Type=String
