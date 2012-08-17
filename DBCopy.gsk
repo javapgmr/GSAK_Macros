@@ -1,5 +1,5 @@
 # Copy Database With The "Home" Database And Only Import Caches Not In Home Database
-# MacVersion = 1.10
+# MacVersion = 1.20
 # MacDescription = Copy to DataBase
 # MacFileName = DBCopy.gsk
 # MacAuthor = javapgmr
@@ -83,12 +83,7 @@ BEGINSUB Name=Main
       ENDIF
 
       SHOWSTATUS msg="Setting Filter" Width=350
- 
-        #Attach selected databases for comparison purposes
-        $_sql="SELECT Code FROM Caches where RowId in (Select * from GridTemp)"
-        $Results=Sqlite("sql",$_sql)
-        $FormatResults="'" + Replace($_CrLf,"','",$Results) + "'"
-
+      GOSUB Name=SaveGrid
  
       IF $CB1
           IF DatabaseExists($ToDB)
@@ -97,43 +92,32 @@ BEGINSUB Name=Main
           ENDIF
           SHOWSTATUS msg="Creating TO database" Width=350
           DATABASE Name=$ToDB Action=Create
-          DATABASE Name=$Databases
+		  DATABASE Name=$Databases
+		  GOSub Name=RestoreGrid
       ENDIF
 
       IF $RBFlagged
-          SHOWSTATUS msg="Filtering by UserFlag" Width=350
-          MFILTER Expression=$d_UserFlag
-      ELSE
-          SHOWSTATUS msg="Filtering by MacroFlag" Width=350
-	         $_sql = "Code IN($FormatResults)"
-          MFILTER Where=$_sql
+        SHOWSTATUS msg="Filtering by UserFlag" Width=350
+        MFILTER Expression=$d_UserFlag
+        GOSUB Name=SaveGrid
       ENDIF
 
 
       IF $_CurrentDatabase  <> $ToDB
-          $MoveCopy = $MoveCopy + "cbxDestination.Text=" + $ToDB + $_NewLine
-
-          SHOWSTATUS msg="Copying exiting database to new database." Width=350
-          MACROSET Dialog=MoveCopy VarName=$MoveCopy
-          MOVECOPY Settings=<macro>
-          IF Not ($CB2)
+        $MoveCopy = $MoveCopy + "cbxDestination.Text=" + $ToDB + $_NewLine
+        SHOWSTATUS msg="Copying exiting database to new database." Width=350
+        MACROSET Dialog=MoveCopy VarName=$MoveCopy
+        MOVECOPY Settings=<macro>
+        IF Not ($CB2)
           DATABASE Name=$Databases
-        ELSE
+          # Reset the filter if not changing to the "To" database
+		  GOSub Name=RestoreGrid
+		ELSE
           DATABASE Name=$ToDB
         ENDIF
-          IF $CB1
-                IF $RBFlagged
-                  SHOWSTATUS msg="Filtering by UserFlag" Width=350
-      				    MFILTER Where=USERFLAG
-      					ELSE
-                  SHOWSTATUS msg="Filtering by MacroFlag" Width=350
-       	          $_sql = "Code IN($FormatResults)"
-                 MFILTER Where=$_sql
-      					ENDIF
-	        ENDIF
       ENDIF
-      SQLSort OrderBy=$CurrentSort
-  ENDSUB
+        SQLSort OrderBy=$CurrentSort
+ ENDSUB
 
   BeginSub Name=RefreshForm
   if $AutoStart
@@ -310,4 +294,15 @@ Name = Label1
 <enddata>
 
 
+BEGINSUB Name=SaveGrid
+	        #Attach selected databases for comparison purposes
+        $_sql="SELECT Code FROM Caches where RowId in (Select * from GridTemp)"
+        $Results=Sqlite("sql",$_sql)
+        $FormatResults="'" + Replace($_CrLf,"','",$Results) + "'"
+		$CurrentSort = $_OrderBy
+ENDSUB
 
+BEGINSUB Name=RestoreGrid
+	    $_sql = "Code IN($FormatResults)"
+        MFILTER Where=$_sql
+ENDSUB
