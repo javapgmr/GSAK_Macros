@@ -1,0 +1,758 @@
+################################################################################
+# Description                                                                  #
+################################################################################
+# This macro allows you to maintain you geoaching databases by allowing you to # 
+# execute the following actions:                                               #
+#   - Download new pocket queries                                              #
+#   - Perform a status update for caches that haven't been updated is a        #
+#     specified number of days                                                 #
+#   - Move found caches to another database or delete them                     #
+#   - Move archived caches to another database or delete them                  #
+#   - Run a macro after the Housekeeping macro completes                       #
+################################################################################
+
+################################################################################
+# Version History                                                              #
+################################################################################
+# Version	Date		Description                                            #
+# -------	----------  ------------------------------------------------------ #
+# 0.0.01	2012-08-13	Initial public release                                 #
+################################################################################
+
+# MacVersion = 0.0.01
+# MacDescription = Database maintenance
+# MacAuthor = TwinTraveller
+# MacFileName = Housekeeping.gsk
+# MacUrl = 
+
+################################################################################
+	
+Option Explicit=Yes
+VSub Status=Off
+
+#*******************************************************************************
+# Declare variables
+#*******************************************************************************
+
+#Macro flow variables
+Declare Var=$bCancelMacro Type=Boolean
+Declare Var=$bMacroComplete Type=Boolean
+Declare Var=$bUserSettingsFile Type=Boolean
+Declare Var=$sFormAction Type=String
+
+#User settings variables
+Declare Var=$chkDownloadPQ Type=Boolean
+Declare Var=$chkPQSummary Type=Boolean
+Declare Var=$chkStatusUpdate Type=Boolean
+Declare Var=$edtUpdateDays Type=String
+Declare Var=$chkExcludeOwn Type=Boolean
+Declare Var=$rbnFoundNothing Type=Boolean
+Declare Var=$rbnFoundDelete Type=Boolean
+Declare Var=$rbnFoundMove Type=Boolean
+Declare Var=$rbnArchivedNothing Type=Boolean
+Declare Var=$rbnArchivedDelete Type=Boolean
+Declare Var=$rbnArchivedMove Type=Boolean
+Declare Var=$cmbMainDB Type=String
+Declare Var=$cmbFoundDB Type=String
+Declare Var=$cmbArchivedDB Type=String
+Declare Var=$cmbMacro Type=String
+
+# Temporary working variables
+Declare Var=$sDatabases Type=String
+Declare Var=$sOriginalDB Type=String
+Declare Var=$sSQLResult Type=String
+Declare Var=$sMacros Type=String
+Declare Var=$sCaption Type=String
+Declare Var=$sMessage Type=String
+Declare Var=$sSettings Type=String
+Declare Var=$sResult Type=String
+
+
+#*******************************************************************************
+# Macro was developed and tested using GSAK 8
+#*******************************************************************************
+
+VerCheck Version=8.1.0.0 (GSAK version 8.1.0.0 or above is required)
+
+
+#*******************************************************************************
+# Main execution starts below
+#*******************************************************************************
+
+GoSub Name=InitMacroSettings
+GoSub Name=InitUserSettings
+
+GoSub Name=InitMainForm
+
+GoSub Name=MainForm
+
+If $bMacroComplete
+	GoSub Name=SaveUserSettings
+EndIf
+
+
+#*******************************************************************************
+# Main execution ends above
+#*******************************************************************************
+
+
+################################################################################
+# Subroutines start below                                                      #
+################################################################################
+
+#*******************************************************************************
+# Initialize macro settings
+#*******************************************************************************
+BeginSub Name=InitMacroSettings
+	$bCancelMacro = False
+	$bMacroComplete = False
+	
+	$sOriginalDB = $_CurrentDatabase
+EndSub
+
+
+#*******************************************************************************
+# Initialize user settings
+#*******************************************************************************
+BeginSub Name=InitUserSettings
+	$bUserSettingsFile = False
+
+	# Read settings from file
+	MacSettings Type=R FileCheck=N
+
+	If $bUserSettingsFile
+		# Settings have been loaded from file
+		
+		If Not(DatabaseExists($cmbMainDB))
+			If DatabaseExists("Default")
+				$cmbMainDB = "Default"
+			Else
+				$cmbMainDB = $sOriginalDB
+			EndIf
+		EndIf
+		
+		If $rbnFoundMove And Not(DatabaseExists($cmbFoundDB))
+			If DatabaseExists("Found")
+				$cmbFoundDB = "Found"
+			Else
+				$rbnFoundNothing = True
+				$rbnFoundMove = False
+			EndIf
+		EndIf
+		
+		If $rbnArchivedMove And Not(DatabaseExists($cmbArchivedDB))
+			If DatabaseExists("Archived")
+				$cmbFoundDB = "Archived"
+			Else
+				$rbnArchivedDelete = True
+				$rbnArchivedMove = False
+			EndIf
+		EndIf
+	Else
+		# No settings file was found
+		# Initialize basic settings
+		
+		If DatabaseExists("Default")
+			$cmbMainDB = "Default"
+		Else
+			$cmbMainDB = $_CurrentDatabase
+		EndIf
+		
+		$chkDownloadPQ = True
+		$chkPQSummary = False
+		$chkStatusUpdate = True
+		$edtUpdateDays = "7"
+		$chkExcludeOwn = True
+		
+		If DatabaseExists("Found") 
+			$rbnFoundNothing = False
+			$rbnFoundDelete = False
+			$rbnFoundMove = True
+			$cmbFoundDB = "Found"
+		Else
+			$rbnFoundNothing = True
+			$rbnFoundDelete = False
+			$rbnFoundMove = False
+		EndIf
+		
+		If DatabaseExists("Archived") 
+			$rbnArchivedNothing = False
+			$rbnArchivedDelete = False
+			$rbnArchivedMove = True
+			$cmbArchivedDB = "Archived"
+		Else
+			$rbnArchivedNothing = False
+			$rbnArchivedDelete = True
+			$rbnArchivedMove = False		
+		EndIf
+		
+		$bUserSettingsFile = True
+	EndIf
+
+EndSub
+
+
+#*******************************************************************************
+# Save user settings
+#*******************************************************************************
+BeginSub Name=SaveUserSettings
+	MacSettings Type=S Vars=bUserSettingsFile,cmbMainDB,chkDownloadPQ,chkPQSummary,chkStatusUpdate,edtUpdateDays,chkExcludeOwn,rbnFoundNothing,rbnFoundDelete,rbnFoundMove,cmbFoundDB,rbnArchivedNothing,rbnArchivedDelete,rbnArchivedMove,cmbArchivedDB,cmbMacro
+EndSub
+
+
+#*******************************************************************************
+# Initialize main form
+#*******************************************************************************
+BeginSub Name=InitMainForm
+	# Update form title with version number
+	$frmMain = EditForm($frmMain,"frmMain","Caption","Housekeeping " + MacHeader("MacVersion"))
+	
+	# Populate dropdown for database selection
+	$sDatabases = SysInfo("Databases")
+	$frmMain = EditForm($frmMain,"cmbMainDB","Values",$sDatabases)
+	$frmMain = EditForm($frmMain,"cmbFoundDB","Values",$sDatabases)
+	$frmMain = EditForm($frmMain,"cmbArchivedDB","Values",$sDatabases)
+	
+	# Enable or disable controls according to user settings
+	$frmMain = EditForm($frmMain,"chkPQSummary","Enabled",BoolToStr($chkDownloadPQ,"Yes","No"))
+	$frmMain = EditForm($frmMain,"edtUpdateDays","Enabled",BoolToStr($chkStatusUpdate,"Yes","No"))
+	$frmMain = EditForm($frmMain,"cmbFoundDB","Enabled",BoolToStr($rbnFoundMove,"Yes","No"))
+	$frmMain = EditForm($frmMain,"cmbArchivedDB","Enabled",BoolToStr($rbnArchivedMove,"Yes","No"))
+	
+	# Populate available macro's
+	$sSQLResult = SQLite("open", $_AppData + "\gsak.db3")
+	$sSQLResult = SQLite("sql","SELECT FileName FROM Macros WHERE FileName <> 'Housekeeping.gsk'")
+	$sMacros = "None;" + Replace($_NewLine,";",$sSQLResult)
+	$frmMain = EditForm($frmMain,"cmbMacro","Values",$sMacros)	
+	$sSQLResult = SQLite("close")
+EndSub
+
+
+#*******************************************************************************
+# Main form
+#*******************************************************************************
+BeginSub Name=MainForm
+	While Not($bCancelMacro) And Not($bMacroComplete)
+		$sFormAction = Form($frmMain,"")
+		BeginCase
+			Case $sFormAction = "chkDownloadPQ"
+				$frmMain = EditForm($frmMain,"chkPQSummary","Enabled",BoolToStr($chkDownloadPQ,"Yes","No"))
+			
+			Case $sFormAction = "chkStatusUpdate"
+				$frmMain = EditForm($frmMain,"edtUpdateDays","Enabled",BoolToStr($chkStatusUpdate,"Yes","No"))
+			
+			Case $sFormAction = "rbnFoundNothing" Or $sFormAction = "rbnFoundDelete" Or $sFormAction = "rbnFoundMove"
+				$frmMain = EditForm($frmMain,"cmbFoundDB","Enabled",BoolToStr($rbnFoundMove,"Yes","No"))
+			
+			Case $sFormAction = "rbnArchivedNothing" Or $sFormAction = "rbnArchivedDelete" Or $sFormAction = "rbnArchivedMove"
+				$frmMain = EditForm($frmMain,"cmbArchivedDB","Enabled",BoolToStr($rbnArchivedMove,"Yes","No"))
+			
+			Case $sFormAction = "btnOK"
+				BeginCase
+					Case NumToStr(Val($edtUpdateDays)) <> $edtUpdateDays
+						$sCaption = "Error"
+						$sMessage = "Status Update days is not numeric." 
+						MsgOK Msg=$sMessage Caption=$sCaption
+						
+					Case Val($edtUpdateDays) <= 0
+						$sCaption = "Error"
+						$sMessage = "Status Update days be greater than or equal to 1." 
+						MsgOK Msg=$sMessage Caption=$sCaption
+					Otherwise
+						GoSub Name=PerformHousekeeping
+						$bMacroComplete = True
+				EndCase
+				
+			Case $sFormAction = "btnCancel" Or $sFormAction = "SystemExit"
+				$bCancelMacro = True
+		EndCase
+	EndWhile
+EndSub
+
+
+#*******************************************************************************
+# Perform Housekeeping
+#*******************************************************************************
+BeginSub Name=PerformHousekeeping
+	# Initialize Result
+	$sResult = ""
+
+	# Switch to main database
+	Database Name=$cmbMainDB Action=Select
+
+	# Download PQ to main database
+	If $chkDownloadPQ
+		ShowStatus Msg="Downloading Pocket Queries..." Title="Housekeeping in Progress..."
+	
+		# Settings for GPX file load
+		$sSettings = Replace("[PLH_MainDB]", $cmbMainDB, $LoadTemplate, False)
+		$sSettings = Replace("[PLH_PQSummary]", BoolToStr($chkPQSummary,"True","False"), $sSettings, False)
+		$sSettings = Replace("[PLH_FilePath]", $_AppData + "\PQDownloads\*.*", $sSettings, False)
+		MacroSet Dialog=Load VarName=$sSettings
+		
+		# Settings for PQ download
+		$sSettings = Replace("[PLH_PQDownloadsFolder]", $_AppData + "\PQDownloads", $PqTemplate, False)
+		MacroSet Dialog=PqLoad VarName=$sSettings
+		GCGetPQ Settings=<macro>
+	EndIf
+	
+	# Process Status Update for overdue caches
+	If $chkStatusUpdate
+		ShowStatus Msg="Running Status Update..." Title="Housekeeping in Progress..."
+	
+		$_SQL = "JulianDay('Now') - JulianDay(LastGPXDate) > " + $edtUpdateDays
+		MFilter Where=$_SQL
+		If $_FilterCount > 0
+			GcStatusCheck Scope=Filter ShowSummary=N
+		EndIf
+	EndIf
+	
+	# Process Found caches
+	If Not($rbnFoundNothing)
+		ShowStatus Msg="Processing Found Caches..." Title="Housekeeping in Progress..."
+	
+		$_SQL = "Found = 1"
+		If $chkExcludeOwn
+			$_SQL = $_SQL + " and IsOwner = 0"
+		EndIf
+		MFilter Where=$_SQL
+		If $_FilterCount > 0
+			$sResult = NumToStr($_FilterCount) + " Found caches "
+			
+			BeginCase
+				Case $rbnFoundDelete
+					$sSettings = $DeleteTemplate
+					MacroSet Dialog=Delete VarName=$sSettings
+					Delete Settings=<macro>
+					
+					$sResult = $sResult + "deleted"
+					
+				Case $rbnFoundMove
+					$sSettings = Replace("[PLH_MoveCopyTo]", $cmbFoundDB, $MoveCopyTemplate, False)
+					MacroSet Dialog=MoveCopy VarName=$sSettings
+					MoveCopy Settings=<macro>
+
+					$sResult = $sResult + "moved from " + $cmbMainDB + " to " + $cmbFoundDB
+
+					# Switch back to main database
+					Database Name=$cmbMainDB Action=Select
+			EndCase
+		EndIf
+	EndIf
+	
+	# Process Archived caches
+	If Not($rbnArchivedNothing)
+		ShowStatus Msg="Processing Archived Caches..." Title="Housekeeping in Progress..."
+	
+		$_SQL = "Archived = 1 and Found=0"
+		If $chkExcludeOwn
+			$_SQL = $_SQL + " and IsOwner = 0"
+		EndIf
+		MFilter Where=$_SQL
+		If $_FilterCount > 0
+			If $sResult = ""
+				$sResult = NumToStr($_FilterCount) + " Archived caches "
+			Else
+				$sResult = $sResult + $_NewLine + NumToStr($_FilterCount) + " Archived caches "
+			EndIf
+			
+			BeginCase
+				Case $rbnArchivedDelete
+					$sSettings = $DeleteTemplate
+					MacroSet Dialog=Delete VarName=$sSettings
+					Delete Settings=<macro>
+					
+					$sResult = $sResult + "deleted"
+					
+				Case $rbnArchivedMove
+					$sSettings = Replace("[PLH_MoveCopyTo]", $cmbArchivedDB, $MoveCopyTemplate, False)
+					MacroSet Dialog=MoveCopy VarName=$sSettings
+					MoveCopy Settings=<macro>
+
+					$sResult = $sResult + "moved from " + $cmbMainDB + " to " + $cmbArchivedDB
+
+					# Switch back to main database
+					Database Name=$cmbMainDB Action=Select
+				EndCase
+		EndIf
+	EndIf
+	
+	If $sResult = ""
+		$sResult = "No caches were moved or deleted"
+	EndIf
+	
+	ShowStatus Msg="Done" Title="Housekeeping in Progress..." Display=Off
+	MsgOK Msg=$sResult Caption="Result"
+	
+	# Call additional macro if selected
+	If $cmbMacro <> "None"
+		VSub Status=On
+		Macro File=$cmbMacro VarScope=Local
+		VSub Status=Off
+	EndIf
+
+	# Switch back to database that was open when launching the macro
+	Database Name=$sOriginalDB Action=Select
+
+EndSub
+
+
+
+################################################################################
+# Template definitions start below                                             #
+################################################################################
+
+#*******************************************************************************
+# Template for PQ Download
+#*******************************************************************************
+<Data> VarName=$PqTemplate
+[TfmgcGetPq]
+grpLoad.CheckBoxAction=caDisable
+grpLoad.CheckBoxAllowGrayed=False
+grpLoad.CheckBoxChecked=True
+grpLoad.CheckBoxHint=
+grpLoad.CheckBoxPosition=cpLeft
+grpLoad.CheckBoxState=cbChecked
+grpLoad.CheckBoxThemed=True
+grpLoad.CheckBoxVisible=True
+cbxLoadSettings.Text=<macro>
+edtFolder.Text=[PLH_PQDownloadsFolder]
+cbxMatch.Text=Contains
+cbxSettings.Text=... Last active
+edtMatch.Text=
+chkIgnore.Checked=True
+grpMatch.CheckBoxAction=caDisable
+grpMatch.CheckBoxAllowGrayed=False
+grpMatch.CheckBoxChecked=False
+grpMatch.CheckBoxHint=
+grpMatch.CheckBoxPosition=cpLeft
+grpMatch.CheckBoxState=cbUnchecked
+grpMatch.CheckBoxThemed=True
+grpMatch.CheckBoxVisible=True
+chkDownload.Checked=True
+<EndData>
+
+
+#*******************************************************************************
+# Template for PQ Load
+#*******************************************************************************
+<Data> VarName=$LoadTemplate
+[TfmGpxLoad]
+chkGpx.Checked=True
+chkLoc.Checked=True
+chkZip.Checked=True
+cbxZap.Checked=False
+chkClearUser.Checked=False
+chkDefault.Checked=False
+chkDelete.Checked=True
+chkSetUser.Checked=False
+chkUserOnly.Checked=False
+rbtAddOnly.Checked=False
+rbtAlways.Checked=True
+rbtExists.Checked=False
+rbtExtraChild.Checked=True
+rbtExtraExclude.Checked=False
+rbtExtraParent.Checked=False
+rbtFoundAlways.Checked=True
+rbtFoundNever.Checked=False
+rbtFoundOnly.Checked=False
+rbtNewer.Checked=False
+rbtLoadFile.Checked=True
+rbtLoadFolder.Checked=False
+edtFoundSymbol.Text=Geocache Found
+chkUpdateSymbol.Checked=True
+cbxDataBases.Text=[PLH_MainDB]
+edtCounty.Text=
+cbxFileType.Text=GPX/LOC (including inside zip)
+edtState.Text=
+chkKeepFocus.Checked=False
+chkDecodeEntity.Checked=True
+chkSummary.Checked=[PLH_PQSummary]
+edtFolder.Text=
+fnmFrom.Text=[PLH_FilePath]
+[General]
+cbxlock.Text=
+chkSaveFile.Checked=False
+chkSaveDatabase.Checked=False
+<EndData>
+
+
+#*******************************************************************************
+# Template for Move/Copy
+#*******************************************************************************
+<Data> VarName=$MoveCopyTemplate
+[TfmMove]
+cbxDestination.Text=[PLH_MoveCopyTo]
+rbtAdd.Checked=True
+rbtAddFlag.Checked=False
+rbtAddIgnore.Checked=False
+rbtCopy.Checked=False
+rbtExistIgnore.Checked=False
+rbtFlagOnly.Checked=False
+rbtMove.Checked=True
+rbtReplace.Checked=True
+rbtReplaceFlag.Checked=False
+chkDisplay.Checked=True
+chkAddIgnore.Checked=False
+chkMergeLogs.Checked=False
+chkMergeWaypoints.Checked=False
+rbtCustomHalt.Checked=False
+rbtCustomIgnore.Checked=False
+rbtCustomSync.Checked=True
+<EndData>
+
+
+#*******************************************************************************
+# Template for Delete
+#*******************************************************************************
+<Data> VarName=$DeleteTemplate
+[TfmDelete]
+cbxStop.Checked=False
+rbtFilter.Checked=True
+rbtFlagged.Checked=False
+rbtOnly.Checked=False
+rbtAll.Checked=False
+chkKeepLock.Checked=False
+<EndData>
+
+
+################################################################################
+# Template definitions end above                                               #
+################################################################################
+
+
+################################################################################
+# Form definitions start below                                                 #
+################################################################################
+
+#*******************************************************************************
+# Main form used by Houskeeping macro
+#*******************************************************************************
+<Data> VarName=$frmMain
+Name = frmMain
+  Type = Form
+  Caption = Housekeeping
+  Height = 485
+  Width = 299
+  
+ Name = gbxMain
+  Type = Groupbox
+  Height = 125
+  Left = 8
+  Top = 10
+  Width = 275
+  Taborder = 0
+
+Name = lblMainDB
+  Type = Label
+  Container = gbxMain
+  Height = 16
+  Left = 10
+  Top = 15
+  Width = 80
+  Caption = Database to maintain
+
+Name = cmbMainDB
+  Type = Combobox
+  Container = gbxMain
+  Height = 21
+  Left = 120
+  Top = 12
+  Width = 145
+  Taborder = 0
+
+Name = chkDownloadPQ
+  Type = Checkbox
+  Container = gbxMain
+  ExitOnChange = Yes
+  Height = 20
+  Left = 40
+  Top = 38
+  Width = 98
+  Taborder = 1
+  Caption = Download PQ
+
+Name = chkPQSummary
+  Type = Checkbox
+  Container = gbxMain
+  Height = 20
+  Left = 60
+  Top = 58
+  Width = 120
+  Taborder = 2
+  Caption = Show PQ Summary
+
+Name = chkStatusUpdate
+  Type = Checkbox
+  Container = gbxMain
+  ExitOnChange = Yes
+  Height = 20
+  Left = 40
+  Top = 78
+  Width = 190
+  Taborder = 3
+  Caption = Status Update after         days
+
+Name = edtUpdateDays
+  Type = Edit
+  Container = gbxMain
+  Height = 21
+  Left = 153
+  Top = 79
+  Width = 20
+  Taborder = 4
+  
+Name = chkExcludeOwn
+  Type = Checkbox
+  Container = gbxMain
+  Height = 20
+  Left = 40
+  Top = 98
+  Width = 190
+  Taborder = 5
+  Caption = Exclude caches placed by you
+
+Name = gbxFound
+  Type = Groupbox
+  Caption = Action for Found caches
+  Height = 95
+  Left = 8
+  Top = 145
+  Width = 275
+  Taborder = 6
+
+Name = rbnFoundNothing
+  Type = Radiobutton
+  Container = gbxFound
+  ExitOnChange = Yes
+  Height = 20
+  Left = 10
+  Top = 20
+  Width = 98
+  Taborder = 0
+  Caption = Do Nothing
+
+Name = rbnFoundDelete
+  Type = Radiobutton
+  Container = gbxFound
+  ExitOnChange = Yes
+  Height = 20
+  Left = 10
+  Top = 40
+  Width = 65
+  Taborder = 1
+  Caption = Delete
+
+Name = rbnFoundMove
+  Type = Radiobutton
+  Container = gbxFound
+  ExitOnChange = Yes
+  Height = 20
+  Left = 10
+  Top = 60
+  Width = 120
+  Taborder = 2
+  Caption = Move to database
+
+Name = cmbFoundDB
+  Type = Combobox
+  Container = gbxFound
+  Height = 21
+  Left = 120
+  Top = 60
+  Width = 145
+  Taborder = 3
+
+Name = gbxArchived
+  Type = Groupbox
+  Caption = Action for Archived caches
+  Height = 95
+  Left = 8
+  Top = 250
+  Width = 275
+  Taborder = 7
+
+Name = rbnArchivedNothing
+  Type = Radiobutton
+  Container = gbxArchived
+  ExitOnChange = Yes
+  Height = 20
+  Left = 10
+  Top = 20
+  Width = 98
+  Taborder = 0
+  Caption = Do Nothing
+
+Name = rbnArchivedDelete
+  Type = Radiobutton
+  Container = gbxArchived
+  ExitOnChange = Yes
+  Height = 20
+  Left = 10
+  Top = 40
+  Width = 65
+  Taborder = 1
+  Caption = Delete
+
+Name = rbnArchivedMove
+  Type = Radiobutton
+  Container = gbxArchived
+  ExitOnChange = Yes
+  Height = 20
+  Left = 10
+  Top = 60
+  Width = 120
+  Taborder = 2
+  Caption = Move to database
+
+Name = cmbArchivedDB
+  Type = Combobox
+  Container = gbxArchived
+  Height = 21
+  Left = 120
+  Top = 60
+  Width = 145
+  Taborder = 3
+
+Name = gbxMacro
+  Type = Groupbox
+  Caption = Run macro after Housekeeping
+  Height = 55
+  Left = 8
+  Top = 355
+  Width = 275
+  Taborder = 8
+
+Name = cmbMacro
+  Type = Combobox
+  Container = gbxMacro
+  Height = 21
+  Left = 10
+  Top = 22
+  Width = 255
+  Taborder = 0
+
+Name = btnOK
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 123
+  Top = 420
+  Width = 75
+  Taborder = 9
+  Caption = OK
+
+Name = btnCancel
+  Type = Button
+  Escape = Yes
+  Height = 25
+  Left = 208
+  Top = 420
+  Width = 75
+  Taborder = 10
+  Caption = Cancel
+<EndData>
+
+################################################################################
+# Form definitions end above                                                   #
+################################################################################

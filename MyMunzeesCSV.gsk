@@ -1,5 +1,5 @@
 #*******************************************
-# MacVersion = 2.2.5
+# MacVersion = 2.2.6
 # MacDescription = Get and load Munzees CSV 
 # MacAuthor = baerti
 # MacFileName = MyMunzeesCSV.gsk
@@ -47,8 +47,11 @@
 #             Added special_logo from csv in User Data 3
 #             Added the logo name into Symbol Name
 # ver 2.2.4   Fixed errors because changes on the website
-# ver 2.2.5   Fixed error with date conversion
+# ver 2.2.5   Fixed error with date conversion for "Found by me"
 #             Added button for "Update my Founds"
+# ver 2.2.6   Removed the button and checkbox "Update my captures"
+#             Moved the "deployed_at" date to placed date
+
 
 VERCHECK Version=8.0.1.26
 
@@ -150,11 +153,11 @@ BEGINSUB Name=MainForm
 			CASE $FormExit = "DelayExit"
         GOSUB Name=CheckAndGetMunzees
 				
-			CASE $FormExit = "btnUpdateMyFounds"
-				CANCELFILTER
-				GOSUB Name=SaveMacSettings
-				GOSUB Name=SetCacheType 
-        GOSUB Name=UpdateCapturedMunzees
+#			CASE $FormExit = "btnUpdateMyFounds"
+#				CANCELFILTER
+#				GOSUB Name=SaveMacSettings
+#				GOSUB Name=SetCacheType 
+#       GOSUB Name=UpdateCapturedMunzees
 				
 			CASE  $FormExit = "imgDownloadNow"
 				GOSUB Name=DownloadNow
@@ -345,10 +348,10 @@ BEGINSUB Name=GetMunzees
 
 	SHOWSTATUS Display=Off
 
-# Update FoundByMeDate and Found Status
-  IF $chkUpdFounds = TRUE 
-  	GOSUB Name=UpdateCapturedMunzees
-  ENDIF 		
+## Update FoundByMeDate and Found Status
+#  IF $chkUpdFounds = TRUE 
+#  	GOSUB Name=UpdateCapturedMunzees
+#  ENDIF 		
 
 	$sCountries = GetCountry("cb")
 	$sStates    = GetState("sb")
@@ -398,17 +401,22 @@ BEGINSUB Name=SplitCSV
 	$sCaptureTypeID = CsvGet("*","$nRow,10")
 	$sSpecialLogo   = CsvGet("*","$nRow,11")
 	
-  $sEspression    = "/images/pins/(.*).png"
-	$sSymbolNameCaptureTypeID = RegExSub($sEspression,$sCaptureTypeID,1,1)
+#  $sEspression    = "/images/pins/(.*).png"
+  $sEspression    = "(.*)/(.*).png"
+	$sSymbolNameCaptureTypeID = RegExSub($sEspression,$sCaptureTypeID,1,2)
 	
-  $sEspression    = "/images/logo/(.*).png"
-	$sSymbolNameSpecialLogo = RegExSub($sEspression,$sSpecialLogo,1,1)
+#  $sEspression    = "/images/logo/(.*).png"
+  $sEspression    = "(.*)/(.*).png"
+	$sSymbolNameSpecialLogo = RegExSub($sEspression,$sSpecialLogo,1,2)
 
 	$sCreatedAt     = Substr($sCreatedAt,1,10)
 	$sCreatedAt			= Replace("-","",$sCreatedAt)
-
+#DEBUG Status=On
 	$sDeployedAt		= Substr($sDeployedAt,1,10)
 	$sDeployedAt		= Replace("-","",$sDeployedAt)
+	IF $sDeployedAt = "00000000" OR $sDeployedAt = "" 
+		$sDeployedAt = $sCreatedAt
+	ENDIF
 	
 	$sLatitude      = NumToStr(Round(Val($sLatitude),10))
 	$sLatitude			= Replace(",",".",$sLatitude)
@@ -464,9 +472,18 @@ BEGINSUB Name=ModifyDatabase
 
 	$d_code							= $sCode     			                   
 	$d_latitude					= $sLatitude                        
-	$d_longitude 				= $sLongitude                       
-	$d_PlacedDate				= StringToDate($sCreatedAt)
-	$d_ShortDescription	= $sNotes                           
+	$d_longitude 				= $sLongitude  
+	                     
+# $d_PlacedDate				= StringToDate($sCreatedAt)
+  IF $sDeployedAt <> "00000000"
+	  $d_PlacedDate				= StringToDate($sDeployedAt)
+  ENDIF
+#	IF $d_PlacedDate = ""
+#		$d_PlacedDate			= StringToDate($sCreatedAt)
+#	ENDIF 
+	
+	$d_ShortDescription	= $sNotes    
+	$d_Hints          	= $sNotes                       
 	$d_Name     				= $sFriendlyName                    
 	$d_PlacedBy					= $sOwnerName
 	$d_url							= "http://www.munzee.com/m/" + $sUsername + "/" + $sMunzeeID
@@ -474,7 +491,8 @@ BEGINSUB Name=ModifyDatabase
   $d_Container				= "Unknown"  
   $d_Status 					= "A"    # Available
   $d_CacheType        = $sCacheType
-  $d_User4            = $sCaptureTypeID
+#  $d_User4            = $sCaptureTypeID
+  $d_User4            = $sSymbolNameCaptureTypeID
   $d_User3            = $sSpecialLogo
  	
 # 	IF $sSymbolNameSpecialLogo <> ""
@@ -547,9 +565,6 @@ BEGINSUB Name=UpdateCapturedMunzees
 	$sUserData = Substr($sUserData,$nFromPos,$nLength)
 	
 ## Get Range of Captured Munzees	
-#	$sSearchString = "<div"
-#	$nPosition= AT($sSearchString,$sUserData)
-#	$sUserData = Substr($sUserData,$nPosition,$sUserDataLen)
 	$sSearchString = "</div"
 	$nPosition= AT($sSearchString,$sUserData)
 	$sUserData = Substr($sUserData,1,$nPosition+5)
@@ -561,7 +576,7 @@ BEGINSUB Name=UpdateCapturedMunzees
   ENDIF
 	
 	$nCntUserLoop = 0
-	
+	  	DEBUG status=on
 	WHILE $nCntUserLoop < $nNumberOfCaptured
 		
 		$nCntUserLoop = $nCntUserLoop + 1
@@ -577,6 +592,27 @@ BEGINSUB Name=UpdateCapturedMunzees
 		$sUserCapturedOwner      = RegExSub($sEspression,$sUserData,$nCntUserLoop,1)
 		$sUserCapturedMunzeeID   = RegExSub($sEspression,$sUserData,$nCntUserLoop,2)
 
+# Grap Capture Data
+    $nPosCaptureDataStart = RegExPos($sEspression,$sUserData,$nCntUserLoop)
+    $sCaptureData = Substr($sUserData,$nPosCaptureDataStart,Len($sUserData))
+    $sEspression = "</tr>"
+    $nPosCaptureDataEnd = RegExPos($sEspression,$sCaptureData,1)    
+    $sCaptureData = Substr($sCaptureData,1,$nPosCaptureDataEnd+6)
+    $sCaptureData = RegExReplace("\x0a",$sCaptureData,"")
+    $sCaptureData = RegExReplace("\x0d",$sCaptureData,"")
+    $sEspression = ">.\s*?<"
+    $sCaptureData = RegExReplace($sEspression,$sCaptureData,"><")
+#   Bsp.: <td><a href='http://www.munzee.com/m/crazymikeymike/467/'>Peugot</a></td><td>Aug 1, 2012 6:38 AM CST</td><td></td></tr>  
+    $sEspression = "<td><a href='http://www.munzee.com/m/(.*)/(.*)/'>(.*)</a></td><td>(.*) (.*), (.*) (.*) (.*) (.*)</td><td></td></tr>"
+    $sFriendlyName = RegExSub($sEspression,$sCaptureData,1,3)
+    $sShortNameMonth  = RegExSub($sEspression,$sCaptureData,1,4)
+    $sCaptureDate_Day  = RegExSub($sEspression,$sCaptureData,1,5)
+    $sCaptureDate_Year = RegExSub($sEspression,$sCaptureData,1,6)
+    $sCaptureDate_Year = Left($sCaptureDate_Year,4)
+    GOSUB Name=ConvertMonth
+    $sCaptureDate = $sCaptureDate_Year + "-" + $sConvertedMonth + "-" + $sCaptureDate_Day
+
+
 		$sUserCapturedOwnerURL = "http://www.munzee.com/m/" + $sUserCapturedOwner  + "/" + $sUserCapturedMunzeeID 
 
   	$sCode = $sUserCapturedOwner + "/" + $sUserCapturedMunzeeID
@@ -589,6 +625,13 @@ BEGINSUB Name=UpdateCapturedMunzees
 			GOSUB Name=CreateDummyMunzee
 			GOSUB Name=ModifyDatabase
   	ENDIF 	
+  	
+  	DEBUG status=on
+  	
+  	IF $d_FoundByMeDate = $dInitialDate
+  		GOSUB NaMe=SetFoundDate
+  	ENDIF
+  	
   	
   	$nCntURL = RegExCount($sUserCapturedOwnerURL + "/",$sUserData)  	
 	   	
@@ -624,8 +667,20 @@ BEGINSUB Name=GetFoundDate
 
 # Friendly Name	
 # Bsp.: <h1>001-Mirecourt</h1>
+#	$sEspression   = "<h1>(.*)</h1>"
+#	$sFriendlyName = RegExSub($sEspression,$sMunzeeData,1,1) 
+	$sSearchStringStart = "<h1>"
+	$sSearchStringEnd   = "</h1>"
+	$sStringData = $sMunzeeData
+	GOSUB Name=GetString
+	DEBUG status=on
+	IF $sStringData = "*error" AND Substr($sCode,1,7) = "munzee/"
+		DEBUG status=on
+    $sStringData = "<h1>Page not found</h1>"
+  ENDIF
 	$sEspression   = "<h1>(.*)</h1>"
-	$sFriendlyName = RegExSub($sEspression,$sMunzeeData,1,1)
+	$sFriendlyName = RegExSub($sEspression,$sStringData,1,1)
+
 
 # Creator
 # Bsp.: <li><h5>Creator: <small><a href="/m/Louboey/">Louboey</a></small></h5></li>
@@ -650,7 +705,8 @@ BEGINSUB Name=GetFoundDate
   	$sDeployedAt_Year = "00"
   	$sConvertedMonth  = "0000"
   ENDIF
-  $sDeployedAt = $sDeployedAt_Year + "-" + $sConvertedMonth + "-" + $sDeployedAt_Day
+#  $sDeployedAt = $sDeployedAt_Year + "-" + $sConvertedMonth + "-" + $sDeployedAt_Day
+  $sDeployedAt = $sDeployedAt_Year + $sConvertedMonth + $sDeployedAt_Day
 
 # Location
 # Bsp.: <li><h5>Location: <small>Bonn, North Rhine-Westphalia Germany</small></h5></li>
@@ -1193,11 +1249,37 @@ BEGINSUB Name=Declarations
 
 ENDSUB 
 
-#------------------------------------------------------------------------------	
+#------------------------------------------------------------------------------
+BEGINSUB Name=GetString
+#------------------------------------------------------------------------------
 
+#	$nPosition = AT($sSearchStringStart,$sStringData)
+	$nPosition = RegExPos($sSearchStringStart,$sStringData,1)
+	$nFromPos = $nPosition       
+	$nLength  = len($sStringData) - $nPosition #- len($sSearchString) + 1
+	$sStringData = Substr($sStringData,$nFromPos,$nLength)
+
+	$nPosition= RegExPos($sSearchStringEnd,$sStringData,1)
+	$sStringData = Substr($sStringData,1,$nPosition+Len($sSearchStringEnd)+1)
+
+  $sStringData = RegExReplace("\x0a",$sStringData,"") 
+  $sStringData = RegExReplace("\x0d",$sStringData,"") 
+  
+ENDSUB  		
+
+#------------------------------------------------------------------------------
+BEGINSUB Name=SetFoundDate
+#------------------------------------------------------------------------------
+
+  $d_FoundByMeDate = $sCaputureDate
+	
+ENDSUB 
+
+
+#------------------------------------------------------------------------------	
 <Data> VarName=$form
 #********************************************************************
-# Form generated by GSAK form designer on Thu 03-May-2012 13:16:50
+# Form generated by GSAK form designer on Fri 17-Aug-2012 22:37:30
 #********************************************************************
 
 Name = Form1
@@ -1205,7 +1287,7 @@ Name = Form1
   Caption = Load Munzees to GSAK
   Color = 15724527
   Height = 449
-  Top = 0
+  Top = 283
   Width = 778
 
 Name = Groupbox1
@@ -1235,21 +1317,13 @@ Name = Groupbox3
   Width = 369
   Taborder = 6
 
-Name = Groupbox4
-  Type = Groupbox
-  Height = 33
-  Left = 8
-  Top = 264
-  Width = 369
-  Taborder = 7
-
 Name = Groupbox5
   Type = Groupbox
   Height = 65
   Left = 8
-  Top = 304
+  Top = 264
   Width = 369
-  Taborder = 8
+  Taborder = 7
 
 Name = btnCancel
   Type = Button
@@ -1350,16 +1424,6 @@ Name = MunzeeLogo
   Source = Macro
   Top = 8
   Width = 361
-
-Name = chkUpdFounds
-  Type = Checkbox
-  Container = Groupbox4
-  Height = 20
-  Left = 8
-  Top = 8
-  Width = 129
-  Taborder = 0
-  Caption = Update my Founds
 
 Name = chkMacroRun
   Type = Checkbox
@@ -1529,16 +1593,11 @@ Name = txtOnlyCountry
   Width = 281
   Taborder = 11
 
-Name = btnUpdateMyFounds
-  Type = Button
-  Height = 25
-  Left = 242
-  Top = 376
-  Width = 225
-  Taborder = 17
-  Caption = Update my Founds
-
 <enddata>
+
+
+
+
 
 
 
@@ -1627,4 +1686,3 @@ vNRbvR2RApm5ANlrmdrbAN3LnClrYL3iO74gcQN7GqQpS77qu74UkQLnS6Phy77yO78TcQQosKumigLT
 S7/8278EIbX4u6kqkLP+W8AFbAQzkLDeWrLZWq0z0IEGHMES3D83MAMe0ACZ2gAeMAM3sL8T/MEgHMIi
 PMIkXMLVGxAAOw==
 <enddata>
-
