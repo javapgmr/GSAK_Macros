@@ -1,21 +1,33 @@
 ###################################################################################
 # MacFileName    = Nuvi_GPX_by_CT.Gsk
 # MacAuthor      = jjreds - now maintained by Red Roo (Wayne)
-# MacVersion     = 1.00 beta
+# MacVersion     = 1.05 beta
 # MacDescription = Export GPX files by cache type w/spoiler pics for POI Loader
 # MacUrl         = http://gsak.net/board/index.php?showtopic=21209&view=findpost&p=
-# MacRecognition = jjreds;cron;pilotsnipes;Clyde;Kai Team;Lignumaqua;
+# MacRecognition = jjreds;cron;pilotsnipes;Clyde;Kai Team;Lignumaqua;Vincent05
+###################################################################################
+#  Change History...
+# ===================
+# v1.00  Now requires Gsak Version 8.1.0.10 or later - Gsak v7 is not supported anymore.
+#        Removed the last deprecated function (DbToSqLite)
+#        Renamed the Sql database to resolve possible problems in the future when addressing the caches table (this also makes the code easier to understand).
+#        Renamed all instances of Sql tables to specify the database in use.
+#        Buchholtz mode <Alt B> button added to the main form. (not publicised)
+#        The 'Process using current filter only' checkbox is now disabled at startup when there is no active filter.
+# v1.02  Umlaut Replacement is now a selectable option - default is Yes (a previous standard)
+#        Comma  Replacement is now a selectable option - default is Yes (a previous standard)
+#        Commas are not replaced in the name section.
+#        Cache Attributes are now included after the Cache Description.
+#        Fixed a bug related to saving Custom Alerts where the database was already attached.
+# v1.03  Another attempt to fix the bug in Custom Alerts settings 
+# v1.04  Fixed Custom Alerts database detach when exiting the macro (many locations). 
+# v1.05  Fixed bug when changing databases caused the macro to crash.
+#        
 ###################################################################################
 #  Changes in this version
 # =========================
-# Now requires Gsak Version 8.1.0.10 or later - Gsak v7 is not supported anymore.
-# Removed the last deprecated function (DbToSqLite)
-# Renamed the Sql database to resolve possible problems in the future when addressing the caches table (this also makes the code easier to understand).
-# Renamed all instances of Sql tables to specify the database in use.
-# Buchholtz mode <Alt B> button added to the main form.
-# The 'Process using current filter only' checkbox is now disabled at startup when there is no active filter.
-#
-# ##################################################################################
+# 
+###################################################################################
 #  The 'LIST'...
 # ===================================================
 # Use Gsak GRABIMAGES (ImageSync) and current Grabbed Images instead of Spoilersync.
@@ -24,6 +36,7 @@
 # Increase the size of the Nuvi icons. - this is unlikely since it is controlled by Garmin but I will look into it at some stage.
 #
 # Extra data to be shown as first log e.g. FavPoints: %caches_favpoints $_newline Finds: %NumberOfLogs - now commented out for DevUser only (2017) *
+# It would be great to have a text version of the cache attributes somewhere. Maybe as a enhancement of the user notes (Sven)
 #
 ###################################################################################
 #  Development Notes...
@@ -78,10 +91,10 @@
 
    GOSUB Name=Initialize
 #   $GsakMv=Int(Val($_Version))
-   IF $DevUser
-     $AdvancedOptionMenu=EditForm($AdvancedOptionMenu,"AdvancedOptionMenu","Width","765")                # Only ever read at startup
+#   IF $DevUser
+#     $AdvancedOptionMenu=EditForm($AdvancedOptionMenu,"AdvancedOptionMenu","Width","765")                # Only ever read at startup
 #     $MainMenuExpanded=EditForm($MainMenuExpanded,"MainMenuExpanded","Width","780")                      # Only ever read at startup
-   ENDIF 
+#   ENDIF
 
    SHOWSTATUS Msg="Loading Defaults - Please Wait  "
    GOSUB Name=LoadDefaults
@@ -111,18 +124,18 @@
 
      MACSETTINGS Type=R FileCheck=N
 
-     IF $AutoVchk
-       GOSUB Name=CheckUpdates
-     ENDIF 
 
-     IF $DevUser 
+     IF $DevUser
        $DevUser=FALSE
        GOSUB Name=ToggleDevelopmentMode
      ENDIF 
-     
      IF $BuchMode
-     	 $BuchMode=FALSE
+       $BuchMode=FALSE
        GOSUB Name=ToggleBuchholtzMode
+     ENDIF 
+
+     IF $AutoVchk
+       GOSUB Name=CheckUpdates
      ENDIF 
 
 # Set the Default Gpx file Output Path
@@ -198,7 +211,7 @@
      $SettingsList=REPLACE(";","~",$SettingsList)
      $MacroVersion=$Macro_Version
 
-     MACSETTINGS Type=S Vars=MacroVersion,RunCntr,SaveAlertType,POILpath,POILfile,GcFormatStr,waypointname,WmFormatStr,waymarkname,OutputPath,GPX_Output_Path,chkFound,chkUnavailable,chkOwned,nuvimodel,switchhintandlogs,Save_Proximity_Entered,GC_ID_String,MacroMode,POI_Icon,Alert_UOM,SQL_Alerts,Use_Custom_Sounds,Maxlogs,POI_Loader_Silent,GPSr_Search,LargeText,TextSize,TC_Icons,UseMyAlert,Slice_and_Dice,LoadSpoilers,SpoilerSyncPath,Delay,Summary,Volume,DisplayPOIdate,chkIncludeUserNote,Display_Logs,Use_Current_Filter,Ignore_Found_Archive,LoadFirstImage,ReverseHint,SettingsList,DecodeHint,OnlySpoiler,IgnoreNo,Recheck,Summary,CreateHTML,UserFlagChecked,LoadFirstImage,AutoVchk,ExternalMacro,BuildAllRaidGroup,StdExport,NewGpxFolder,DevUser,BuchMode
+     MACSETTINGS Type=S Vars=MacroVersion,RunCntr,SaveAlertType,POILpath,POILfile,GcFormatStr,waypointname,WmFormatStr,waymarkname,OutputPath,GPX_Output_Path,chkFound,chkUnavailable,chkOwned,nuvimodel,switchhintandlogs,Save_Proximity_Entered,GC_ID_String,MacroMode,POI_Icon,Alert_UOM,SQL_Alerts,Use_Custom_Sounds,Maxlogs,POI_Loader_Silent,GPSr_Search,LargeText,TextSize,TC_Icons,UseMyAlert,Slice_and_Dice,LoadSpoilers,SpoilerSyncPath,Delay,Summary,Volume,DisplayPOIdate,chkIncludeUserNote,Display_Logs,Use_Current_Filter,Ignore_Found_Archive,LoadFirstImage,ReverseHint,SettingsList,DecodeHint,OnlySpoiler,IgnoreNo,Recheck,Summary,CreateHTML,UserFlagChecked,LoadFirstImage,AutoVchk,ExternalMacro,BuildAllRaidGroup,StdExport,NewGpxFolder,DevUser,BuchMode,ReplaceUmlauts,ReplaceCommas
 
      $Scrub_It=$_CurrentDatabase
      GOSUB Name=ScrubSub
@@ -221,7 +234,7 @@
          CASE $SelectOption="DevBtn"
            GOSUB Name=ToggleDevelopmentMode
          CASE $SelectOption="BuchBtn"
-         	 GOSUB Name=ToggleBuchholtzMode
+           GOSUB Name=ToggleBuchholtzMode
          CASE $SelectOption="ok"                                                # 'Create GPX Files' button
            IF $LoadSpoilers
              GOSUB Name=CheckCustomField                                        # Create if necessary
@@ -237,19 +250,21 @@
              GOSUB Name=Run_POI_Loader
            ENDIF 
            GOSUB Name=RestoreFilter
-         CASE $SelectOption="cancel"
+         CASE $SelectOption="Quit"
            GOSUB Name=SaveDefaults
            IF $StartupFilter AND $Use_Current_Filter
              GOSUB Name=RestoreFilter
            ELSE 
              CANCELFILTER 
            ENDIF 
-           RETURN 
+     	     GOSUB Name=DetachAlertsDb
+           RETURN                                                             # Exits the macro
          CASE $SelectOption="DexAmp"
            GOSUB Name=DisplayExample
          CASE $SelectOption="ExtraOption"                                     # 'Advanced Options' button
            GOSUB Name=AdvancedOptions
          CASE $SelectOption="SystemExit" AND $DevUser
+     	     GOSUB Name=DetachAlertsDb
            CANCEL 
          CASE $SelectOption="GcFormats"
            $WaypointName=$GcFormats
@@ -260,6 +275,7 @@
          CASE $SelectOption="DB"
            IF $Db<>$_CurrentDatabase
              DATABASE Name=$DB
+             $DbAttached=FALSE
              GOSUB Name=Init_SQLite_DB
              IF $Use_Current_Filter AND ($_CurrentDatabase<>$StartupFolder)
                $Use_Current_Filter=FALSE
@@ -822,6 +838,7 @@
            CASE $Fx="NuviExit"
              EXITSUB 
            CASE $Fx="SystemExit" AND $DevUser
+     	       GOSUB Name=DetachAlertsDb
              CANCEL 
          ENDCASE 
        ENDWHILE 
@@ -1477,7 +1494,7 @@
      WHILE NOT($_EOL)
        IF $LoadSpoilers
          TRANSACTION Action=Begin
-         $Result=CustomPut("NuviGpxCtFlag","1","$d_Code")
+         $result=CustomPut("NuviGpxCtFlag","1","$d_Code")
          TRANSACTION Action=End
        ENDIF 
        $lineOut=""
@@ -1527,9 +1544,9 @@
          $psName = eval($waypointname)
        ENDIF 
 
-         IF $d_IsPremium                                            # Mark premium caches
-           $psname=$psname+"$_NewLine >> Premium Cache <<"
-         ENDIF 
+       IF $d_IsPremium                                            # Mark premium caches
+         $psname=$psname+"$_NewLine >> Premium Cache <<"
+       ENDIF 
 
 ## end of Addition by Red Roo
 
@@ -1596,13 +1613,13 @@
          ELSE # NUVI 1xxx/2xx/5xx/6xx/7xx/8xx/Oregon/Colorado/Montana
 
 ## Added by Red Roo - add Phone numbers if present to allow BlueTooth calling.
-             $TempStr=CustomGet("Phone")
-             IF Left($TempStr,7)<>"*Error*"
-               IF $TempStr<>""
-                 $Temp = Replace("@Email","$TempStr",$Temp,True)
-                 $Temp = Replace("Email","Phone",$Temp,True)
-               ENDIF 
+           $TempStr=CustomGet("Phone")
+           IF Left($TempStr,7)<>"*Error*"
+             IF $TempStr<>""
+               $Temp = Replace("@Email","$TempStr",$Temp,True)
+               $Temp = Replace("Email","Phone",$Temp,True)
              ENDIF 
+           ENDIF 
 ## Add create date to phone number field
 ## end of Addition
            IF NOT ($d_CacheType="Y") # Its a Geocache and not a Waymark
@@ -1987,11 +2004,14 @@
        $combdesc = $cachestat+$cacheinfo+"Description: $longandshortdesc<br><br>"
      ENDIF 
 
-#     IF $DevUser                        # Currently for development only - Include Extra Information as first log.
-#       $ExtraInfo=Eval("<font color=#000080 size=$Font4>Favourite Points: </font><font color=#000080size=$Font3>%caches_favpoints</font><br><br>")
-#       $Logs=$Logs+$ExtraInfo
-#     ENDIF
-
+     GOSUB Name=IncludeAttributes
+     IF $AttributeStr<>""
+       IF $LargeText
+         $combdesc=$combdesc+"<br><br><font color=#0F0CE9 size=$Font4>Attributes: </font><font size=$Font4>$AttributeStr</font><br><br>"
+       ELSE 
+         $combdesc=$combdesc+"<br><br><font color=#0F0CE9>Attributes: </font>$AttributeStr<br><br>"
+       ENDIF 
+     ENDIF 
 # Now output the logs
      TABLE Active=Logs scope=parent
      $lcount = 0
@@ -2026,7 +2046,7 @@
 # remove characters that may "upset" the nuvi in the hints - hints are stored 'decoded'
      IF $DecodeHint
        $Scrub_It=$d_Hints
-      ELSE
+     ELSE 
        $Scrub_It=ROT13($d_Hints)
      ENDIF 
      GOSUB Name=ScrubSub
@@ -2259,42 +2279,46 @@
    BEGINSUB Name=ScrubSub
      $Scrub_It = RegExReplace("&",$Scrub_It,"and")
      $Scrub_It = Replace($_Quote,"'",$Scrub_It,true)
-     $Scrub_It = Replace(","," ",$Scrub_It,true)
+     IF $ReplaceCommas
+       $Scrub_It = Replace(","," ",$Scrub_It,true)                   #  44 - now an individual option (Advanced Options Menu)
+     ENDIF 
      GOSUB Name=ScrubItCleaner
    ENDSUB 
 ###################################################################################
-   BEGINSUB Name=ScrubNameSub                 # Replace Umlaut Characters with an English letter equivalent
+   BEGINSUB Name=ScrubNameSub                               # Replace Umlaut/Accent characters with an English letter equivalent (to suit POI Loader and Nuvi's)
      $Scrub_It = RegExReplace("&",$Scrub_It,"and")          #  38
      $Scrub_It = Replace($_Quote,"'",$Scrub_It,true)        #  34
-     $Scrub_It = Replace(","," ",$Scrub_It,true)            #  44
-
-     $Scrub_It = RegExReplace("Á",$Scrub_It,"A")            # 193
-     $Scrub_It = RegExReplace("Ä",$Scrub_It,"A")            # 196
-     $Scrub_It = RegExReplace("Å",$Scrub_It,"A")            # 197
-     $Scrub_It = RegExReplace("Æ",$Scrub_It,"A")            # 198
-     $Scrub_It = RegExReplace("É",$Scrub_It,"E")            # 201
-     $Scrub_It = RegExReplace("Í",$Scrub_It,"I")            # 205
-     $Scrub_It = RegExReplace("Ó",$Scrub_It,"O")            # 211
-     $Scrub_It = RegExReplace("Ö",$Scrub_It,"O")            # 214
-     $Scrub_It = RegExReplace("Ú",$Scrub_It,"U")            # 218
-     $Scrub_It = RegExReplace("Ñ",$Scrub_It,"N")            # 209
-     $Scrub_It = RegExReplace("Ü",$Scrub_It,"U")            # 220
-     $Scrub_It = RegExReplace("Ü",$Scrub_It,"U")            # 220
-     $Scrub_It = RegExReplace("ß",$Scrub_It,"B")            # 223
-     $Scrub_It = RegExReplace("á",$Scrub_It,"a")            # 225
-     $Scrub_It = RegExReplace("ä",$Scrub_It,"a")            # 228
-     $Scrub_It = RegExReplace("å",$Scrub_It,"a")            # 229
-     $Scrub_It = RegExReplace("æ",$Scrub_It,"a")            # 230
-     $Scrub_It = RegExReplace("é",$Scrub_It,"e")            # 233
-     $Scrub_It = RegExReplace("í",$Scrub_It,"i")            # 237
-     $Scrub_It = RegExReplace("ñ",$Scrub_It,"n")            # 241
-     $Scrub_It = RegExReplace("ó",$Scrub_It,"o")            # 243
-     $Scrub_It = RegExReplace("ö",$Scrub_It,"o")            # 246
-     $Scrub_It = RegExReplace("ø",$Scrub_It,"o")            # 248
-     $Scrub_It = RegExReplace("ú",$Scrub_It,"u")            # 250
-     $Scrub_It = RegExReplace("ü",$Scrub_It,"u")            # 252
-     $Scrub_It = RegExReplace("ü",$Scrub_It,"u")            # 252
-     $Scrub_It = RegExReplace("Ø",$Scrub_It,"O")            # 216
+#     IF $ReplaceCommas
+#       $Scrub_It = Replace(","," ",$Scrub_It,true)          #  44 - now an individual option (Advanced Options Menu)
+#     ENDIF
+     IF $ReplaceUmlauts="Yes"
+       $Scrub_It = RegExReplace("(?-i)ä",$Scrub_It,"ae")    # 228 84      German
+       $Scrub_It = RegExReplace("(?-i)ö",$Scrub_It,"oe")    # 246 94      German
+       $Scrub_It = RegExReplace("(?-i)ü",$Scrub_It,"ue")    # 252 81      German
+       $Scrub_It = RegExReplace("(?-i)Ä",$Scrub_It,"Ae")    # 196 8E      German
+       $Scrub_It = RegExReplace("(?-i)Ö",$Scrub_It,"Oe")    # 214 99      German
+       $Scrub_It = RegExReplace("(?-i)Ü",$Scrub_It,"Ue")    # 220 9A      German
+       $Scrub_It = RegExReplace("ß",$Scrub_It,"ss")         # 223         German
+       $Scrub_It = RegExReplace("(?-i)ø",$Scrub_It,"o")     #             Danish
+       $Scrub_It = RegExReplace("(?-i)Ø",$Scrub_It,"O")     # 216         Danish
+       $Scrub_It = RegExReplace("(?-i)æ",$Scrub_It,"a")     # 230         Danish
+       $Scrub_It = RegExReplace("(?-i)Æ",$Scrub_It,"A")     # 198         Danish
+       $Scrub_It = RegExReplace("(?-i)á",$Scrub_It,"a")     # 225         French
+       $Scrub_It = RegExReplace("(?-i)é",$Scrub_It,"e")     # 233         French
+       $Scrub_It = RegExReplace("(?-i)å",$Scrub_It,"a")     # 229
+       $Scrub_It = RegExReplace("(?-i)í",$Scrub_It,"i")     # 237
+       $Scrub_It = RegExReplace("(?-i)ñ",$Scrub_It,"n")     # 241
+       $Scrub_It = RegExReplace("(?-i)ó",$Scrub_It,"o")     # 243
+       $Scrub_It = RegExReplace("(?-i)ø",$Scrub_It,"o")     # 248
+       $Scrub_It = RegExReplace("(?-i)ú",$Scrub_It,"u")     # 250
+       $Scrub_It = RegExReplace("(?-i)Á",$Scrub_It,"A")     # 193
+       $Scrub_It = RegExReplace("(?-i)Å",$Scrub_It,"A")     # 197
+       $Scrub_It = RegExReplace("(?-i)É",$Scrub_It,"E")     # 201
+       $Scrub_It = RegExReplace("(?-i)Í",$Scrub_It,"I")     # 205
+       $Scrub_It = RegExReplace("(?-i)Ó",$Scrub_It,"O")     # 211
+       $Scrub_It = RegExReplace("(?-i)Ú",$Scrub_It,"U")     # 218
+       $Scrub_It = RegExReplace("(?-i)Ñ",$Scrub_It,"N")     # 209
+     ENDIF 
      GOSUB Name=ScrubItCleaner
    ENDSUB 
 ###################################################################################
@@ -2366,7 +2390,7 @@
        SHOWSTATUS Msg="Restoring the startup filter - # $RfCntr" Width=350
        CANCELFILTER 
        $SQL_Data = Sqlite("sql","select code from CurrentFilter")
-       MACROFLAG Type=Clear Range=All 
+       MACROFLAG Type=Clear Range=All
        $result = CodeMatch($SQL_Data,$_NewLine,"M")
        MFILTER Expression=$d_MacroFlag
        SHOWSTATUS Msg=$Msg
@@ -2393,6 +2417,7 @@
      $ZIPPath = $TourGuide_Tools_Folder + "\"
      $UnpackStatus = ZipFile("unzip",$ZIPPath+$Embedded_POIL_File,$ZIPPath)
      IF left($UnpackStatus,7) = "*Error*"
+     	 GOSUB Name=DetachAlertsDb
        CANCEL Msg=$UnpackStatus
      ENDIF 
    ENDSUB 
@@ -2406,6 +2431,7 @@
            FILECOPY FROM=$ZIPPath$Embedded_POIL_File TO=$POILPath$Embedded_POIL_File OnError=Prompt
          ELSE 
            MSGOK MSG="Invalid POI Loader folder.  Please check path.  Macro will now abort." Caption="CHECK PATH TO POI LOADER"
+     	     GOSUB Name=DetachAlertsDb
            CANCEL 
          ENDIF 
        ENDIF 
@@ -2416,20 +2442,20 @@
      IF Upper(Sysinfo("Internet"))="YES"
        SHOWSTATUS msg="Checking for updates, please wait..." Width=350
        $result = GetUrl("http://redroo.iinet.net.au/Nuvi_GPX_by_CT.txt")
-       SHOWSTATUS Msg="Done" Display=off
        $Temp=PutFile($datafilepath + "\GPX_by_Cache_Type_Version.txt",$result)
        $result = GetFile($datafilepath + "\GPX_by_Cache_Type_Version.txt")
        IF Left($result,7) <> "*Error*"
          $tmpN = 10000*Val(Extract($result,".",1)) + 100*Val(Extract($result,".",2)) + Val(Extract($result,".",3))
          $tmpN1 = 10000*Val(Extract($Macro_Version,".",1)) + 100*Val(Extract($Macro_Version,".",2)) + Val(Extract($Macro_Version,".",3))
-         IF $tmpN > $tmpN1
+         IF $DevUser AND $tmpN<>$tmpN1 
+           SHOWSTATUS Msg="Web Version Pointer :  $result"
+           DELAY MS=2200
+         ENDIF 
+         IF $tmpN > $tmpN1              #   OR $DevUser
            $tmpS = "You have version $Macro_Version but $result is available"
            $Update = Editform($Update,"UpdateText","caption","$tmpS")
            WHILE TRUE
              $tmpS = Form($Update,"")
-# Reset the screen position of the menu form to where the user left it
-             $Update = EditForm($Update,"Update","Top",$_FormTop)
-             $Update = EditForm($Update,"Update","Left",$_FormLeft)
              BEGINCASE 
                CASE $GetUpdate
                  MSGOK Msg="Opening $Macro_Url in your web browser.  Download, install and restart."
@@ -2438,10 +2464,10 @@
                CASE $UpdateOK
                  BREAK 
                CASE $tmpS = "SystemExit"
+     	           GOSUB Name=DetachAlertsDb
                  CANCEL 
              ENDCASE 
            ENDWHILE 
-#           ELSE   #              MSGOK msg="The macro is up to date"
          ENDIF 
        ENDIF 
      ELSE 
@@ -2456,12 +2482,13 @@
      WHILE TRUE
 #     	 IF $SaveAlertType="Custom"
 #     	 	 $AdvancedOptionMenu=EditForm($AdvancedOptionMenu,"Custom_Alert_Form","Visible","Yes")
-#     	 	ELSE 
+#     	 	ELSE
 #     	 	 $AdvancedOptionMenu=EditForm($AdvancedOptionMenu,"Custom_Alert_Form","Visible","No")
 #     	 	ENDIF
        $SelectOption=Form($AdvancedOptionMenu,"")
        BEGINCASE 
          CASE $SelectOption="SystemExit" AND $DevUser
+        	 GOSUB Name=DetachAlertsDb
            CANCEL 
          CASE $SelectOption="SwitchFolders" AND $DevUser
            GOSUB Name=ChangeOutputPath
@@ -2505,6 +2532,7 @@
            GOSUB Name=SaveDefaults
            BREAK 
          CASE $SelectOption="SystemExit" AND $DevUser
+           GOSUB Name=DetachAlertsDb
            CANCEL 
          CASE $Refresh
            GOSUB Name=Save_DB_Data
@@ -2587,6 +2615,7 @@
            GOSUB Name=Save_Slice_Data
            BREAK 
          CASE $SelectOption="SystemExit" AND $DevUser
+     	     GOSUB Name=DetachAlertsDb
            CANCEL 
          CASE $Refresh
            GOSUB Name=Save_Slice_Data
@@ -2604,6 +2633,7 @@
            GOSUB Name=Save_Child_Data
            BREAK 
          CASE $SelectOption="SystemExit" AND $DevUser
+     	     GOSUB Name=DetachAlertsDb
            CANCEL 
          CASE $Refresh
            GOSUB Name=Save_Child_Data
@@ -2676,7 +2706,7 @@
 
    ENDSUB 
 ###################################################################################
-   BEGINSUB Name=Detect_GPSr       # Use the GPSInfo function instead of the poi.gpi search - thanks Clyde.      
+   BEGINSUB Name=Detect_GPSr       # Use the GPSInfo function instead of the poi.gpi search - thanks Clyde.
      SHOWSTATUS MSG="Searching for GPSr connection, please wait..."
      $GPSr_Model = ""
      $GPSr_Model = GPSInfo("GarminModel")
@@ -2707,20 +2737,49 @@
      $GPX_Time="$Year"+"-"+$Month+"-"+$Day+"T"+$Time+"Z"
    ENDSUB 
 ###################################################################################
+  BEGINSUB Name=DisplayAlertsDb
+     IF $DevUser
+       $_sql="PRAGMA database_list"
+       $Result=Sqlite("sql",$_sql)
+     	 MSGOK Msg="Current Setting: $CurrentSetting$_NewLine$_NewLine$Result" Caption="SqlAlerts Detached"
+     ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=DetachAlertsDb
+     $_sql="PRAGMA database_list"
+     $TempStr=Sqlite("sql",$_sql)
+     IF RegEx("SqlAlerts",$TempStr)
+       $_sql = "Detach SqlAlerts"
+  	   $TempStr=Sqlite("sql",$_sql)
+       $DbAttached=FALSE
+       GOSUB Name=DisplayAlertsDb
+     ENDIF 
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=AttachAlertsDb
+     IF NOT($DbAttached)
+       $SQL_Command = Sqlite("sql","ATTACH $sqlinputfile AS SqlAlerts","")         
+       $AttachedSetting=$CurrentSetting
+       $DbAttached=TRUE
+     ENDIF 
+  ENDSUB 
+###################################################################################
    BEGINSUB Name=Init_SQLite_DB
      IF FileExists("$_AppData\macros\$Macro_Name"+"_Alerts.db3")
        $File1="$_AppData\macros\$Macro_Name"+"_Alerts.db3"
        $File2="$_AppData\macros\$Macro_Name"+"_Alerts_Default.db3"
        FILECOPY From=$File1 To=$File2
        FILEERASE File=$File1
-     ENDIF
+     ENDIF 
+     IF $DbAttached AND $AttachedSetting<>$CurrentSetting
+     	 GOSUB Name=DetachAlertsDb
+     ENDIF 
      $SQL_Alerts_DB = "$_AppData\macros\$Macro_Name"+"_Alerts_$CurrentSetting.db3"
      IF not(FileExists($SQL_Alerts_DB))
        $SQL_Command = sqlite("create",$SQL_Alerts_DB)
      ENDIF 
-
      $sqlinputfile = SqlQuote($SQL_Alerts_DB)
-     $SQL_Command = Sqlite("sql","ATTACH $sqlinputfile AS SqlAlerts")
+     GOSUB Name=AttachAlertsDb
      $SQL_Command = Sqlite("sql","create table if not exists SqlAlerts.Alert_Array (Code text primary key,AlertType text,AlertDistance integer,Bitmap text,Soundfile text)")
      $SQL_Command = Sqlite("sql","create table if not exists SqlAlerts.Slice_Array (Code text primary key,AlertType text,AlertDistance integer,Bitmap text,Soundfile text)")
      $SQL_Command = Sqlite("sql","create table if not exists SqlAlerts.Child_Array (Code text primary key,AlertType text,AlertDistance integer,Bitmap text,Soundfile text)")
@@ -3478,7 +3537,10 @@
    ENDSUB 
 ###################################################################################
    BEGINSUB Name=UpdateExpandedMenu
+     $MainMenuExpanded=EditForm($MainMenuExpanded,"Label15","Visible","No")
      IF $SaveAlertType="Custom"
+#       $MainMenuExpanded=EditForm($MainMenuExpanded,"Label15","Visible","Yes")
+#       $MainMenuExpanded=EditForm($MainMenuExpanded,"Label15","Caption",$CurrentSetting)
        GOSUB Name=UpdateAdvancedMenu
      ENDIF 
      IF $switchhintandlogs<>"No Hints"
@@ -3496,6 +3558,8 @@
        $ReverseHint=FALSE
      ENDIF 
      $MainMenuExpanded=EditForm($MainMenuExpanded,"MacroMode","Caption","$MacroMode Mode")
+
+
      IF $MacroMode="Basic"
        $MainMenuExpanded=EditForm($MainMenuExpanded,"ExtraOption","Visible","No")
        $MainMenuExpanded=EditForm($MainMenuExpanded,"SaveAlertType","Visible","No")
@@ -3544,6 +3608,7 @@
        $Fx=Form($FolderForm,"")
        BEGINCASE 
          CASE $Fx="SystemExit" AND $DevUser
+     	     GOSUB Name=DetachAlertsDb
            CANCEL 
          CASE $Fx="Exit"
            BREAK 
@@ -3697,6 +3762,7 @@
        $EdFx=Form($NameEditor,"")
        BEGINCASE 
          CASE $EdFx="SystemExit" AND $DevUser
+     	     GOSUB Name=DetachAlertsDb
            CANCEL 
          CASE $EdFx="Dcache"
            $Cntr=0
@@ -3817,7 +3883,7 @@
 #       $NuviModels=REPLACE(";Montana","",$NuviModels)
      ELSE 
        $Devuser=TRUE
-       $BuchMode=FALSE 
+       $BuchMode=FALSE
        $MainMenuExpanded=EditForm($MainMenuExpanded,"Label9","Caption","Development Mode")
        $MainMenuExpanded=EditForm($MainMenuExpanded,"Label9","Visible","Yes")
 #       $NuviModels=$NuviModels+";Montana"
@@ -3833,19 +3899,64 @@
        $MainMenuExpanded=EditForm($MainMenuExpanded,"Label9","Visible","No")
      ELSE 
        $Devuser=FALSE
-       $BuchMode=TRUE 
+       $BuchMode=TRUE
        $MainMenuExpanded=EditForm($MainMenuExpanded,"Label9","Caption","Buchholtz Mode")
        $MainMenuExpanded=EditForm($MainMenuExpanded,"Label9","Visible","Yes")
      ENDIF 
    ENDSUB 
 ###################################################################################
-  BEGINSUB Name=FilterDisplayChk
-  	IF $_FilterActive
+   BEGINSUB Name=FilterDisplayChk
+     IF $_FilterActive
        $MainMenuExpanded=EditForm($MainMenuExpanded,"Use_Current_Filter","Enabled","Yes")
-  	ELSE
+     ELSE 
        $MainMenuExpanded=EditForm($MainMenuExpanded,"Use_Current_Filter","Enabled","No")
-  	ENDIF
-  ENDSUB 
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=IncludeAttributes                      # Code by Stephen and Vincent05 (modified lightly to suit)
+     DECLARE Var=$AllAttrib Type=String
+     DECLARE Var=$ThisAttrib Type=String
+     DECLARE Var=$AttStr1 Type=String
+     DECLARE Var=$AttStr2 Type=String
+     DECLARE Var=$AttributeStr Type=String
+     DECLARE Var=$X Type=Numeric
+     DECLARE Var=$Y Type=Numeric
+
+     $TempStr=$d_Code
+     $AttributeStr=""
+     $_sql="SELECT aname from attname WHERE aCode = '$TempStr' and aInc"
+     $AttStr1=Sqlite("sql",$_sql)
+     $_sql="SELECT aname from attname WHERE aCode = '$TempStr' and not(aInc)"
+     $AttStr2=Sqlite("sql",$_sql)
+     $AllAttrib = ""
+     IF $AttStr1 <> "" or $AttStr2 <> ""
+       $X = 1
+       $ThisAttrib = Extract($AttStr1,$_NewLine,$X)
+       WHILE $ThisAttrib <> ""
+         IF $X = 1
+           $AllAttrib = $ThisAttrib
+         ELSE 
+           $AllAttrib = $AllAttrib + ", " + $ThisAttrib
+         ENDIF 
+         $X = $X + 1
+         $ThisAttrib = Extract($AttStr1,$_NewLine,$X)
+       ENDWHILE 
+       $Y = 1
+       $ThisAttrib = Extract($AttStr2,$_NewLine,$Y)
+       WHILE $ThisAttrib <> ""
+         IF $Y = 1 and $AllAttrib = ""
+           $AllAttrib = $ThisAttrib
+         ELSE 
+           $AllAttrib = $AllAttrib + ", Not " + $ThisAttrib              # <<<===
+         ENDIF 
+         $Y = $Y + 1
+         $ThisAttrib = Extract($AttStr2,$_NewLine,$Y)
+       ENDWHILE 
+     ENDIF 
+     IF $AllAttrib<>""
+       $AttributeStr=$AllAttrib
+     ENDIF 
+   ENDSUB 
 ###################################################################################
    BEGINSUB Name=Initialize
      $MacroMode="Basic"
@@ -3870,6 +3981,7 @@
      $waymarkname="%Code - %Name"
      VSUB Status=on
      $Run=TRUE
+     $DbAttached=FALSE
 #     $OutputPath=$_AppData
 
      $Tools_Loaded=False
@@ -3891,6 +4003,8 @@
      $NewGpxFolder=FALSE
      $TmpPoiMode=FALSE
      $BuchMode=FALSE
+     $ReplaceUmlauts="Yes"
+     $ReplaceCommas=TRUE
 
      $Desc_List="INIT"
      $DL_Desc="EMPTY"
@@ -3915,10 +4029,12 @@
      $TTotal = RegExCount(";",$CacheTypes) + 1
      $CacheTypeLetter = ""
      $SettingsList=""
+     $AttachedSetting=""
      IF $CurrentSetting = ""
        $CurrentSetting="Default"
      ENDIF 
      $AlertByTypeForm = Replace("CurrentSetting",$CurrentSetting,$AlertByTypeForm,TRUE)
+   	 GOSUB Name=DetachAlertsDb
      GOSUB Name=Init_SQLite_DB
      $Count = 1
 
@@ -3927,7 +4043,7 @@
      $RedRoo=FALSE
 #     GOSUB Name=CheckCustomField
      INCLUDE File="\DevUser.Gsk" FileCheck=N
-     
+
    ENDSUB 
 ###################################################################################
 # Nuvi 1350 - Gps Max Field Lengths (compliments of Frank Buchholz)
@@ -4019,12 +4135,20 @@ chkClose.Checked=False
 rbtAddBefore.Checked=False
 <enddata>
 ###################################################################################
+<data> VarName=$Languages
+Yes;No
+<enddata>
+###################################################################################
 # New variables added by Red Roo
 
    DECLARE Var=$RedRoo Type=Boolean
    DECLARE Var=$DevUser Type=Boolean
    DECLARE Var=$BuchMode Type=Boolean
    DECLARE Var=$Montana Type=Numeric
+   DECLARE Var=$ReplaceUmlauts Type=String
+   DECLARE Var=$ReplaceCommas Type=Boolean
+   DECLARE Var=$DbAttached Type=Boolean
+   DECLARE Var=$AttachedSetting Type=String
 
    DECLARE Var=$BuildAllRaidGroup Type=Boolean
    DECLARE Var=$AutoVchk Type=Boolean
@@ -4096,6 +4220,7 @@ rbtAddBefore.Checked=False
    DECLARE Var=$ExtraInfo Type=String
    DECLARE Var=$NewGpxFolder Type=Boolean
    DECLARE Var=$TmpPoiMode Type=Boolean
+   DECLARE Var=$Label15 Type=String
 
 ###################################################################################
 # Variables commented out are not currently used
@@ -4135,7 +4260,7 @@ rbtAddBefore.Checked=False
    DECLARE Var=$chkFound Type=Boolean
    DECLARE Var=$chkUnavailable Type=Boolean
    DECLARE Var=$chkOwned Type=Boolean
-   DECLARE Var=$CacheStr Type=String 
+   DECLARE Var=$CacheStr Type=String
    DECLARE Var=$Cache_Unavailable Type=Boolean
    DECLARE Var=$ModeSwitch Type=Boolean
 #     DECLARE Var=$TourGuide_ON Type=Boolean                           # not currently used
@@ -4415,7 +4540,7 @@ rbtAddBefore.Checked=False
    DECLARE Var=$NewSetting Type=String
    DECLARE Var=$SettingsList Type=String
    DECLARE Var=$GPXString Type=String
-DECLARE Var=$sqlinputfile Type=String 
+   DECLARE Var=$sqlinputfile Type=String
 
 ###################################################################################
 <data> VarName=$MainMenuExpanded
@@ -4497,7 +4622,7 @@ Name = ok
   Taborder = 0
   Caption = Build GPX Files
 
-Name = cancel
+Name = Quit
   Type = Button
   Height = 45
   Left = 377
@@ -4947,7 +5072,17 @@ Name = BuchBtn
   Taborder = 48
   Caption = &BuchMode
 
+Name = Label15
+  Type = Label
+  Color = 16711808
+  Height = 17
+  Left = 555
+  Top = 53
+  Width = 34
+
 <enddata>
+
+
 ###################################################################################
 <Data> VarName=$connectform
 #********************************************************************
@@ -5059,7 +5194,7 @@ Name = AdvancedOptionMenu
   Caption = Export Garmin POI files in GPX format
   Color = 13228271
   Height = 444
-  Width = 656
+  Width = 644
 
 Name = Label1
   Type = Label
@@ -5077,7 +5212,7 @@ Name = ReturnMain
   Enter = Yes
   Height = 45
   Left = 231
-  Top = 346
+  Top = 359
   Width = 178
   Taborder = 0
   Caption = <center>      FINISHED <br>Save and Return
@@ -5162,7 +5297,7 @@ Name = Label23
   Color = 16711680
   Height = 13
   Left = 37
-  Top = 294
+  Top = 307
   Width = 89
   Caption = SpoilerSync Path
 
@@ -5181,7 +5316,7 @@ Name = SpoilerSyncPath
   Type = Folder
   Height = 21
   Left = 176
-  Top = 291
+  Top = 304
   Width = 372
   Taborder = 9
 
@@ -5199,7 +5334,7 @@ Name = Label5
   Color = 16711680
   Height = 17
   Left = 37
-  Top = 315
+  Top = 328
   Width = 129
   Caption = Select the POI Loader file
 
@@ -5207,7 +5342,7 @@ Name = POILfile
   Type = File
   Height = 21
   Left = 176
-  Top = 313
+  Top = 326
   Width = 372
   Taborder = 10
 
@@ -5215,7 +5350,7 @@ Name = GPX_Output_Path
   Type = Folder
   Height = 21
   Left = 176
-  Top = 268
+  Top = 281
   Width = 372
   Taborder = 8
 
@@ -5224,7 +5359,7 @@ Name = Label3
   Color = 16711680
   Height = 17
   Left = 37
-  Top = 273
+  Top = 286
   Width = 90
   Caption = GPX Output Path
 
@@ -5232,7 +5367,7 @@ Name = MacroVchk
   Type = Button
   Height = 25
   Left = 176
-  Top = 244
+  Top = 257
   Width = 100
   Taborder = 24
   Caption = Check Now
@@ -5242,7 +5377,7 @@ Name = Label4
   Color = 4227072
   Height = 17
   Left = 37
-  Top = 249
+  Top = 262
   Width = 132
   Caption = Check for a newer version
 
@@ -5251,7 +5386,7 @@ Name = AutoVchk
   Fontcolor = 16711680
   Height = 20
   Left = 307
-  Top = 246
+  Top = 259
   Width = 223
   Taborder = 7
   Caption = Automatic version check during start-up
@@ -5293,7 +5428,44 @@ Name = SwitchFolders
   Taborder = 26
   Caption = &Switch Folders
 
+Name = ReplaceUmlauts
+  Type = Combobox
+  Height = 21
+  Left = 490
+  Top = 205
+  Values = $Languages
+  Width = 54
+  Taborder = 27
+
+Name = Label7
+  Type = Label
+  Color = 4210816
+  Height = 17
+  Left = 368
+  Top = 211
+  Width = 119
+  Caption = Umlaut Replacement ...
+
+Name = ReplaceCommas
+  Type = Checkbox
+  Captionposition = Left
+  Fontcolor = 4210816
+  Height = 20
+  Left = 368
+  Top = 229
+  Width = 176
+  Taborder = 28
+  Caption = Replace Commas with Spaces
+
 <enddata>
+
+
+
+
+
+
+
+
 ###################################################################################
 <Data> VarName=$AlertByTypeForm
 #********************************************************************
@@ -26286,3 +26458,4 @@ a1RHOWpZWFJwYjI0TkNna0piWGxUZEhKbFlXMHVRMnh2YzJVTkNnMEtDWE5sZENCR1UwOGdQU0JPYjNS
 b2FXNW5EUW9KVTJWMElHMTUNClUzUnlaV0Z0SUQwZ1RtOTBhR2x1WncwS0NWTmxkQ0I0Yld4SVZGUlFJ
 RDBnVG05MGFHbHVadzBLRFFwRmJtUWdSblZ1WTNScGIyND0NCjxlbmRkYXRhPg0K
 <enddata>
+
