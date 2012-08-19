@@ -1,22 +1,23 @@
 #*******************************************
 # MacDescription = Show the last GPX update for each database
 # MacFileName =LastUpdateDB.gsk
-# MacAuthor = Kai Team
-# MacVersion=1.0
+# MacAuthor = Kai Team (links suggested by southtowntn)
+# MacVersion=1.1
 #*******************************************
 
 $DBs=SysInfo("Databases")
 $Count=RegExCount(";",$DBs) + 1
-$Out="Database;LastGPX" + $_CrLf
+$Out="Database;LastGPX;Change Log" + $_CrLf
 $x=1
 WHILE $x<=$Count
     $ThisDB=Extract($DBs,";",$x)
     $ThisDBFile=$_dbPath + "\" + $ThisDB + "\" + "sqlite.db3"
+    $ThisDBLog="<a href=../data/" + HttpEncode($ThisDB) + "/" + "Log.htm" + " target=blank" + ">Open Log</a>"
     $Status=Sqlite("Open",$ThisDBFile)
     $_sql="Select LastGPXDate from Caches Order By LastGPXDate DESC Limit 1"
     $Date=Sqlite("sql",$_sql)
     IF $Date<>""
-        $Out=$Out + $ThisDB + ";" + $Date + $_CrLf
+        $Out=$Out + $ThisDB + ";" + $Date + ";" + $ThisDBLog + $_CrLf
     ELSE
         $Out=$Out + $ThisDB + ";" + "NA" + $_CrLf
     ENDIF
