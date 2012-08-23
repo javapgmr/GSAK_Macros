@@ -1,7 +1,7 @@
 ###################################################################################
 # MacFileName    = Nuvi_GPX_by_CT.Gsk
 # MacAuthor      = jjreds - now maintained by Red Roo (Wayne)
-# MacVersion     = 1.05 beta
+# MacVersion     = 1.06 beta
 # MacDescription = Export GPX files by cache type w/spoiler pics for POI Loader
 # MacUrl         = http://gsak.net/board/index.php?showtopic=21209&view=findpost&p=
 # MacRecognition = jjreds;cron;pilotsnipes;Clyde;Kai Team;Lignumaqua;Vincent05
@@ -22,6 +22,8 @@
 # v1.03  Another attempt to fix the bug in Custom Alerts settings 
 # v1.04  Fixed Custom Alerts database detach when exiting the macro (many locations). 
 # v1.05  Fixed bug when changing databases caused the macro to crash.
+# v1.06  Displays the current setting name when Custom Settings are selected.
+#        Fixes a bug related to setting the startup filter when a custom field is used in the filter.
 #        
 ###################################################################################
 #  Changes in this version
@@ -2785,7 +2787,7 @@
      $SQL_Command = Sqlite("sql","create table if not exists SqlAlerts.Child_Array (Code text primary key,AlertType text,AlertDistance integer,Bitmap text,Soundfile text)")
      $SQL_Command = Sqlite("sql","DROP TABLE IF EXISTS SqlAlerts.Caches")                 # Can be removed at a later date.
      $SQL_Command = Sqlite("sql","DROP TABLE IF EXISTS SqlAlerts.CurrentFilter")          # New table name (replaces 'Caches') to represent the opening filter
-     $SQL_Command = Sqlite("sql","CREATE TABLE IF NOT EXISTS SqlAlerts.CurrentFilter AS SELECT Code From main.cachesall WHERE $_Where")
+     $SQL_Command = Sqlite("sql","CREATE TABLE IF NOT EXISTS SqlAlerts.CurrentFilter AS SELECT Code From main.CachesAll WHERE $_Where")
    ENDSUB 
 ###################################################################################
    BEGINSUB Name=Load_DB_Data
@@ -3539,8 +3541,8 @@
    BEGINSUB Name=UpdateExpandedMenu
      $MainMenuExpanded=EditForm($MainMenuExpanded,"Label15","Visible","No")
      IF $SaveAlertType="Custom"
-#       $MainMenuExpanded=EditForm($MainMenuExpanded,"Label15","Visible","Yes")
-#       $MainMenuExpanded=EditForm($MainMenuExpanded,"Label15","Caption",$CurrentSetting)
+       $MainMenuExpanded=EditForm($MainMenuExpanded,"Label15","Visible","Yes")
+       $MainMenuExpanded=EditForm($MainMenuExpanded,"Label15","Caption",$CurrentSetting)
        GOSUB Name=UpdateAdvancedMenu
      ENDIF 
      IF $switchhintandlogs<>"No Hints"
@@ -5074,13 +5076,14 @@ Name = BuchBtn
 
 Name = Label15
   Type = Label
-  Color = 16711808
+  Color = 15234048
   Height = 17
   Left = 555
   Top = 53
   Width = 34
 
 <enddata>
+
 
 
 ###################################################################################
@@ -26458,4 +26461,3 @@ a1RHOWpZWFJwYjI0TkNna0piWGxUZEhKbFlXMHVRMnh2YzJVTkNnMEtDWE5sZENCR1UwOGdQU0JPYjNS
 b2FXNW5EUW9KVTJWMElHMTUNClUzUnlaV0Z0SUQwZ1RtOTBhR2x1WncwS0NWTmxkQ0I0Yld4SVZGUlFJ
 RDBnVG05MGFHbHVadzBLRFFwRmJtUWdSblZ1WTNScGIyND0NCjxlbmRkYXRhPg0K
 <enddata>
-
