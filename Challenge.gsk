@@ -1,5 +1,5 @@
 #*******************************************
-# MacVersion = 2.74a
+# MacVersion = 2.75
 # MacDescription = Summarize Challenges Cache Status (DeLorme, USGS quad, County,...)
 # MacAuthor = Heiner Lieth (a.k.a.Hynr)
 # MacFileName = Challenge.gsk
@@ -12,6 +12,11 @@ VERCHECK version=7.7.4.10 (Note: this macro requires a more-recent release of GS
 # It is not designed for challenges that are not based on geographic regions
 
 # The main "To Do" list for improving this macro program:
+#
+#
+# Process situation where user has updated macro but items in selection 
+# list coming through MacSettings have changed; also show verion and userid on macro status
+
 # Things that are currently broken:
 # 1.  when macsettings are restored it displays installed challenges which might have been archived
 #     check restored settings against installed base and toss out any that no longer exist
@@ -1283,14 +1288,18 @@ Beginsub Name=CoreRoutine
   IF $ExportGPX and RegEx("GC",$GPXexportCacheList)
     $StatusMesg="Creating GPX export"
     gosub name=StatusMessage
+
     # Use GSAK filtering to select caches for GPX export
     # set up for GPX export
-    $GPXexportCacheList=Alltrim(RegExReplace("[[][^]]+[]]",$GPXexportCacheList,""))
-    $GPXexportCacheList=replace(" GC",";GC",$GPXexportCacheList,false)
+#    $GPXexportCacheList=Alltrim(RegExReplace("[[][^]]+[]]",$GPXexportCacheList,""))
+#    $GPXexportCacheList=replace(" GC",";GC",$GPXexportCacheList,false)
     #make list semicolon separated for use in filter
-    $GPXfilterSettings =replace("[GCcodeList]",$GPXexportCacheList,$GPXfilterTemplate,false)
-    MACROSET Dialog=Filter VarName=$GPXfilterSettings
-    Filter Name=<macro> Join=and
+#    $GPXfilterSettings =replace("[GCcodeList]",$GPXexportCacheList,$GPXfilterTemplate,false)
+#    MACROSET Dialog=Filter VarName=$GPXfilterSettings
+#    Filter Name=<macro> Join=and
+     $_SQL="$_Where AND code in ('"+replace(" ","','",Alltrim($GPXexportCacheList))+"')"
+     mfilter where= $_SQL
+
     $FileOut="$UserDataPath\$GCcode $ChallengeCode Cachelist.gpx"
 
     $GPXexportSettings=Replace("[GPXFILE]",$FileOut,$GPXexportTemplate,false)
@@ -1363,16 +1372,17 @@ Beginsub Name=StatusMessage
      $StatusMesg=$MacroPointer+": "+$StatusMesg
      $DiagLogStr=$DiagLogStr+$StatusMesg
   Endif
-  ShowStatus msg=$StatusMesg Width=700 Left=100 Display=On Title="Challenge.gsk Macro running $Mission"
+  ShowStatus msg=$StatusMesg Width=900 Left=100 Display=On Title="Challenge ver $Version running $Mission"
 Endsub
 
 Beginsub Name=DebugModeInit
 # Debug mode allows for seeing considerably more debug information
 # on an expanded form. These controls are normally off the form.
-# (unfortunately the form is off when code is running)
+# (note that the form is not visible when code is running)
 # default settings should be "False" for the next two lines
   $DiagErrLog= false  # determines wether an error log is written
-  $DiagLog   = false  # determines whether regular log is created
+#  $DiagLog   = false  # determines whether regular log is created
+  $DiagLog   = true  # determines whether regular log is created
   $DiagDebug = $DiagErrLog or $DiagLog
   IF $DiagDebug
    Timer Status=ON Msg=No
@@ -1382,14 +1392,14 @@ Beginsub Name=DebugModeInit
    if $DiagErrLog
 	$DiagErrLogStr=""
    endif
-   $Form = EditForm($Form,"Challenge Cache Processor","Height","520")
+#this part has not been built out
+#   $Form = EditForm($Form,"Challenge Cache Processor","Height","520")
    $DiagDebugLevel=5   # 5 is normal detail; 9 is highest detail
    $DiagMesg=true      # initialized (use this to trigger particular log insertions)
   else
    #ignore all debug commands
    $DiagMesg=false
    $DiagDebugLevel=0  # here use values 0 (for no debugging detail) or 1 (minimal detail)
-#   $Form = EditForm($Form,"Challenge Cache Processor","Height","327")
   ENDIF
 Endsub
 
@@ -1918,10 +1928,11 @@ have the State provided. The macro will
 update empty county and state fields in the database.
 </p>
 <p>Note that each challenge is a little bit different even among very similar ones. 
-What they have in common is that various rectangular regions have to be inspected 
+What they have in common is that various regions (rectangular or polygon-shaped) have to be inspected 
 to see if at least one of the allowed cachetypes have been found there. 
 Some challenges allow virtual caches, some do not, etc.
-Some allow only caches found after a particular date.
+Some allow only caches found after a particular date. Many have additional rules.  
+This macro is designed only for challenges where you must find a cache in various geographic regions.
 <p><b>A NOTE OF CAUTION:</b>
 DO NOT ASSUME that the macro has the complete rule set implemented for
 each challenge,
@@ -1932,22 +1943,24 @@ feature is not implemented here as each challenge cache owner has different
 nuances at different times on this facet; so this processing must be done
 manually for each case.
 </p>
-<h3>C-type Challenges installed in this version:</h3>
+<h3>C-type Challenges:</h3>
 County challenges: the user is needs to find a geocache in each of a
-set of counties within states. For Germany it analyzes the analogous
+set of counties within some state or states. For Germany it analyzes the analogous
 situation: "Kreise" and/or "Kreisstaedte" within states.
 C-type challenges are ones for which GSAK has the ability to determine
 in which county a particular geocache is located. 
-<h3>D-type Challenges installed in this version:</h3>
-DeLorme Gazetteer challenges (these are always rectangular regions,
-borders/boundaries of regions are parallel to lat/lon):
-All existing DeLorme Challenges are included (contact macro author with
-info about missing ones)
+<h3>D-type Challenges:</h3>
+DeLorme Gazetteer challenges (these are always rectangular regions where the
+boundaries are parallel to lat/lon):
+All existing DeLorme Challenges which are known to macro author are included.
 <h3>E-type Challenges installed in this version:</h3>
 European challenge caches with rectangular regions: These include by
 country:
 Netherlands - 6 Dutch Challenge caches "Top25 To Move"
 <h3>Q-type Challenges (Topo Quads such as USGS topo maps</h3>
+Quads are quadratic regions similar based on minutes or degrees of latitude and longitude. No mapbook is involved. 
+In the USA there are official quads which have been given names. But quads can also be based on some other regular system.
+Included are these:
 <ul>
 <li>7.5 degree quads </li>
 <ul>
@@ -1967,12 +1980,12 @@ TN (needs testing) </li>
 </ul>
 <li> ADC map books (page borders are parallel to lat/lon </li>
 <ul>
-<li> Maryland ADC books for: Montomery and StMary's County </li>
+<li> Maryland ADC books for: Montgomery and StMary's County </li>
 </ul>
 </ul>
 <h3>P type Challenges: (any other irregular shaped regions, borders not
 parallel to lat/lon, etc)</h3>
-Thomas Map book for: Portland Oregon; Kings County WA
+Thomas Map book for: Portland Oregon; Kings County WA.
 <h3>Configuration</h3>
 There are a large number of challenge caches that can be processed with
 this macro. Those which have been programmed into this macro sit in the
@@ -3627,8 +3640,8 @@ Endsub
 # all others as at geocaching.com
 #
 <data> VarName=$DataVersionInfo
-Dataversion=2.73
-DataDate = 16Jun2012
+Dataversion=2.74
+DataDate =16Aug2012
 ForMacroFirst = 2.7
 ForMacroLast = 2.9
 <enddata>
@@ -3640,7 +3653,7 @@ P_US_WA_Snohomish,GC19D0F,Snohomish County Thomas Guide Challenge by Right Wing 
 P_US_WA_King,GC1A012,King County Thomas Guide Challenge by TeamIDFC,Washington
 P_US_WA_Kitsap,GC19B6J,Kitsap County Thomas Guide Challenge by -Hawk- & W7WT (adopted by Kiyojohn),Washington
 P_US_WA_Pierce,GC3397Z,Pierce Cownty Thomoos Guide Challenge by CoolCowCachers,Washington
-C_US_AR,GC20B0V,The Arkansas County Challenge by woodwalker ,Arkansas
+C_US_AR,GC1KZXN,The Arkansas County Challenge by woodwalker,Arkansas
 C_US_AZ,GC20B0V,Cache Across Arizona by AD0OR,Arizona
 C_US_CA,GCQ2VC,Discovering and Logging California's 58 Counties by Team Geo-Rangers,California
 C_US_GA,GC1B074,Georgia County Challenge by pilgrimsprogress,Georgia
@@ -3650,7 +3663,7 @@ C_US_MA,GC19QJC,Massachusetts County Challenge by tenebrus,Massachusetts
 C_US_MS,GC144DK,Mississippi County Challenge by DavidMac Adopted By Woodduck870,Mississippi
 C_US_NC,GC19YRC,The North Carolina County Challenge by Maingray,North Carolina
 C_US_NE,GCWVG8,Nebraska 93 County Challenge by Dr Horrible & Sioneva,Nebraska
-C_US_NJ,GC5BF5,Tour de Cache - NJ County Challenge by Tour de Cache Committee,New Jersey
+C_US_NJ,GCXQ4H,Tour de Cache - NJ County Challenge by Tour de Cache Committee,New Jersey
 C_US_NV,GCRWTZ,C WELL SEWN COLD HEMP - Nevada Counties Challenge by longwalker,Nevada
 C_US_OR,GCR9XY,Counting Counties in Oregon by logscaler & Red,Oregon
 C_US_SC,GC1ACWC,South Carolina County Challenge by salutations,South Carolina
@@ -4538,7 +4551,7 @@ endsub
 ,,,,Fox,Fox Island,47.27942 -122.66462;47.27523 -122.67147;47.26965 -122.66818;47.25617 -122.65034;47.24827 -122.64212;47.23805 -122.63102;47.21861 -122.61240;47.21758 -122.60295;47.22865 -122.58870;47.23675 -122.58900;47.26807 -122.62979;47.27775 -122.64899;47.27942 -122.66462
 <enddata>
 BEGINSUB Name=C_US_AR
-# C_US_AR,GC20B0V,The Arkansas County Challenge by woodwalker ,Arkansas
+# C_US_AR,GC1KZXN,The Arkansas County Challenge by woodwalker,Arkansas
        $StateName="Arkansas"
        $StateAbbr="AR"
  Declare Var=$CountyC_US_AR Type=String
@@ -5488,7 +5501,7 @@ endsub
 ,,,,York,York.txt
 <enddata>
 BEGINSUB Name=C_US_NJ
-# C_US_NJ,GC5BF5,Tour de Cache - NJ County Challenge by Tour de Cache Committee,New Jersey
+# C_US_NJ,GCXQ4H,Tour de Cache - NJ County Challenge by Tour de Cache Committee,New Jersey
        $StateName="New Jersey"
        $StateAbbr="NJ"
  Declare Var=$CountyC_US_NJ Type=String
@@ -13677,4 +13690,3 @@ endsub
 
 #</USERdatacode>
 ##################### End of Challeng.gsk macro ###################
-
