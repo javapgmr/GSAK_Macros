@@ -1,7 +1,7 @@
 # MacDescription=Cachemate to GSAK Logging program.
 # MacFileName=CacheMateLogging.gsk
 # MacAuthor=jholly
-# MacVersion=3.0.3
+# MacVersion=3.0.4
 # MacUrl=http://gsak.net/board/index.php?showtopic=10739
 #############################################
 # CacheMateLogging v0.2
@@ -170,6 +170,9 @@
 #
 # V3.0.3
 #1. Fixed type on rbtGCLogs.
+#
+# V3.0.4
+#1. Changed Sort to SQLsort
 #
 #############################################
 #
@@ -705,7 +708,7 @@ BeginSub Name=Main
 	Mfilter Expression If=$d_UserFlag
 	# If there's records in the filter, sort 'em and log 'em, pausing between each for the user to confirm.
 	If $_FilterCount > 0
-		Sort By="UserSort" 
+		SqlSort OrderBy="UserSort" 
 		GoSub Name=ShowConfirm
 		$TodayCount = "1"		#initialize counter for today's run  
 		Transaction Action=Begin
@@ -1153,7 +1156,7 @@ BeginSub Name=DeclareVars
 #*******************************************************
 
 
-#Option Explicit=Yes
+Option Explicit=Yes
 
 Declare Var=$BatFile Type=String
 Declare Var=$blanks Type=String
@@ -1188,7 +1191,6 @@ Declare Var=$currentdb Type=String
 Declare Var=$currentfilter Type=String
 Declare Var=$currentsort Type=String
 Declare Var=$CurrentTotal Type=String
-Declare Var=$data Type=String
 Declare Var=$Day Type=String
 Declare Var=$dblist Type=String
 Declare Var=$DNFcfm Type=String
@@ -1430,13 +1432,9 @@ BeginSub Name=Readconfigfile
 EndSub
 
 BeginSub Name=GetTotalCount
-	$data = GcApi("GetYourUserProfile",$status)
-	IF $_GcApiError
-		# error running api so show error message
-		MSGOK msg=GcAPI error $data
-	ELSE
-		$edtTotalCount = sqlite("sql","select data from GcApi where g_Contains('a:FindCount',key)")
-	ENDIF
+	GcUpdateUserInfo UpdateHome=N UpdateMatching=N
+	$status =  sqlite("open", "$_AppData\gsak.db3")
+	$edtTotalCount = sqlite("sql", "select uData from UserInfo where uKey='FindCount'")
 EndSub
 
 BeginSub Name=InitForm
@@ -1489,7 +1487,7 @@ BeginSub Name=RestoreState
 
 	$sortdata = Extract($currentsort, "=",1)
 	$sequence = Extract($currentsort, "=",2)
-	Sort By=$sortdata Sequence=$sequence
+	SqlSort OrderBy=$currentsort
 
 EndSub
 
@@ -1571,13 +1569,7 @@ chkSaveFile.Checked=True
 chkSaveDatabase.Checked=False
 <enddata>
 
-<Data> Varname=$status
-<GetYourUserProfileRequest xmlns="http://www.geocaching.com/Geocaching.Live/data">
- <AccessToken>{AccessToken}</AccessToken>
- <ProfileOptions>
- </ProfileOptions>
-</GetYourUserProfileRequest> 
-<enddata>
+
 #=============================
 # Forms
 #=============================
