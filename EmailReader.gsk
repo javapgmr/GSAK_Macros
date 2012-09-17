@@ -1,6 +1,6 @@
 #@#####################################################################################
 #@ MacFileName    = EmailReader.gsk
-#@ MacVersion     = 2.28
+#@ MacVersion     = 2.29
 #@ MacDescription = Read and process eNotify emails direct from your mail server.
 #@ MacAuthor      = Wayne (Red Roo)
 #@ MacUrl         = http://gsak.net/board/index.php?showtopic=7604
@@ -32,7 +32,11 @@
 # 2.27 - Added Load Summary variable for GCREFRESH
 #        Fixed Load summary not displaying during Unattended Running.
 #        Altered the SaveState routine to use 'Select Code' rather than 'Select *' to release a large amount of memory used by the command.
-# 2.28 - Updated to remove a Deprecated command (Gsak v8.1.1.88) 26-Jul-12 1:32:01 PM
+# 2.28 - Updated to remove Deprecated Command : Db To SqLite
+# 2.29 - Replace Deprecated System variables  : $_  Install      >>> $_AppData
+#        Replace Deprecated database variables: $d_ Archived     >>> $d_Status 
+#                                               $d_ TempDisabled >>> $d_Status
+#        More Status Messages at startup and exit.
 #
 #@####################################################################################
 #@   >>>>>>>>   User changes should not be required below this line ... <<<<<<<<    @#
@@ -158,7 +162,9 @@
      $SePressed=FALSE
   ENDWHILE 
 
+  SHOWSTATUS Msg="Save Configuration ..." Top=0
   GOSUB Name=SaveConfiguration                                        # Save Configuration Data
+  SHOWSTATUS Msg="Test And Update ..." Top=0
   GOSUB Name=TestAndUpdate
 
 # Time to say goodbye...
@@ -194,6 +200,7 @@
   MACROFLAG Type=Clear Range=All
   IF $OpenBrowser
      IF $_Version>="8.0.0.133"                                        
+        SHOWSTATUS Msg="Updating caches ..." Top=0
         MFILTER Where=Ownername='Added by EmailReader'
         IF $_FilterCount>0
            MACROFLAG Type=SET Range=FILTER
@@ -208,6 +215,7 @@
            GCREFRESH Scope=FILTER LogsPerCache=30 LoadSettings=<MACRO>
         ENDIF 
      ELSE 
+        SHOWSTATUS Msg="Opening Browser ..." Top=0
         $UserStr= Replace($_NewLine,";",Sqlite("sql","select code from caches where ownername='Added by EmailReader'"))+ ";"
         $TempStr1=CodeMatch($UserStr,";","M")
         MFILTER Where=MACROFLAG
@@ -230,9 +238,6 @@
               ENDIF 
            ENDIF 
         ENDWHILE 
-#        IF $TempNum > 0
-#           CANCEL 
-#        ENDIF 
      ENDIF 
   ENDIF 
   SHOWSTATUS Msg=x Display=Off
@@ -332,7 +337,6 @@
                        $Date=Extract($Summary," ",RegexCount(" ",$Summary))					# Extract the Date from the SummaryLine
                        $Cntr=0
                        $CacheName=""
-#                  MSGOK Msg=$SubjectLine
                        $TempNum=RegExCount(";",$ER_lTypes)
                        WHILE $Cntr < $TempNum                               					# Pick up the cache name.
                           $Cntr=$Cntr+1
@@ -346,7 +350,6 @@
                     ENDIF 
                  ENDWHILE 
                  SHOWSTATUS Msg="($MsgCntr of $ER_NumMsgs) $SubjectLine" Top=0 Width=550 Left=285
-#              MSGOK Msg="$CacheName"
                  IF $SetUf
                     MFILTER Where=Name=$CacheName
                     GOSUB Name=SetUserFlag                                       # Set User Flag
@@ -605,7 +608,7 @@
               ENDIF 
               $FndMsg=$FndMsg+"$ER_RptEntry"
               $FndCnt=$FndCnt+1
-              IF NOT($ER_ReRun) AND ($d_Archived or $d_TempDisabled)
+              IF NOT($ER_ReRun) AND ($d_Status="X" OR $d_Status="T")
                  GOSUB Name=SetMacroFlag
               ENDIF 
            CASE $LogType=Extract($ER_nTypes,";",1)                     # This a Dnf notification
@@ -627,8 +630,8 @@
               $DcCnt=$DcCnt+1
               $DisMsg=$DisMsg+"$ER_RptEntry"
               IF $_FilterCount=1
-                 IF NOT($d_TempDisabled)
-                    $d_TempDisabled=TRUE
+                 IF NOT($d_Status="T")
+                    $d_Status="T"
                     $TempStr1=Extract($Summary,"- ",2)
                     $Er_LogStr="$CacheId;-100;Temporarily Disable;Notify email received ==> $TempStr1;"
                     $UserStr  = "DL;"
@@ -661,9 +664,8 @@
               $EnaCnt=$EnaCnt+1
               $EnaMsg=$EnaMsg+"$ER_RptEntry"
               IF $_FilterCount=1
-                 IF $d_TempDisabled OR $d_Archived
-                    $d_TempDisabled=False
-                    $d_Archived=False
+                 IF $d_Status<>"A"
+                    $d_Status="A"
                     $TempStr1=Extract($Summary,"- ",2)
                     $Er_LogStr="$CacheId;-100;Enable;Notify email received ==> $TempStr1;"
                     $UserStr  = "EL;"
@@ -677,9 +679,8 @@
               $ArcCnt=$ArcCnt+1
               $ArcMsg=$ArcMsg+"$ER_RptEntry"
               IF $_FilterCount=1
-                 IF NOT($d_TempDisabled) OR NOT($d_Archived)
-                    $d_TempDisabled=True
-                    $d_Archived=True
+                 IF NOT($d_Status="T") OR NOT($d_Status="X")
+                    $d_Status="X"
                     $TempStr1=Extract($Summary,"- ",2)
                     $Er_LogStr="$CacheId;-100;Archive;Notify email received ==> $TempStr1;"
                     $UserStr  = "AL;"
@@ -693,8 +694,8 @@
               $UnALog=$UnALog+"$ER_RptEntry"
               $UnaCnt=$UnaCnt+1
               IF $_FilterCount=1
-                 IF $d_Archived
-                    $d_Archived=False
+                 IF $d_Status="X"
+                    $d_Status="T"
                     $TempStr1=Extract($Summary,"- ",2)
                     $Er_LogStr="$CacheId;-100;Unarchive;Notify email received ==> $TempStr1;"
                     $UserStr  = "UL;"
@@ -708,8 +709,7 @@
               $RetCnt=$RetCnt+1
               $RetLog=$RetLog+"$ER_RptEntry"
               IF $_FilterCount=1
-                 $d_TempDisabled=True
-                 $d_Archived=True
+                 $d_Status="X"
                  $d_UserFlag=True
               ENDIF 
            CASE $LogType=Extract($ER_nTypes,";",3)                     # This a Published notification
@@ -1279,7 +1279,7 @@
            ENDIF 
         ENDIF 
      ENDIF 
-     SHOWSTATUS Msg=x Display=Off
+#     SHOWSTATUS Msg=x Display=Off
   ENDSUB 
 ###################################################################################
   BEGINSUB Name=FindOwnerName                                           # v7.6 code
@@ -1304,7 +1304,8 @@
         $SsFil=SaveFilter()                                           # Save the filter name and parameters
      ELSE 
         $SsFil=""
-        $SsCodeLst = sqlite("sql","select code from caches")          # Get the list of saved codes
+#        $SsCodeLst = sqlite("sql","select code from caches")                          # Get the list of saved codes
+        $SsCodeLst = sqlite("sql","SELECT Code FROM CachesAll WHERE $_Where")          # Get the list of saved codes
 #        $TempStr1 = sqlite("close","")                               # Good housekeeping
      ENDIF 
   ENDSUB 
@@ -1562,8 +1563,8 @@
 
      SHOWSTATUS Msg="Checking / Creating Directories ..." Top=0
      IF Not (FolderExists($StorageFolder))
-        $ER_tmpS=PutFile("$_Install\Temp\Temp.Bat","MD "+ Quote("$StorageFolder"))
-        FILEOPEN File="$_Install\Temp\Temp.Bat" Wait=yes
+        $ER_tmpS=PutFile("$_AppData\Temp\Temp.Bat","MD "+ Quote("$StorageFolder"))
+        FILEOPEN File="$_AppData\Temp\Temp.Bat" Wait=yes
      ENDIF 
 
      IF $ER_Crt=Extract($ER_CfgRunTypes,";",1)
@@ -1572,7 +1573,7 @@
      ENDIF 
 
      SHOWSTATUS Msg="Initialising File Names ..." Top=0
-     $BatchFile         = $_Install      + "\Temp\DosCmd.bat"
+     $BatchFile         = $_AppData      + "\Temp\DosCmd.bat"
      $NotifyCurrentFile = $StorageFolder + "\Notify.Gpx"
      $NotifyHistoryFile            = $StorageFolder + "\NotifyHistory.Gpx"
      $LogCurrentFile    = $StorageFolder    + "\Log.Gpx"
@@ -1584,8 +1585,8 @@
 
      SHOWSTATUS Msg="Installing Mailbox ..." Top=0
      $FileData=MimeDecode($Mailbox)
-     $ER_tmpS=Putfile ($_Install+"\Temp\mailbox.png",$FileData)
-     $FileName=$_Install + "\Temp\mailbox.png"
+     $ER_tmpS=Putfile ($_AppData+"\Temp\mailbox.png",$FileData)
+     $FileName=$_AppData + "\Temp\mailbox.png"
      $ER_FormA=EditForm($ER_FormA,"Image1","File","$FileName")
 
      SHOWSTATUS Msg="Setting Form Macro and Version ..." Top=0
@@ -1605,6 +1606,7 @@
      CANCELFILTER 
      $Cntr=0
      
+     SHOWSTATUS Msg="Locating Owner ..." Top=0
      GOSUB Name=FindOwnerName
 
      IF $DevUser
@@ -1628,6 +1630,7 @@
      DATASAVE Data=$d_Usersort
      $ER_UsortCntr=$ER_UsortCntr+1
      $ER_UsortRestored=FALSE
+     SHOWSTATUS Msg="Caving current configuration ..." Top=0
      GOSUB Name=SaveConfiguration                                        # Save Configuration Data
 
      MACROSET Dialog=Replace VarName=$ClearUsort
@@ -1636,7 +1639,8 @@
      IF $_Version>="8.0.0.133"                         # IF $_Version>="8.0.0.100" OR $_Version>"8.0.0.94"
         $ER_FormA=EditForm($ER_FormA,"OpenBrowser","Caption","Refresh new caches before exit")
      ENDIF 
-
+     SHOWSTATUS Msg="End of Initialise ..." Top=0
+     
   ENDSUB 
 ###################################################################################
   BEGINSUB Name=ChangeDb                                       # v7.7 Ok
@@ -1669,6 +1673,7 @@
 ###################################################################################
   BEGINSUB Name=SelectUpdates
      CANCELFILTER 
+     SHOWSTATUS Msg="Select Updates ..." Top=0
      IF $ExitDisplayOwned
         MFILTER Where=IsOwner AND MACROFLAG
      ENDIF 

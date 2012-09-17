@@ -1,7 +1,7 @@
 # MacDescription = Google Maps V3
 # MacFileName = Google_Map_V3.gsk
 # MacAuthor = Lignumaqua
-# MacVersion=3.2
+# MacVersion=3.3
 # MacUrl = 
 
 #==============================================================================#
@@ -44,6 +44,7 @@
 # V3.0 2-14-12 Strip out LF and CR in cache name
 # V3.1 2-15-12 Grid size in right-click menu
 # V3.2 2-17-12 Indicator for archived/unavailable, speed improvement, remote js file
+# V3.3 8-30-12 Fix backslash in parking point name and quotes in code
 
 PREPROCESS Shift=$StartShift
 VERCHECK Version=7.7.4.28 (Note: this macro requires at least  GSAK Version 7.7.4.28, found here:  http://gsak.net/board/index.php?showtopic=17668  Recommended w/ the latest "patch")
@@ -258,7 +259,7 @@ IF $ShowChild
 		$_sql = $_sql + "c' || rowid || ' = new google.maps.Marker({position: latlng"
 		$_sql = $_sql + ", icon:' || lower(replace(ctype,' ','_')) || '_icon, shadow:shadow, title:" + $_Quote + "' || "
 		$_sql = $_sql + "g_regexreplace('\r|\n',replace(replace((SELECT name FROM cachesall WHERE code=cparent),'" + $_Quote + "',''''),'\','\\'),'') || ' - ' ||"
-		$_sql = $_sql + "replace(cName,'" + $_Quote + "','''') || '" + $_Quote
+		$_sql = $_sql + "replace(replace(cName,'" + $_Quote + "',''''),'\','\\') || '" + $_Quote
 		$_sql = $_sql + ", draggable: false}); markers.push(c' || rowid || '); "
 		$_sql = $_sql + "bounds.extend(latlng);'"
 		$_sql = $_sql + " FROM Waypoints WHERE NOT(clat='' and clon='') AND NOT(clat+0=0 and clon+0=0) AND cParent IN(SELECT code from cachesall WHERE $_Where LIMIT $Limit)"
@@ -274,7 +275,7 @@ $current = HttpEncode($_CurrentDatabase)
 # Build SQLite query for Info Windows Use !&! for quotes in javascript
 
 	$info1 = "<div style=!&!width:200px;overflow:hidden;font-family:Verdana;font-size:10px;!&!>"
-	$info1 = $info1 + "<center><b><a href=!&!' || URL || '!&! target=!&!geo!&!>' || code || '</a><br />"
+	$info1 = $info1 + "<center><b><a href=!&!' || URL || '!&! target=!&!geo!&!>' || replace(replace(code,'" + $_Quote + "',''),'\','\\') || '</a><br />"
 	$info1 = $info1 + "' || g_regexreplace('\r|\n',replace(replace(name,'" + $_Quote + "',''''),'\','\\'),'') || ' </b><br />"
 	$info1 = $info1 + "<i>by: ' || replace(replace(ownername,'" + $_Quote + "',''''),'\','\\') || ' </i><br /><br />"
 	$info1 = $info1 + "Difficulty: ' || difficulty || ', Terrain: ' || terrain || '<br />"
@@ -290,13 +291,13 @@ $current = HttpEncode($_CurrentDatabase)
 	$info1 = $info1 + "' || CASE WHEN Archived THEN '<b><i><font color=!&!ff0000!&!>Archived</font></i></b><br /><br />' ELSE '' END || '"
 	$info1 = $info1 + "' || CASE WHEN TempDisabled THEN '<b><i><font color=!&!ff0000!&!>Temporarily Disabled</font></i></b><br /><br />' ELSE '' END || '"
 
-	$href = "<a href=\" + $_Quote + "gsak://%FF/search/' || code || '/$Current\" + $_Quote + ">"
+	$href = "<a href=\" + $_Quote + "gsak://%FF/search/' || replace(replace(code,'" + $_Quote + "',''),'\','\\') || '/$Current\" + $_Quote + ">"
 	$info1 = $info1 + "<b>View:</b>" + $href + "<img src=!&!$viewicon!&! align=!&!top!&! hspace=!&!4!&!></a>&nbsp;&nbsp;"
 	
-	$href = "<a href=\" + $_Quote + "gsak://%FF/flagtoggle" + $SilentString + "/' || code || '/$Current\" + $_Quote + ">"
+	$href = "<a href=\" + $_Quote + "gsak://%FF/flagtoggle" + $SilentString + "/' || replace(replace(code,'" + $_Quote + "',''),'\','\\') || '/$Current\" + $_Quote + ">"
 	$info1 = $info1 + "<b>Flag:</b>" + $href + "<img src=!&!$flagicon!&! align=!&!top!&! hspace=!&!4!&!></a>&nbsp;&nbsp;"
 	
-	$href = "<a href=\" + $_Quote + "gsak://%FF/macro" + $SilentString + "/incsort?' || code || '\" + $_Quote + ">"
+	$href = "<a href=\" + $_Quote + "gsak://%FF/macro" + $SilentString + "/incsort?' || replace(replace(code,'" + $_Quote + "',''),'\','\\') || '\" + $_Quote + ">"
 	$info1 = $info1 + "<b>Sort:</b>" + $href + "<img src=!&!$incsorticon!&! align=!&!top!&! hspace=!&!4!&!></a><br><br />"
 	$info1 = $info1 + "</center></div>"
 
@@ -372,6 +373,7 @@ Declare Var=$line Type=String
 Declare Var=$lon Type=String
 Declare Var=$MapHtml Type=String
 Declare Var=$Medium Type=Boolean
+Declare Var=$Path Type=String
 Declare Var=$result Type=String
 Declare Var=$ShowChild Type=Boolean
 Declare Var=$ShowCode Type=Boolean
@@ -491,7 +493,7 @@ var hash = '!!HashGoesHere!!';
 <script type="text/javascript" src="http://gsak.net/stats/maps/markerclustererplus_packed.js"></script>
 <script type="text/javascript" src="http://gsak.net/stats/maps/markerwithlabel.js"></script>
 <script type="text/javascript" src="http://gsak.net/stats/maps/keydragzoom_packed.js"></script>
-<script type="text/javascript" src="http://gsak.net/stats/maps/gmaps3script.js?v1"></script>
+<script type="text/javascript" src="http://gsak.net/stats/maps/gmaps3script.js?v2"></script>
 
 <script type="text/javascript">
 
@@ -763,5 +765,4 @@ IF Seek($_MacroParms)
 	$d_UserSort = $SortCurrent
 ENDIF
 <enddata>
-
 

@@ -1,5 +1,5 @@
 #*******************************************
-# MacVersion = 1.1.36
+# MacVersion = 1.1.41
 # MacDescription = Garmin Colorado/Oregon/Dakota, DeLorme PN, Magellan GC Import and Log - For GSAK 7.6+
 # MacAuthor = SnoWake, Lignumaqua
 # MacFileName = FieldNotesImportAndLog.gsk
@@ -55,16 +55,27 @@
 # 1.1.34 1-26-11 30 minute time zones, Force output in timecode chronological order
 # 1.1.35 1-27-11 Last log being missed by Field Notes system.
 # 1.1.36 2-20-11 UTF16 encode output
+# 1.1.37 3-21-11 Added %militarytime - 24 hour time with no colon separator.
+#								 %monthnameeng, %monthnamefra, %monthnamedeu - month name in English, French or German
+# 1.1.38 3-23-11 Custom month name %monthnamecus as defined in $MonthString on custom text form
+#								 Log edit form size automatically changes size with screen resolution. > 1000 or < 600
+# 1.1.39 3-24-11 Declaration error
+# 1.1.40 4-18-11 Filter and exit now uses SQLite
+# 1.1.41 8-21-12 Remove Deprecated commands
 
 
 #####################################################################
 
-$Revision = "1.1.36"
+
+NOERROR Commands=Deprecated
+Deprecated Warning=No
+
+$Revision = "1.1.41"
 GOSUB name=DeclareVariables
 TRANSACTION action=begin
 TRANSACTION action=end
 # Requires at least this build or later for UTF16() function and SQLite
-VERCHECK Version=7.6.0.32 (Note: this macro requires the latest 7.6 GSAK release - see http://gsak.net for the download link)
+VERCHECK Version=7.7.3.53 (Note: this macro requires the latest 7.7 GSAK release - see http://gsak.net for the download link)
 
 # Set up the SQL table
 $file = $_Install + "\macros\coloradoimportSQL.db3"
@@ -102,6 +113,19 @@ $list2 = List("sql2","create",$_NewLine)
 $currentdb = $_CurrentDatabase
 
 $splitscreen = $_Install + "/temp/logsplitscreen.htm"
+
+# Pick form size
+
+$form3 = $form3regular
+
+IF Val(Extract(SysInfo("ScreenResolution"),",",2)) >= 1000
+	$form3 = $form3large
+ENDIF
+
+IF Val(Extract(SysInfo("ScreenResolution"),",",2)) < 600
+	$form3 = $form3small
+ENDIF
+
 
 ############################################################
 # PreLoad User variables into Form
@@ -205,6 +229,11 @@ IF (FileExists($DataFile))
 		$TimeZoneMinuteString = "0"
 	ELSE
 		$TimeZoneMinuteString = Extract($variables,";",25)
+	ENDIF
+	IF Extract($variables,";",26) = ""
+		$MonthString = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec"
+	ELSE
+		$MonthString = Extract($variables,";",26)
 	ENDIF
 ENDIF
 
@@ -331,6 +360,7 @@ WHILE TRUE
 		RETURN
 	CASE $FixedTextButton
 		GOSUB name=EditFixedText
+		GOSUB name=SaveDataFile
 	CASE $Help
 		GOSUB name=ShowHelp
 	CASE $UpdateFindCount
@@ -621,7 +651,8 @@ BEGINSUB name=LoadAndParseFile
 		MFILTER Expression=$d_UserFlag
 
 		IF $UserSortCheckbox
-			SORT by="usersort"
+			#SORT by="usersort"
+			SQLSORT Orderby=Usersort
 		ENDIF
 
 	ELSE
@@ -667,7 +698,7 @@ BEGINSUB name=AddCache
 ENDSUB 
 
 BEGINSUB name=SaveDataFile
-	$variables = "$TimeZoneString;$InputFile;$MatchDatabase;$UserFlagCheckbox;$UserSortCheckbox;$TimeButton;$DateButton;$DateTimeButton;$NoneButton;$UserLogButton;$UserNotesButton;$ReplaceButton;$AddButton;$Filepath;$FoundDatabase;$CutOffDate;$Ignore;$ArchiveFile;$DeleteFile;$FixedTextBox;$FindCount;$AddCountTo;$NoteTextBox;$UseCurrent;$TimeZoneMinuteString"
+	$variables = "$TimeZoneString;$InputFile;$MatchDatabase;$UserFlagCheckbox;$UserSortCheckbox;$TimeButton;$DateButton;$DateTimeButton;$NoneButton;$UserLogButton;$UserNotesButton;$ReplaceButton;$AddButton;$Filepath;$FoundDatabase;$CutOffDate;$Ignore;$ArchiveFile;$DeleteFile;$FixedTextBox;$FindCount;$AddCountTo;$NoteTextBox;$UseCurrent;$TimeZoneMinuteString;$MonthString"
 	$result = PutFile($datafile, $variables)
 	IF Left($result, 7) = "*Error*"
 		# If theres any error abort the macro
@@ -686,7 +717,7 @@ BEGINSUB name=UpdateFindCount
 	ENDIF
 	
 	# sync SQLite table
-	SQLITECACHES
+	#SQLITECACHES
 	
 	# Count logged finds in Found Database that aren't Waymarks or Benchmarks
 	#$temp = SqlQuote(RegExData("\A.*\\",$_CurrentDataPath,1) + $FoundDatabase + "\sqlite.db3")
@@ -731,8 +762,8 @@ BEGINSUB name=GlobalUpdate
 		$OutputLog = $Text + $OutputLog
 	ENDCASE
 
-	$NoteText = extract($d_UserNote,"$~",1)
-	$LogText = extract($d_UserNote,"$~",2)
+	$NoteText = Extract($d_UserNote,"$~",1)
+	$LogText = Extract($d_UserNote,"$~",2)
 	IF Len($NoteText) > 0
 		$NoteText = $NoteText + $_NewLine
 	ENDIF
@@ -778,6 +809,8 @@ BEGINSUB name=GlobalUpdate
 		
 		# 12 hour format string
 		BEGINCASE
+		CASE Val($HourString)=0
+  		$12HourString = "12:" + $MinuteString + " AM"
 		CASE Val($HourString)<12
 			$12HourString = $HourString + ":" + $MinuteString + " AM"
 		CASE Val($HourString)=12
@@ -785,6 +818,11 @@ BEGINSUB name=GlobalUpdate
 		OTHERWISE
 			$12HourString = Str(Val($HourString)-12,2,0) + ":" + $MinuteString + " PM"
 		ENDCASE
+		
+		# Month names
+		$MonthEng = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec"
+		$MonthFra = "Jan,Fév,Mar,Avr,Mai,Juin,Juil,Août,Sep,Oct,Nov,Déc"
+		$MonthDeu = "Jan,Feb,Mar,Apr,Mai,Jun,Jul,Aug,Sep,Okt,Nov,Dez"
 		
 		# Calculate ordinal suffix for $findcount
 		$OrdCount = $findcount
@@ -796,9 +834,14 @@ BEGINSUB name=GlobalUpdate
 		$ThisCacheFixedText = Replace("%note",$NoteText,$ThisCacheFixedText)
 		$ThisCacheFixedText = Replace("%date",DateFormat($LogDate),$ThisCacheFixedText)
 		$ThisCacheFixedText = Replace("%day",Substr(DateToString($LogDate),7,2),$ThisCacheFixedText)
+		$ThisCacheFixedText = Replace("%monthnameeng",Extract($MonthEng, ",", Val(Substr(DateToString($LogDate),5,2))),$ThisCacheFixedText)
+		$ThisCacheFixedText = Replace("%monthnamefra",Extract($MonthFra, ",", Val(Substr(DateToString($LogDate),5,2))),$ThisCacheFixedText)
+		$ThisCacheFixedText = Replace("%monthnamedeu",Extract($MonthDeu, ",", Val(Substr(DateToString($LogDate),5,2))),$ThisCacheFixedText)
+		$ThisCacheFixedText = Replace("%monthnamecus",Extract($MonthString, ",", Val(Substr(DateToString($LogDate),5,2))),$ThisCacheFixedText)
 		$ThisCacheFixedText = Replace("%month",Substr(DateToString($LogDate),5,2),$ThisCacheFixedText)
 		$ThisCacheFixedText = Replace("%year",Substr(DateToString($LogDate),1,4),$ThisCacheFixedText)		
 		$ThisCacheFixedText = Replace("%time12",$12HourString,$ThisCacheFixedText)
+		$ThisCacheFixedText = Replace("%militarytime",$HourString + $MinuteString,$ThisCacheFixedText)
 		$ThisCacheFixedText = Replace("%time",$HourString + ":" + $MinuteString,$ThisCacheFixedText)
 		$ThisCacheFixedText = Replace("%runtotal","$runtotal",$ThisCacheFixedText)
 		$ThisCacheFixedText = Replace("%fieldnotes",$FieldNotes,$ThisCacheFixedText)
@@ -837,6 +880,8 @@ BEGINSUB name=GlobalUpdate
 				
 		# 12 hour format string
 		BEGINCASE
+		CASE Val($HourString)=0
+  		$12HourString = "12:" + $MinuteString + " AM"
 		CASE Val($HourString)<12
 			$12HourString = $HourString + ":" + $MinuteString + " AM"
 		CASE Val($HourString)=12
@@ -844,6 +889,11 @@ BEGINSUB name=GlobalUpdate
 		OTHERWISE
 			$12HourString = Str(Val($HourString)-12,2,0) + ":" + $MinuteString + " PM"
 		ENDCASE
+		
+		# Month names
+		$MonthEng = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec"
+		$MonthFra = "Jan,Fév,Mar,Avr,Mai,Juin,Juil,Août,Sep,Oct,Nov,Déc"
+		$MonthDeu = "Jan,Feb,Mär,Apr,Mai,Jun,Jul,Aug,Sep,Okt,Nov,Dez"
 		
 		# Calculate ordinal suffix for $findcount
 		$OrdCount = $findcount
@@ -855,9 +905,14 @@ BEGINSUB name=GlobalUpdate
 		$ThisCacheNoteText = Replace("%note",$NoteText,$ThisCacheNoteText)
 		$ThisCacheNoteText = Replace("%date",DateFormat($LogDate),$ThisCacheNoteText)
 		$ThisCacheNoteText = Replace("%day",Substr(DateToString($LogDate),7,2),$ThisCacheNoteText)
+		$ThisCacheNoteText = Replace("%monthnameeng",Extract($MonthEng, ",", Val(Substr(DateToString($LogDate),5,2))),$ThisCacheNoteText)
+		$ThisCacheNoteText = Replace("%monthnamefra",Extract($MonthFra, ",", Val(Substr(DateToString($LogDate),5,2))),$ThisCacheNoteText)
+		$ThisCacheNoteText = Replace("%monthnamedeu",Extract($MonthDeu, ",", Val(Substr(DateToString($LogDate),5,2))),$ThisCacheNoteText)
+		$ThisCacheNoteText = Replace("%monthnamecus",Extract($MonthString, ",", Val(Substr(DateToString($LogDate),5,2))),$ThisCacheNoteText)
 		$ThisCacheNoteText = Replace("%month",Substr(DateToString($LogDate),5,2),$ThisCacheNoteText)
 		$ThisCacheNoteText = Replace("%year",Substr(DateToString($LogDate),1,4),$ThisCacheNoteText)		
 		$ThisCacheNoteText = Replace("%time12",$12HourString,$ThisCacheNoteText)
+		$ThisCacheNoteText = Replace("%militarytime",$HourString + $MinuteString,$ThisCacheNoteText)
 		$ThisCacheNoteText = Replace("%time",$HourString + ":" + $MinuteString,$ThisCacheNoteText)
 		$ThisCacheNoteText = Replace("%runtotal","$runtotal",$ThisCacheNoteText)
 		$ThisCacheNoteText = Replace("%fieldnotes",$FieldNotes,$ThisCacheNoteText)
@@ -1014,7 +1069,8 @@ BEGINSUB name=CreateLogFile
 		MFILTER Expression=$d_DNF
 	ENDIF
 	IF $_FilterCount > 0
-		SORT by=MacroSort
+		#SORT by=MacroSort
+		SQLSORT Orderby=Macrosort
 		# Two passes
 		$pass = 1
 		WHILE $pass <=2
@@ -1103,7 +1159,8 @@ BEGINSUB name=CreateLogFile
 		MFILTER Expression=$d_Found
 	ENDIF
 	IF $_FilterCount > 0
-		SORT by=MacroSort
+		#SORT by=MacroSort
+		SQLSORT Orderby=Macrosort
 		# Two passes
 		$pass = 1
 		WHILE $pass <=2
@@ -1195,7 +1252,7 @@ BEGINSUB name=CreateLogFile
 		SPLITSCREEN Display=On Format=$OldSplitScreen
 	ENDIF
 	CANCELFILTER
-
+	
 
 	IF $count >0
 		$_sql = "SELECT Code, DateTime, Status, Log from ExportData ORDER BY DateTime ASC"
@@ -1334,6 +1391,7 @@ BEGINSUB name=EditFixedText
 	$FixedTextOld = $FixedText
 	$DNFTextOld = $DNFText
 	$NoteFixedTextOld = $NoteFixedText
+	$MonthStringOld = $MonthString
 	
 	WHILE TRUE
 		$result = Form($form6,"")
@@ -1345,6 +1403,7 @@ BEGINSUB name=EditFixedText
 			$FixedText = $FixedTextOld
 			$DNFText = $DNFTextOld
 			$NoteFixedText = $NoteFixedTextOld
+			$MonthString = $MonthStringOld
 			BREAK
 		CASE $Help
 			GOSUB name=ShowHelp
@@ -1353,6 +1412,8 @@ BEGINSUB name=EditFixedText
 			$FixedText = Replace($_Quote,"'",$FixedText,TRUE)
 			$DNFText = Replace($_Quote,"'",$DNFText,TRUE)
 			$NoteFixedText = Replace($_Quote,"'",$NoteFixedText,TRUE)
+			# No semicolons in $MonthString
+			$MonthString = Replace(";",",",$MonthString,TRUE)
 			$result = PutFile($LogTextFile, $FixedText + "~~" + $DNFText+ "~~" + $NoteFixedText)
 			IF Left($result, 7) = "*Error*"
 				# If theres any error abort the macro
@@ -1472,6 +1533,8 @@ Use the following %tags to insert data anywhere in the text:
 
 %time             : Find Time (24 hour format)
 
+%militarytime     : Find Time (24 hour format without colon)
+
 %time12           : Find Time (12 hour format)
 
 %day              : Day of month
@@ -1479,6 +1542,14 @@ Use the following %tags to insert data anywhere in the text:
 %month            : Month
 
 %year             : Year
+
+%monthnameeng     : Month name in English
+
+%monthnamefra     : Month name in French
+
+%monthnamedeu     : Month name in German
+
+%monthnamecus     : Custom Month name as defined by user
 
 %note             : User Note contents
 
@@ -1506,67 +1577,9 @@ BEGINSUB name=FilterExit
 	ENDIF
 
 	CANCELFILTER
-	# First the DNFs
-	MACROFLAG type=clear range=all
-	# Filter to DNF caches
-	MFILTER Expression=$d_DNF AND NOT($d_CacheType="O" OR $d_CacheType="Y" OR $d_CacheType="G")
-	IF $_FilterCount > 0
-		SORT by=MacroSort
-		GOTO position=top
-		WHILE NOT($_EOL)
-			$LogFound = FALSE
-			TABLE Active=Logs Scope=parent
-			WHILE NOT($_EOL) AND NOT($LogFound)
-				IF IsOwner()
-					$lt = left($d_lType,5)
-					IF ($lt="Didn'")
-						$LogFound= TRUE
-					ENDIF
-				ENDIF
-				GOTO Position=Next
-			ENDWHILE
-			TABLE Active=caches
-			IF NOT($LogFound)
-				#MACROFLAG type=SET range=1
-				$d_MacroFlag = TRUE
-			ENDIF
-			GOTO position=next
-		ENDWHILE
-	ENDIF
-
-
-# Memo - 7-20-10 MFILTER WHERE code to use SQLite for Vercheck > 7.7
-# SELECT code from caches where Found = 1 AND not exists (select lParent from Logs where lParent = code and g_foundlog(ltype) and lIsowner = 1)
-	# Now add in the Found to the filter
-	CANCELFILTER
-	MFILTER Expression=$d_Found AND NOT($d_CacheType="O" OR $d_CacheType="Y" OR $d_CacheType="G")
-	IF $_FilterCount > 0
-		#SHOWSTATUS msg="Filtering to Found caches with no Found log" Width=350
-		GOTO position=top
-		WHILE NOT($_EOL)
-			$LogFound = FALSE
-			TABLE Active=Logs Scope=parent
-			WHILE NOT($_EOL) AND NOT($LogFound)
-				IF IsOwner()
-					$lt = left($d_lType,5)
-					IF ($lt="Found" OR $lt="Atten" OR $lt="Webca")
-						$LogFound= TRUE
-					ENDIF
-				ENDIF
-				GOTO Position=Next
-			ENDWHILE
-			TABLE Active=caches
-			IF NOT($LogFound)
-				#MACROFLAG type=SET range=1
-				$d_MacroFlag = TRUE
-			ENDIF
-			GOTO position=next
-		ENDWHILE
-	ENDIF
 	
-	# Filter to combination
-	CANCELFILTER
-	MFILTER Expression=$d_MacroFlag
+	MFILTER where=(Found = 1 AND not exists (select lParent from Logs where lParent = code and g_foundlog(ltype) and lIsowner = 1)) or (DNF = 1 AND not exists (select lParent from Logs where lParent = code and ltype = 'Didn''t find it' and lIsowner = 1))
+	
 	IF $_FilterCount = 0
 		MSGOK msg="Cannot find any caches without logs"
 	ENDIF
@@ -1580,159 +1593,164 @@ ENDSUB
 
 
 BEGINSUB name=DeclareVariables
-	#*******************************************************
-	#   Variable declarations for
-	#   C:\Program Files\GSAK\Macros\ColoradoImportandLog.gsk
-	#
-	#   Generated 8/30/2008 5:53:52 PM on GSAKVariables.gsk Rev V0.20 B15
-	#
-	#*******************************************************
+	
+#*******************************************************
+#   Variable declarations for
+#   C:\Users\Mike\AppData\Roaming\gsak\Macros\FieldNotesImportandLogBeta.gsk
+#
+#   Generated 3/21/2011 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
 
-	Option Explicit=Yes
 
-	Declare Var=$AddButton Type=Boolean
-	Declare Var=$AddCountTo Type=String
-	Declare Var=$ArchiveFile Type=Boolean
-	Declare Var=$Back Type=Boolean
-	Declare Var=$BatFile Type=String
-	Declare Var=$CachingDay Type=Numeric
-	Declare Var=$Code Type=String
-	Declare Var=$comspec Type=String
-	Declare Var=$Count Type=Numeric
-	Declare Var=$CountLines Type=Numeric
-	Declare Var=$currentdb Type=String
-	Declare Var=$CutOffDate Type=String
-	Declare Var=$data Type=String
-	Declare Var=$Databases Type=String
-	Declare Var=$DatabasesNone Type=String
-	Declare Var=$DataFile Type=String
-	Declare Var=$datafilepath Type=String
-	Declare Var=$DataWritten Type=Boolean
-	Declare Var=$DateButton Type=Boolean
-	Declare Var=$DateNum Type=Numeric
-	Declare Var=$DateStr Type=String
-	Declare Var=$DateString Type=String
-	Declare Var=$DateTime Type=String
-	Declare Var=$DateTimeButton Type=Boolean
-	Declare Var=$DeleteFile Type=Boolean
-	Declare Var=$DirFile Type=String
-	Declare Var=$DNFcount Type=Numeric
-	Declare Var=$DNFText Type=String
-	Declare Var=$DNFTextOld Type=String
-	Declare Var=$dnum Type=Numeric
-	Declare Var=$Drive Type=String
-	Declare Var=$edittime Type=String
-	Declare Var=$Entries Type=Numeric
-	Declare Var=$fieldnotes Type=String
-	Declare Var=$fieldnotesfile Type=String
-	Declare Var=$file Type=String
-	Declare Var=$Filepath Type=String
-	Declare Var=$FindCount Type=Numeric
-	Declare Var=$FindCountText Type=String
-	Declare Var=$FixedText Type=String
-	Declare Var=$NoteFixedText Type=String
-	Declare Var=$FixedTextOld Type=String
-	Declare Var=$NoteFixedTextOld Type=String
-	Declare Var=$FixedTextBox Type=Boolean
-	Declare Var=$NoteTextBox Type=Boolean
-	Declare Var=$FlagCaches Type=Boolean
-	Declare Var=$Form Type=String
-	Declare Var=$Form3 Type=String
-	Declare Var=$form4 Type=String
-	Declare Var=$form5 Type=String
-	Declare Var=$Form6 Type=String
-	Declare Var=$Form7 Type=String
-	Declare Var=$FoundDatabase Type=String
-	Declare Var=$FTFBox Type=Boolean
-	Declare Var=$FTFmsg Type=String
-	Declare Var=$FTFYes Type=Boolean
-	Declare Var=$GetGPX2 Type=String
-	Declare Var=$GPXFile Type=String
-	DECLARE Var=$h Type=String
-	Declare Var=$Help Type=Boolean
-	Declare Var=$HelpText Type=String
-	Declare Var=$Hours Type=Numeric
-	Declare Var=$HoursCorrected Type=Numeric
-	Declare Var=$12HourString Type=String
-	Declare Var=$HourString Type=String
-	Declare Var=$i Type=Numeric
-	Declare Var=$Ignore Type=Boolean
-	Declare Var=$InputFile Type=String
-	Declare Var=$j Type=Numeric
-	Declare Var=$runcount Type=Numeric
-	DECLARE Var=$leap Type=Numeric
-	Declare Var=$line Type=String
-	Declare Var=$list Type=String
-	Declare Var=$list2 Type=String
-	Declare Var=$LoadGPXStatic Type=String
-	Declare Var=$LoadGPXDynamic Type=String
-	Declare Var=$Log Type=String
-	Declare Var=$LogDate Type=Date
-	Declare Var=$LogFound Type=Boolean
-	Declare Var=$LogText Type=String
-	Declare Var=$LogTextFile Type=String
-	Declare Var=$lt Type=String
-	Declare Var=$Maintenance Type=Boolean
-	Declare Var=$MaintenanceLog Type=String
-	Declare Var=$MatchDatabase Type=String
-	Declare Var=$memoupdated Type=String
-	Declare Var=$Minutes Type=Numeric
-	Declare Var=$MinuteString Type=String
-	Declare Var=$Model Type=String
-	DECLARE Var=$msg Type=String
-	Declare Var=$NoneButton Type=Boolean
-	Declare Var=$NotesString Type=String
-	Declare Var=$NoteLog Type=String
-	Declare Var=$NoteText Type=String
-	Declare Var=$NotFoundCodes Type=String
-	Declare Var=$OldSplitScreen Type=String
-	Declare Var=$OrdinalSuffix Type=String
-	Declare Var=$OutputDateTime Type=String
-	Declare Var=$OutputFile Type=String
-	Declare Var=$OutputLog Type=String
-	Declare Var=$OutputStatus Type=String
-	Declare Var=$OrdCount Type=Numeric
-	Declare Var=$Over500List Type=String
-	Declare Var=$Over500Caches Type=String
-	Declare Var=$Over500LogText Type=String
-	Declare Var=$Over500Name Type=String
-	Declare Var=$Pass Type=Numeric
-	Declare Var=$Pointer Type=Numeric
-	DECLARE Var=$ReplaceButton Type=Boolean
-	Declare Var=$result Type=String
-	Declare Var=$revision Type=String
-	Declare Var=$runtotal Type=Numeric
-	Declare Var=$Separator Type=String
-	Declare Var=$skipedit Type=Boolean
-	Declare Var=$splitscreen Type=String
-	Declare Var=$sql Type=String
-	Declare Var=$SQLData Type=String
-	Declare Var=$Status Type=String
-	Declare Var=$SWver Type=Numeric
-	Declare Var=$SWversion Type=String
-	Declare Var=$Temp Type=String
-	Declare Var=$Text Type=String
-	Declare Var=$ThisCacheFixedText Type=String
-	Declare Var=$ThisCacheNoteText Type=String
-	Declare Var=$TimeButton Type=Boolean
-	Declare Var=$TimeStr Type=String
-	Declare Var=$TimeZoneOffset Type=Numeric
-	Declare Var=$TimeZoneMinute Type=Numeric
-	Declare Var=$TimeZoneMinuteString Type=String
-	Declare Var=$TimeZoneString Type=String
-	Declare Var=$tmpN Type=Numeric
-	Declare Var=$UseCurrent Type=Boolean
-	Declare Var=$UserFlagCheckbox Type=Boolean
-	Declare Var=$UserLogButton Type=Boolean
-	Declare Var=$UserNotesButton Type=Boolean
-	Declare Var=$UserSortCheckbox Type=Boolean
-	Declare Var=$variables Type=String
-	Declare Var=$work Type=String
-	Declare Var=$WriteNote Type=Boolean
-	Declare Var=$Make Type=String
-	Declare Var=$Year Type=Date
+Option Explicit=Yes
 
+Declare Var=$12HourString Type=String
+Declare Var=$AddButton Type=Boolean
+Declare Var=$AddCountTo Type=String
+Declare Var=$ArchiveFile Type=Boolean
+Declare Var=$Back Type=Boolean
+Declare Var=$CachingDay Type=Numeric
+Declare Var=$Code Type=String
+Declare Var=$Count Type=Numeric
+Declare Var=$CountLines Type=Numeric
+Declare Var=$currentdb Type=String
+Declare Var=$CutOffDate Type=String
+Declare Var=$Data Type=String
+Declare Var=$Databases Type=String
+Declare Var=$DatabasesNone Type=String
+Declare Var=$DataFile Type=String
+Declare Var=$datafilepath Type=String
+Declare Var=$DataWritten Type=Boolean
+Declare Var=$DateButton Type=Boolean
+Declare Var=$DateNum Type=Numeric
+Declare Var=$DateStr Type=String
+Declare Var=$DateString Type=String
+Declare Var=$DateTime Type=String
+Declare Var=$DateTimeButton Type=Boolean
+Declare Var=$DeleteFile Type=Boolean
+Declare Var=$DNFcount Type=Numeric
+Declare Var=$DNFText Type=String
+Declare Var=$DNFTextOld Type=String
+Declare Var=$Drive Type=String
+Declare Var=$edittime Type=String
+Declare Var=$Entries Type=Numeric
+Declare Var=$FieldNotes Type=String
+Declare Var=$fieldnotesfile Type=String
+Declare Var=$file Type=String
+Declare Var=$Filepath Type=String
+Declare Var=$FindCount Type=Numeric
+Declare Var=$FindCountText Type=String
+Declare Var=$FixedText Type=String
+Declare Var=$FixedTextBox Type=Boolean
+Declare Var=$FixedTextOld Type=String
+Declare Var=$FlagCaches Type=Boolean
+Declare Var=$Form Type=String
+Declare Var=$form10 Type=String
+Declare Var=$form11 Type=String
+Declare Var=$Form3 Type=String
+Declare Var=$form4 Type=String
+Declare Var=$form5 Type=String
+Declare Var=$Form6 Type=String
+Declare Var=$Form7 Type=String
+Declare Var=$Form8 Type=String
+Declare Var=$form9 Type=String
+Declare Var=$FoundDatabase Type=String
+Declare Var=$FTFBox Type=Boolean
+Declare Var=$FTFmsg Type=String
+Declare Var=$GPXFile Type=String
+Declare Var=$h Type=String
+Declare Var=$HelpText Type=String
+Declare Var=$Hours Type=Numeric
+Declare Var=$HoursCorrected Type=Numeric
+Declare Var=$HourString Type=String
+Declare Var=$i Type=Numeric
+Declare Var=$icon_smile Type=String
+Declare Var=$icon_smile_big Type=String
+Declare Var=$icon_smile_sad Type=String
+Declare Var=$icon_smile_wink Type=String
+Declare Var=$Ignore Type=Boolean
+Declare Var=$InputFile Type=String
+Declare Var=$j Type=Numeric
+Declare Var=$leap Type=Numeric
+Declare Var=$line Type=String
+Declare Var=$list Type=String
+Declare Var=$list2 Type=String
+Declare Var=$LoadGPXStatic Type=String
+Declare Var=$Log Type=String
+Declare Var=$LogDate Type=Date
+Declare Var=$LogFound Type=Boolean
+Declare Var=$LogText Type=String
+Declare Var=$LogTextFile Type=String
+Declare Var=$lt Type=String
+Declare Var=$Maintenance Type=Boolean
+Declare Var=$MaintenanceLog Type=String
+Declare Var=$Make Type=String
+Declare Var=$MatchDatabase Type=String
+Declare Var=$memoupdated Type=String
+Declare Var=$Minutes Type=Numeric
+Declare Var=$MinuteString Type=String
+Declare Var=$Model Type=String
+Declare Var=$MonthDeu Type=String
+Declare Var=$MonthEng Type=String
+Declare Var=$MonthFra Type=String
+Declare Var=$MonthString Type=String
+Declare Var=$MonthStringOld Type=String
+Declare Var=$msg Type=String
+Declare Var=$NoneButton Type=Boolean
+Declare Var=$NoteFixedText Type=String
+Declare Var=$NoteFixedTextOld Type=String
+Declare Var=$NoteLog Type=String
+Declare Var=$NotesString Type=String
+Declare Var=$NoteText Type=String
+Declare Var=$NoteTextBox Type=Boolean
+Declare Var=$NotFoundCodes Type=String
+Declare Var=$OldSplitScreen Type=String
+Declare Var=$OrdCount Type=Numeric
+Declare Var=$OrdinalSuffix Type=String
+Declare Var=$OutputDateTime Type=String
+Declare Var=$OutputFile Type=String
+Declare Var=$OutputLog Type=String
+Declare Var=$OutputStatus Type=String
+Declare Var=$Over500caches Type=String
+Declare Var=$Over500List Type=String
+Declare Var=$Over500LogText Type=String
+Declare Var=$pass Type=Numeric
+Declare Var=$pointer Type=Numeric
+Declare Var=$ReplaceButton Type=Boolean
+Declare Var=$result Type=String
+Declare Var=$Revision Type=String
+Declare Var=$runcount Type=Numeric
+Declare Var=$RunTotal Type=Numeric
+Declare Var=$Separator Type=String
+Declare Var=$skipedit Type=Boolean
+Declare Var=$splitscreen Type=String
+Declare Var=$status Type=String
+Declare Var=$SWver Type=Numeric
+Declare Var=$SWversion Type=String
+Declare Var=$Temp Type=String
+Declare Var=$Text Type=String
+Declare Var=$ThisCacheFixedText Type=String
+Declare Var=$ThisCacheNoteText Type=String
+Declare Var=$TimeButton Type=Boolean
+Declare Var=$TimeStr Type=String
+Declare Var=$TimeZoneMinute Type=Numeric
+Declare Var=$TimeZoneMinuteString Type=String
+Declare Var=$TimeZoneOffset Type=Numeric
+Declare Var=$TimeZoneString Type=String
+Declare Var=$tmpN Type=Numeric
+Declare Var=$UseCurrent Type=Boolean
+Declare Var=$UserFlagCheckbox Type=Boolean
+Declare Var=$UserLogButton Type=Boolean
+Declare Var=$UserNotesButton Type=Boolean
+Declare Var=$UserSortCheckbox Type=Boolean
+Declare Var=$variables Type=String
+Declare Var=$work Type=String
+Declare Var=$WriteNote Type=Boolean
+Declare Var=$Year Type=Date
 ENDSUB name=DeclareVariables
+
+
 
 <data> VarName=$LoadGPXStatic
 [TfmGpxLoad]
@@ -1767,9 +1785,9 @@ chkKeepFocus.Checked=False
 chkDecodeEntity.Checked=True
 <enddata>
 
-<Data> VarName=$form3
+<Data> VarName=$form3regular
 #********************************************************************
-# Form generated by GSAK form designer on Mon 25-Jul-2011 17:52:07
+# Form generated by GSAK form designer on Mon 22-Aug-2011 09:23:42
 #********************************************************************
 
 Name = Form1
@@ -1801,7 +1819,7 @@ Name = OK
   Top = 537
   Width = 100
   Taborder = 1
-  Caption = Next Log -->
+  Caption = Next Log --&gt;
 
 Name = Cancel
   Type = Button
@@ -1926,15 +1944,350 @@ Name = FTFbox
 
 Name = Back
   Type = Button
-  Alignment = Left
-  Enabled = Yes
-  Enter = Yes
   Height = 25
   Left = 527
   Top = 537
-  Visible = Yes
   Width = 100
-  Taborder = 11
+  Taborder = 17
+  Caption = &lt;-- Prior Log
+
+<enddata>
+
+
+<Data> VarName=$form3large
+#********************************************************************
+# Form generated by GSAK form designer on Wed 23-Mar-2011 18:32:10
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 800
+  Width = 1000
+
+Name = Groupbox1
+  Type = Groupbox
+  Height = 120
+  Left = 965
+  Top = 408
+  Width = 20
+  Taborder = 7
+
+Name = LogText
+  Type = Memo
+  Height = 313
+  Left = 16
+  Scrollbars = Vertical
+  Top = 408
+  Width = 945
+  Taborder = 0
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 755
+  Top = 737
+  Width = 100
+  Taborder = 1
+  Caption = Next Log -->
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 129
+  Top = 737
+  Width = 100
+  Taborder = 2
+  Caption = Cancel Macro
+
+Name = CacheName
+  Type = Label
+  Color = 16744448
+  Height = 15
+  Left = 21
+  Size = 9
+  Style = bold
+  Top = 388
+  Width = 49
+  Caption = Log for:
+
+Name = skip
+  Type = Button
+  Height = 25
+  Left = 244
+  Top = 737
+  Width = 100
+  Taborder = 3
+  Caption = Skip Editing Logs
+
+Name = NoteText
+  Type = Memo
+  Height = 50
+  Left = 16
+  Scrollbars = Vertical
+  Top = 335
+  Width = 960
+  Taborder = 4
+
+Name = Notename
+  Type = Label
+  Color = 16744448
+  Height = 15
+  Left = 21
+  Size = 9
+  Style = bold
+  Top = 315
+  Width = 55
+  Caption = Note for:
+
+Name = SpellCheck
+  Type = Button
+  Height = 25
+  Left = 443
+  Spellcheck = LogText
+  Top = 737
+  Width = 100
+  Taborder = 5
+  Caption = Spell Check
+
+Name = Browser1
+  Type = Browser
+  Height = 311
+  Left = 0
+  Top = 0
+  Width = 991
+  Taborder = 6
+
+Name = icon_smile
+  Type = Image
+  Container = Groupbox1
+  Exitonclick = yes
+  File = icon_smile.gif
+  Height = 16
+  Left = 2
+  Source = macro
+  Top = 12
+  Width = 16
+
+Name = icon_smile_sad
+  Type = Image
+  Container = Groupbox1
+  Exitonclick = yes
+  File = icon_smile_sad.gif
+  Height = 16
+  Left = 2
+  Source = macro
+  Top = 39
+  Width = 16
+
+Name = icon_smile_big
+  Type = Image
+  Container = Groupbox1
+  Exitonclick = yes
+  File = icon_smile_big.gif
+  Height = 16
+  Left = 2
+  Source = macro
+  Top = 66
+  Width = 16
+
+Name = icon_smile_wink
+  Type = Image
+  Container = Groupbox1
+  Exitonclick = yes
+  File = icon_smile_wink.gif
+  Height = 16
+  Left = 2
+  Source = macro
+  Top = 93
+  Width = 16
+
+Name = FTFbox
+  Type = Checkbox
+  Captionposition = Left
+  Height = 17
+  Left = 935
+  Top = 390
+  Width = 47
+  Taborder = 8
+  Caption = FTF:
+
+Name = Back
+  Type = Button
+  Height = 25
+  Left = 640
+  Top = 737
+  Width = 100
+  Taborder = 17
+  Caption = <-- Prior Log
+
+<enddata>
+
+
+
+<Data> VarName=$form3small
+#********************************************************************
+# Form generated by GSAK form designer on Wed 23-Mar-2011 18:20:31
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 575
+  Width = 800
+
+Name = Groupbox1
+  Type = Groupbox
+  Height = 120
+  Left = 762
+  Top = 383
+  Width = 20
+  Taborder = 7
+
+Name = LogText
+  Type = Memo
+  Height = 120
+  Left = 16
+  Scrollbars = Vertical
+  Top = 385
+  Width = 745
+  Taborder = 0
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 642
+  Top = 512
+  Width = 100
+  Taborder = 1
+  Caption = Next Log -->
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 16
+  Top = 512
+  Width = 100
+  Taborder = 2
+  Caption = Cancel Macro
+
+Name = CacheName
+  Type = Label
+  Color = 16744448
+  Height = 15
+  Left = 21
+  Size = 9
+  Style = bold
+  Top = 365
+  Width = 49
+  Caption = Log for:
+
+Name = skip
+  Type = Button
+  Height = 25
+  Left = 131
+  Top = 512
+  Width = 100
+  Taborder = 3
+  Caption = Skip Editing Logs
+
+Name = NoteText
+  Type = Memo
+  Height = 50
+  Left = 16
+  Scrollbars = Vertical
+  Top = 312
+  Width = 760
+  Taborder = 4
+
+Name = Notename
+  Type = Label
+  Color = 16744448
+  Height = 15
+  Left = 21
+  Size = 9
+  Style = bold
+  Top = 292
+  Width = 55
+  Caption = Note for:
+
+Name = SpellCheck
+  Type = Button
+  Height = 25
+  Left = 330
+  Spellcheck = LogText
+  Top = 512
+  Width = 100
+  Taborder = 5
+  Caption = Spell Check
+
+Name = Browser1
+  Type = Browser
+  Height = 291
+  Left = 0
+  Top = 0
+  Width = 791
+  Taborder = 6
+
+Name = icon_smile
+  Type = Image
+  Container = Groupbox1
+  Exitonclick = yes
+  File = icon_smile.gif
+  Height = 16
+  Left = 2
+  Source = macro
+  Top = 12
+  Width = 16
+
+Name = icon_smile_sad
+  Type = Image
+  Container = Groupbox1
+  Exitonclick = yes
+  File = icon_smile_sad.gif
+  Height = 16
+  Left = 2
+  Source = macro
+  Top = 39
+  Width = 16
+
+Name = icon_smile_big
+  Type = Image
+  Container = Groupbox1
+  Exitonclick = yes
+  File = icon_smile_big.gif
+  Height = 16
+  Left = 2
+  Source = macro
+  Top = 66
+  Width = 16
+
+Name = icon_smile_wink
+  Type = Image
+  Container = Groupbox1
+  Exitonclick = yes
+  File = icon_smile_wink.gif
+  Height = 16
+  Left = 2
+  Source = macro
+  Top = 93
+  Width = 16
+
+Name = FTFbox
+  Type = Checkbox
+  Captionposition = Left
+  Height = 17
+  Left = 735
+  Top = 365
+  Width = 47
+  Taborder = 8
+  Caption = FTF:
+
+Name = Back
+  Type = Button
+  Height = 25
+  Left = 527
+  Top = 512
+  Width = 100
+  Taborder = 9
   Caption = <-- Prior Log
 
 <enddata>
@@ -2688,7 +3041,7 @@ Caption = from the GPS?
 
 <Data> VarName=$form6
 #********************************************************************
-# Form generated by GSAK form designer on Sun 18-Oct-2009 20:04:19
+# Form generated by GSAK form designer on Wed 23-Mar-2011 18:41:13
 #********************************************************************
 
 Name = Form6
@@ -2749,7 +3102,7 @@ Name = DNFText
   Height = 100
   Left = 46
   Scrollbars = Vertical
-  Top = 220
+  Top = 200
   Width = 500
   Taborder = 12
 
@@ -2767,7 +3120,7 @@ Name = Label3
   Height = 13
   Left = 237
   Style = bold
-  Top = 205
+  Top = 185
   Width = 110
   Caption = Text for 'DNF' Logs
 
@@ -2776,7 +3129,7 @@ Name = DNFSpell
   Height = 20
   Left = 470
   Spellcheck = DNFText
-  Top = 322
+  Top = 302
   Width = 75
   Taborder = 13
   Caption = Spell Check
@@ -2786,7 +3139,7 @@ Name = NoteFixedText
   Height = 100
   Left = 46
   Scrollbars = Vertical
-  Top = 380
+  Top = 340
   Width = 500
   Taborder = 14
 
@@ -2795,7 +3148,7 @@ Name = Label4
   Height = 13
   Left = 251
   Style = bold
-  Top = 365
+  Top = 325
   Width = 81
   Caption = Text for Notes
 
@@ -2804,7 +3157,7 @@ Name = NoteSpell
   Height = 20
   Left = 470
   Spellcheck = NoteFixedText
-  Top = 482
+  Top = 442
   Width = 75
   Taborder = 15
   Caption = Spell Check
@@ -2817,7 +3170,24 @@ Name = Help
   Width = 40
   Taborder = 16
 
+Name = Monthstring
+  Type = Edit
+  Height = 21
+  Left = 120
+  Top = 470
+  Width = 426
+  Taborder = 17
+
+Name = Label5
+  Type = Label
+  Height = 13
+  Left = 46
+  Top = 473
+  Width = 69
+  Caption = Month Names:
+
 <enddata>
+
 
 
 

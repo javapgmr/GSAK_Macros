@@ -2,49 +2,158 @@
 # MacDescription = Print a diary of all finds with logs
 # MacFileName = PrintDiary.gsk
 # MacAuthor = Kai Team
-# MacVersion=1.5
+# MacVersion=2.0
 # MacUrl=http://gsak.net/board/index.php?showtopic=8146&view=findpost&p=50756
 #*******************************************
-$File=$_Install + "\Macros\PrintDiary.txt"
+$File=$_AppData + "\Macros\PrintDiary.txt"
 $Out=""
-$Log=""
-$ThisRecord=0
+$TextRB=TRUE
+$HTMLRB=FALSE
+MACSETTINGS Type=R FileCheck=N
+WHILE TRUE
+    $FormExit = form($Form1,"")
+    BEGINCASE
+        CASE $FormExit = "SystemExit"
+        RETURN Msg="Macro Canceled"
 
-GOTO position=top
-WHILE NOT($_EOL)
-    $ThisRecord = $ThisRecord + 1
-    IF frac($ThisRecord/10) = 0
-        $status = "Gathering Find: " + "$ThisRecord" + " of " + "$_Count"
-        ShowStatus msg="$status" Width=350
-    ENDIF
-    GOSUB Name=ExtractLog
-    $Out=$Out+ "Name: " + $d_Name + Chr(32) + Chr(32) + "Code: " + $d_Code + Chr(32) + Chr(32)
-    $Out= $Out + "Ter: " + NumToStr($d_Terrain) + Chr(32) + Chr(32) + "Dif: " + NumToStr($d_Difficulty) + Chr(32)+ Chr(32)
-    $Out= $Out + "Coordinates: " + $d_Latitude + ", " + $d_Longitude + Chr(32) + Chr(32) + Chr(32)
-    $Out=$Out + "State: " + $d_State + $_NewLine
-    $Out = $Out + "Log: " + $Log + $_NewLine + $_NewLine
-    GOTO position=next
+        CASE $FormExit = "OK"
+            MACSETTINGS Type=S Vars=TextRB,HTMLRB
+        GOSUB Name=Run
+        BREAK
+
+        CASE $FormExit = "Cancel"
+        RETURN Msg="Macro Canceled"
+    ENDCASE
 ENDWHILE
 
-GOTO Position=Top 
-$SavedFile=PUTFILE($File, $Out)
-IF Left($File, 7) = "*Error*"
-    CANCEL Msg="Unable to write to $file!"
-ENDIF
+BEGINSUB Name=Run
+    $_sql="DROP TABLE IF EXISTS LogPrint"
+    $Status=Sqlite("sql",$_sql)
 
-#Display in Notepad:
-RUNPGM pgm=notepad parms="$File" 
+    TRANSACTION Action=Begin
+    $_sql="CREATE TEMP TABLE LogPrint (tName,tCode,tTerrain,tDifficulty,tLatitude,tLongitude,tState,tlDate,tlType,tlText)"
+    $Status=Sqlite("sql",$_sql)
 
-BEGINSUB Name=ExtractLog
-    TABLE Active=Logs Scope=Parent
-    WHILE NOT($_EOL)
-        IF IsOwner() AND ($d_lType="Found it" OR $d_lType="Attended" OR $d_lType="Webcam Photo Taken")
-            $Log=DateFormat($d_lDate) + ": " + $d_lText
-            $Log=RegExReplace("(s?)</?[a-z][a-z0-9]*[^<>]*>",$Log,"")
-            BREAK
-        ELSE
-            GOTO Position=next
+    $_sql="INSERT INTO LogPrint (tCode,tldate,tlType,tltext) SELECT lParent,lDate,lType,lText FROM LogsAll WHERE lIsOwner AND lParent IN(Select Code from Caches WHERE RowID IN(Select * FROM GridTemp))"
+    $Status=Sqlite("sql",$_sql)
+    TRANSACTION Action=End
+
+    $_sql="Select Distinct tCode from LogPrint"
+    $Codes=Sqlite("sql",$_sql)
+
+    TRANSACTION Action=Begin
+    $_sql="UPDATE LogPrint SET tName=(SELECT Name from Caches WHERE Code=tCode)"
+    $Status=Sqlite("sql",$_sql)
+    $_sql="UPDATE LogPrint SET tTerrain=(SELECT Terrain from Caches WHERE Code=tCode)"
+    $Status=Sqlite("sql",$_sql)
+    $_sql="UPDATE LogPrint SET tDifficulty=(SELECT Difficulty from Caches WHERE Code=tCode)"
+    $Status=Sqlite("sql",$_sql)
+    $_sql="UPDATE LogPrint SET tLatitude=(SELECT latitude from Caches WHERE Code=tCode)"
+    $Status=Sqlite("sql",$_sql)
+    $_sql="UPDATE LogPrint SET tLongitude=(SELECT Longitude from Caches WHERE Code=tCode)"
+    $Status=Sqlite("sql",$_sql)
+    $_sql="UPDATE LogPrint SET tState=(SELECT State from Caches WHERE Code=tCode)"
+    $Status=Sqlite("sql",$_sql)
+    TRANSACTION Action=End
+
+    IF $TextRB #Text Output
+        $_sql="Select 'Name: '||tName"
+        $_sql=$_sql + "||'  Code: '||tCode"
+        $_sql=$_sql + "||'  Ter: '||tTerrain"
+        $_sql=$_sql + "||'  Dif: '||tDifficulty"
+        $_sql=$_sql + "||'  Coordinates: '||g_LatLonFormat(tlatitude,'latm')||','||g_LatLonFormat(tLongitude,'lonm') "
+        $_sql=$_sql + "||'   State: '||tState"
+        $_sql=$_sql + "||'~CR~'"
+        $_sql=$_sql + "||'Date: '||g_DateFormat(tlDate)"
+        $_sql=$_sql + "||'   Type: '||tlType"
+        $_sql=$_sql + "||'  '||tlText"
+        $_sql=$_sql + "||'~CR~'"
+        $_sql=$_sql + " from LogPrint Order By tlDate"
+
+        $Out=Sqlite("sql",$_sql)
+        $Out=Replace("~CR~",$_CrLf,$Out)
+
+        $SavedFile=PutFile($File,$Out)
+        IF Left($File, 7) = "*Error*"
+            CANCEL Msg=$SavedFile
         ENDIF
-    ENDWHILE
-    TABLE Active=Caches
+
+        #Display in Notepad:
+        RUNPGM pgm=notepad parms="$File"
+
+    ELSE #HTML Output
+        $Out="Name;Code;Terrain;Difficulty;Latitude;Longitude;State;Date;LogType;LogText" + $_CrLf
+        $_sql="Select tName,'<a href=$_Quote http://coord.info/'||tcode||'$_Quote target=$_Quote_blank$_Quote>'||tCode||'</a>',tTerrain,tDifficulty,g_LatLonFormat(tlatitude,'latm'),g_LatLonFormat(tLongitude,'lonm'),"
+        $_sql=$_sql + "tState,g_DateFormat(tlDate),tlType,tlText"
+        $_sql=$_sql + " from LogPrint Order By tlDate"
+
+        $Out=$Out + Sqlite("sql",$_sql)
+        $Display=SqlToHtml($Out,"Geocaching Diary","Y")
+    ENDIF
+
+    $_sql="DROP TABLE IF EXISTS LogPrint"
+    $Status=Sqlite("sql",$_sql)
 ENDSUB
+
+<Data> VarName=$form1
+#********************************************************************
+# Form generated by GSAK form designer on Sun 26-Aug-2012 11:38:26
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Print Diary Options
+  Height = 197
+  Width = 295
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Select Output
+  Height = 79
+  Left = 20
+  Top = 18
+  Width = 247
+  Taborder = 4
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 44
+  Top = 120
+  Width = 75
+  Taborder = 2
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 167
+  Top = 120
+  Width = 75
+  Taborder = 3
+  Caption = Cancel
+
+Name = TextRB
+  Type = Radiobutton
+  Container = Groupbox1
+  Fontsize = 10
+  Height = 20
+  Left = 11
+  Top = 14
+  Width = 223
+  Taborder = 0
+  Caption = Text (open and print in Notepad)
+
+Name = HTMLRB
+  Type = Radiobutton
+  Container = Groupbox1
+  Fontsize = 10
+  Height = 20
+  Left = 11
+  Top = 36
+  Width = 217
+  Taborder = 1
+  Caption = HTML (open and print in browser)
+
+<enddata>
+

@@ -2,199 +2,340 @@
 # MacFileName    = SearchMacros.gsk
 # MacDescription = Search all files in a directory for a string.
 # MacAuthor      = Wayne (Team Red Roo)
-# MacVersion     = 1.4
+# MacVersion     = 1.6 beta
 # MacURL         = http://gsak.net/board/index.php?showtopic=5673
 ###################################################################################
-#
-# MacIdeas : With all of the new editors available these days, it would be good if
-#            there was a choice of editors and it's load string.
-#
 #  Revision History
 # ==================
-# 5/11/2010 8:57:21 PM v1.3 - New - now searches .Txt and .Gsk files only (before it would search ALL files in the serach folder)
-#                             New - now uses Gsak MACSETTINGS.
-#                             New - option to use the configured editor
-#                             New - form colors
-# 5/12/2010 8:01:18 AM v1.4   Added several variable initialisations and declarations 
-#                             that made it through beta.
+# v1.3   New - now searches .Txt and .Gsk files only (before it would search ALL files in the search folder)
+#        New - now uses Gsak MACSETTINGS.
+#        New - option to use the configured editor
+#        New - form colors
+# v1.4   Added several variable initialisations and declarations that made it through beta.
+# v1.6   Added a button to run the currently selected macro.
+#        Added a Local and Global Replace feature
+#        Added a 1/2 second delay when opening the configured editor in Gsak (allows external editors to open other macros first)
+#        Now 'RegexEscape's the Search String.
+#        Added a File Ignore List option.
+#        The IgnoreList is now Regex'ed.
+#        Added the 'last scan results' in a box at the bottom of form.
+#        Added option to backup before altering with the Global Replace function
+#        Removed Form positioning code.
+#
+###################################################################################
+#  Notes...
+# ==========
+# I considered using RegexReplace in Sub.UpdateFile however its use and power may be too confusing for some users
 #
 ###################################################################################
 
    OPTION Explicit=Yes
    VERCHECK Version=7.7.0.69 (please update GSAK to the latest version to run this macro)
 
-   $SearchFolder=$_Install+"\Macros\"
-   $UseNotePad=FALSE
-   $UseConfEd=FALSE
-   $UseMemBox=TRUE
-   
-   MACSETTINGS Type=R FileCheck=N
-
-   $Orgdata=""
-   GOSUB Name=SetVersion
-   GOSUB Name=UpdateDisplay
+   GOSUB Name=Initialise
 
    WHILE TRUE
-   	  $Form=EditForm("$Form","Form1","Top","$_FormTop")
-   	  $Form=EditForm("$Form","Form1","Left","$_FormLeft")
-      $Fx = Form($Form,"")
-      BEGINCASE 
-         GOSUB Name=UpdateDisplay
-         CASE $Fx="OKBtn"
-            GOSUB Name=SearchFiles
-         CASE $Fx="ReadFile"
-            IF $UseMemBox
-               IF ($OrgData <> $MemoBox) and ($OrgData <> "")
-                  $Msg1="Save changes"
-                  $Msg2="Lose changes"
-                  CHOOSE Msg="The data has changed" Opt1=$Msg1 Opt2=$Msg2
-                  IF $Result=1
-                     GOSUB Name=SaveChanges
-                  ENDIF 
-               ENDIF 
-            ENDIF 
-            GOSUB Name=DisplayFile
-         CASE $Fx="SaveFile"
-            GOSUB Name=SaveChanges
-         CASE $Fx="CancelBtn"
-            BREAK 
-         CASE $Fx="SystemExit"
-            CANCEL 
-      ENDCASE 
+     $Fx = Form($Form,"")
+     BEGINCASE 
+       CASE $Fx="OKBtn"
+         GOSUB Name=SearchFiles
+       CASE $Fx="RunMacro"
+         IF $FileList<>""
+           MACRO File="$SearchFolder\$FileList" VarScope=Local
+         ENDIF 
+       CASE $Fx="AllFiles"
+         IF $AllFiles
+           $Form=EditForm("$Form","ReplaceBtn","Caption","REPLACE IN ALL FILES")
+         ELSE 
+           $Form=EditForm("$Form","ReplaceBtn","Caption","REPLACE IN ONE FILE")
+         ENDIF 
+       CASE $Fx="ReplaceBtn"
+         GOSUB Name=ReplaceRoutine
+       CASE $Fx="ReadFile"
+         IF $UseMemBox
+           IF ($OrgData <> $MemoBox) and ($OrgData <> "")
+             $Msg1="Save changes"
+             $Msg2="Lose changes"
+             CHOOSE Msg="The data has changed" Opt1=$Msg1 Opt2=$Msg2
+             IF $Result=1
+               GOSUB Name=SaveChanges
+             ENDIF 
+           ENDIF 
+         ENDIF 
+         GOSUB Name=DisplayFile
+       CASE $Fx="SaveFile"
+         GOSUB Name=SaveChanges
+       CASE $Fx="AddIgnore"
+         IF $FileList<>""
+           IF NOT(RegEx($FileList,$IgnoreList))
+             $IgnoreList=$IgnoreList+$FileList+$_NewLine
+             $AddIgnore=FALSE
+           ENDIF 
+         ENDIF 
+       CASE $Fx="CancelBtn"
+         BREAK 
+       CASE $Fx="SystemExit"
+         CANCEL 
+     ENDCASE 
+     GOSUB Name=UpdateDisplay
    ENDWHILE 
-   MACSETTINGS Type=S Vars=_FormLeft,_FormTop,UseNotePad,UseConfEd,UseMemBox,SearchFolder
+   MACSETTINGS Type=S Vars=UseNotePad,UseConfEd,UseMemBox,SearchFolder,IgnoreList,EnableIgnoreList,SearchStr,GrBkp
    RETURN 
 ##################################################################################
 ###############################  End Of Macro  ###################################
 ##################################################################################
    BEGINSUB Name=SearchFiles
-   	  $SearchStr=AllTrim($SearchStr)
-      IF $SearchStr <> ""
-         $DirFile=$_Install+"\Temp\DirList.Txt"
-         $comspec = GetEnvV("comspec")
-         $Parms=$SearchFolder + "\*.Txt"
-         RUNPGM pgm=$comspec parms=/C dir /a-d-h-s /b "$Parms" >"$DirFile" Wait=Yes
-         $Parms=$SearchFolder + "\*.Gsk"
-         RUNPGM pgm=$comspec parms=/C dir /a-d-h-s /b "$Parms" >>"$DirFile" Wait=Yes
-         $DirTxt = GetFile($DirFile)
-         IF Left($DirTxt,7) = "*Error*"
-            PAUSE Msg="Directory File Error $_NewLine $DirTxt"
-            CANCEL 
-         ENDIF 
-         $FilesList = Replace($_Newline,";",$DirTxt,True)
-         $NumFiles=RegExCount(";",$FilesList)
-         $Count=1
-         $Cnt=0
-         $ResultList="Search String = $SearchStr"+$_NewLine
-         $ResultList=$ResultList+"Search Dir    = $SearchFolder"+$_NewLine+$_NewLine
-         $ResultFiles=""
-         WHILE $Count<=$NumFiles
-            $FileName=Extract($FilesList, ";", $Count)
-            SHOWSTATUS Msg="Processing $Count of $NumFiles File = $FileName" Top=0 Width=400
-            $Count=$Count+1
-            $FileData=GetFile($SearchFolder +"\"+ $Filename)
-            IF Left($FileData,7) = "*Error*"
-               CANCEL Msg="$FileData"
-               CANCEL 
-            ENDIF 
-            IF Regex("$SearchStr","$FileData")
-               $ResultList=$ResultList+$FileName+$_NewLine
-               $ResultFiles=$ResultFiles+$FileName+";"
-               $Cnt=$Cnt+1
-            ENDIF 
+     TIMER Status=On
+     $ScannedFiles=0
+     $SearchStr=AllTrim($SearchStr)
+     $SearchString=RegExEscape($SearchStr)            # $x is available
+     IF $SearchString <> ""
+       $DirFile=$_Install+"\Temp\DirList.Txt"
+       $comspec = GetEnvV("comspec")
+       $Parms=$SearchFolder + "\*.Txt"
+       RUNPGM pgm=$comspec parms=/C dir /a-d-h-s /b "$Parms" >"$DirFile" Wait=Yes
+       $Parms=$SearchFolder + "\*.Gsk"
+       RUNPGM pgm=$comspec parms=/C dir /a-d-h-s /b "$Parms" >>"$DirFile" Wait=Yes
+       $DirTxt = GetFile($DirFile)
+       IF Left($DirTxt,7) = "*Error*"
+         PAUSE Msg="Directory File Error $_NewLine $DirTxt"
+         CANCEL 
+       ENDIF 
+       $FilesList = Replace($_Newline,";",$DirTxt,True)
+       $NumFiles=RegExCount(";",$FilesList)
+       $Count=1
+       $Cnt=0
+       $ResultList="Search String = $SearchStr"+$_NewLine
+       $ResultList=$ResultList+"Search Dir    = $SearchFolder"+$_NewLine+$_NewLine
+       $ResultFiles=""
+       $IlCnt=RegExCount($_NewLine,$IgnoreList)
+       WHILE $Count<=$NumFiles
+         $FileName=Extract($FilesList, ";", $Count)
+         SHOWSTATUS Msg="Processing $Count of $NumFiles File = $FileName" Top=0 Width=400
+         $Count=$Count+1
+         $CheckThisFile=TRUE              # $IlEntry  $IlCnt
+         $X=0
+         WHILE $EnableIgnoreList AND $X<$ilCnt
+           $X=$X+1
+           IF RegEx(Extract($IgnoreList,$_NewLine,$X),$FileName)
+             $CheckThisFile=FALSE
+           ENDIF 
          ENDWHILE 
-         IF $Cnt>0
-            $ResultList=$ResultList+$_NewLine+$_NewLine+"$Cnt Items Found"
-            $ResultFile=$_Install + "\Temp\SearchResult.Txt"
-            $Data=PutFile($ResultFile, $ResultList)
-            IF Left($Data,7) = "*Error*"
-               $MemoBox=$Data
-            ENDIF 
+         IF $CheckThisFile
+           $FileData=GetFile($SearchFolder +"\"+ $Filename)
+           $ScannedFiles=$ScannedFiles+1
+           IF Left($FileData,7) = "*Error*"
+             CANCEL Msg="$FileData"
+             CANCEL 
+           ENDIF 
+           IF Regex("$SearchString","$FileData")
+             $ResultList=$ResultList+$FileName+$_NewLine
+             $ResultFiles=$ResultFiles+$FileName+";"
+             $Cnt=$Cnt+1
+           ENDIF 
          ENDIF 
-         IF $Cnt=0
-            MSGOK Msg="Sorry - Nothing found"
+       ENDWHILE 
+       IF $Cnt>0
+         $ResultList=$ResultList+$_NewLine+$_NewLine+"$Cnt Items Found"
+         $ResultFile=$_Install + "\Temp\SearchResult.Txt"
+         $Data=PutFile($ResultFile, $ResultList)
+         IF Left($Data,7) = "*Error*"
+           $MemoBox=$Data
          ENDIF 
-         SHOWSTATUS Msg=x Display=Off
-      ENDIF 
+       ENDIF 
+       IF $Cnt=0
+         MSGOK Msg="Sorry - Nothing found"
+       ENDIF 
+       SHOWSTATUS Msg=x Display=Off
+     ENDIF 
+     IF $FilesList=""
+       $form=EditForm($form,"RunMacro","Visible","No")
+     ELSE 
+       $form=EditForm($form,"RunMacro","Visible","Yes")
+     ENDIF 
+     TIMER Status=Off Msg=NO
+     $Form=EditForm($Form,"SearchResult","Visible","Yes")
+     $SearchResult="Scanned $ScannedFiles of $NumFiles files"+ $_NewLine + "Duration: $_Timer seconds" + $_NewLine + "Found: $Cnt times"
    ENDSUB 
 ##################################################################################
    BEGINSUB Name=DisplayFile
-      $MemBox=""
-      CLIP Data=$SearchStr
-      $Parms="$SearchFolder\$FileList"
-      BEGINCASE 
-         CASE $UseMemBox
-            $OrgData=GetFile("$SearchFolder\$FileList")
-            $MemoBox=$OrgData
-            $CurrentFile="$Parms"
-         CASE $UseNotePad
-            RUNPGM PGM="C:\Windows\NotePad.Exe " Parms=$Parms Wait=Yes
-            $MemoBox=""
-         CASE $UseConfEd
-            $Btst=StrToBool(SysInfo("gsakini;TFMConfig;chkMacroEditor.Checked"))
-            IF $Btst
-               $Pgm=SysInfo("gsakini;TFMConfig;edtMacroEditor.FileName")
-            ELSE 
-               $Pgm="$_exePath\MacroEditor.exe"
-            ENDIF 
-            RUNPGM PGM=$Pgm Parms=$Parms Wait=Yes
-            $MemoBox=""
-      ENDCASE 
+     $MemBox=""
+     CLIP Data=$SearchStr
+     $Parms="$SearchFolder\$FileList"
+     BEGINCASE 
+       CASE $UseMemBox
+         $OrgData=GetFile("$SearchFolder\$FileList")
+         $MemoBox=$OrgData
+         $CurrentFile="$Parms"
+       CASE $UseNotePad
+         RUNPGM PGM="C:\Windows\NotePad.Exe " Parms=$Parms Wait=Yes
+         $MemoBox=""
+       CASE $UseConfEd
+         $Test=StrToBool(SysInfo("gsakini;TFMConfig;chkMacroEditor.Checked"))
+         IF $Test
+           $Pgm=SysInfo("gsakini;TFMConfig;edtMacroEditor.FileName")
+#              $ParmStr=SysInfo("gsakini;TFMConfig;edtMacroParms.Text")                    # Invariably '%file/%Line/%Col'
+         ELSE 
+           $Pgm="$_exePath\MacroEditor.exe"
+         ENDIF 
+         RUNPGM Pgm=$Pgm                          # Open the editor - the following delay should allow time to open other macros being edited
+         DELAY MS=500                             # 1/2 second delay then
+         RUNPGM PGM=$Pgm Parms=$Parms Wait=YES    # Pass the name of the macro to the editor
+         $MemoBox=""
+     ENDCASE 
    ENDSUB 
 ##################################################################################
-  BEGINSUB Name=UpdateDisplay
-      	 IF $UseNotePad OR $UseConfEd OR $UseMemBox
-      	 	  IF $Fx="UseMemBox"
-      	 	  	$Form=EditForm("$Form","SaveFile","Visible","Yes")
-      	 	  ELSE
-      	 	    $Form=EditForm("$Form","SaveFile","Visible","No")
-      	 	  ENDIF
-      	 	ENDIF 
-  ENDSUB
+   BEGINSUB Name=UpdateDisplay
+     IF $Fx<>"RunMacro"
+       IF $UseNotePad OR $UseConfEd OR $UseMemBox
+         IF $Fx="UseMemBox"
+           $Form=EditForm("$Form","SaveFile","Visible","Yes")
+         ELSE 
+           $Form=EditForm("$Form","SaveFile","Visible","No")
+         ENDIF 
+       ENDIF 
+     ENDIF 
+     SHOWSTATUS Msg="" Display=NO
+   ENDSUB 
 ###################################################################################
    BEGINSUB Name=SaveChanges
-      $Tx=PutFile($CurrentFile,$MemoBox)
-      $OrgData = $MemoBox
+     $Tx=PutFile($CurrentFile,$MemoBox)
+     $OrgData = $MemoBox
    ENDSUB 
 ##################################################################################
    BEGINSUB Name=SetVersion
-      $MacroName=Left(SysInfo("Macrofile"),AT(".",SysInfo("Macrofile"))-1)
-      $MacroVers=" v"+AllTrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath") + "\" + SysInfo("Macrofile")),1,1))
-      $Form=EditForm($Form,"Form1","Caption","$MacroName $MacroVers")
+     $MacroName=Left(SysInfo("Macrofile"),AT(".",SysInfo("Macrofile"))-1)
+     $MacroVers=" v"+AllTrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath") + "\" + SysInfo("Macrofile")),1,1))
+     $Form=EditForm($Form,"Form1","Caption","$MacroName $MacroVers")
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=ReplaceRoutine
+     IF $OriginalStr=""
+       $OriginalStr=$SearchStr
+     ENDIF 
+     $Msg1=""
+     BEGINCASE 
+       CASE $FileList=""
+         MSGOK Msg="There are no files in the File List" Caption="Feeling silly yet?"
+         EXITSUB 
+       CASE $OriginalStr=""
+         $Msg1="You searched for something then ERASED it. $_NewLine"
+         $Msg1=$Msg1+"You MUST INPUT SOMETHING to be replaced."
+         MSGOK Msg=$Msg1
+         EXITSUB 
+       CASE $ReplacementStr="" AND $AllFiles
+         $Msg1="Are you sure that you want do delete all instances of '$OriginalStr' $_NewLine"
+         $Msg1=$Msg1+"from ALL FILES in the File List?"
+       CASE $ReplacementStr<>"" AND $AllFiles
+         $Msg1="Are you sure you want replace all instances of '$OriginalStr' $_Newline"
+         $Msg1=$msg1+"with '$ReplacementStr' in ALL files in the File List ?"
+       CASE $ReplacementStr="" AND NOT($AllFiles)
+         $Msg1="Are you sure you want remove all instances of '$OriginalStr' $_Newline"
+         $Msg1=$msg1+"in $FileList?"
+     ENDCASE 
+     IF $Msg1<>""
+       IF NOT(YesNo($Msg1))
+         EXITSUB 
+       ENDIF 
+     ENDIF 
+
+# Now we go ahead and do all of the replacements looping through the file list.
+     BEGINCASE 
+       CASE $AllFiles
+         $Count=RegExCount(";",$ResultFiles)
+         $Cntr=0
+         WHILE $Cntr<$Count
+           $Cntr=$Cntr+1
+           $FileName=Extract($ResultFiles,";",$Cntr)
+           SHOWSTATUS Msg="Processing: $Cntr - $Filename"
+           GOSUB Name=UpdateFile
+           DELAY MS=100
+         ENDWHILE 
+       OTHERWISE 
+         $FileName=$FileList
+         GOSUB Name=UpdateFile
+     ENDCASE 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=UpdateFile
+     $Temp="$SearchFolder\$FileName"
+     $TempStr=GetFile($Temp)
+     $X=At(".",$Temp)
+     IF $GrBkp AND $X>0
+       $OldExtn=Substr($Temp,$X,Len($Temp))
+       $TempBkp=REPLACE("$OldExtn",".Gsb",$Temp)
+       $Tx=PutFile($TempBkp,$TempStr)
+     ENDIF 
+     $TempStr=Replace($OriginalStr,$ReplacementStr,$TempStr)                    # RegexReplace($OriginalStr,$TempStr,$ReplacementStr)
+     $Tx=PutFile($Temp,$TempStr)
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=Initialise
+     $GrBkp=TRUE
+     $SearchFolder=$_Install+"\Macros\"
+     $UseNotePad=FALSE
+     $UseConfEd=FALSE
+     $UseMemBox=TRUE
+     $AddIgnore=FALSE
+
+     MACSETTINGS Type=R FileCheck=N
+
+     $Orgdata=""
+     GOSUB Name=SetVersion
+     GOSUB Name=UpdateDisplay
+
+     INCLUDE File="C:\GsakDev\Macros\DevUser.Gsk" FileCheck=N
+     SHOWSTATUS Msg="" Display=NO
    ENDSUB 
 ###################################################################################
 
-      DECLARE Var=$Btst Type=Boolean
-      DECLARE Var=$Cnt Type=Numeric
-      DECLARE Var=$comspec Type=String
-      DECLARE Var=$Count Type=Numeric
-      DECLARE Var=$CurrentFile Type=String
-      DECLARE Var=$Data Type=String
-      DECLARE Var=$DirFile Type=String
-      DECLARE Var=$DirTxt Type=String
-      DECLARE Var=$FileData Type=String
-      DECLARE Var=$FileName Type=String
-      DECLARE Var=$FilesList Type=String
-      DECLARE Var=$Fx Type=String
-      DECLARE Var=$Form Type=String
-      DECLARE Var=$MacroName Type=String
-      DECLARE Var=$MacroVers Type=String
-      DECLARE Var=$MemBox Type=String
-      DECLARE Var=$MemoBox Type=String
-      DECLARE Var=$Msg1 Type=String
-      DECLARE Var=$Msg2 Type=String
-      DECLARE Var=$NumFiles Type=Numeric
-      DECLARE Var=$Orgdata Type=String
-      DECLARE Var=$Parms Type=String
-      DECLARE Var=$Pgm Type=String
-      DECLARE Var=$ResultFile Type=String
-      DECLARE Var=$ResultFiles Type=String
-      DECLARE Var=$ResultList Type=String
-      DECLARE Var=$SearchFolder Type=String
-      DECLARE Var=$Tx Type=String
-      DECLARE Var=$UseConfEd Type=Boolean
-      DECLARE Var=$UseMemBox Type=Boolean
-      DECLARE Var=$UseNotePad Type=Boolean
+   DECLARE Var=$AddIgnore Type=Boolean
+   DECLARE Var=$Test Type=Boolean
+   DECLARE Var=$Cnt Type=Numeric
+   DECLARE Var=$comspec Type=String
+   DECLARE Var=$Cntr Type=Numeric
+   DECLARE Var=$Count Type=Numeric
+   DECLARE Var=$CurrentFile Type=String
+   DECLARE Var=$Data Type=String
+   DECLARE Var=$DirFile Type=String
+   DECLARE Var=$DirTxt Type=String
+   DECLARE Var=$FileData Type=String
+   DECLARE Var=$FileName Type=String
+   DECLARE Var=$FilesList Type=String
+   DECLARE Var=$Fx Type=String
+   DECLARE Var=$Form Type=String
+   DECLARE Var=$GrBkp Type=Boolean
+   DECLARE Var=$IlCnt Type=Numeric
+   DECLARE Var=$IlEntry Type=String                          # Ignore List Entry
+   DECLARE Var=$MacroName Type=String
+   DECLARE Var=$MacroVers Type=String
+   DECLARE Var=$MemBox Type=String
+   DECLARE Var=$MemoBox Type=String
+   DECLARE Var=$Msg1 Type=String
+   DECLARE Var=$Msg2 Type=String
+   DECLARE Var=$NumFiles Type=Numeric
+   DECLARE Var=$OldExtn Type=String
+   DECLARE Var=$OriginalStr Type=String
+   DECLARE Var=$Orgdata Type=String
+   DECLARE Var=$Parms Type=String
+#  DECLARE Var=$ParmStr Type=String
+   DECLARE Var=$Pgm Type=String
+   DECLARE Var=$ReplacementStr Type=String
+   DECLARE Var=$ResultFile Type=String
+   DECLARE Var=$ResultFiles Type=String
+   DECLARE Var=$ResultList Type=String
+   DECLARE Var=$CheckThisFile Type=Boolean
+   DECLARE Var=$ScannedFiles Type=Numeric
+   DECLARE Var=$SearchFolder Type=String
+   DECLARE Var=$SearchString Type=String
+   DECLARE Var=$Temp Type=String
+   DECLARE Var=$TempBkp Type=String
+   DECLARE Var=$TempStr Type=String
+   DECLARE Var=$Tx Type=String
+   DECLARE Var=$UseConfEd Type=Boolean
+   DECLARE Var=$UseMemBox Type=Boolean
+   DECLARE Var=$UseNotePad Type=Boolean
+   DECLARE Var=$X Type=Numeric
 
 ###################################################################################
 <DATA> VarName=$form
@@ -208,60 +349,79 @@ Name = Form1
 
 Name = Grp1
   Type = Groupbox
-  Height = 126
+  Height = 218
   Left = 8
   Top = 4
   Width = 775
+  Taborder = 3
+
+Name = Groupbox1
+  Type = Groupbox
+  Container = Grp1
+  Height = 150
+  Left = 520
+  Top = 58
+  Width = 244
+  Taborder = 9
+
+Name = Groupbox2
+  Type = Groupbox
+  Container = Grp1
+  Height = 150
+  Left = 282
+  Top = 58
+  Width = 228
+  Taborder = 10
 
 Name = SearchStr
   Type = Edit
   Container = Grp1
   Height = 21
-  Left = 277
+  Left = 281
   Top = 33
-  Width = 244
-  Taborder = 1
-  
+  Width = 255
+  Taborder = 0
+
 Name = SearchFolder
   Type = Folder
   Container = Grp1
   Height = 21
-  Left = 19
+  Left = 20
   Top = 33
-  Width = 242
-  Taborder = 2
-    
+  Width = 250
+  Taborder = 1
+
 Name = FileList
   Type = Combobox
   Container = Grp1
   Display = 25
   Height = 21
-  Left = 20
-  Top = 82
+  Left = 19
+  Top = 85
   Values = $ResultFiles
-  Width = 239
-  Taborder = 3
-    
+  Width = 250
+  Taborder = 2
+
 Name = OKBtn
   Type = Button
   Enter = Yes
-  Height = 21
-  Left = 547
-  Top = 38
-  Width = 75
+  Height = 40
+  Left = 558
+  Top = 18
+  Width = 125
+  Taborder = 2
   Caption = Search
-  Taborder = 4
-  
+
 Name = ReadFile
   Type = Button
   Container = Grp1
-  Height = 22
-  Left = 277
-  Top = 82
+  Height = 25
+  Left = 18
+  Top = 171
   Width = 75
-  Caption = Read File
   Taborder = 5
-    
+  Caption = Read Macro
+
 Name = UseNotePad
   Type = Radiobutton
   Captionposition = Right
@@ -269,22 +429,24 @@ Name = UseNotePad
   Exitonchange = Yes
   Fontcolor = 16711680
   Height = 17
-  Left = 536
-  Top = 64
+  Left = 37
+  Top = 112
   Width = 192
+  Taborder = 3
   Caption = Display using Windows Notepad
-    
+
 Name = UseConfEd
   Type = Radiobutton
   Container = Grp1
   Exitonchange = Yes
   Fontcolor = 16711680
   Height = 17
-  Left = 536
-  Top = 81
+  Left = 37
+  Top = 129
   Width = 179
+  Taborder = 4
   Caption = Use the Editor configured in Gsak
-  
+
 Name = UseMemBox
   Type = Radiobutton
   Captionposition = Right
@@ -292,38 +454,42 @@ Name = UseMemBox
   Exitonchange = Yes
   Fontcolor = 16711680
   Height = 17
-  Left = 536
-  Top = 98
+  Left = 37
+  Top = 146
   Width = 185
+  Taborder = 6
   Caption = Display here (below)
-    
+
 Name = MemoBox
   Type = Memo
   Color = 13565951
-  Height = 347
+  Height = 258
   Left = 8
   Scrollbars = both
-  Top = 140
+  Top = 230
   Width = 775
-  
+  Taborder = 4
+
 Name = SaveFile
   Type = Button
   Container = Grp1
-  Height = 22
-  Left = 362
-  Top = 82
+  Height = 25
+  Left = 103
+  Top = 171
   Width = 75
-  Caption = Save File
-  
+  Taborder = 7
+  Caption = Save Macro
+
 Name = CancelBtn
   Type = Button
   Escape = yes
-  Height = 36
-  Left = 353
-  Top = 501
-  Width = 97
+  Height = 40
+  Left = 448
+  Top = 498
+  Width = 125
+  Taborder = 5
   Caption = Exit
-   
+
 Name = FolderLbl
   Type = Label
   Color = 255
@@ -332,32 +498,171 @@ Name = FolderLbl
   Left = 19
   Style = Bold
   Top = 15
-  Width = 79
+  Width = 87
   Caption = Search Folder
 
-Name = SearchLbl					
+Name = SearchLbl
   Type = Label
   Color = 255
   Container = Grp1
   Height = 13
-  Left = 279
+  Left = 281
   Style = bold
   Top = 16
-  Width = 77
+  Width = 85
   Caption = Search String
-  
+
 Name = Lbl4
   Type = Label
   Color = 255
   Container = Grp1
   Height = 13
-  Left = 20
+  Left = 19
   Style = bold
-  Top = 65
-  Width = 44
+  Top = 68
+  Width = 52
   Caption = File List
 
+Name = RunMacro
+  Type = Button
+  Container = Grp1
+  Height = 25
+  Left = 190
+  Top = 171
+  Visible = No
+  Width = 75
+  Taborder = 8
+  Caption = Run Macro
+
+Name = OriginalStr
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 76
+  Top = 27
+  Width = 153
+  Taborder = 0
+
+Name = Label1
+  Type = Label
+  Color = 255
+  Container = Groupbox1
+  Height = 17
+  Left = 68
+  Style = bold
+  Top = 11
+  Width = 116
+  Caption = GLOBAL REPLACE
+
+Name = Label2
+  Type = Label
+  Color = 8404992
+  Container = Groupbox1
+  Height = 17
+  Left = 11
+  Top = 32
+  Width = 67
+  Caption = Replace this
+
+Name = Label3
+  Type = Label
+  Color = 8404992
+  Container = Groupbox1
+  Height = 17
+  Left = 11
+  Top = 56
+  Width = 49
+  Caption = With this
+
+Name = ReplacementStr
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 76
+  Top = 52
+  Width = 153
+  Taborder = 1
+
+Name = ReplaceBtn
+  Type = Button
+  Container = Groupbox1
+  Height = 25
+  Left = 38
+  Top = 116
+  Width = 172
+  Taborder = 2
+  Caption = REPLACE IN ONE FILE
+
+Name = AllFiles
+  Type = Checkbox
+  Container = Groupbox1
+  Exitonchange = Yes
+  Fontcolor = 255
+  Height = 20
+  Left = 10
+  Top = 94
+  Width = 210
+  Taborder = 3
+  Caption = Auto Replace in ALL files in the File List
+
+Name = EnableIgnoreList
+  Type = Checkbox
+  Container = Groupbox2
+  Fontcolor = 16711680
+  Height = 20
+  Left = 13
+  Top = 9
+  Width = 180
+  Taborder = 2
+  Caption = Enable the Ignore List
+
+Name = IgnoreList
+  Type = Memo
+  Container = Groupbox2
+  Height = 81
+  Left = 8
+  Scrollbars = Vertical
+  Top = 51
+  Width = 213
+  Taborder = 0
+
+Name = AddIgnore
+  Type = Radiobutton
+  Container = Groupbox2
+  Exitonchange = Yes
+  Height = 20
+  Left = 13
+  Top = 26
+  Width = 204
+  Taborder = 1
+  Caption = Add this File to the Ignore List
+
+Name = SearchResult
+  Type = Memo
+  Height = 47
+  Left = 8
+  Top = 493
+  Visible = No
+  Width = 292
+  Taborder = 6
+
+Name = GrBkp
+  Type = Checkbox
+  Container = Groupbox1
+  Fontcolor = 16384
+  Height = 20
+  Left = 10
+  Top = 78
+  Width = 225
+  Taborder = 4
+  Caption = Backup Macros before applying  changes
+
 <enddata>
+
+
+
+
+
 
 
 
