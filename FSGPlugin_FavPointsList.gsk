@@ -1,5 +1,5 @@
 #-------------------------------------------------------------------------------
-# MacVersion = 1.05
+# MacVersion = 1.06
 # MacDescription = PSG Plugin - List of placed caches with favorite points
 # MacAuthor = Doblinus
 # MacFileName = FSGPlugin_FavPointsList.gsk
@@ -17,6 +17,8 @@
 #                    plugin now terminates if there are no caches with favorite points
 #  V1.04 2011-11-14  fix: layout problems with IE8
 #  V1.05 2011-11-18  new parameter: NOARCHIVED
+#  V1.06 2012-09-07  cache name striked through for archived caches
+#        2012-09-17  new parameters: MINPERCENT, MAXCOUNT
 
 #-------------------------------------------------------------------------------
 # MAIN
@@ -68,8 +70,8 @@ BEGINSUB Name=FavPointsData
 	endif
 	
 	# get cache data
-	$sql = "SELECT Code,Name,FavPoints,CacheType,Placed,Finds,Difficulty,Terrain FROM PlacedStatsdata WHERE (FavPoints>0) AND (Finds>0) $tempS ORDER BY FavPoints*100000/Finds DESC"
-#	msgok msg = $sql
+	$sql = "SELECT Code,Name,FavPoints,CacheType,Placed,Finds,Difficulty,Terrain,Status FROM PlacedStatsdata WHERE (FavPoints>0) AND (Finds>0) $tempS ORDER BY FavPoints*100000/Finds DESC"
+#	msgok msg="$sql"
 	$work = Sqlite("sql",$sql)
 
 	$num_entries = $_SqlRows
@@ -89,52 +91,64 @@ BEGINSUB Name=FavPointsData
 	$sumFinds = 0
 	while $countc < $num_entries
 		$countc = $countc+1
-		$entry = list("LL_FP","item","$countc")
-		$Code = Extract($entry,";",1)
-		$Name = Extract($entry,";",2)
-		$FP = Extract($entry,";",3)
-		$CacheType = Extract($entry,";",4)
-		GOSUB Name=StripCodeType		
-		$Created = DateFormat(SqlToDate(Extract($entry,";",5)))
-		$Finds = Extract($entry,";",6)
-		$dval = Replace(".0","",Extract($entry,";",7))
-		$tval =  Replace(".0","",Extract($entry,";",8))
-		GOSUB Name=SetCellStyle
-		$sumFP = $sumFP+Val($FP)
-		$sumFinds = $sumFinds+Val($Finds)
-		if $Finds<>"0"
-			$fpercent = Round(Val($FP)/Val($Finds)*100,0)
-			$fwidth = Round(Val($FP)/Val($Finds)*150,0)
+		if $countc <= $maxcount
+			$entry = list("LL_FP","item","$countc")
+			$Code = Extract($entry,";",1)
+			$Name = Extract($entry,";",2)
+			$FP = Extract($entry,";",3)
+			$CacheType = Extract($entry,";",4)
+			GOSUB Name=StripCodeType		
+			$Created = DateFormat(SqlToDate(Extract($entry,";",5)))
+			$Finds = Extract($entry,";",6)
+			$dval = Replace(".0","",Extract($entry,";",7))
+			$tval =  Replace(".0","",Extract($entry,";",8))
+			$stat = Extract($entry,";",9)
+			if $stat="Archived"
+				$Name = "<strike>"+$Name+"</strike>"
+			endif
+			if $Finds<>"0"
+				$fpercent = Round(Val($FP)/Val($Finds)*100,0)
+				$fwidth = Round(Val($FP)/Val($Finds)*$maxfwidth,0)
+			else
+				$fpercent = 0
+				$fwidth = 0
+			endif
+			if $fpercent >= $minpercent
+				GOSUB Name=SetCellStyle
+				$sumFP = $sumFP+Val($FP)
+				$sumFinds = $sumFinds+Val($Finds)
+				if $countc=1
+					$maxwidth = $fwidth
+				endif
+				if $maxwidth=$fwidth
+					$image ="http://gsak.net/stats/red-h.png"
+				else
+					$image ="http://gsak.net/stats/blue-h.png"
+				endif
+				$MyOut = $MyOut+"<tr>$_CrLf"
+				$MyOut = $MyOut+"<td style='$st2c1 text-align: left'>$countc</td>$_CrLf"
+				$MyOut = $MyOut+"<td style='$st2c2 text-align: left'><a href='http://coord.info/$Code' target='_blank'>$Code</a></td>$_CrLf"
+				$MyOut = $MyOut+"<td style='$st2c2 text-align: left'>$Name</td>$_CrLf"
+				$MyOut = $MyOut+"<td style='$st2c2 text-align: center'>$TypeImage</td>$_CrLf"
+				$MyOut = $MyOut+"<td style='$cellstyle text-align: center'>$dval/$tval</td>$_CrLf"
+				$MyOut = $MyOut+"<td style='$st2c2 text-align: left'>$Created</td>$_CrLf"
+				$MyOut = $MyOut+"<td style='$st2c2 text-align: left'>$Finds</td>$_CrLf"
+				$MyOut = $MyOut+"<td style='$st2c2 text-align: left'>$FP</td>$_CrLf"
+				$MyOut = $MyOut+"<td style='$st2c2 text-align: left'>$fpercent %</td>$_CrLf"
+				$MyOut = $MyOut+"<td style='$st2c2'><img src='$image' style='float:left;' height='15' width='$fwidth'></td>$_CrLf"
+				$MyOut = $MyOut+"</tr>$_CrLf"
+			else
+				$num_entries = $countc-1
+			endif
 		else
-			$fpercent = 0
-			$fwidth = 0
+			$num_entries = $countc-1
 		endif
-		if $countc=1
-			$maxwidth = $fwidth
-		endif
-		if $maxwidth=$fwidth
-			$image ="http://gsak.net/stats/red-h.png"
-		else
-			$image ="http://gsak.net/stats/blue-h.png"
-		endif
-		$MyOut = $MyOut+"<tr>$_CrLf"
-		$MyOut = $MyOut+"<td style='$st2c1 text-align: left'>$countc</td>$_CrLf"
-		$MyOut = $MyOut+"<td style='$st2c2 text-align: left'><a href='http://coord.info/$Code' target='_blank'>$Code</a></td>$_CrLf"
-		$MyOut = $MyOut+"<td style='$st2c2 text-align: left'>$Name</td>$_CrLf"
-		$MyOut = $MyOut+"<td style='$st2c2 text-align: center'>$TypeImage</td>$_CrLf"
-		$MyOut = $MyOut+"<td style='$cellstyle text-align: center'>$dval/$tval</td>$_CrLf"
-		$MyOut = $MyOut+"<td style='$st2c2 text-align: left'>$Created</td>$_CrLf"
-		$MyOut = $MyOut+"<td style='$st2c2 text-align: left'>$Finds</td>$_CrLf"
-		$MyOut = $MyOut+"<td style='$st2c2 text-align: left'>$FP</td>$_CrLf"
-		$MyOut = $MyOut+"<td style='$st2c2 text-align: left'>$fpercent %</td>$_CrLf"
-		$MyOut = $MyOut+"<td style='$st2c2'><img src='$image' style='float:left;' height='15' width='$fwidth'></td>$_CrLf"
-		$MyOut = $MyOut+"</tr>$_CrLf"
 	endwhile
 
 	# output sum & average
 	if $sumFinds>0
 		$fpercent = Round($sumFP/$sumFinds*100,0)
-		$fwidth = Round($sumFP/$sumFinds*150,0)
+		$fwidth = Round($sumFP/$sumFinds*$maxfwidth,0)
 	else
 		$fpercent = 0
 		$fwidth = 0
@@ -221,6 +235,10 @@ BEGINSUB name=GetParameters
 			BEGINCASE
 				CASE $ParamName="NOARCHIVED"
 					$noarchived = true
+				CASE $ParamName="MINPERCENT"
+					$minpercent = Val($ParamValue)
+				CASE $ParamName="MAXCOUNT"
+					$maxcount = Val($ParamValue)
 				OTHERWISE
 					RETURN msg=Unknown parameter '$ParamName', macro will terminate
 			ENDCASE
@@ -322,6 +340,7 @@ Declare Var=$Finds Type=String
 Declare Var=$FP Type=String
 Declare Var=$fpercent Type=Numeric
 Declare Var=$fwidth Type=Numeric
+Declare Var=$maxfwidth Type=Numeric
 Declare Var=$image Type=String
 Declare Var=$indexa1 Type=Numeric
 Declare Var=$list Type=String
@@ -350,10 +369,13 @@ Declare Var=$tempS Type=String
 Declare Var=$terrain Type=Numeric
 Declare Var=$thistype Type=String
 Declare Var=$tval Type=String
+Declare Var=$stat Type=String
 Declare Var=$TypeImage Type=String
 Declare Var=$Typenums Type=String
 Declare Var=$Types Type=String
 Declare Var=$work Type=String
+Declare Var=$minpercent Type=Numeric
+Declare Var=$maxcount Type=Numeric
 ENDSUB
 
 #-------------------------------------------------------------------------------
@@ -367,10 +389,12 @@ BEGINSUB Name=InitVariables
 	$MyOut = ""
 	$indexa1 = 0
 	$noarchived = false
+	$maxfwidth = 150
+	$minpercent = 0
+	$maxcount = 100000
 	
 	$Types = "ABCEGLMRTUVWZXIY123"
 	$Typenums = "9,5,13,6,27,12,3,137,2,8,4,11,453,2134,1858,waymark,3653,3773,3774"
 ENDSUB
-
 
 

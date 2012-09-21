@@ -2,7 +2,7 @@
 # MacDescription = FSG Plugin - generates a list of friends which went caching with you
 # MacFileName = FSGPlugin_FriendsList.gsk
 # MacAuthor = hulmgulm
-# MacVersion=1.5.3
+# MacVersion=1.5.4
 # MacUrl=http://gsak.net/board/index.php?showtopic=18001
 #**************************************************************************************
 # Usage:
@@ -158,11 +158,13 @@ $work = Sqlite("sql", $_sql)
 
 $status = List("tmp", "create", "|")
 $work = Replace($_NewLine, "|", $work)
+# Make sure that no empty entries sneak in
+$work = Replace("||", "|", $work)
 $status = List("tmp", "replace", $work)
 
 $_sql = "DROP TABLE Friends"
 $status = Sqlite("sql", $_sql, "error=Trap")
-$_sql = "CREATE TABLE Friends (name text, founds int, UNIQUE(name) )"
+$_sql = "CREATE TABLE Friends (id name, name text, founds int, UNIQUE(id) )"
 $status = Sqlite("sql", $_sql)
 
 $count = Val(List("tmp", "Count", ""))
@@ -170,11 +172,13 @@ $i = 1
 
 # Add friends and found count to DB
 while $i < $count+1
+	$Tmps = List("tmp", "Item", NumToStr($i))
 	$work = Alltrim(List("tmp", "Item", NumToStr($i)))
+
+	SHOWSTATUS msg="Generating friends list ... ($work)" Width=350
 	$Tmps = RegExEscape( $work )
-	$_sql = "INSERT OR REPLACE INTO Friends (name, founds) SELECT "+SqlQuote($Work)+", count(name) FROM  AllFinds WHERE g_regex("+SqlQuote("([^\w]|^)"+$Tmps+"([^\w]|$)")+","+$FLStripped+") "+$FLsqlAnd
+	$_sql = "INSERT OR REPLACE INTO Friends (id, name, founds) SELECT "+SqlQuote(Lower($Work))+", "+SqlQuote($Work)+", count(name) FROM AllFinds WHERE g_regex("+SqlQuote("([^\w]|^)"+$Tmps+"([^\w]|$)")+","+$FLStripped+") "+$FLsqlAnd
 	$status = Sqlite("sql", $_sql)
-	
 	$i = $i + 1
 endwhile
 
@@ -188,17 +192,17 @@ BEGINSUB Name=FriendsList
 	SHOWSTATUS msg="Rendering friends list ..." Width=350
 	# Determine the cutoff poInt for listing owners based on number of
 	# their caches found
-	$Cutoff = 5
+	$Cutoff = 0 
 	# Generate an unduplicated list of the owners of all found caches in the database
 
-	#Initialize Variables
+	# Initialize Variables
 	$ThisRecord = 0
 	$Count = 0
 	$_sql = "SELECT founds as c, name from Friends ORDER BY c DESC, name COLLATE NOCASE"
 	$work = Sqlite("sql",$_sql)
 	$list = list("sql","replace",$work)
 
-	#Sorted list of Owners, largest # finds at the top.
+	# Sorted list of Owners, largest # finds at the top.
 	$list = List("sql","item","1")
 	$maxnum = Val(Extract($list,";",1))
 	$index = 0
@@ -237,7 +241,7 @@ BEGINSUB Name=FriendsList
 		ENDIF
 	ENDWHILE
 	$listedowners = $index
-	IF $listedowners > 40
+	IF $listedowners > 9
 		$listedowners = 40
 	ENDIF
 	$unlistedowners = $totalowners - $listedowners
@@ -352,7 +356,7 @@ BEGINSUB Name=Table2Col
 	# They've already been through the data once after all!
 	# Open the table and write the header line to the output variable
 	$out = $out + "<!--  Table2Col -->" + $CR
-	$out = $out + "<table border='0' summary='' width='375' style='text-align: left;'>" + $CR
+	$out = $out + "<table border='0' summary='' width='371' style='text-align: left;'>" + $CR
 	$out = $out + "<tr><td style='$stTab2cHead'><b> $FLFriend </b></td><td style='$stTab2cHead'><b> $Lang05 </b></td>"
 	$out = $out + "<td style='$stTab2cHead'><b> $Lang06 </b></td><td style='$stTab2cHead'>&nbsp;</td></tr>" + $CR
 	# How many records?
@@ -370,7 +374,11 @@ BEGINSUB Name=Table2Col
 		$text = Replace("%lt","&lt;",$text,true)
 		$text = Replace("%gt","&gt;",$text,true)
 		# Calculate the percentage of this record
-		$pc = ($num/$totalpercent) * 100
+		if $totalpercent > 0
+			$pc = ($num/$totalpercent) * 100
+		else
+			$pc = 0
+		endif
 		$percent = left("$pc",4)
 		# Call the subroutine to write a row out
 		GOSUB Name=Table2ColRow
@@ -433,14 +441,15 @@ BEGINSUB Name=HBar
 			$heatnum = $num
 			$heatmax = $maxnum
 			GOSUB Name=GetHeatColor
-			$out = $out + "<div title='$num' style='background: #$HeatColor; width:$width" + "px;'>&nbsp;</div>"
+			$out = $out + "<span title='$num' style='display:block; background: #$HeatColor; width:$width" + "px;'>&nbsp;</span>"
 		ELSE
 			IF $num = $maxnum
-				$out = $out + "<div title='$num' style='background: $stRedBar; width:$width" + "px;'>&nbsp;</div>"
+				$out = $out + "<span title='$num' style='display:block; background: $stRedBar; width:$width" + "px;'>&nbsp;</span>"
 			ELSE
-				$out = $out + "<div title='$num' style='background: $stBlueBar; width:$width" + "px;'>&nbsp;</div>"
+				$out = $out + "<span title='$num' style='display:block; background: $stBlueBar; width:$width" + "px;'>&nbsp;</span>"
 			ENDIF
 		ENDIF
+
 	ENDIF
 ENDSUB #HBar
 

@@ -1,5 +1,5 @@
 #******************************************************************************
-# MacVersion = 1.5
+# MacVersion = 1.6
 # MacDescription = Convert an address or landmark to coordinates, or coordinates to an address.
 # MacAuthor = DocDiTTo
 # MacFileName = Geocode.gsk
@@ -56,6 +56,9 @@
 #  - Fixed: when a result location name contained an apostrophe, google map would not display
 #  - Fixed a variable declaration bug introduced in v1.4  ($updated)
 
+# Version 1.6
+#  - Eliminated use of deprecated "SET" command
+
 
 VERCHECK version=7.7.3.53 (Please update and patch to the most recent version of GSAK)
 
@@ -73,26 +76,25 @@ $cmbRegion = "None"     # default region bias
 $municipality = ""      # just initializing some variables...
 $county = ""
 $resultslist = ""
+$MemoAddress = ""
+$address = ""
 
 $maxresults = 20  # we're enforcing a limit on the max number of results.
 Array(1,0) = numtostr($maxresults)   #Array to hold address results
 Array(2,0) = numtostr($maxresults)   #Array to hold latitude,longitude pairs in degrees decimal format
 Array(3,0) = numtostr($maxresults)   #Array to hold secondary address info (typically county)
 Array(4,0) = numtostr($maxresults)   #Array to hold terciary address info (township, town, borough, etc)
-$MemoAddress = ""
-$address = ""
+
 
 # Gather List of User's Databases and update the settings DB combo box
 $DBlist=SysInfo("Databases")
 $frmSettings = EditForm($frmSettings, "cmbDatabase", "Values", $DBlist)
 $cmbDatabase = $_CurrentDatabase
-#$memoAdddress = ""
+
 
 MacSettings Type=R FileCheck=N
-#$MemoAddress = alltrim($MemoAddress)
 $GoogleBaseUrl = "http://maps.googleapis.com/maps/api/geocode/xml?address="
 $GmapBaseUrl = "http://www.mappingsupport.com/p/gmap4.php?ll="
-#%lat~%lon
 $xmlfile = $_AppData + "\macros\webresult.xml"
 
  WHILE True # Infinite loop to redisplay form as required
@@ -379,7 +381,7 @@ BEGINSUB Name=LaunchGoogleEarth  #Assumes KML files are associated with Google E
  			$kmldata = $kmldata + "      </Point>"+$_crlf
  			$kmldata = $kmldata + "  </Placemark>" +$_crlf
  			$kmldata = $kmldata + "</kml>"	
- 			SET $Data = PutFile($kmlfile,$kmldata)
+ 			$Data = PutFile($kmlfile,$kmldata)
  			IF Left($Data,7) = "*Error*"
   	 		Pause Msg="$Data"
   	 		Cancel
