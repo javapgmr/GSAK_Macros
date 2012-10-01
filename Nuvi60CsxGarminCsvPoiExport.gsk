@@ -8,6 +8,7 @@
   # 
   # 10/01/2012
   # Remove deprecated commands
+  # Allow for newer versions of the POI Loader by testing for both possible names and selecting the right one.
   #
   # 10/01/2009
   # Modify screen to work with a netbook, include the settings to save the selected MaxSaveLength
@@ -224,15 +225,15 @@ BEGINCASE
 	  CANCEL Msg="Macro cancelled"
       BREAK
   CASE $cancel
-          CANCEL Msg="Macro cancelled"
-ENDCASE
+      CANCEL Msg="Macro cancelled"
+      BREAK		  
+  CASE $Ok
+	  GOSUB Name=Process
+	  BREAK 
+  ENDCASE
   
-
-
-  
-  
-  # ---------- Form ----------
-
+# ---------- Form ----------
+  BEGINSUB Name=Process
   $MaxHintLength = Val($MaxHintLengthStr)
   # remove semicolons form the format strings
   $csvNameFmt = Replace(";",":",$csvNameFmt,TRUE)
@@ -440,8 +441,9 @@ ENDIF
 
       MSGOK Msg=$Message  Caption="Nuvi60CsxGarminCvsPoiExport.gsk"
   ENDIF 
-  
+  ENDSUB
 
+  
   # 
   # ---------- SubRoutines ----------
   # 
