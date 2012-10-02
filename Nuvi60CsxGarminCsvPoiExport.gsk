@@ -3,7 +3,7 @@
   # MacDescription = Garmin CSV POI Export with icons and variable formats for either the 60Csx or Nuvi
   # MacUrl = http://gsak.net/board/index.php?showtopic=6918&view=getnewpost
   # MacAuthor = javapgmr (original macro by by Rene Boe (alias "ProsperoDK"))
-  # MacVersion = 1.0.10
+  # MacVersion = 1.0.11
   ########################################################################################### 
   # 
   # 10/01/2012
@@ -411,8 +411,11 @@ VSUB Status=on
   ENDIF 
   $sortdata = Extract($CurrentSort, "=",1)
   $sequence = Extract($CurrentSort, "=",2)
-  SORT By=$sortdata Sequence=$sequence
-
+If $Sequence = "D"
+  SQLSORT OrderBy=$sortdata Desc
+  else
+  SQLSORT OrderBy=$sortdata Asc
+ ENDIF
 IF $POILoader
 	IF IsEmpty($POILocation)
 		MSGOK  Msg="The POI Location has not been set.  The POI command will not be run."
