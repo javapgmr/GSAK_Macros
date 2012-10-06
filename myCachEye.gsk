@@ -1,5 +1,5 @@
 #================================================================================================# 
-# MacVersion = 1.4.0
+# MacVersion = 1.4.2
 # MacDescription = View your caches and waypoints with CACH'EYE mapping service. Based on Bing Maps. 
 # MacAuthor = Kreizweh, cbba
 # MacFileName = myCachEye.gsk
@@ -55,6 +55,8 @@
 # 27/03/12 - v1.4.0: Issue 1640                                                                  #
 # 25/05/12 - v1.4.0: Issue 1686                                                                  #
 # 01/06/12 - v1.4.0: Issue 1715                                                                  #
+# 14/09/12 - v1.4.1: Issue 1784,1785                                                                  #
+# 05/10/12 - v1.4.1: Issue 1790                                                                       #
 #================================================================================================#
 # Lines2 uncomment!!!:   !!!!
 # Lines2 change: 
@@ -63,7 +65,8 @@
 # DEBUG status="on" height=800
 
 SPEEDMODE Status=On
-VERCHECK Version=7.5.1.00 
+VERCHECK Version=8.2.0.00 
+Deprecated Warning=No
 GOSUB Name=DeclareVariables
 
 GOSUB Name=SetDefaults
@@ -119,12 +122,12 @@ BEGINSUB Name=CheckVersion
         $result = PostUrl($UploadUrl,$PostData)
         $my_reg_version = $myVersion
         MacSettings Type=S Vars=my_reg_version,my_gcnick,my_vc_pw,my_use_corrected,my_upload_vc,my_launch_vc,my_view,my_view_lat,my_view_long,my_view_zoom,my_use_altbrowser,my_alt_browser,my_founds_different,my_get_votes,my_skip_unsupported_types,my_suppress_gc_warn,my_use_corr_filtered,my_merge_files #,my_populate_todo
-        msgOK msg=Register: $result #required version
+        #msgOK msg=Register: $result #required version
      EndIf
-     
+#     GoSub Name=CheckGenuineness
      $PostData = "'version','Version','user','" + $my_gcnick + "'"
      $result = PostUrl($UploadUrl,$PostData)
-     #msgOK msg=$result #required version
+     # msgOK msg="Required version = "$result #required version
      If $myVersion <> $result #Substr($result,Len($result)-4,4)
         $result = "Required Mac Version = " + $result + "!" + $_NewLine
         $result = $result + "Please download this new Version from: " + $_NewLine + $_NewLine
@@ -150,11 +153,11 @@ ENDSUB #CheckLogin
 ################################################################################
 BEGINSUB Name=SetDefaults
 
-$myVersion = "1.4.0"
+$myVersion = "1.4.2"
 
-$MacroDir = $_install + "\Macros\myCachEye_Library\"
+$MacroDir = $_AppData + "\Macros\myCachEye_Library\"
 $configFileS = $MacroDir + "RunSilent.xml"
-$configFile = $_install + "\Macros\myCachEye.xml"
+$configFile = $_AppData + "\Macros\myCachEye.xml"
 
 $CountGC=0
 $CountGCNA=0
@@ -193,8 +196,8 @@ ENDSUB #GetOption
 
 ################################################################################
 BEGINSUB Name=CreateDirectory
-    $batFile = $_Install + "\vcbabel.cmd"
-    SET $Data = PutFile($batFile,"cd "+ $_Install +"\Macros" + chr(13) + chr(10) + "md " + $MacroDir)
+    $batFile = $_AppData + "\vcbabel.cmd"
+    $Data = PutFile($batFile,"cd "+ $_AppData +"\Macros" + chr(13) + chr(10) + "md " + $MacroDir)
 
     IF .not. folderExists($MacroDir)
        RUNPGM pgm=$batFile Wait=Yes Hide=No
@@ -351,7 +354,7 @@ BEGINSUB Name=HTTPUpload
 #           msgOk msg="additionalParameters"$additionalParameters
 
            $PostData = "'version','" + $myVersion + "','user','" + $my_gcnick + "','pw','" + $my_vc_pw + "','size','No','datasetname','" + $DataSet + "','filename','" + $filename_short + "','filedata','" + $UploadData + "','part'," +NumToStr($part) + $additionalParameters + "'"
-           $result = PostUrl($UploadUrl,$PostData)
+           $result = PostUrl($UploadUrl,$PostData,"",120)
 #           msgOk msg=$result     # Server's response!!!      
            $UploadedSize=Val($result)
            If $UploadedSize <> $BytesSent
@@ -439,6 +442,7 @@ BEGINSUB Name=DisplayOptionsForm
                $FrmRdbUseFixed = false
                $FrmRdbUseDefault = false
             Case $my_view = "fixed"
+
                $FrmRdbUseFixed = True
                $FrmRdbUseDyn = false
                $FrmRdbUseDefault = false
@@ -682,21 +686,20 @@ BEGINSUB Name=ProcessCollection
 
     BeginCase
         Case $my_get_votes = "GCVoteGrabber"
-           $GrabberConfigFile=$_install + "\Macros\GCVoteGrabber.xml"
-           If FileExists($GrabberConfigFile)
-    			 	MacSettings Type=R Vars=cmbStoreAvgVote,cmbStoreMedianVote,cmbStoreVoteCount,cmbStoreUserVote,cmbStoreVoteDistribution,cmbElementDelimiter File=GCVoteGrabber.xml
+           If MacHeader("MacVersion","GCVoteGrabber.gsk")="3.0.2"
+               $GCVoteVersion=3
            Else
-              CANCEL msg="GCVoteGrabber is not installed! Please install and run GCVoteGrabber!"
+               $GCVoteVersion=2
+               MacSettings Type=R Vars=cmbStoreAvgVote,cmbStoreMedianVote,cmbStoreVoteCount,cmbStoreUserVote,cmbStoreVoteDistribution,cmbElementDelimiter File=GCVoteGrabber.xml
            EndIf
         Case $my_get_votes = "GCVoteGrabberSilent"
-           $GrabberConfigFile=$_install + "\Macros\GCVoteGrabber.gsk?grab"
+           $GrabberConfigFile=$_AppData + "\Macros\GCVoteGrabber.gsk?grab"
            Macro File=$GrabberConfigFile
            SPEEDMODE Status=On
     EndCase
         
     $validchars = "[°€{}\w\s\x21-\x25\x27-\x2E\xBA-\xFF]*"
-#    SORT by="placeddate"
-    SORT by="distance"
+    SQLSort OrderBy="distance"
     GOTO position=top
     GOSUB Name=WriteHeader
     $currentRecordCount = 1
@@ -1297,39 +1300,44 @@ endsub
 #Extract voting from user fields
 ##############################################################################
 beginsub name=ExtractVoteElements
-  $nExtractVoteUD1 = 1
-  $nExtractVoteUD2 = 1
-  $nExtractVoteUD3 = 1
-  $nExtractVoteUD4 = 1
-
-	#Extract AverageVote
-  $sExtractVoteWhere = $cmbStoreAvgVote
-  gosub name="ExtractVoteElement"
-  $sVoteAvg = $sExtractVoteWhat
-  $nVoteAvg = val($sVoteAvg)
-
-	#Extract MedianVote
-  $sExtractVoteWhere = $cmbStoreMedianVote
-  gosub name="ExtractVoteElement"
-  $sVoteMedian = $sExtractVoteWhat
-  $nVoteMedian = val($sVoteMedian)
-
-	#Extract VoteCount
-  $sExtractVoteWhere = $cmbStoreVoteCount
-  gosub name="ExtractVoteElement"
-  $sVoteCnt = $sExtractVoteWhat
-  $nVoteCnt = val($sVoteCnt)
-
-	#Extract UserVote
-  $sExtractVoteWhere = $cmbStoreUserVote
-  gosub name="ExtractVoteElement"
-  $sVoteUser = $sExtractVoteWhat
-  $nVoteUser = val($sVoteUser)
-
-	#Extract VoteDistribution
-  $sExtractVoteWhere = $cmbStoreVoteDistribution
-  gosub name="ExtractVoteElement"
-  $sVoteDistribution = $sExtractVoteWhat
+  If $GCVoteVersion=2
+      $nExtractVoteUD1 = 1
+      $nExtractVoteUD2 = 1
+      $nExtractVoteUD3 = 1
+      $nExtractVoteUD4 = 1
+    
+    	#Extract AverageVote
+      $sExtractVoteWhere = $cmbStoreAvgVote
+      gosub name="ExtractVoteElement"
+      $sVoteAvg = $sExtractVoteWhat
+      $nVoteAvg = val($sVoteAvg)
+    
+    	#Extract MedianVote
+      $sExtractVoteWhere = $cmbStoreMedianVote
+      gosub name="ExtractVoteElement"
+      $sVoteMedian = $sExtractVoteWhat
+      $nVoteMedian = val($sVoteMedian)
+    
+    	#Extract VoteCount
+      $sExtractVoteWhere = $cmbStoreVoteCount
+      gosub name="ExtractVoteElement"
+      $sVoteCnt = $sExtractVoteWhat
+      $nVoteCnt = val($sVoteCnt)
+    
+    	#Extract UserVote
+      $sExtractVoteWhere = $cmbStoreUserVote
+      gosub name="ExtractVoteElement"
+      $sVoteUser = $sExtractVoteWhat
+      $nVoteUser = val($sVoteUser)
+    
+    	#Extract VoteDistribution
+      $sExtractVoteWhere = $cmbStoreVoteDistribution
+      gosub name="ExtractVoteElement"
+      $sVoteDistribution = $sExtractVoteWhat
+  Else
+      $nVoteAvg=Val(CustomGet("GCV_AverageVote"))
+      $nVoteCnt=Val(CustomGet("GCV_VoteCount"))
+  EndIf
 
 endsub
 ################################################################################
@@ -1358,6 +1366,23 @@ BEGINSUB Name=ReleaseLock
      msgOK msg=Cannot release lock!
   EndIf
 ENDSUB
+################################################################################
+#BEGINSUB Name=CheckGenuineness
+#  $command=GetEnvV("comspec")+" parms=/C type "+ $_AppData+"\Macros\myVirtualCache_CC.gsk > "+GetEnvV("TEMP")+"\xyz.txt"
+#  runpgm pgm=$command Wait=Yes
+#  $testing=GetFile(GetEnvV("TEMP")+"\xyz.txt")
+#  $testing=ROT13($testing)
+#  $testing=MimeEncode($testing)
+#  $int=Len($testing)
+#  msgOk msg=$int
+#  $command=GetEnvV("comspec")+" parms=/C erase "+GetEnvV("TEMP")+"\xyz.txt"
+#  runpgm pgm=$command
+#  If $int <> 111111  
+#      $testing="Broken seal!" + $_NewLine + "Please download and reinstall myCachEye.gsk!"
+#      CANCEL msg=$testing
+#  EndIf
+#ENDSUB
+################################################################################
 
 # ======================================================
 # D A T A   V A R I A B L E S
@@ -2154,6 +2179,7 @@ BEGINSUB Name=DeclareVariables
     DECLARE Var=$filename_wpna Type=String
     DECLARE Var=$filename_lu Type=String
     DECLARE Var=$filename_todo Type=String
+    DECLARE Var=$GCVoteVersion Type=Numeric
     DECLARE Var=$GCVoteAvg Type=String
     DECLARE Var=$GCVoteCnt Type=String
     DECLARE Var=$GCVoteCntError Type=Boolean
@@ -2287,6 +2313,8 @@ BEGINSUB Name=DeclareVariables
     DECLARE Var=$strEndDescBasketTag Type=String
     DECLARE Var=$strBasketName Type=String
     
+    DECLARE Var=$command Type=String
+    DECLARE Var=$testing Type=String
     DECLARE Var=$UploadUrl Type=String
     DECLARE Var=$UploadPoint Type=String
     DECLARE Var=$UrlDomain Type=String
@@ -2336,4 +2364,3 @@ BEGINSUB Name=DeclareVariables
   	DECLARE var=$nVoteUser type=numeric
 
 ENDSUB 
-
