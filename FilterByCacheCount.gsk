@@ -1615,7 +1615,7 @@ Var
  begin
  count := 0;
   _sqleol := 0;
-  _sql := 'update gccodes set gcsel=''1'' where gccode in (select lparent from logs where llogid in (select max(llogid) from logs as l1 where llogid < (select max(llogid) from logs as l2 where l1.lparent = l2.lparent) group by lparent) and ltype = ''Didn''''t find it'') AND gccode in (select lparent from Logs where llogid in (select max(llogid) from logs group by lparent) and ltype = ''Didn''''t find it'')'; 
+  _sql := 'update gccodes set gcsel=''1'' where gccode in (select lparent from logs where llogid in (select max(llogid) from logs as l1 where llogid < (select max(llogid) from logs as l2 where l1.lparent = l2.lparent) group by lparent) and (ltype = ''Didn''''t find it'' or ltype = ''Needs Archived'')) AND gccode in (select lparent from Logs where llogid in (select max(llogid) from logs group by lparent) and (ltype = ''Didn''''t find it'' or ltype = ''Needs Archived''))'; 
    status := sqlite('sql',_sql);
   if (nofind = 2) then begin
   _sql := 'delete from gccodes where gcsel = ''1''';

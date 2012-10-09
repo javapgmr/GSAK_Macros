@@ -1,4 +1,4 @@
-# MacVersion = 1.50.10
+# MacVersion = 1.60.00
 # MacDescription = Create Map of Delorme pages for US Delorme Challenges
 # MacAuthor = KoosKoos (modified by byonke)
 # MacFileName = MapDelorme.gsk
@@ -61,9 +61,9 @@
 # 2010-08-15	1.50.07 Fixed errors in Alaska South Central. Thanks Mike
 # 2010-09-18	1.50.08 Fixed errors in New Jersey
 # 2010-09-27	1.50.09 Fixed errors in Virginia
-# 2012-01-11 1.50.10 Fixed errors for pages 26 and 27 in Texas
+# 2012-01-11 	1.50.10 Fixed errors for pages 26 and 27 in Texas
+# 2012-07-25 	1.60.00 Replaced deprecated commands
 
-debug status=off
 
 VERCHECK Version=7.6.2.17 (Note: this macro requires at least GSAK "patch" 7.6.2.17 - please see the 7.6.2 patch thread here: http://gsak.net/board/index.php?showtopic=12781)
 
@@ -96,7 +96,7 @@ $filterlist="NONE;"+$filterlist
 # Define SQL database
 $datafilepath = Sysinfo("MacroPath")
 #$File = $datafilepath + "\USDelormeSQL.db3"
-$file = ":memory:"
+$file = ":memory:" 
 
 $DataFile = $datafilepath + "\MapDelormeUserSettings.dat"
 
@@ -159,7 +159,7 @@ ELSE
 ENDIF
 
 GOSUB name=SetFormColors
- 
+  
 $status=""
 
 #Open the SQL database ready for use
@@ -181,15 +181,24 @@ $status = sqlite("import",$DelormeSQlFile,"table=USDelorme")
 
 SHOWSTATUS msg="Loading Delorme Definitions...75%" Width=200 Height=150 Title="Initializing"
 
-#Save the State and User Data fields from the current GSAK database out to an SQL table in the SQL database
+#Save the State and User Data fields from the current GSAK database out to an SQL table in the SQL database 
+# Attach our main database	
+	$sqlinputfile = SqlQuote($_CurrentDataPath + "\sqlite.db3")
+	
+	$_sql = "drop table if exists Caches"
+	$status = Sqlite("sql",$_sql,"") 
+	
+	$_sql = "ATTACH $sqlinputfile AS gsakdb"
+	$status = Sqlite("sql",$_sql)
 
+#       $Status = DbToSQLite("caches","State,UserData,User2,User3,User4,CacheType",$file)
 
-IF $_Version < "7.5"
-       $Status = DbToSQLite("caches","State,UserData,User2,CacheType",$file)  
-ELSE
-       $Status = DbToSQLite("caches","State,UserData,User2,User3,User4,CacheType",$file)
-ENDIF
+	$data = "CREATE TABLE Caches AS select State, County, UserData, User2, User3, User4, CacheType from gsakdb.caches"
+	$_sql = $data
+	$status = Sqlite("sql",$_sql,"")
 
+	$_sql = "DETACH gsakdb"
+		$status = Sqlite("sql",$_sql)
 
 # Get a list of States to populate the combo box on the menu form
 $_sql = "SELECT DISTINCT State FROM USDelorme ORDER BY State"
@@ -257,32 +266,49 @@ WHILE TRUE
       CANCEL
   ENDCASE
 
-  $Status = DbToSQLite("caches","State,$UserDataWhere,CacheType",$file)
+  #$Status = DbToSQLite("caches","State,$UserDataWhere,CacheType",$file)
 
 
   BEGINCASE #Buttons
     CASE $Cancel
       CANCEL
     CASE $GetDelorme
+	
+		$tmpS=GetPolygon($UserDataSelected,"gsak_Delorme_"+$StateAbbreviation)
+		# Attach our main database	
+		$sqlinputfile = SqlQuote($_CurrentDataPath + "\sqlite.db3")
+		
+		$_sql = "drop table if exists Caches"
+		$status = Sqlite("sql",$_sql,"") 
+	
+		$_sql = "ATTACH $sqlinputfile AS gsakdb"
+		$status = Sqlite("sql",$_sql)
 
-	$tmpS=GetPolygon($UserDataSelected,"gsak_Delorme_"+$StateAbbreviation)
+		# $Status = DbToSQLite("caches","State,UserData,User2,User3,User4,CacheType",$file)
 
-  	If $FilterChosen = "NONE"
-	  CancelFilter
-	Else
-	  Filter Name="$FilterChosen"	
-  	EndIF
+		$data = "CREATE TABLE Caches AS select State, County, UserData, User2, User3, User4, CacheType from gsakdb.caches"
+		$_sql = $data
+		$status = Sqlite("sql",$_sql,"")
+
+		$_sql = "DETACH gsakdb"
+		$status = Sqlite("sql",$_sql)
+
+		If $FilterChosen = "NONE"
+			CancelFilter
+		Else
+			Filter Name="$FilterChosen"	
+		EndIF
     CASE $OK
-	IF $MapTest
-	 $TestMode = 1
+		IF $MapTest
+		$TestMode = 1
 	ELSE
-	 $TestMode = 0
+		$TestMode = 0
 	ENDIF
         GOSUB name=Main
     CASE $SaveSettings
-	GOSUB name=SaveSettings
+		GOSUB name=SaveSettings
     CASE $btnHelp
-	GOSUB Name="DisplayHelpScreen"
+		GOSUB Name="DisplayHelpScreen"
     OTHERWISE
       CANCEL
   ENDCASE
@@ -297,7 +323,7 @@ ENDWHILE # Form Loop
   EndIF
 	
 BEGINSUB name=Main
- 
+
 # Exclude locationless? 
 IF $Excludelocationless 
   $Locationless = " AND caches.Cachetype <> 'L'" 
@@ -309,8 +335,10 @@ ENDIF
 $_sql = "SELECT Abbreviation FROM USDelorme WHERE State = '$StateChosen'"
 $StateAbbreviation = Left(Sqlite("SQL",$_sql,""),2)
 
+#Save the State and User Data fields from the current GSAK database out to an SQL table in the SQL database
+	
 # Figure out if we are using full state names or abbreviations
-$_sql = "SELECT AVG(LENGTH(state)) from caches"
+$_sql = "SELECT AVG(LENGTH(state)) from Caches"
 $tmpN = Val(Sqlite("SQL",$_sql,""))
 
 IF $tmpN > 3
@@ -672,10 +700,12 @@ Declare Var=$red Type=Numeric
 Declare Var=$redChange Type=Numeric
 Declare Var=$redhex Type=String
 Declare Var=$result Type=String
+Declare Var=$return Type=String
 Declare Var=$rows Type=Numeric
 Declare Var=$s Type=String
 Declare Var=$SearchState Type=String
 Declare Var=$shades Type=String
+Declare var=$sqlinputfile Type=String
 Declare Var=$StateAbbreviation Type=String
 Declare Var=$StateChosen Type=String
 Declare Var=$StateList Type=String
@@ -917,21 +947,14 @@ ENDSUB #SetFormColors
 
 BEGINSUB Name="DisplayHelpScreen"
 
-If ShowForm($help)
+$return = Form($help,"")
 
 # Save the form's current position before we close it
-    $helpScreen = EditForm($help,"help","Top",$_FormTop)
-    $helpScreen = EditForm($help,"help","Left",$_FormLeft)
- 
-Else
+   $helpScreen = EditForm($help,"help","Top",$_FormTop)
+   $helpScreen = EditForm($help,"help","Left",$_FormLeft)
 
-# Save the form's current position before we close it
-    $helpScreen = EditForm($help,"help","Top",$_FormTop)
-    $helpScreen = EditForm($help,"help","Left",$_FormLeft)
- 
-Endif
+ENDSUB #DisplayHelpScreen 
 
-ENDSUB #DisplayHelpScreen
 
 <data> VarName=$form
 Name = Form1
@@ -5528,6 +5551,7 @@ Wyoming;WY;WY-071A;510;26
 Wyoming;WY;WY-070B;576;26
 Wyoming;WY;WY-071B;617;26
 <enddata>
+
 
 
 

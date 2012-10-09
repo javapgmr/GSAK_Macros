@@ -1,5 +1,5 @@
 #================================================================================================#
-# MacVersion = 2.2.0
+# MacVersion = 2.2.1
 # MacDescription = my Google Earth Export
 # MacAuthor = Hulmgulm
 # MacFileName = myGoogleEarth.gsk
@@ -17,6 +17,9 @@
 # This macro is based on the work of Bert Geenen and markp99                                     #
 #================================================================================================#
 # History of changes:                                                                            #
+#================================================================================================#
+# 22/07/12 - v2.2.1                                                                              #
+#	 Changed: removed deprecated macro functions	 											 #
 #================================================================================================#
 # 08/04/12 - v2.2.0                                                                              #
 #	 Changed: This macro will now use the Cache URL to link to this cache. Should work now with	 #
@@ -100,7 +103,7 @@ GOSUB Name=DECLAREVariables
 
 $myVersion = "2.1.1"
 
-$currentsort = $_SortBy
+$currentsort = $_OrderBy
 	
 IF SysInfo("JoinFilter") = "N"
 	$currentfilter = SaveFilter()
@@ -406,15 +409,15 @@ BEGINSUB Name=ProcessCollection
     # -----------------------------------------------------------------------
 
     IF $config_found_caches
-        SORT by="found;cachetype;description"
+        SQLSORT OrderBy="found,cachetype,code"
     ELSE
-        SORT by="cachetype;description"
+        SQLSORT OrderBy="cachetype,code"
     ENDIF
 
     GOTO position=top
 
     #-----DATABASE-----#
-    $database = HTML("Clean",$_CurrentDatabase)
+    $database = CustomFormat("Clean",$_CurrentDatabase)
 
     # write head of output file
     # -------------------------
@@ -636,7 +639,7 @@ BEGINSUB Name=WaypointLoop
                 $Lat = $d_Latitude
                 $Lon = $d_Longitude
             ENDIF
-            $LatLon = GeoCalc(($Lat + "; " + $Lon),"FormatMinutes")
+            $LatLon = GCalc(($Lat + "; " + $Lon),"FormatMinutes")
 
             #-----TB | no TB-----#
             IF $d_HasTravelBug
@@ -793,7 +796,7 @@ BEGINSUB Name=ExportChildren
         #----COORDINATES-----#
         $cLat = $d_cLat
         $cLon = $d_cLon
-        $cLatLon = GeoCalc(($cLat + "; " + $cLon),"FormatMinutes")
+        $cLatLon = GCalc(($cLat + "; " + $cLon),"FormatMinutes")
 
         #-----SNIPPET-----#
         $cSnippet = $d_code
@@ -894,9 +897,7 @@ BEGINSUB Name=LaunchGoogleEarth
 		ENDIF
 	ENDIF
 
-    $sortdata = Extract($currentsort, "=",1)
-    $sequence = Extract($currentsort, "=",2)
-    SORT by=$sortdata Sequence=$sequence
+    SQLSORT OrderBy=$currentsort
 ENDSUB # LaunchGoogleEarth
 
 # ======================================================

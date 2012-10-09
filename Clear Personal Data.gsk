@@ -1,48 +1,43 @@
 #*******************************************
-# MacVersion = 1.0
+# MacVersion = 1.1
 # MacDescription = Clear Personal Data
 # MacAuthor = TeamDAAK
 # MacFileName = Clear Personal Data.gsk
 # MacUrl =
 #*******************************************
 #showstop
+#DEBUG STATUS=off
 
 GOSUB name=DeclareVariables
 GOSUB name=SetAll
 
-WHILE ShowForm($RunForm)
-	IF $ContinueBtn
-		GOSUB name=ClearPersonalData
-		RETURN
-	ENDIF
+#DEBUG STATUS=on
 
-	IF $CancelBtn
-		RETURN
-	ENDIF
-
-	IF $SelectAllBtn
-		GOSUB Name=SetAll
-	ENDIF
-
-	IF $ClearAllBtn
-		GOSUB Name=ClearAll
-	ENDIF
-
-ENDWHILE
-
-#$status = Form($RunForm,"")
-#IF $Continue
-#	GOSUB name=ClearPersonalData
-#ENDIF
+while True
+	$FormExit = form($RunForm,"")
+	BeginCase
+		Case $FormExit = $ContinueBtnName
+			GOSUB name=ClearPersonalData
+		Case $FormExit = $CancelBtnName
+			RETURN
+		Case $FormExit = $SelectAllBtnName
+			GOSUB Name=SetAll
+		Case $FormExit = $ClearAllBtnName
+			GOSUB Name=ClearAll
+	EndCase
+EndWhile
 
 RETURN
 
-#input msg="This will purge data from: $_Newline Found, DNF, DNFDate, FTF, $_Newline UserData, User2, User3, User4, UserFlag, $_Newline and UserNote, $_Newline $_Newline In the current database $_Newline Continue Y/N?" Default="N" VarName=$usrContinue
-
-#if $usrContinue ="Y" or $usrContinue = "y"
 
 BEGINSUB name=DeclareVariables
 	Option Explicit=Yes
+
+	Declare Var=$FormExit		Type=String
+	Declare Var=$ContinueBtnName	Type=String
+	Declare Var=$CancelBtnName	Type=String
+	Declare Var=$SelectAllBtnName	Type=String
+	Declare Var=$ClearAllBtnName	Type=String
 
 	Declare Var=$Found_Check	Type=Boolean
 	Declare Var=$DNF_Check 		Type=Boolean
@@ -58,6 +53,11 @@ BEGINSUB name=DeclareVariables
 	Declare Var=$FilterRow 		Type=Numeric
 	Declare	Var=$NullDate		Type=Date
 
+	$ContinueBtnName	= "ContinueBtn"
+	$CancelBtnName		= "CancelBtn"
+	$SelectAllBtnName	= "SelectAllBtn"
+	$ClearAllBtnName	= "ClearAllBtn"
+
 ENDSUB #DeclareVariables
 
 BEGINSUB name=ClearAll
@@ -71,7 +71,7 @@ BEGINSUB name=ClearAll
 	$User4_Check 		= FALSE
 	$UserFlag_Check 	= FALSE
 	$UserNote_Check 	= FALSE
-ENDSUB #learAll
+ENDSUB #ClearAll
 
 BEGINSUB name=SetAll
 	$Found_Check		= TRUE

@@ -1,11 +1,12 @@
 #*******************************************
-# MacVersion = 1.00
+# MacVersion = 1.1
 # MacDescription = Audit Field Notes Logging
 # MacAuthor = SnoWake
 # MacFileName = Audit_FieldNotes.gsk
 # MacUrl = 
 #*******************************************
 
+# v1.1 9/29/12 Updated to remove deprecated SORT command
 
 # Initialize some variables
 GOSUB name=InitVar
@@ -210,7 +211,10 @@ ENDSUB
 BEGINSUB name=SaveState
 
 DATASAVE Data=$d_UserFlag
-$currentsort = $_SortBy
+#$currentsort = $_SortBy
+
+$CurrentSort = $_OrderBy
+
 $currentfilter = SAVEFILTER()
 $currentdb = $_CurrentDatabase
 
@@ -231,9 +235,10 @@ IF RESTOREFILTER($currentfilter, True) = 0
 PAUSE Msg="Previously-set filter would now show no records. Clearing."
 ENDIF
 
-$sortdata = Extract($currentsort, "=",1)
-$sequence = Extract($currentsort, "=",2)
-SORT By=$sortdata Sequence=$sequence
+#$sortdata = Extract($currentsort, "=",1)
+#$sequence = Extract($currentsort, "=",2)
+# SORT By=$sortdata Sequence=$sequence
+SQLSort OrderBy=$CurrentSort
 
 ENDSUB
 # End of Macro
@@ -379,4 +384,5 @@ Name = ResultMemo
 
 
  
+
 

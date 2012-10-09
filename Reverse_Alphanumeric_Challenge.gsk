@@ -1,0 +1,25 @@
+#*********************** 
+# MacDescription = This macro will return a sortable list of caches in the current grid.  One cache per "last character of OwnerName" will be displayed
+# MacFileName = Reverse Alphanumeric Challenge.gsk
+# MacAuthor = ky.m.guy
+# MacVersion=1.2
+# MacDate=08/21/2012
+#***********************
+
+# get the sql data to display
+$result = sqlite("sql","SELECT code,CacheType,name,OwnerName,substr(UPPER(OwnerName),length(UPPER(OwnerName))) as character  from caches WHERE found and code in (SELECT code FROM caches WHERE cachetype<>'T' GROUP BY CacheType,substr(UPPER(OwnerName),length(UPPER(OwnerName)))) GROUP BY character ORDER BY CacheType,character","Headings=Yes")
+
+# display the data
+$html = sqltohtml($result,"One cache displayed for every (last letter of OwnerName)...No Traditionals","y")
+
+
+
+DELAY ms=2000
+
+
+# get the sql data to display
+$result2 = sqlite("sql","SELECT code,cachetype,name,OwnerName,substr(UPPER(OwnerName),length(UPPER(OwnerName))) as character  from caches WHERE found and code in (SELECT code FROM caches where CacheType='T' GROUP BY substr(UPPER(OwnerName),length(UPPER(OwnerName))))","Headings=Yes")
+
+# display the data
+$html = sqltohtml($result2,"One cache displayed for every (last letter of OwnerName)...No Traditionals","y")
+

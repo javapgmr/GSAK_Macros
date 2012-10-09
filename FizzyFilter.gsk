@@ -20,7 +20,7 @@
 # challenge, nor does it filter against cache type. (e.g., the FizzyBrowser.gsk macro does a
 # good job of that already.)
 #
-# MacVersion = 1.0.2
+# MacVersion = 1.1.0
 # MacDescription = Filter on difficulty/terrain combinations for different thresholds
 # MacAuthor = longtrails
 # MacFileName = FizzyFilter.gsk
@@ -31,47 +31,114 @@
 # v1.0.1 11/26/2011 - Fixed initialization errors.
 # v1.0.2 11/30/2011 - Stop Unfound database postback. Suppress startup macros. Added MacUrl.
 #                     Ensure post macro exists before running.
+# v1.1.0 09/28/2012 - Added ability to filter by state. Moved settings to separate dialog.
+#                     Added "Save Settings" button. Don't exit after clicking "Filter" button.
+#                     Show finds needed instead of finds already made.
 #---------------------------------------------------------------------------------------------
 
 # Initialize the macro.
 GoSub Name=Startup
+GoSub Name=InitSettingsDisplay
 GoSub Name=BuildDifficultyTerrainArray
 GoSub Name=UpdateDifficultyTerrainGrid
 
 # Display the main window.
 While True
   ShowStatus Display=Off
-  $dialogResult = Form($Form,"")
+  $dialogResult = Form($MainForm, "")
   BeginCase
-    Case $dialogResult = "ComboboxWhichFizzy"
-      GoSub Name=UpdateDifficultyTerrainGrid
-      GoSub Name=SaveSettings
-    Case $dialogResult = "ComboboxFoundCachesDatabase"
-      GoSub Name=BuildDifficultyTerrainArray
-      GoSub Name=UpdateDifficultyTerrainGrid
-      GoSub Name=SaveSettings
-    Case $dialogResult = "ComboboxUnfoundCachesDatabase"
-      GoSub Name=SaveSettings
+
+    # Settings.
+    Case $dialogResult = "ButtonSettings"
+      GoSub Name=ShowSettingsForm
+
+    # Other.
     Case $dialogResult = "ButtonFilter"
       If $numNeededCells = 0
         $message = "There are no cells with fewer than " + NumToStr($maxCellCount + 1) + " finds"
         MsgOK Msg=$message
       Else
         $IsValid = True
-        GoSub Name=ValidateApplyFilter
+        GoSub Name=ValidateApplyFilter1
         If $IsValid = True
           GoSub Name=ApplyFilter
           GoSub Name=RunMacro
-          GoSub Name=SaveSettings
-          Break
+          # Break
         EndIf
       EndIf
+
+    # Save Settings
+    Case $dialogResult = "ButtonSaveSettings"
+      GoSub Name=SaveSettings
+
+    # Exit macro.
     Case $dialogResult = "ButtonClose"
       Cancel
     Case $dialogResult = "SystemExit"
       Cancel
+
    EndCase
 EndWhile
+
+#---------------------------------------------------------------------------------------------
+# Show Settings form.
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=ShowSettingsForm
+
+  GoSub Name=CopyFromCurSettingsToControls
+
+  # Display the main window.
+  While True
+    ShowStatus Display=Off
+    $dialogResult = Form($SettingsForm, "")
+    BeginCase
+
+      # Save settings.
+      Case $dialogResult = "ButtonOk"
+
+        $IsValid = True
+        GoSub Name=ValidateApplyFilter2
+        If $IsValid = True
+
+          # Figure out what parts of the UI need to be updated.
+          $NeedArrayUpdate = False
+          $NeedGridUpdate = False
+          If $CurFizzyType <> $ComboboxFizzyType
+            $NeedGridUpdate = True
+          EndIf
+          If $CurFoundCachesDatabase <> $ComboboxFoundCachesDatabase
+            $NeedArrayUpdate = True
+            $NeedGridUpdate = True
+          EndIf
+          If $CurStates <> $ComboboxStates
+            $NeedArrayUpdate = True
+            $NeedGridUpdate = True
+          EndIf
+          GoSub Name=CopyFromControlsToCurSettings
+          GoSub Name=InitSettingsDisplay
+          If $NeedArrayUpdate = True
+            GoSub Name=BuildDifficultyTerrainArray
+          EndIf
+          If $NeedGridUpdate = True
+            GoSub Name=UpdateDifficultyTerrainGrid
+          EndIf
+
+          # Close the dialog.
+          Break
+
+        EndIF
+
+      # Exit dialog.
+      Case $dialogResult = "ButtonCancel"
+        Break
+      Case $dialogResult = "SystemExit"
+        Break
+
+     EndCase
+  EndWhile
+
+EndSub # Name=ShowSettingsForm
 
 #---------------------------------------------------------------------------------------------
 # Startup
@@ -84,20 +151,39 @@ BeginSub Name=Startup
   $void = List("ListUples", "Create", ";")
   $void = List("ListUples", "Replace", $uples)
 
+  # Build the states list.
+  $stateList = Replace($_NewLine, ";", $stateList, true)
+  $void = List("ListStates", "Create", ";")
+  $void = List("ListStates", "Replace", $stateList)
+
   # Build the list of databases.
   $databaseList = SysInfo("databases")
   $databaseList = "Currently selected database;" + $databaseList
 
   # Dispay current version number.
-  $Form = EditForm($Form, "LabelVersion", "Caption", "version " + MacHeader("MacVersion"))
+  $MainForm = EditForm($MainForm, "LabelVersion", "Caption", "version " + MacHeader("MacVersion"))
 
-  # Restore settings from the configuration file.
-  $ComboboxWhichFizzy = ""
-  $ComboboxFoundCachesDatabase = ""
-  $ComboboxUnfoundCachesDatabase = ""
+  # Initialize default values.
+  $ComboboxFizzyType = "1 - Single"
+  $ComboboxFoundCachesDatabase = "Currently selected database"
+  $ComboboxUnfoundCachesDatabase = "Currently selected database"
+  $ComboboxStates = "Ignore"
   $CheckboxPostMacro = False
   $FilePostMacro = ""
+  $ComboboxWhichFizzy = ""  # Backward compatibility with version 1.0.2.
+
+  # Restore settings from the configuration file.
   MacSettings Type=R File="FizzyFilter.data" FileCheck=N
+
+  # Backward compatibility with version 1.0.2.
+  If $ComboboxWhichFizzy <> ""
+    $ComboboxFizzyType = $ComboboxWhichFizzy
+  EndIf
+
+  # Save settings in separate variables so the settings dialog can operate
+  # independently.
+  GoSub Name=CopyFromControlsToCurSettings
+  GoSub Name=CopyFromCurSettingsToSavedSettings
 
 EndSub # Name=Startup
 
@@ -113,8 +199,8 @@ BeginSub Name=BuildDifficultyTerrainArray
   # Select the database. Remember the currently selected database so we can set
   # it back when we're done.
   $prevDatabase = $_CurrentDatabase
-  If DataBaseExists($ComboboxFoundCachesDatabase)
-    Database Name=$ComboboxFoundCachesDatabase Action=Select StopStartupMacro=Y
+  If DataBaseExists($CurFoundCachesDatabase)
+    Database Name=$CurFoundCachesDatabase Action=Select StopStartupMacro=Y
   EndIf
   $result = SQLite("open", "$_CurrentDataPath\sqlite.db3")
 
@@ -131,7 +217,10 @@ BeginSub Name=BuildDifficultyTerrainArray
 	While $indexDifficulty <= 9
 		While $indexTerrain <= 9
       GoSub Name=ConvertIndexToRating
-      $_sql = "SELECT COUNT(Code) FROM caches WHERE Difficulty=$difficulty and Terrain=$terrain"
+      $_sql = "SELECT COUNT(Code) FROM Caches WHERE Difficulty=$difficulty AND Terrain=$terrain"
+      If $ComboboxStates <> "Ignore"
+        $_sql = $_sql + " AND State='$ComboboxStates'"
+      EndIf
       Array($indexDifficulty, $indexTerrain) = Sqlite("sql", $_sql)
       $indexTerrain = $indexTerrain + 1
     EndWhile
@@ -166,10 +255,10 @@ BeginSub Name=UpdateDifficultyTerrainGrid
       GoSub Name=GetCellName
       If $numFound <= $maxCellCount
         $numNeededCells = $numNeededCells + 1
-        $Form = EditForm($Form, $cellName, "Color", "65408")
-        $cellText = " " + NumToStr($numFound)
+        $MainForm = EditForm($MainForm, $cellName, "Color", "65408")
+        $cellText = " " + NumToStr($maxCellCount - $numFound + 1)
       Else
-        $Form = EditForm($Form, $cellName, "Color", "16777215")
+        $MainForm = EditForm($MainForm, $cellName, "Color", "16777215")
         $cellText = ""
       EndIf
       GoSub Name=SetCellText
@@ -194,13 +283,17 @@ BeginSub Name=UpdateDifficultyTerrainGrid
     OtherWise
       $message = $message + NumToStr($maxCellCount + 1) + " finds"
   EndCase
-  $Form = EditForm($Form, "GroupboxFizzyGrid", "Caption", $message)
+  $MainForm = EditForm($MainForm, "GroupboxFizzyGrid", "Caption", $message)
+
+  # Update label telling user what the cell number means.
+  $message = "still need to qualify for the " + Extract($ComboboxFizzyType, " - ", 2) + " Fizzy."
+  $MainForm = EditForm($MainForm, "LabelCellRepresents2", "Caption", $message)
 
   # Enable/disable the Filter button.
   If $numNeededCells = 0
-    $Form = EditForm($Form, "ButtonFilter", "Enabled", "No")
+    $MainForm = EditForm($MainForm, "ButtonFilter", "Enabled", "No")
   Else
-    $Form = EditForm($Form, "ButtonFilter", "Enabled", "Yes")
+    $MainForm = EditForm($MainForm, "ButtonFilter", "Enabled", "Yes")
   EndIf
 
 EndSub # Name=UpdateDifficultyTerrainGrid
@@ -212,8 +305,8 @@ EndSub # Name=UpdateDifficultyTerrainGrid
 BeginSub Name=ApplyFilter
 
   # Select the database.
-  If DataBaseExists($ComboboxUnfoundCachesDatabase)
-    Database Name=$ComboboxUnfoundCachesDatabase Action=Select StopStartupMacro=Y
+  If DataBaseExists($CurUnfoundCachesDatabase)
+    Database Name=$CurUnfoundCachesDatabase Action=Select StopStartupMacro=Y
   EndIf
   $result = SQLite("open", "$_CurrentDataPath\sqlite.db3")
 
@@ -233,7 +326,11 @@ BeginSub Name=ApplyFilter
       ShowStatus Msg="Filtering Difficulty = $difficulty / Terrain = $terrain"
       $numFound = Val(Array($indexDifficulty, $indexTerrain))
       If $numFound <= $maxCellCount
-        MFilter Expression=($d_Difficulty=$difficulty And $d_Terrain=$terrain) Join=Or
+        If $ComboboxStates = "Ignore"
+          MFilter Expression=($d_Difficulty=$difficulty AND $d_Terrain=$terrain) Join=OR
+        Else
+          MFilter Expression=($d_Difficulty=$difficulty AND $d_Terrain=$terrain AND $d_State=$ComboboxStates) Join=OR
+        EndIf
         $numNeededCells = $numNeededCells + 1
       EndIf
       $indexTerrain = $indexTerrain + 1
@@ -254,7 +351,27 @@ EndSub # Name=ApplyFilter
 # Validate Apply Filter
 #---------------------------------------------------------------------------------------------
 
-BeginSub Name=ValidateApplyFilter
+BeginSub Name=ValidateApplyFilter1
+
+  # Make sure the macro file exists.
+  If $CurCheckboxPostMacro = True
+    If $CurFilePostMacro = ""
+      MsgOK Msg="You chose to run a macro, but have not specified one yet."
+      $IsValid = False
+      ExitSub
+    EndIf
+    If FileExists($CurFilePostMacro) = False
+      If FileExists($_AppData + "\Macros\" + $CurFilePostMacro) = False
+        MsgOK Msg=You chose to run a macro, but the one you specified does not exist: $_NewLine $_NewLine $CurFilePostMacro
+        $IsValid = False
+        ExitSub
+      EndIf
+    EndIf
+  EndIf
+
+EndSub # Name=ValidateApplyFilter1
+
+BeginSub Name=ValidateApplyFilter2
 
   # Make sure the macro file exists.
   If $CheckboxPostMacro = True
@@ -272,7 +389,7 @@ BeginSub Name=ValidateApplyFilter
     EndIf
   EndIf
 
-EndSub # Name=ValidateApplyFilter
+EndSub # Name=ValidateApplyFilter2
 
 #---------------------------------------------------------------------------------------------
 # Run macro
@@ -281,21 +398,143 @@ EndSub # Name=ValidateApplyFilter
 BeginSub Name=RunMacro
 
   # Run a macro if needed.
-  If $CheckboxPostMacro = True
-    Macro File=$FilePostMacro VarScope=Local
+  If $CurCheckboxPostMacro = True
+    Macro File=$CurFilePostMacro VarScope=Local
   EndIf
 
 EndSub # Name=RunMacro
 
 #---------------------------------------------------------------------------------------------
-# Save settings to the configuration file
+# Save settings to the configuration file on disk
 #---------------------------------------------------------------------------------------------
 
 BeginSub Name=SaveSettings
 
-  MacSettings Type=S Vars=ComboboxWhichFizzy,ComboboxFoundCachesDatabase,ComboboxUnfoundCachesDatabase,CheckboxPostMacro,FilePostMacro File="FizzyFilter.data"
+  GoSub Name=CopyFromCurSettingsToControls
+  MacSettings Type=S Vars=ComboboxFizzyType,ComboboxFoundCachesDatabase,ComboboxUnfoundCachesDatabase,ComboboxStates,CheckboxPostMacro,FilePostMacro File="FizzyFilter.data"
+  GoSub Name=CopyFromCurSettingsToSavedSettings
+  GoSub Name=InitSettingsDisplay
 
 EndSub # Name=SaveSettings
+
+#---------------------------------------------------------------------------------------------
+# Initializes read-only information in Setting groupbox
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=InitSettingsDisplay
+
+  $AnyChanges = False
+
+  If $SavedFizzyType <> $CurFizzyType
+    $MainForm = EditForm($MainForm, "LabelFizzyType1", "Caption", "<FONT bgcolor=" + Quote("clYellow") + ">Fizzy type:</FONT>")
+    $AnyChanges = True
+  Else
+    $MainForm = EditForm($MainForm, "LabelFizzyType1", "Caption", "Fizzy type:")
+  EndIf
+  If $SavedFoundCachesDatabase <> $CurFoundCachesDatabase
+    $MainForm = EditForm($MainForm, "LabelFoundCachesDatabase1", "Caption", "<FONT bgcolor=" + Quote("clYellow") + ">Found caches database:</FONT>")
+    $AnyChanges = True
+  Else
+    $MainForm = EditForm($MainForm, "LabelFoundCachesDatabase1", "Caption", "Found caches database:")
+  EndIf
+  If $SavedUnfoundCachesDatabase <> $CurUnfoundCachesDatabase
+    $MainForm = EditForm($MainForm, "LabelUnfoundCachesDatabase1", "Caption", "<FONT bgcolor=" + Quote("clYellow") + ">Unfound caches database:</FONT>")
+    $AnyChanges = True
+  Else
+    $MainForm = EditForm($MainForm, "LabelUnfoundCachesDatabase1", "Caption", "Unfound caches database:")
+  EndIf
+  If $SavedStates <> $CurStates
+    $MainForm = EditForm($MainForm, "LabelState1", "Caption", "<FONT bgcolor=" + Quote("clYellow") + ">State:</FONT>")
+    $AnyChanges = True
+  Else
+    $MainForm = EditForm($MainForm, "LabelState1", "Caption", "State:")
+  EndIf
+  If $SavedCheckboxPostMacro <> $CurCheckboxPostMacro OR $SavedFilePostMacro <> $CurFilePostMacro
+    $MainForm = EditForm($MainForm, "LabelPostMacro1", "Caption", "<FONT bgcolor=" + Quote("clYellow") + ">Post filtering macro:</FONT>")
+    $AnyChanges = True
+  Else
+    $MainForm = EditForm($MainForm, "LabelPostMacro1", "Caption", "Post filtering macro:")
+  EndIf
+
+  If $AnyChanges = False
+    $MainForm = EditForm($MainForm, "ButtonSaveSettings", "Enabled", "No")
+  Else
+    $MainForm = EditForm($MainForm, "ButtonSaveSettings", "Enabled", "Yes")
+  EndIf
+
+  $MainForm = EditForm($MainForm, "LabelFizzyType2", "Caption", $CurFizzyType)
+  $MainForm = EditForm($MainForm, "LabelFoundCachesDatabase2", "Caption", $CurFoundCachesDatabase)
+  $MainForm = EditForm($MainForm, "LabelUnfoundCachesDatabase2", "Caption", $CurUnfoundCachesDatabase)
+  $MainForm = EditForm($MainForm, "LabelState2", "Caption", $CurStates)
+
+  # Post filtering macro.
+  $Prefix = $_AppData + "\Macros\"
+  If Left($CurFilePostMacro, Len($Prefix)) = $Prefix
+    $Macro = Substr($CurFilePostMacro, Len($_AppData + "\Macros\") + 1, 0)
+  Else
+    $Macro = $CurFilePostMacro
+  EndIf
+  BeginCase
+    Case $CurCheckboxPostMacro = True
+      $MainForm = EditForm($MainForm, "LabelPostMacro2", "Caption", "Run:")
+      $MainForm = EditForm($MainForm, "LabelPostMacro3", "Caption", $Macro)
+      $MainForm = EditForm($MainForm, "LabelPostMacro3", "Visible", "Yes")
+    Case $Macro <> ""
+      $MainForm = EditForm($MainForm, "LabelPostMacro2", "Caption", "Do not run:")
+      $MainForm = EditForm($MainForm, "LabelPostMacro3", "Caption", $Macro)
+      $MainForm = EditForm($MainForm, "LabelPostMacro3", "Visible", "Yes")
+    OtherWise
+      $MainForm = EditForm($MainForm, "LabelPostMacro2", "Caption", "None")
+      $MainForm = EditForm($MainForm, "LabelPostMacro3", "Caption", "")
+      $MainForm = EditForm($MainForm, "LabelPostMacro3", "Visible", "No")
+  EndCase
+
+EndSub # Name=InitSettingsDisplay
+
+#---------------------------------------------------------------------------------------------
+# Copy local variables to control values
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=CopyFromCurSettingsToControls
+
+  $ComboboxFizzyType = $CurFizzyType
+  $ComboboxFoundCachesDatabase = $CurFoundCachesDatabase
+  $ComboboxUnfoundCachesDatabase = $CurUnfoundCachesDatabase
+  $ComboboxStates = $CurStates
+  $CheckboxPostMacro = $CurCheckboxPostMacro
+  $FilePostMacro = $CurFilePostMacro
+
+EndSub # Name=CopyFromCurSettingsToControls
+
+#---------------------------------------------------------------------------------------------
+# Copy control values to local variables
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=CopyFromControlsToCurSettings
+
+  $CurFizzyType = $ComboboxFizzyType
+  $CurFoundCachesDatabase = $ComboboxFoundCachesDatabase
+  $CurUnfoundCachesDatabase = $ComboboxUnfoundCachesDatabase
+  $CurStates = $ComboboxStates
+  $CurCheckboxPostMacro = $CheckboxPostMacro
+  $CurFilePostMacro = $FilePostMacro
+
+EndSub # Name=CopyFromControlsToCurSettings
+
+#---------------------------------------------------------------------------------------------
+# 
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=CopyFromCurSettingsToSavedSettings
+
+  $SavedFizzyType = $CurFizzyType
+  $SavedFoundCachesDatabase = $CurFoundCachesDatabase
+  $SavedUnfoundCachesDatabase = $CurUnfoundCachesDatabase
+  $SavedStates = $CurStates
+  $SavedCheckboxPostMacro = $CurCheckboxPostMacro
+  $SavedFilePostMacro = $CurFilePostMacro
+
+EndSub # Name=CopyFromCurSettingsToSavedSettings
 
 #---------------------------------------------------------------------------------------------
 # Convert index to rating. E.g., if $indexDifficulty is 6 then $difficulty is set to 3.5.
@@ -410,7 +649,7 @@ EndSub # Name=GetCellName
 
 BeginSub Name=ConvertUpleToMaxCellCount
 
-  $maxCellCount = Val(List("ListUples", "Find", $ComboboxWhichFizzy)) - 1
+  $maxCellCount = Val(List("ListUples", "Find", $ComboboxFizzyType)) - 1
 
 EndSub # Name=ConvertUpleToMaxCellCount
 
@@ -705,33 +944,97 @@ EndSub # Name=SetCellText
 <EndData>
 
 #---------------------------------------------------------------------------------------------
+# stateList
+#---------------------------------------------------------------------------------------------
+
+<Data> VarName=$stateList
+Ignore
+Alabama
+Alaska
+American Samoa
+Arizona
+Arkansas
+California
+Colorado
+Connecticut
+Delaware
+District of Columbia
+Florida
+Georgia
+Guam
+Hawaii
+Idaho
+Illinois
+Indiana
+Iowa
+Kansas
+Kentucky
+Louisiana
+Maine
+Maryland
+Massachusetts
+Michigan
+Minnesota
+Mississippi
+Missouri
+Montana
+Nebraska
+Nevada
+New Hampshire
+New Jersey
+New Mexico
+New York
+North Carolina
+North Dakota
+Northern Marianas Islands
+Ohio
+Oklahoma
+Oregon
+Pennsylvania
+Puerto Rico
+Rhode Island
+South Carolina
+South Dakota
+Tennessee
+Texas
+Utah
+Vermont
+Virginia
+Virgin Islands
+Washington
+West Virginia
+Wisconsin
+Wyoming
+<EndData>
+
+#---------------------------------------------------------------------------------------------
 # Main form
 #---------------------------------------------------------------------------------------------
 
-<Data> VarName=$Form
+<Data> VarName=$MainForm
 
 Name = FormMain
   Type = Form
   Caption = Fizzy Filter
-  Height = 388
-  Width = 620
+  Height = 354
+  Width = 638
 
 Name = GroupboxFizzyGrid
   Type = Groupbox
-  Height = 257
-  Left = 306
+  Enabled = No
+  Height = 265
+  Left = 10
   Top = 48
   Width = 287
-  Taborder = 2
+  Taborder = 6
 
-Name = GroupboxFilterDatabase
+Name = GroupboxSettings
   Type = Groupbox
-  Caption = Filtering criteria
-  Height = 257
-  Left = 8
+  Height = 169
+  Left = 312
   Top = 48
-  Width = 287
-  Taborder = 0
+  Width = 305
+  Taborder = 2
 
 Name = LabelTitle
   Type = Label
@@ -744,45 +1047,32 @@ Name = LabelTitle
   Width = 125
   Caption = Fizzy Filter
 
-Name = LabelWhichFizzy
-  Type = Label
-  Container = GroupboxFilterDatabase
-  Height = 13
-  Left = 12
-  Top = 29
-  Width = 164
-  Caption = Fizzy type:
-
-Name = ComboboxWhichFizzy
-  Type = Combobox
-  Color = 12713983
-  Container = GroupboxFilterDatabase
-  Exitonchange = Yes
-  Height = 21
-  Left = 12
-  Top = 44
-  Values = $uples
-  Width = 260
-  Taborder = 0
-
 Name = ButtonFilter
   Type = Button
-  Container = GroupboxFilterDatabase
   Height = 25
-  Left = 99
-  Top = 216
+  Left = 324
+  Top = 288
   Width = 88
-  Taborder = 5
+  Taborder = 3
   Caption = Filter
 
 Name = ButtonClose
   Type = Button
   Height = 25
-  Left = 258
-  Top = 320
+  Left = 516
+  Top = 288
   Width = 88
-  Taborder = 1
+  Taborder = 5
   Caption = Close
+
+Name = ButtonSaveSettings
+  Type = Button
+  Height = 25
+  Left = 420
+  Top = 288
+  Width = 88
+  Taborder = 4
+  Caption = Save Settings
 
 Name = LabelTerr10
   Type = Label
@@ -1675,56 +1965,14 @@ Name = Edit5050
   Width = 20
   Taborder = 80
 
-Name = ComboboxFoundCachesDatabase
-  Type = Combobox
-  Color = 12713983
-  Container = GroupboxFilterDatabase
-  Exitonchange = Yes
-  Height = 21
-  Left = 12
-  Top = 92
-  Values = $databaseList
-  Width = 260
-  Taborder = 1
-
-Name = LabelFoundCachesDatabase
-  Type = Label
-  Container = GroupboxFilterDatabase
-  Height = 17
-  Left = 12
-  Top = 77
-  Width = 226
-  Caption = Found caches database:
-
-Name = ComboboxUnfoundCachesDatabase
-  Type = Combobox
-  Color = 12713983
-  Container = GroupboxFilterDatabase
-  Height = 21
-  Left = 12
-  Top = 140
-  Values = $databaseList
-  Width = 260
-  Taborder = 2
-
-Name = FilterFilterCachesDatabase
-  Type = Label
-  Container = GroupboxFilterDatabase
-  Height = 17
-  Left = 12
-  Top = 125
-  Width = 238
-  Caption = Unfound caches database:
-
 Name = LabelTerrain
   Type = Label
   Color = 16744448
   Container = GroupboxFizzyGrid
   Height = 17
   Left = 160
-  Style = bold
   Top = 24
-  Width = 48
+  Width = 41
   Caption = Terrain
 
 Name = LabelDifficulty
@@ -1733,34 +1981,14 @@ Name = LabelDifficulty
   Container = GroupboxFizzyGrid
   Height = 17
   Left = 8
-  Style = bold
   Top = 148
-  Width = 58
+  Width = 48
   Caption = Difficulty
-
-Name = CheckboxPostMacro
-  Type = Checkbox
-  Container = GroupboxFilterDatabase
-  Height = 20
-  Left = 12
-  Top = 168
-  Width = 269
-  Taborder = 3
-  Caption = Run this macro after filtering on unfound caches
-
-Name = FilePostMacro
-  Type = File
-  Container = GroupboxFilterDatabase
-  Height = 21
-  Left = 26
-  Top = 192
-  Width = 246
-  Taborder = 4
 
 Name = LabelAuthor
   Type = Label
   Height = 17
-  Left = 536
+  Left = 552
   Top = 20
   Width = 63
   Caption = by longtrails
@@ -1773,44 +2001,252 @@ Name = LabelVersion
   Width = 73
   Caption = Version: ?.?.?
 
+Name = LabelCellRepresents1
+  Type = Label
+  Color = 16744448
+  Height = 17
+  Left = 328
+  Top = 232
+  Width = 270
+  Caption = The number in each cell represents how many finds you
+
+Name = LabelCellRepresents2
+  Type = Label
+  Color = 16744448
+  Height = 17
+  Left = 328
+  Top = 248
+  Width = 222
+  Caption = still need to qualify for the selected Fizzy type.
+
+Name = ButtonSettings
+  Type = Button
+  Container = GroupboxSettings
+  Height = 25
+  Left = 12
+  Top = 130
+  Width = 81
+  Taborder = 0
+  Caption = Settings
+
+Name = LabelFizzyType1
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 12
+  Top = 18
+  Width = 57
+  Caption = Fizzy type:
+
+Name = LabelFizzyType2
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 152
+  Top = 18
+  Width = 14
+  Caption = ?
+
+Name = LabelFoundCachesDatabase1
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 12
+  Top = 40
+  Width = 126
+  Caption = Found caches database:
+
+Name = LabelFoundCachesDatabase2
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 152
+  Top = 40
+  Width = 14
+  Caption = ?
+
+Name = LabelUnfoundCachesDatabase1
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 12
+  Top = 62
+  Width = 137
+  Caption = Unfound caches database:
+
+Name = LabelUnfoundCachesDatabase2
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 152
+  Top = 62
+  Width = 14
+  Caption = ?
+
+Name = LabelState1
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 12
+  Top = 84
+  Width = 36
+  Caption = State:
+
+Name = LabelState2
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 152
+  Top = 84
+  Width = 14
+  Caption = ?
+
+Name = LabelPostMacro1
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 12
+  Top = 106
+  Width = 100
+  Caption = Post filtering macro:
+
+Name = LabelPostMacro2
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 152
+  Top = 106
+  Width = 14
+  Caption = ?
+
+Name = LabelPostMacro3
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 152
+  Top = 120
+  Width = 14
+  Caption = ?
+
 <enddata>
 
+#---------------------------------------------------------------------------------------------
+# Settings form
+#---------------------------------------------------------------------------------------------
 
+<Data> VarName=$SettingsForm
 
+Name = FormSettings
+  Type = Form
+  Caption = Settings
+  Height = 326
+  Width = 297
 
+Name = LabelFizzyType
+  Type = Label
+  Height = 13
+  Left = 12
+  Top = 13
+  Width = 57
+  Caption = Fizzy type:
 
+Name = ComboboxFizzyType
+  Type = Combobox
+  Color = 12713983
+  Height = 21
+  Left = 12
+  Top = 28
+  Values = $uples
+  Width = 260
+  Taborder = 0
 
+Name = LabelFoundCachesDatabase
+  Type = Label
+  Height = 17
+  Left = 12
+  Top = 61
+  Width = 126
+  Caption = Found caches database:
 
+Name = ComboboxFoundCachesDatabase
+  Type = Combobox
+  Color = 12713983
+  Height = 21
+  Left = 12
+  Top = 76
+  Values = $databaseList
+  Width = 260
+  Taborder = 1
 
+Name = LabelUnfoundCachesDatabase
+  Type = Label
+  Height = 17
+  Left = 12
+  Top = 109
+  Width = 137
+  Caption = Unfound caches database:
 
+Name = ComboboxUnfoundCachesDatabase
+  Type = Combobox
+  Color = 12713983
+  Height = 21
+  Left = 12
+  Top = 124
+  Values = $databaseList
+  Width = 260
+  Taborder = 2
 
+Name = LabelStates
+  Type = Label
+  Height = 17
+  Left = 12
+  Top = 157
+  Width = 36
+  Caption = State:
 
+Name = ComboboxStates
+  Type = Combobox
+  Color = 12713983
+  Height = 21
+  Left = 12
+  Top = 172
+  Values = $stateList
+  Width = 260
+  Taborder = 3
 
+Name = CheckboxPostMacro
+  Type = Checkbox
+  Height = 20
+  Left = 12
+  Top = 200
+  Width = 269
+  Taborder = 4
+  Caption = Run this macro after filtering on unfound caches
 
+Name = FilePostMacro
+  Type = File
+  Height = 21
+  Left = 12
+  Top = 224
+  Width = 261
+  Taborder = 5
 
+Name = ButtonOk
+  Type = Button
+  Height = 25
+  Left = 48
+  Top = 256
+  Width = 88
+  Taborder = 6
+  Caption = OK
 
+Name = ButtonCancel
+  Type = Button
+  Height = 25
+  Left = 146
+  Top = 256
+  Width = 88
+  Taborder = 7
+  Caption = Cancel
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+<enddata>

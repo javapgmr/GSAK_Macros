@@ -3,9 +3,13 @@
   # MacDescription = Garmin CSV POI Export with icons and variable formats for either the 60Csx or Nuvi
   # MacUrl = http://gsak.net/board/index.php?showtopic=6918&view=getnewpost
   # MacAuthor = javapgmr (original macro by by Rene Boe (alias "ProsperoDK"))
-  # MacVersion = 1.0.8
+  # MacVersion = 1.0.11
   ########################################################################################### 
   # 
+  # 10/01/2012
+  # Remove deprecated commands
+  # Allow for newer versions of the POI Loader by testing for both possible names and selecting the right one.
+  #
   # 10/01/2009
   # Modify screen to work with a netbook, include the settings to save the selected MaxSaveLength
   # 
@@ -215,20 +219,21 @@ ELSE
   # ---------- Form ----------
 
   $dblist = SysInfo("databases")
-  IF ShowForm($form)
-
-      IF $cancel
-          CANCEL Msg="Macro cancelled"
-      ENDIF 
-
-  ELSE 
-
+  $formexit = form($form, "")
+BEGINCASE
+  CASE $FormExit="DelayExit"
+	  CANCEL Msg="Macro cancelled"
+      BREAK
+  CASE $cancel
       CANCEL Msg="Macro cancelled"
-
-  ENDIF 
-
-  # ---------- Form ----------
-
+      BREAK		  
+  CASE $Ok
+	  GOSUB Name=Process
+	  BREAK 
+  ENDCASE
+  
+# ---------- Form ----------
+  BEGINSUB Name=Process
   $MaxHintLength = Val($MaxHintLengthStr)
   # remove semicolons form the format strings
   $csvNameFmt = Replace(";",":",$csvNameFmt,TRUE)
@@ -406,14 +411,23 @@ VSUB Status=on
   ENDIF 
   $sortdata = Extract($CurrentSort, "=",1)
   $sequence = Extract($CurrentSort, "=",2)
-  SORT By=$sortdata Sequence=$sequence
-
+If $Sequence = "D"
+  SQLSORT OrderBy=$sortdata Desc
+  else
+  SQLSORT OrderBy=$sortdata Asc
+ ENDIF
 IF $POILoader
 	IF IsEmpty($POILocation)
 		MSGOK  Msg="The POI Location has not been set.  The POI command will not be run."
 		ELSE	
-  	$POIPgm=SlashAdd($POILocation) + "PoiLoader.exe"
-  	IF FileExists($POIPGM)
+# Try the old program name first.
+		$POIPgm=SlashAdd($POILocation) + "PoiLoader.exe"
+	IF NOT (FileExists($POIPGM))
+# Try the new program name if the old one doesn't exist.
+	$POIPgm=SlashAdd($POILocation) + "Poi Loader.exe"	
+	ENDIF
+# If the program still doesn't exist we can't do anything.	
+  	IF FileExists($POIPGM)	
   		RUNPGM PGM=$POIPgm Wait=NO Parms=$POIParms
   	ELSE 
 	   MSGOK MSG="POILoader program does not exist at the specified location and will not run."  		
@@ -430,8 +444,9 @@ ENDIF
 
       MSGOK Msg=$Message  Caption="Nuvi60CsxGarminCvsPoiExport.gsk"
   ENDIF 
-  
+  ENDSUB
 
+  
   # 
   # ---------- SubRoutines ----------
   # 
@@ -671,6 +686,7 @@ Declare Var=$FileName Type=String
 Declare Var=$FilterOutArchived Type=Boolean
 Declare Var=$FilterOutDisabled Type=Boolean
 Declare Var=$FilterOutFound Type=Boolean
+Declare Var=$FormExit Type=String
 Declare Var=$JType Type=String
 Declare Var=$form Type=String
 Declare Var=$hint Type=String
@@ -1115,5 +1131,6 @@ Name = POILoader
 
 
  
+
 
 
