@@ -1,7 +1,7 @@
-  $Macro_Version = "Myfounds2html 4.06"
+  $Macro_Version = "Myfounds2html 4.07"
   Vercheck version=8.0.1.46 (please update GSAK to the latest version to run this macro - see http://gsak.net)
 #*******************************************
-# MacVersion = 4.06
+# MacVersion = 4.07
 # MacDescription = Generate maps of your found caches using google maps
 # MacAuthor = bendtsen & hund
 # MacFileName = Myfounds2html.gsk
@@ -25,6 +25,7 @@
 # Current issues :
 #    None
 # 
+# 4.07  06/09/2012      commands that are depriciated, form, geocalc, sort
 # 4.06  18/02/2012      date testing
 # 4.05  16/02/2012      Icons for last number of founds correct calculated 
 #                              $_AppData instead of $_Instdata for all files except for Ini file
@@ -290,7 +291,9 @@ BeginSub Name=B_Handle_Setup
   If $_Count > 0
      $restore_current_setup = true
      Datasave Data=$d_UserFlag
-     $Saved_CurrentSort = $_SortBy
+#     $Saved_CurrentSort = $_SortBy
+     $Saved_CurrentSort = $_OrderBy
+
      $Saved_CurrentFilter = SaveFilter()
      $Saved_CurrentDB = $_CurrentDatabase
   Endif
@@ -596,8 +599,13 @@ BeginSub Name=E_Show_Main_form
   $error_form = ""
 
 
-  While ShowForm($main_form)
+#  While ShowForm($main_form)
 
+
+ While True 
+     
+     $FormExit = form($main_form,"")
+     
 
      If $B_Input_file
         If IsEmpty($V_Input_file) 
@@ -793,7 +801,10 @@ BeginSub Name=F_Show_Sub_form
 
   $error_form2 = ""
 
-  While ShowForm($main_form2)
+#  While ShowForm($main_form2)
+
+  While True 
+       $FormExit = form($main_form2,"")
 
      If $B2_ok
         
@@ -1823,7 +1834,9 @@ BeginSub Name=Q_Generate_html
       Endif
 
       If RegEx("(coordinates)",$Ini_Window_content) 
-         $LatLon = GeoCalc((sqlget("d_LatOriginal") + ";" + sqlget("d_LonOriginal")),"FormatMinutes")
+#         $LatLon = GeoCalc((sqlget("d_LatOriginal") + ";" + sqlget("d_LonOriginal")),"FormatMinutes")
+          $LatLon = GCalc((sqlget("d_LatOriginal") + ";" + sqlget("d_LonOriginal")),"FormatMinutes")
+
          $windowContent=$windowContent + "<h3>" + "(" + $LatLon + ")" + "</h3>"
       Endif
 
@@ -1909,9 +1922,12 @@ BeginSub Name=R_Handle_Closure
       If RestoreFilter($Saved_CurrentFilter,True) = 0
          Pause Msg="No records match your restored filter. Filter has been canceled"
       EndIf
-      $sortdata = Extract($Saved_CurrentSort, "=",1)
-      $sequence = Extract($Saved_CurrentSort, "=",2)
-      Sort By=$sortdata Sequence=$sequence
+#      $sortdata = Extract($Saved_CurrentSort, "=",1)
+#      $sequence = Extract($Saved_CurrentSort, "=",2)
+#      Sort By=$sortdata Sequence=$sequence
+
+      SQLSort OrderBy=$Saved_CurrentSort
+
    Endif
 
    

@@ -1,4 +1,4 @@
-# MacVersion = 1.3.3b
+# MacVersion = 1.3.4
 # MacDescription = Filter GSAK Grid To Display Caches With D/T Matrix or Month/Year Placed or State/County Combos You Have Not Found Yet
 # MacAuthor = FlyingSyringe
 # MacFileName = MatrixFinder.gsk
@@ -10,8 +10,9 @@
 #		06.10.2010	v1.3.1	Added "No Found Caches" Error Check
 #		07.10.2010	v1.3.2	Check For "No Found Caches" Error Now Done At DB Selection Time
 #												RETURN commad used instead of CANCEL for compatability when called from another macro
-#		16.10.2010	v1.3.3	error check routine for Database Name Change
-#		17.10.2010	v1.3.3b	fix error introduced in v1.3.3
+#		16.10.2010	v1.3.3	Error check routine for Database Name Change
+#		17.10.2010	v1.3.3b	Fix v1.3.3 error 
+#		24.09.2012  v1.3.4  Added User Flagged Option
 #--------------------------------------------------------------------------------------------------
 
 VERCHECK Version=7.7.2.56 (please update GSAK to version 7.7.2.56 to run this macro - see http://gsak.net)
@@ -22,17 +23,17 @@ GOSUB NAME=DeclareVars
 
 GOSUB NAME=OldFile
 
-IF FileExists($_Install + "\Macros\MatrixFinderSettingsv133.xml")
+IF FileExists($_Install + "\Macros\MatrixFinderSettingsv134.xml")
 
-	MACSETTINGS TYPE=R VARS=statechoice,countyChoice,Counties,States,FoundDb,ToFindDb,CountyCheckbox,StateCheckbox,LimitOne,ActiveStatus,IgnoreUserFlag,DTChkBox,GSNFICheckBox,MYChkBox,TChk,MChk,UChk,RChk,EChk,BChk,AChk,GChk,IChk,LChk,OChk,VChk,WChk,XChk,YChk,ZChk,CitoChk,MinD,MaxD FILE=$_Install\Macros\MatrixFinderSettingsv133.xml
+	MACSETTINGS TYPE=R VARS=statechoice,countyChoice,Counties,States,FoundDb,ToFindDb,CountyCheckbox,StateCheckbox,LimitOne,ActiveStatus,IgnoreUserFlag,UseUserFlag,AllUserFlags,DTChkBox,GSNFICheckBox,MYChkBox,TChk,MChk,UChk,RChk,EChk,BChk,AChk,GChk,IChk,LChk,OChk,VChk,WChk,XChk,YChk,ZChk,CitoChk,MinD,MaxD FILE=$_Install\Macros\MatrixFinderSettingsv134.xml
 
 	GOSUB NAME=checkDataBaseExists
 	
 ELSE
 	
-				GOSUB NAME=GetDatabase
-				$DataBases = "Please Choose;"+$DataBases
-				$DTChkBox = TRUE
+	GOSUB NAME=GetDatabase
+	$DataBases = "Please Choose;"+$DataBases
+	$DTChkBox = TRUE
 
 ENDIF
 
@@ -55,6 +56,11 @@ WHILE TRUE
 		RETURN
 
 	CASE $FormExit = "OK"
+		
+		IF $FoundDb = "Please Choose" OR $ToFindDb = "Please Choose"
+			MSGOK MSG="Please Select Databases To Work With"
+			GOSUB NAME=mainForm
+		ENDIF
 
 				GOSUB NAME=StatecountyChoiceRoutine
 				GOSUB NAME=CacheTypeOptions
@@ -91,7 +97,7 @@ WHILE TRUE
 
 	CASE $FormExit = "ToFindDb"
 
-				GOSUB NAME=checkDataBaseExists
+				#GOSUB NAME=checkDataBaseExists
 
 				DATABASE NAME=$ToFindDb ACTION=SELECT
 
@@ -145,17 +151,20 @@ BEGINSUB NAME=OkBtnOptions
 			CASE $LimitOne = FALSE
 				$LimitDisplay = ""
   	ENDCASE
-
+  	
+		BEGINCASE
+			CASE $UseUserFlag = TRUE			
+	  			$IgnoreDisplay = "AND UserFlag = 1"
+			CASE $IgnoreUserFlag = TRUE
+	  			$IgnoreDisplay = "AND UserFlag = 0"
+			CASE $AllUserFlags = TRUE
+	  			$IgnoreDisplay = ""
+		ENDCASE 		
+  		
   		IF $ActiveStatus = TRUE
-  			$ActiveDisplay = "AND status = 'A'"
+  			$ActiveDisplay = "AND Status = 'A'"
   		ELSE
   			$ActiveDisplay = ""
-  		ENDIF
-
-  		IF $IgnoreUserFlag = TRUE
-  			$IgnoreDisplay = "AND UserFlag = 0"
-  		ELSE
-  			$IgnoreDisplay = ""
   		ENDIF
 
   		IF VAL($MinD) > 0
@@ -196,7 +205,8 @@ BEGINSUB NAME=OkBtnOptions
 	  	ELSE
 	  		$CountyChosen = ""
 	  	ENDIF
-		ENDIF
+		ENDIF		
+		
 ENDSUB #NAME=OkBtnOptions
 
 #Send Cache Types To Code on "OK#
@@ -326,7 +336,7 @@ BEGINSUB NAME=CacheTypeOptions
 		ELSE
 			$CTypeString = ""
 		ENDIF
-
+		
 ENDSUB #NAME=CacheTypeOptions
 
 #Routine For State/County Filter Option#
@@ -451,7 +461,7 @@ ENDSUB #NAME=FinalFilter
 
 BEGINSUB NAME=saveFile
 
-MACSETTINGS TYPE=S VARS=statechoice,countyChoice,Counties,States,FoundDb,ToFindDb,CountyCheckbox,StateCheckbox,StateChosen,CountyChosen,LimitOne,ActiveStatus,IgnoreUserFlag,DTChkBox,GSNFICheckBox,MYChkBox,TChk,MChk,UChk,RChk,EChk,BChk,AChk,GChk,IChk,LChk,OChk,VChk,WChk,XChk,YChk,ZChk,CitoChk,MinD,MaxD FILE=$_Install\Macros\MatrixFinderSettingsv133.xml
+MACSETTINGS TYPE=S VARS=statechoice,countyChoice,Counties,States,FoundDb,ToFindDb,CountyCheckbox,StateCheckbox,StateChosen,CountyChosen,LimitOne,ActiveStatus,IgnoreUserFlag,UseUserFlag,AllUserFlags,DTChkBox,GSNFICheckBox,MYChkBox,TChk,MChk,UChk,RChk,EChk,BChk,AChk,GChk,IChk,LChk,OChk,VChk,WChk,XChk,YChk,ZChk,CitoChk,MinD,MaxD FILE=$_Install\Macros\MatrixFinderSettingsv134.xml
 
 ENDSUB #NAME=FinalFilter
 
@@ -681,82 +691,94 @@ BEGINSUB NAME=DeclareVars
 
 Option Explicit=Yes
 
-Declare Var=$AChk Type=Boolean
-Declare Var=$ActiveDisplay Type=String
-Declare Var=$ApeCache Type=String
-Declare Var=$BChk Type=Boolean
-Declare Var=$BenchCache Type=String
-Declare Var=$cacheCount Type=Numeric
-Declare Var=$checkDbName Type=String
-Declare Var=$CITOCache Type=String
-Declare Var=$CitoChk Type=Boolean
-Declare Var=$codeselect Type=String
-Declare Var=$counter Type=Numeric
-Declare Var=$Counties Type=String
-Declare Var=$countyChoice Type=String
-Declare Var=$CountyChosen Type=String
-Declare Var=$CreateTable Type=String
-Declare Var=$CTypeString Type=String
-Declare Var=$CurrentStates Type=String
-Declare Var=$d Type=Numeric
-Declare Var=$data Type=String
-Declare Var=$DataBase1 Type=String
-Declare Var=$DataBases Type=String
-Declare Var=$dbExists Type=Boolean
-Declare Var=$Dif Type=String
-Declare Var=$DistanceQuery Type=String
-Declare Var=$DTChkBox Type=Boolean
-Declare Var=$DToutput Type=String
-Declare Var=$EarthCache Type=String
-Declare Var=$EChk Type=Boolean
-Declare Var=$EventCache Type=String
-Declare Var=$form Type=String
-Declare Var=$FormExit Type=String
-Declare Var=$GChk Type=Boolean
-Declare Var=$grid Type=String
-Declare Var=$i Type=Numeric
-Declare Var=$IChk Type=Boolean
-Declare Var=$IgnoreDisplay Type=String
-Declare Var=$LChk Type=Boolean
-Declare Var=$LetterboxCache Type=String
-Declare Var=$LimitDisplay Type=String
-Declare Var=$LocationlessCache Type=String
-Declare Var=$MatrixSource Type=String
-Declare Var=$MaxDistance Type=Numeric
-Declare Var=$MazeCache Type=String
-Declare Var=$MChk Type=Boolean
-Declare Var=$MegaCache Type=String
-Declare Var=$MinDistance Type=Numeric
-Declare Var=$MultiCache Type=String
-Declare Var=$MYChkBox Type=Boolean
-Declare Var=$MysteryCache Type=String
-Declare Var=$OChk Type=Boolean
-Declare Var=$OtherCache Type=String
-Declare Var=$path Type=String
-Declare Var=$RChk Type=Boolean
-Declare Var=$result Type=String
-Declare Var=$sqlInputFile Type=String
-Declare Var=$StateChoice Type=String
-Declare Var=$StateChosen Type=String
-Declare Var=$States Type=String
-Declare Var=$status Type=String
-Declare Var=$t Type=Numeric
-Declare Var=$TChk Type=Boolean
-Declare Var=$Ter Type=String
-Declare Var=$TraditionalCache Type=String
-Declare Var=$Trigger Type=Boolean
-Declare Var=$UChk Type=Boolean
-Declare Var=$UseState Type=String
-Declare Var=$VChk Type=Boolean
-Declare Var=$VirtualCache Type=String
-Declare Var=$WaymarkCache Type=String
-Declare Var=$WChk Type=Boolean
-Declare Var=$WebcamCache Type=String
-Declare Var=$WherigoCache Type=String
-Declare Var=$x Type=Numeric
-Declare Var=$XChk Type=Boolean
-Declare Var=$YChk Type=Boolean
-Declare Var=$ZChk Type=Boolean
+#*******************************************************
+#   Variable declarations for
+#   C:\Users\Sascha\AppData\Roaming\gsak\Macros\MatrixFinder.gsk
+#
+#   Generated 24.09.2012 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+DECLARE Var=$AChk Type=Boolean
+DECLARE Var=$ActiveDisplay Type=String
+DECLARE Var=$AllUserFlags Type=Boolean
+DECLARE Var=$ApeCache Type=String
+DECLARE Var=$BChk Type=Boolean
+DECLARE Var=$BenchCache Type=String
+DECLARE Var=$cacheCount Type=Numeric
+DECLARE Var=$checkDbName Type=String
+DECLARE Var=$CITOCache Type=String
+DECLARE Var=$CitoChk Type=Boolean
+DECLARE Var=$codeselect Type=String
+DECLARE Var=$counter Type=Numeric
+DECLARE Var=$Counties Type=String
+DECLARE Var=$CountyChosen Type=String
+DECLARE Var=$CreateTable Type=String
+DECLARE Var=$CTypeString Type=String
+DECLARE Var=$CurrentStates Type=String
+DECLARE Var=$d Type=Numeric
+DECLARE Var=$data Type=String
+DECLARE Var=$DataBase1 Type=String
+DECLARE Var=$DataBases Type=String
+DECLARE Var=$dbExists Type=Boolean
+DECLARE Var=$Dif Type=String
+DECLARE Var=$DistanceQuery Type=String
+DECLARE Var=$DTChkBox Type=Boolean
+DECLARE Var=$DToutput Type=String
+DECLARE Var=$EarthCache Type=String
+DECLARE Var=$EChk Type=Boolean
+DECLARE Var=$EventCache Type=String
+DECLARE Var=$FoundDb Type=String
+DECLARE Var=$form Type=String
+DECLARE Var=$FormExit Type=String
+DECLARE Var=$GChk Type=Boolean
+DECLARE Var=$grid Type=String
+DECLARE Var=$i Type=Numeric
+DECLARE Var=$IChk Type=Boolean
+DECLARE Var=$IgnoreDisplay Type=String
+DECLARE Var=$LChk Type=Boolean
+DECLARE Var=$LetterboxCache Type=String
+DECLARE Var=$LimitDisplay Type=String
+DECLARE Var=$LocationlessCache Type=String
+DECLARE Var=$MatrixSource Type=String
+DECLARE Var=$MaxDistance Type=Numeric
+DECLARE Var=$MazeCache Type=String
+DECLARE Var=$MChk Type=Boolean
+DECLARE Var=$MegaCache Type=String
+DECLARE Var=$MinDistance Type=Numeric
+DECLARE Var=$MultiCache Type=String
+DECLARE Var=$MYChkBox Type=Boolean
+DECLARE Var=$MysteryCache Type=String
+DECLARE Var=$OChk Type=Boolean
+DECLARE Var=$OtherCache Type=String
+DECLARE Var=$path Type=String
+DECLARE Var=$RChk Type=Boolean
+DECLARE Var=$result Type=String
+DECLARE Var=$sqlInputFile Type=String
+DECLARE Var=$StateChosen Type=String
+DECLARE Var=$States Type=String
+DECLARE Var=$status Type=String
+DECLARE Var=$t Type=Numeric
+DECLARE Var=$TChk Type=Boolean
+DECLARE Var=$ToFindDb Type=String
+DECLARE Var=$Ter Type=String
+DECLARE Var=$TraditionalCache Type=String
+DECLARE Var=$Trigger Type=Boolean
+DECLARE Var=$UChk Type=Boolean
+DECLARE Var=$UseState Type=String
+DECLARE Var=$VChk Type=Boolean
+DECLARE Var=$VirtualCache Type=String
+DECLARE Var=$WaymarkCache Type=String
+DECLARE Var=$WChk Type=Boolean
+DECLARE Var=$WebcamCache Type=String
+DECLARE Var=$WherigoCache Type=String
+DECLARE Var=$x Type=Numeric
+DECLARE Var=$XChk Type=Boolean
+DECLARE Var=$YChk Type=Boolean
+DECLARE Var=$ZChk Type=Boolean
 
 $x = 1
 $d = 1
@@ -785,6 +807,10 @@ $YChk = FALSE
 $ZChk = FALSE
 $CitoChk = FALSE
 $Trigger = FALSE
+
+
+
+$AllUserFlags = TRUE
 
 ENDSUB #Name=DeclareVars
 
@@ -827,33 +853,24 @@ ENDSUB #NAME=GetDatabase
 #SubRoutine That Updates Setting File From Previous Version"
 BEGINSUB NAME=OldFile
 
-IF FileExists($_Install + "\Macros\MatrixFinderSettingsv132.xml")
-	MACSETTINGS TYPE=R VARS=statechoice,countyChoice,Counties,States,FoundDb,ToFindDb,CountyCheckbox,StateCheckbox,StateChosen,CountyChosen,LimitOne,ActiveStatus,IgnoreUserFlag,DTChkBox,GSNFICheckBox,MYChkBox,TChk,MChk,UChk,RChk,EChk,BChk,AChk,GChk,IChk,LChk,OChk,VChk,WChk,XChk,YChk,ZChk,CitoChk,MinD,MaxD,DataBases FILE=$_Install\Macros\MatrixFinderSettingsv132.xml
-	FILEERASE FILE=$_Install\Macros\MatrixFinderSettingsv132.xml  OnError=Continue
+IF FileExists($_Install + "\Macros\MatrixFinderSettingsv133.xml")
+	MACSETTINGS TYPE=R VARS=statechoice,countyChoice,Counties,States,FoundDb,ToFindDb,CountyCheckbox,StateCheckbox,StateChosen,CountyChosen,LimitOne,ActiveStatus,IgnoreUserFlag,DTChkBox,GSNFICheckBox,MYChkBox,TChk,MChk,UChk,RChk,EChk,BChk,AChk,GChk,IChk,LChk,OChk,VChk,WChk,XChk,YChk,ZChk,CitoChk,MinD,MaxD FILE=$_Install\Macros\MatrixFinderSettingsv133.xml
+	FILEERASE FILE=$_Install\Macros\MatrixFinderSettingsv133.xml  OnError=Continue
 ENDIF
 
 ENDSUB #NAME=OldFile
 
 <Data> VarName=$form
 #********************************************************************
-# Form generated by GSAK form designer on Mon 27-Sep-2010 11:34:26
+# Form generated by GSAK form designer on Mon 24-Sep-2012 16:33:48
 #********************************************************************
 
 Name = Form1
   Type = Form
   Caption = Matrix Finder
   Color = 13882323
-  Height = 613
+  Height = 675
   Width = 479
-  
-  Name = Label7
-  Type = Label
-  Height = 9
-  Left = 424
-  Size = 6
-  Top = 8
-  Width = 22
-  Caption = v 1.3.3b
 
 Name = Groupbox1
   Type = Groupbox
@@ -865,16 +882,16 @@ Name = Groupbox1
 
 Name = Groupbox2
   Type = Groupbox
-  Height = 89
+  Height = 129
   Left = 21
-  Top = 376
+  Top = 432
   Width = 161
   Taborder = 2
 
 Name = Groupbox3
   Type = Groupbox
   Enabled = Yes
-  Height = 201
+  Height = 225
   Left = 264
   Top = 320
   Visible = Yes
@@ -885,7 +902,7 @@ Name = Groupbox4
   Type = Groupbox
   Height = 33
   Left = 176
-  Top = 536
+  Top = 592
   Width = 281
   Taborder = 4
 
@@ -896,6 +913,23 @@ Name = Groupbox5
   Top = 152
   Width = 263
   Taborder = 5
+
+Name = Groupbox6
+  Type = Groupbox
+  Height = 97
+  Left = 16
+  Top = 320
+  Width = 169
+  Taborder = 8
+
+Name = Label7
+  Type = Label
+  Height = 9
+  Left = 424
+  Size = 6
+  Top = 8
+  Width = 30
+  Caption = v 1.3.4
 
 Name = FoundDb
   Type = Combobox
@@ -926,8 +960,8 @@ Name = ToFindDb
 Name = OK
   Type = Button
   Height = 41
-  Left = 64
-  Top = 480
+  Left = 56
+  Top = 592
   Width = 81
   Taborder = 0
   Caption = OK
@@ -941,7 +975,7 @@ Name = Label1
   Left = 21
   Size = 12
   Top = 21
-  Width = 112
+  Width = 120
   Caption = Found Caches DB
 
 Name = Label2
@@ -953,7 +987,7 @@ Name = Label2
   Left = 18
   Size = 12
   Top = 91
-  Width = 118
+  Width = 126
   Caption = Caches To Find DB
 
 Name = LimitOne
@@ -976,16 +1010,6 @@ Name = ActiveStatus
   Taborder = 1
   Caption = Show Active Only ?
 
-Name = IgnoreUserFlag
-  Type = Checkbox
-  Container = Groupbox2
-  Height = 17
-  Left = 24
-  Top = 64
-  Width = 129
-  Taborder = 2
-  Caption = Ignore User Flagged ?
-
 Name = Label3
   Type = Label
   Color = 10485760
@@ -994,7 +1018,7 @@ Name = Label3
   Left = 182
   Size = 15
   Top = 0
-  Width = 131
+  Width = 139
   Caption = MATRIX FINDER
 
 Name = Label4
@@ -1002,7 +1026,7 @@ Name = Label4
   Height = 13
   Left = 186
   Top = 25
-  Width = 122
+  Width = 130
   Caption = Find Caches With Missing
 
 Name = MaxD
@@ -1021,7 +1045,7 @@ Name = Label5
   Height = 13
   Left = 16
   Top = 76
-  Width = 65
+  Width = 73
   Caption = Max Distance
 
 Name = MinD
@@ -1040,7 +1064,7 @@ Name = Label6
   Height = 13
   Left = 16
   Top = 28
-  Width = 62
+  Width = 70
   Caption = Min Distance
 
 Name = StateChoice
@@ -1051,7 +1075,7 @@ Name = StateChoice
   Exitonchange = Yes
   Height = 21
   Left = 16
-  Top = 120
+  Top = 136
   Values = $States
   Width = 145
   Taborder = 3
@@ -1061,7 +1085,7 @@ Name = StateCheckBox
   Container = Groupbox3
   Enabled = Yes
   Exitonchange = Yes
-  Height = 16
+  Height = 25
   Left = 16
   Top = 104
   Width = 113
@@ -1075,7 +1099,7 @@ Name = countyChoice
   Exitonchange = Yes
   Height = 21
   Left = 16
-  Top = 168
+  Top = 200
   Values = $Counties
   Width = 145
   Taborder = 5
@@ -1085,9 +1109,9 @@ Name = CountyCheckBox
   Container = Groupbox3
   Enabled = Yes
   Exitonchange = Yes
-  Height = 16
+  Height = 25
   Left = 16
-  Top = 152
+  Top = 168
   Width = 113
   Taborder = 4
   Caption = Filter By County ?
@@ -1098,7 +1122,7 @@ Name = Label8
   Left = 8
   Size = 6
   Top = 8
-  Width = 57
+  Width = 65
   Caption = by FlyingSyringe
 
 Name = Label12
@@ -1109,7 +1133,7 @@ Name = Label12
   Left = 109
   Size = 7
   Top = 8
-  Width = 29
+  Width = 37
   Caption = FROM
 
 Name = Label13
@@ -1120,7 +1144,7 @@ Name = Label13
   Left = 117
   Size = 7
   Top = 56
-  Width = 12
+  Width = 20
   Caption = TO
 
 Name = Label15
@@ -1131,7 +1155,7 @@ Name = Label15
   Left = 8
   Size = 7
   Top = 12
-  Width = 94
+  Width = 102
   Caption = NOTE: Distance Fields
 
 Name = Label16
@@ -1142,7 +1166,7 @@ Name = Label16
   Left = 112
   Size = 7
   Top = 12
-  Width = 153
+  Width = 161
   Caption = Either, Both or Leave Blank For  None
 
 Name = TChk
@@ -1317,22 +1341,24 @@ Name = ZChk
 
 Name = MYChkBox
   Type = Radiobutton
+  Container = Groupbox6
   Exitonchange = Yes
   Height = 17
-  Left = 21
-  Top = 344
-  Width = 169
-  Taborder = 6
+  Left = 5
+  Top = 40
+  Width = 156
+  Taborder = 1
   Caption = Filter by Month/Year Placed
 
 Name = DTChkBox
   Type = Radiobutton
+  Container = Groupbox6
   Exitonchange = Yes
   Height = 17
-  Left = 21
-  Top = 328
+  Left = 5
+  Top = 16
   Width = 137
-  Taborder = 7
+  Taborder = 2
   Caption = Filter by Difficulty/Terrain
 
 Name = Label17
@@ -1340,7 +1366,7 @@ Name = Label17
   Height = 13
   Left = 205
   Top = 42
-  Width = 84
+  Width = 92
   Caption = Difficulty / Terrain
 
 Name = Label18
@@ -1348,7 +1374,7 @@ Name = Label18
   Height = 13
   Left = 198
   Top = 60
-  Width = 99
+  Width = 107
   Caption = Month / Year Placed
 
 Name = Label19
@@ -1356,7 +1382,7 @@ Name = Label19
   Height = 13
   Left = 216
   Top = 75
-  Width = 69
+  Width = 77
   Caption = State / County
 
 Name = Label14
@@ -1364,17 +1390,18 @@ Name = Label14
   Height = 13
   Left = 216
   Top = 93
-  Width = 63
+  Width = 71
   Caption = Combinations
 
 Name = GSNFICheckBox
   Type = Radiobutton
+  Container = Groupbox6
   Exitonchange = Yes
   Height = 17
-  Left = 21
-  Top = 360
+  Left = 5
+  Top = 64
   Width = 137
-  Taborder = 8
+  Taborder = 0
   Caption = Filter by State/County
 
 Name = Label9
@@ -1383,7 +1410,7 @@ Name = Label9
   Height = 13
   Left = 224
   Top = 136
-  Width = 195
+  Width = 203
   Caption = Enable to show specific cache types only
 
 Name = Label10
@@ -1391,7 +1418,47 @@ Name = Label10
   Height = 13
   Left = 62
   Top = 136
-  Width = 79
+  Width = 87
   Caption = Select Database
 
+Name = IgnoreUserFlag
+  Type = Radiobutton
+  Container = Groupbox2
+  Exitonchange = Yes
+  Height = 20
+  Left = 24
+  Top = 80
+  Width = 129
+  Taborder = 2
+  Caption = Ignore User Flagged ?
+
+Name = AllUserFlags
+  Type = Radiobutton
+  Container = Groupbox2
+  Enabled = Yes
+  Exitonchange = Yes
+  Height = 17
+  Left = 24
+  Top = 64
+  Width = 129
+  Taborder = 3
+  Caption = All Caches In Grid ?
+
+Name = UseUserFlag
+  Type = Radiobutton
+  Container = Groupbox2
+  Exitonchange = Yes
+  Height = 20
+  Left = 24
+  Top = 96
+  Width = 129
+  Taborder = 4
+  Caption = User Flagged Only ?
+
 <enddata>
+
+
+
+
+
+
