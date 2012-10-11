@@ -68,6 +68,14 @@ BEGINSUB Name=MainForm
 
 			CASE $FormExit = "Cancel"
 				RETURN #Msg="Macro Cancelled"
+
+    		Case $FormExit = "DelayExit"
+				IF $NoParams
+					MACSETTINGS Type=S Vars=DBCombobox,UpdateFrequency,FlagsYes,IgnoreYes,WarnNum,cboFilter,MoveDB,rbDelete,rbArchive,rbMove,DisabledDays,IncludeDisabled
+				ENDIF
+				GOSUB Name=Run
+				BREAK
+			
 		ENDCASE
 	ENDWHILE
 	
@@ -129,7 +137,10 @@ BEGINSUB Name=Run
 						
 					CASE $FormExit = "btnContinue"
 						BREAK
-
+    		        
+					Case $FormExit = "DelayExit"
+						BREAK
+						
 					CASE $FormExit = "btnGoBack"
 						GoSub Name=RestorFilt
 						GOSUB Name=MainForm
@@ -162,7 +173,33 @@ BEGINSUB Name=Run
 				$FormExit = "OK"
 			ENDIF
             BEGINCASE
-                CASE $FormExit = "SystemExit"
+			
+     			Case $FormExit = "DelayExit"
+                					IF $NoParams
+					MACSETTINGS Type=S Vars=DBCombobox,UpdateFrequency,FlagsYes,IgnoreYes,WarnNum,cboFilter,MoveDB,rbDelete,rbArchive,rbMove,DisabledDays,IncludeDisabled
+					ENDIF
+					
+					IF $rbDelete
+						MACRODELETE Action=Commit
+						GoSub Name=RestorFilt
+						BREAK
+					ENDIF
+
+					IF $rbArchive
+						GoSub Name=RestorFilt
+						BREAK
+					ENDIF
+				
+					IF $rbMove
+						IF $MoveDB<>$_CurrentDatabase
+							$MoveCopy = Replace("XXXDBXXX",$MoveDB,$MoveCopy)
+							MacroSet Dialog=MoveCopy VarName=$MoveCopy
+							MoveCopy Settings=<macro>
+						ENDIF
+						GoSub Name=RestorFilt
+						BREAK
+					ENDIF
+				CASE $FormExit = "SystemExit"
 					GoSub Name=RestorFilt
 					RETURN #Msg="Macro Cancelled"
 				CASE $FormExit = "OK"
@@ -223,6 +260,7 @@ ENDSUB
 
 Name = ConfigForm
   Type = Form
+  Delay = 5
   Caption = Review for Archived
   Color = 8388608
   Height = 342
@@ -396,6 +434,7 @@ Name = Label4
 
 Name = ConfirmForm
   Type = Form
+  Delay = 5
   Caption = Confirm Action
   Color = 8404992
   Height = 230
