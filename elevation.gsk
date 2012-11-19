@@ -1,5 +1,5 @@
 #*******************************************
-# MacVersion = 2.2
+# MacVersion = 2.3
 # MacDescription = Elevation technology test
 # MacAuthor = Lignumaqua
 # MacFileName = Elevation.gsk
@@ -39,6 +39,7 @@
 # V2.0 1-1-12 - Add Google Resolution 
 # V2.1 4-7-12 - Add option to force to use Google
 # V2.2 4-7-12 - Dynamic Google delay
+# V2.3 10-23-12 - Allow for filters on memo fields
 
 
 VERCHECK Version=7.7.2.56 (Note: this macro requires the latest 7.7 GSAK release)
@@ -147,7 +148,7 @@ BEGINSUB name=GetElevationInternal
 
 	$Timeout = FALSE
 	
-	$_sql = "SELECT count(*) FROM caches WHERE (Resolution = '' or Resolution ISNULL) AND $_Where"
+	$_sql = "SELECT count(*) FROM cachesall WHERE (Resolution = '' or Resolution ISNULL) AND $_Where"
 	$TotalCount = Val(Sqlite("sql",$_sql))
 	
 	IF $TotalCount > 2500
@@ -168,7 +169,7 @@ BEGINSUB name=GetElevationInternal
 
 		TRANSACTION Action=Begin
 
-		$_sql = "SELECT * FROM caches WHERE (Resolution = '' or Resolution ISNULL) AND $_Where"
+		$_sql = "SELECT * FROM cachesall WHERE (Resolution = '' or Resolution ISNULL) AND $_Where"
 		$status = Sqlite("sql",$_sql, "sqlget=yes")
 
 		WHILE NOT($_SQLEol) AND ($TotalCount > 0)

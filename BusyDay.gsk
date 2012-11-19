@@ -1,5 +1,5 @@
 #*******************************************
-# MacVersion = 1.0
+# MacVersion = 1.1
 # MacDescription = Query your found database to determine which day you found the most Cache Types
 # MacAuthor = donbadabon
 # MacFileName = BusyDay.gsk
@@ -43,7 +43,7 @@
 	SHOWSTATUS msg="Creating tables... 25%" Width=350
 
 #Refresh the SQLite Cache temporary database so we can be sure that we are getting the most up-to-date records
-	SqliteCaches
+	#SqliteCaches
 
 #Open the main GSAK database, but attach it as 'gsakdb' to prevent any possible corruption of the main database
 	$status = SQLite("sql","ATTACH '$_CurrentDataPath\sqlite.db3' AS gsakdb")
@@ -69,7 +69,8 @@
 	$status = Sqlite("sql",$_sql)
 
 #Create a new table called 'caches' in the BusyDay.db3 database that holds found cache information
-	$_sql = "CREATE TABLE caches AS SELECT Code,CacheType,FoundByMeDate FROM gsakdb.CachesTempAll"
+	#$_sql = "CREATE TABLE caches AS SELECT Code,CacheType,FoundByMeDate FROM gsakdb.CachesTempAll"
+         $_sql = "CREATE TABLE caches AS SELECT Code,CacheType,FoundByMeDate FROM gsakdb.CachesAll"
 	$status = Sqlite("sql",$_sql)
 
 	
@@ -206,4 +207,5 @@
 	$status = sqlite("close",$database)
 
 #This erases the database we created - and we are done
-	FILEERASE File=$database OnError=Continue
+	#FILEERASE File=$database OnError=Continue
+

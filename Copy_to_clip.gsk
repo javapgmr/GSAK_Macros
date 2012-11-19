@@ -1,5 +1,5 @@
 #*******************************************
-# MacVersion = 1.7
+# MacVersion = 1.8
 # MacDescription = Copy cache links to Forums, IRC, or HTML
 # MacAuthor = Dave H. aka brdad
 # MacFileName = Copy_to_clip.gsk
@@ -16,8 +16,13 @@
  $data = ""
  $Mycode = $d_Code
 
- IF ShowForm($form)
- ENDIF 
+
+
+While True # Infinite loop to redisplay form as required
+$FormExit = form($form,"")
+
+ #IF ShowForm($form)
+ #ENDIF 
 
 # Determine number of records to copy
  IF $CheckBoxMultiple = False
@@ -47,45 +52,10 @@
      SHOWSTATUS Msg=Converting record $count of $numrecords Left=$_FormLeft Top=$_FormTop
 
      IF $CheckBoxCacheType = True
-         BEGINCASE 
-             CASE $d_CacheType = "A"
-                 $CacheType = "(Project Ape)"
-             CASE $d_CacheType = "B"
-                 $CacheType = "(Letterbox)"
-             CASE $d_CacheType = "C"
-                 $CacheType = "(CITO Event)"
-             CASE $d_CacheType = "E"
-                 $CacheType = "(Event)"
-             CASE $d_CacheType = "G"
-                 $CacheType = "(Benchmark)"
-             CASE $d_CacheType = "I"
-                 $CacheType = "(WhereIGo"
-             CASE $d_CacheType = "L"
-                 $CacheType = "(Locationless)"
-             CASE $d_CacheType = "M"
-                 $CacheType = "(Multi)"
-             CASE $d_CacheType = "O"
-                 $CacheType = "(Other)"
-             CASE $d_CacheType = "R"
-                 $CacheType = "(Earthcache)"
-             CASE $d_CacheType = "T"
-                 $CacheType = "(Traditional)"
-             CASE $d_CacheType = "U"
-                 $CacheType = "(Unknown/Mystery)"
-             CASE $d_CacheType = "V"
-                 $CacheType = "(Virtual)"
-             CASE $d_CacheType = "W"
-                 $CacheType = "(Webcam)"
-             CASE $d_CacheType = "X"
-                 $CacheType = "(Maze Exhibit)"
-             CASE $d_CacheType = "Y"
-                 $CacheType = "(Waymark)"
-             CASE $d_CacheType = "Z"
-                 $CacheType = "(Mega-Event)"
-         ENDCASE 
-     ELSE 
-         $CacheType = ""
-     ENDIF 
+	$CacheType = "(" + CacheType($d_CacheType) + ")"
+     ELSE
+	$CacheType = ""
+     ENDIF
 
      IF $CheckBoxContainer = True
          $Container = "($d_Container)"
@@ -193,6 +163,7 @@
      $count = $count + 1
  ENDWHILE 
 
+
  IF $format <> ""
      SHOWSTATUS Msg=Copying data to clipboard...
      CLIP Data=$data
@@ -200,12 +171,13 @@
  ENDIF 
  MACSETTINGS Type=S Vars=CheckBoxDistance,CheckBoxDT,CheckBoxContainer,CheckBoxCacheType
 
-
+Break
+EndWhile
 
 #####################################################
-########                                                                          ########
-########                               FORM                                ########
-########                                                                          ########
+########                                     ########
+########                FORM                 ########
+########                                     ########
 #####################################################
 
 <DATA> VarName=$form
@@ -324,3 +296,4 @@ Name = CheckBoxContainer
   Caption = Display Cache Container
 
 <enddata>
+
