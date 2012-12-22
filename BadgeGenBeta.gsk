@@ -1,5 +1,5 @@
 #*******************************************
-# MacVersion = 3.2.26 BETA
+# MacVersion = 3.2.30 BETA
 # MacDescription = Generates badges based on your geocaching accomplishments.
 # MacAuthor = ky.m.guy
 # MacFileName = BadgeGenBETA.gsk
@@ -9,13 +9,7 @@
 
 
 #Changes:
-#- Option to separate 'Flag Badges' from other badges. Thanks taybee for coding this!(see below):
-#[IMG]http://www.kylemills.net/screenshot/2012-09-09_16-42-41.png[/IMG] 
-
-#- "Configure State Badges" on option form changed to "Configure Flag Badges" for consistency.
-#- More visually appealing "More Information" buttons on output.
-#- Fixed problem with 'The Author' badge. (See [URL=http://gsak.net/board/index.php?showtopic=20828&view=findpost&p=171729]here[/URL] for more information)
-#- "Perform Refresh" option defaults to unchecked with new users.  Hopefully will prevent the frequently reported "Cache download limit exceeded" 'error'.
+#-Fixed issue with Sapphire (non-flag) badges in More Information table
 
 
 
@@ -2335,6 +2329,7 @@ BEGINSUB name=Output
 	ENDIF
 	IF $SortBadges
 		GOSUB name=SortBadges
+		$HTMLCode = $HTMLCode +  "<br>$BeltCode<br>$_NewLine $Link $_NewLine</Center>"
 	ELSE
 		$HTMLCode="$Centre$_NewLine" + "$HTMLCode" + "<br>$BeltCode<br>$_NewLine $Link $_NewLine$endcentre"
 	ENDIF
@@ -2776,6 +2771,7 @@ ENDSUB
 
 
 BEGINSUB name=CalculateStateBadge
+
 	$TotalStateBadges=0
 	$NOSTATEBADGE=FALSE
 	IF $ShowCoun
@@ -2795,6 +2791,7 @@ BEGINSUB name=CalculateStateBadge
 			$maxstates = Val($status)
 			#Build Regex Query to read total states in country selected
 			GOSUB name=InterpretStateData
+			
 			BEGINSUB name=InterpretStateData
 				$separator = "]["
 				$newdata = ""
@@ -2817,6 +2814,7 @@ BEGINSUB name=CalculateStateBadge
 				#Pick out total states
 				$totalstates = RegExData("[0-9]*",$entry,1)
 			ENDSUB #name=InterpretStateData
+			
 			#Skip Badge if TotalStates is zero
 			IF Not(Val($TotalStates) = 0)
 				$percentstate = Round(($maxstates / Val($totalstates)),2) * 100
@@ -2859,15 +2857,17 @@ BEGINSUB name=CalculateStateBadge
 				$StatHTML=""
 				$StatLevel="X"
 			ENDCASE #Stat
-
+					
+			$countryString = Replace(" ","",$MaxCountry) #Country name without spaces  for image URL
+		
 			IF Not($StatLevel="X")
-				$StatHTML=$HotlinkURL + "badgescripts/statebadge.php?level=" + "$StatLevel" + "&country=" + "$maxcountry&x=" + "$StatLevel" + ".png"
+					$StatHTML=$HotlinkURL + "country_badge/" + $countryString + $StatLevel + ".png"
 			ENDIF
 			#IF $NOSTATEBADGE=FALSE
 			#Initialize country specific variables
 			$StatName = "The $maxcountry Cacher"
 			$StatAlt="$StatName:  Awarded for finding caches in a percentage of states in $maxcountry  |  $Iyou $hh $stat"+"%"+" ($maxstates of $totalstates states) and $nn $StatLeft"+"%"+" more to go up a level"
-			$StatCODEALT ="$1$2$3$2$5$6$2 $HotlinkURL"+"/badgescripts/statebadge.php?level=" + "$StatLevel" + "&country=$maxcountry&x=" + "$StatLevel" + ".png $2$5$20$2$StatAlt$2$5$28$2$StatAlt$2$23"
+			$StatCODEALT ="$1$2$3$2$5$6$2 $HotlinkURL" + "country_badge/" + $countryString + $StatLevel + ".png $2$5$20$2$StatAlt$2$5$28$2$StatAlt$2$23"
 			#	ENDIF
 			#IF $MaxStates <> 0
 			#Open SQLite Database
@@ -2900,6 +2900,7 @@ BEGINSUB name=CalculateStateBadge
 			$Level=""
 			$StatName=""
 			$StatCodeAlt=""
+			$StatLevel=""
 			$NOSTATEBADGE=FALSE
 		ENDWHILE
 	ENDIF
@@ -2908,8 +2909,9 @@ BEGINSUB name=CalculateStateBadge
 	##TAYBEE's FLAG SORTING MODIFICATION:
 	         $dataflag=""
            IF $separateflags=TRUE      # turn the split display ON/OFF
+           					 GOSUB  name=SortBadges #NEW ADDITION
                      $dataflag = "<br><br><img src='http://www.gsak.net/bgv2/additional/flagbadges.png' /><br><br>"+ $HTMLCode +"<br>"  # put in a row
-                     $HTMLCode = ""  #reset $htmlcode to remove the flags for it
+                     $HTMLCode = ""  #reset $htmlcode to remove the flags from it
            ENDIF 
   ##END TAYBEE's FLAG SORTING MODIFICATION:         
            
@@ -3521,9 +3523,9 @@ BEGINSUB name=SortBadges
 
 	BEGINCASE
 	CASE $TopDiamond
-		$HTMLcode="<center> $DatalineD$DatalineE$DatalineA$DatalineR$DatalineP$DatalineG$DatalineS$DataLineB$dataFlag <br>$BeltCode<br>$_NewLine $Link $_NewLine</Center>"
+		$HTMLcode="<center> $DatalineD$DatalineE$DatalineA$DatalineR$DatalineP$DatalineG$DatalineS$DataLineB$dataFlag "#<br>$BeltCode<br>$_NewLine $Link $_NewLine</Center>" NEW ADDITION
 	CASE $TopBronze
-		$HTMLcode="<center> $DatalineB$DatalineS$DatalineG$DatalineP$DatalineR$DatalineA$DatalineE$DataLineD$dataFlag <br>$BeltCode<br>$_NewLine $Link $_NewLine</Center>"
+		$HTMLcode="<center> $DatalineB$DatalineS$DatalineG$DatalineP$DatalineR$DatalineA$DatalineE$DataLineD$dataFlag "#<br>$BeltCode<br>$_NewLine $Link $_NewLine</Center>" NEW ADDITION
 	ENDCASE
 ENDSUB #Sort Badges
 
@@ -3916,6 +3918,7 @@ BEGINSUB name=VarDec
 	DECLARE VAR=$EVENS2 TYPE=NUMERIC
 	DECLARE VAR=$EVENSA1 TYPE=NUMERIC
 	DECLARE VAR=$EVENSA2 TYPE=NUMERIC
+	DECLARE VAR=$EXTRA_S TYPE=STRING
 	DECLARE Var=$Favo Type=Numeric
 	DECLARE Var=$FavoHTML Type=String
 	DECLARE Var=$FavoNAME Type=String
@@ -5125,6 +5128,7 @@ BEGINSUB Name=MoreInfo
 
 
 	SHOWSTATUS msg="Generating 'More Information' table: Creating SQLite report" top=10 Left=10 width=500
+	
 	GOSUB name=report                     # test database
 	$data = Sqlite("open",$database)
 	$datanumber1=2
@@ -5159,6 +5163,7 @@ BEGINSUB Name=MoreInfo
 		IF  $DataIcon <> ""
 			$dataStart = RegExPos("$_Quote",$DataICON,4) #missing lines
 			$DataIcon = Substr($DataIcon,0 ,$dataStart-7) #missing lines
+			#MSGOK msg=$DataIcon
 			$alt = Substr($DataIcon,$dataStart-10 ,$dataStart-7) #missing lines
 			BEGINCASE
 				$DatalineHTML  = "<th align=" + $_Quote + "center" + $_Quote + ">"
@@ -5170,9 +5175,15 @@ BEGINSUB Name=MoreInfo
 				$DatalineHTMLA = "<th align=" + $_Quote + "center" + $_Quote + ">"
 				$DatalineHTMLE = "<th align=" + $_Quote + "center" + $_Quote + ">"
 				$DatalineHTMLD = "<th align=" + $_Quote + "center" + $_Quote + ">"
+				
+			#If the badge is a country badge, an extra S isn't needed.		
+			IF RegEx("country_",$DataIcon)
+				$extra_S = ""
+			ELSE
+				$extra_S = ""
+			ENDIF
 
-
-			CASE Abs(val($datalinehave)) <  Abs(val($datalineB))
+			CASE (Abs(val($datalinehave)) <  Abs(val($datalineB)) OR Abs(Val($datalinehave))=0)  
 				$DatalineTemp=$DataIcon +"X.png"
 				$DatalineHTMLD ="<th align=" + $_Quote + "center" + $_Quote + ">"
 
@@ -5206,14 +5217,14 @@ BEGINSUB Name=MoreInfo
 				$DatalineHTMLP="<th style=" + $_Quote + "background: #$LIGHT; " + $_quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
 				$DatalineHTMLR="<th style=" + $_Quote + "background: #$DARK; " + $_quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
 
-			CASE Abs(val($datalinehave)) >= Abs(val($datalineA)) and Abs(val($datalinehave)) < Abs(val($datalineE))
-				$DatalineTemp=$DataIcon + "Sa.png"                        #Sa
-				$DatalineHTMLB="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
-				$DatalineHTMLS="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
-				$DatalineHTMLG="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
-				$DatalineHTMLP="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
-				$DatalineHTMLR="<th style=" + $_Quote + "background: #$LIGHT; " + $_quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
-				$DatalineHTMLA="<th style=" + $_Quote + "background: #$DARK; " + $_quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
+			CASE Abs(val($datalinehave)) >= Abs(val($datalineA)) and Abs(val($datalinehave)) < Abs(val($datalineE)) 
+				$DatalineTemp=$DataIcon + $Extra_S + "a.png" #If the badge is a country badge, an extra S isn't needed.		
+				$DatalineHTMLB="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine 
+				$DatalineHTMLS="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine 
+				$DatalineHTMLG="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine 
+		  	$DatalineHTMLP="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine 
+				$DatalineHTMLR="<th style=" + $_Quote + "background: #$LIGHT; " + $_quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine 
+				$DatalineHTMLA="<th style=" + $_Quote + "background: #$DARK; "  + $_quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
 
 			CASE Abs(val($datalinehave)) >= Abs(val($datalineE)) and Abs(val($datalinehave)) < Abs(val($datalineD))
 				$DatalineTemp=$DataIcon + "E.png"                        #E
@@ -9244,5 +9255,4 @@ MPrmzd+IHlXrH6qc54d6o58p4EuQaDPE+V8Ny1l7LWGTV380mhwugoi3nStJp8zMTJtJU6WsDtyt0d2d
 2MjXZ5QybdC1a1DWpalqiJUpRMYDYIHGJmVm8e9l3mqw5cKkgQMAIHpFX+oixosaKERAERF0AAFgBxBQ
 TrlzVer3PV6vc9Xq9z1er3PV6vc9Xq//2Q==
 <enddata>
-
 
