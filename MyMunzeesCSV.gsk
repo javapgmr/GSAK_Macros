@@ -1,5 +1,5 @@
 #*******************************************
-# MacVersion = 2.3.1
+# MacVersion = 2.3.3
 # MacDescription = Get and load Munzees CSV 
 # MacAuthor = baerti and ruttentuttels
 # MacFileName = MyMunzeesCSV.gsk
@@ -188,6 +188,21 @@
 #	      Modified captured munzee data due to change on Munzee.com website (Thanks RODZ)
 #	      Modified add log on captures munzees (RODZ)
 #	      Modified backup and restore routine on munzees.csv
+#ver2.3.2
+#	      Bugfix on identify special munzees.
+#	      Bugfix on storage LocationList selected values
+#	      Optimized unattended run of macro
+#	      Bugfix on storage of settings
+#	      Bugfix typo in radrius string for DFX download
+#	      Bugfix on State selection
+#	      Bugfix on exlude own deployed munzee's
+#	      Added database selection check on Only Update Captured
+#	      Changed Adding Logs routine (Thanks Rodz)
+#	      Updated macro to work with the MunzeeID from Munzee.com introduced on 12-11-12
+#	      Added Unicode \U00FD and \U00DD
+#ver 2.3.3
+#	      Bugfix on captured data routine (thanks Stantastic)
+#	      Corrected FTF detection string.
 
 
 VERCHECK Version=8.2.0.11
@@ -229,6 +244,7 @@ $optLoadFromWeb 			= TRUE
  ENDIF
 
  $bVer2xCompatible 			= NOT($bUseUniqueCode) #don't use MZxxxx ID.
+ $bMunzeeUniqueId			= TRUE
 
  IF $RememberMe #get stored password
   $txtMunzeePasswd 			= $MunzeePasswd
@@ -241,14 +257,14 @@ $optLoadFromWeb 			= TRUE
   $AutoRun 				= FALSE 
  ENDIF
 
- $Parm2 = Extract($_MacroParms,";",2) #is there also a password send with the instruction to run the macro?
- IF $Parm2 <> ""
-  $RememberMe 				= FALSE
-  $txtMunzeePasswd 			= $Parm2 
- ENDIF
+# $Parm2 = Extract($_MacroParms,";",2) #is there also a password send with the instruction to run the macro?
+# IF $Parm2 <> ""
+#  $RememberMe 				= FALSE
+#  $txtMunzeePasswd 			= $Parm2 
+# ENDIF
 
  $Parm1					= ""
- $Parm2					= ""
+# $Parm2					= ""
 
   SHOWSTATUS msg=Preparing Databases and Initializing variables.... moment.... Width=400 Title=Initializing Macro!
   $txtGCUserID 				= Sysinfo("gsakini;TfmConfig;EdtGeoName.Text")
@@ -332,15 +348,15 @@ $optLoadFromWeb 			= TRUE
   $MZmapURL 				= "http://www.munzee.com/munzees.csv"
   $nLogSequence				= 0
   $nCntCorrectedCoors			= 0
-  $lstPolygon				= ""
-  $bCountrySelected			= FALSE
-  $bStateSelected			= FALSE
-  $bCountySelected			= FALSE
+#  $lstPolygon				= ""
+#  $bCountrySelected			= FALSE
+#  $bStateSelected			= FALSE
+#  $bCountySelected			= FALSE
   $Countrytemp				= ""
   $Statetemp				= ""
   $Countytemp				= ""
   $noFileCheck				= FALSE
-  $sCurSelectedLoc			= "List Selected Country - State - County"+$_CrLf
+#  $sCurSelectedLoc			= "List Selected Country - State - County"+$_CrLf
   $lstPolygonTemp			= ""
   $bAddedMultipleLocation		= FALSE
   Array(1,0)				="20"				#Lat
@@ -358,7 +374,7 @@ $optLoadFromWeb 			= TRUE
   $_sql					= "ATTACH '$File' AS Tbb"
   $Status				= Sqlite("sql",$_sql)
 
-  IF NOT ($bCountry OR $bState OR $bCounty) #no loction selected, initialize country list
+  IF NOT ($bCountrySelected OR $bStateSelected OR $bCountySelected) #no loction selected, initialize country list
    GOSUB Name=InitCountryList
   ENDIF
 
@@ -367,7 +383,7 @@ $optLoadFromWeb 			= TRUE
     $FormExit 				= Form($form,"")
 
     IF $FormExit = "btnCancel" OR $FormExit = "SystemExit"
-     CANCEL
+     RETURN
     ENDIF
 
 		$strPassword		= MimeDecode($txtMunzeePasswd) #get decrypted password
@@ -388,7 +404,8 @@ $optLoadFromWeb 			= TRUE
                                 GOSUB Name=CheckAndGetMunzees
 				IF $bExitLoop = TRUE
 				 CANCELFILTER
-				 GOSUB Name=SetCacheType 
+				 GOSUB Name=SetCacheType
+				 $bUpdateFoundsHTML = TRUE 
 			         GOSUB Name=UpdateCapturedMunzees
 				ENDIF
 
@@ -401,7 +418,7 @@ $optLoadFromWeb 			= TRUE
 				$chkCoordinates = FALSE	
 
 			CASE $FormExit = "RememberMe"
-				$bOnlySettings = FALSE
+				$bOnlySettings = TRUE
 			        GOSUB Name=SaveMacSettings
 				$bExitLoop = FALSE
 
@@ -481,9 +498,6 @@ $optLoadFromWeb 			= TRUE
   ENDWHILE 
 
   RESYNC 
-#exit the macro
-  RETURN
-
   
 #ENDSUB 
 
@@ -521,7 +535,7 @@ BEGINSUB Name=SetDefaults
 		$Form 				= EditForm($Form,"bState","Visible","No")
 
 		CASE NOT($bStateSelected) AND $bCountrySelected
-		$State				= $Statetemp
+		$State				= "Not Selected" + $_CrLf + $Statetemp
 		$Form 				= EditForm($Form,"bCountry","Visible","No")
 		$Form 				= EditForm($Form,"bState","Visible","Yes")
 
@@ -531,7 +545,7 @@ BEGINSUB Name=SetDefaults
 		$Form 				= EditForm($Form,"bState","Visible","No")
 	
 		CASE NOT($bCountySelected) AND $bStateSelected
-		$County				= $Countytemp
+		$County				= "Not Selected" + $_CrLf + $Countytemp
 		$Form 				= EditForm($Form,"bState","Visible","No")
 		$Form 				= EditForm($Form,"bCounty","Visible","Yes")
 
@@ -743,7 +757,7 @@ BEGINSUB Name=CheckAndGetMunzees
 	  $noFileCheck			= TRUE
 
 	 CASE ($bCountrySelected = TRUE OR $bStateSelected = TRUE OR $bCountySelected = TRUE) AND $optLocationList = TRUE  
-	  $lstPolygon			= $lstPolygon
+#	  $lstPolygon			= $lstPolygon
 	  $noFileCheck			= TRUE
 
 	 CASE $optPolygonFilter
@@ -751,10 +765,12 @@ BEGINSUB Name=CheckAndGetMunzees
 	  GOSUB Name=CreateBoxFromPolygon	  
 	  $lstPolygon			= $sFilePolygon
 	 ENDCASE
+#	  CLIP Data=$lstPolygon
 	  GOSUB Name=CheckPolygonFilter
 	ENDIF
 					
 	IF $bRadiusSelected
+#         CLIP Data=$lstPolygon
 	 GOSUB Name=CheckRadiusFilter
 	ENDIF
 
@@ -782,7 +798,7 @@ BEGINSUB Name=SaveMacSettings
 	
 	MACSETTINGS Type=S Vars=sTotalPoints,fldImportPath,fldDFXImportPath,sDFXWeblink1,sDFXWeblink2,sDFXWeblink3,sDFXWeblink4,sDFXWeblink5,txtUsername,cboLocationNames,cboDatabase,cboCacheTypes,txtMunzeeNickname,MunzeePasswd,RememberMe,txtSymbolName File=$sSettingsFile
 	IF $bOnlySettings = FALSE
-	 MACSETTINGS Type=S Vars=DFXSW,DFXNE,bCountry,bState,bCounty,MaxLatLon,County,State,Country,optLocationFilter,optPolygonFilter,optPolygonText,lstPolygon,optRadiusFilter,optUsernameFilter,sFilePolygon,chkCoordinates,chkLocations,cboLocationNames,optLocationList,optNoFilterSelected,txtPolygon,optRadiusFilter,optIncludeOwn,bTagUnavailable,optUsernameFilter File=$sFilterFile
+	 MACSETTINGS Type=S Vars=DFXSW,DFXNE,bCountrySelected,bStateSelected,bCountySelected,MaxLatLon,County,State,Country,sCurSelectedLoc,optLocationFilter,optPolygonFilter,optPolygonText,lstPolygon,optRadiusFilter,optUsernameFilter,sFilePolygon,chkCoordinates,chkLocations,cboLocationNames,optLocationList,optNoFilterSelected,txtPolygon,optRadiusFilter,optIncludeOwn,bTagUnavailable,optUsernameFilter File=$sFilterFile
 	 MACSETTINGS Type=S Vars=optUseDFXdownload,optLoadFromWeb,optLoadFromFile,bIncOutOfScope,optUpdateDbCaptures,optDFXWeb1,optDFXWeb2,optDFXWeb3,radDFXWeb,polDFXWeb,optUseBackupDb,optUseEmptyDB,optUseCapturedDb,bUpdateFoundsHTML,txtOnlyCountry,bChkUpdFounds,chkMacroRun,txtMacroRun,bAddHints,bTagCapturedPoints,bMakeBackupCsv,bUseMunzeeType,bUseUniqueCode,txtRadius,txtCoordinates,optDFXImport File=$sOptionFile
 	ENDIF
 	$bOnlySettings		= FALSE
@@ -930,7 +946,7 @@ BEGINSUB Name=GetMunzees
 	    $nRowsTotal 		= Val(CsvGet($sData,"rows"))
 	   ENDIF
 	  ENDIF
-	  IF ($nRowsTotal < 5)
+	  IF ($nRowsTotal < 5) AND not($AutoRun)
 	   IF YesNo("The Munzees.csv file seems to be corrupt. Do you want to continue?")
 	   ELSE
 	    CANCEL
@@ -981,7 +997,6 @@ BEGINSUB Name=GetMunzees
 	 $sUsername			= CsvGet("*","$nRow,8")
 
    BEGINCASE
-	
 	#Polygon filter
 	CASE $bPolygonSelected
 	 $sPolygonOptions 		= "m point=["+$sLatitude+" "+$sLongitude+"]"
@@ -1006,15 +1021,17 @@ BEGINSUB Name=GetMunzees
 	CASE $bUserNameSelected
 	 $bFilterResult			= RegEx($sUsernameList,$sUsername)
 
+   ENDCASE
+
 	#Own Munzee
-	CASE $sUsername = $sUser AND $optIncludeOwn
-         $bFilterResult			= $bIncOutOfScope
+	IF $sUsername = $sUser
+         $bFilterResult			= ($bFilterResult AND $optIncludeOwn) OR $bIncOutOfScope
+	ENDIF
 
 	#NoFilterSelected
-	CASE $bNofilterSelected
+	IF $bNofilterSelected
          $bFilterResult			= TRUE
-
-   ENDCASE
+	ENDIF
 
 	IF $bFilterResult
 	  $sCreatedAt			= CsvGet("*","$nRow,3")
@@ -1030,6 +1047,7 @@ BEGINSUB Name=GetMunzees
 	  $sSpecialLogo   		= CsvGet("*","$nRow,10")
 	  $sCaptureTypeID 		= CsvGet("*","$nRow,11")
 	 ENDIF
+	  $sMunzeeUniqueID		= CsvGet("*","$nRow,12")
 
 	  $sFirstToCapture		= "Unknown"
   	  $sEspression   		= "/images/pins/(.*).png"
@@ -1142,7 +1160,11 @@ BEGINSUB Name=ModifyDatabase
 #------------------------------------------------------------------------------
  
 	$sOwnerName			= $sUsername                               
-	$CacheID 			= crc32($sUsername + $sMunzeeID)
+	IF $bMunzeeUniqueId = FALSE
+	 $CacheID 			= crc32($sUsername + $sMunzeeID)
+	ELSE
+	 $CacheID 			= 100000000 + val($sMunzeeUniqueID)
+	ENDIF
 
 	$sCode				= $sOwnerName + $sCodeSeparator + $sMunzeeID
 	IF $bVer2xCompatible = FALSE
@@ -1170,7 +1192,7 @@ BEGINSUB Name=ModifyDatabase
 	$d_code				= $sCode     			                   
 	$d_latitude			= $sLatitude                        
 	$d_longitude 			= $sLongitude
-
+ 
   IF $sCreatedAt <> "00000000"
         $d_PlacedDate			= StringToDate($sCreatedAt)
   ENDIF
@@ -1194,7 +1216,7 @@ BEGINSUB Name=ModifyDatabase
 	$d_CacheId 			= "$CacheID"
 
   	$d_User4            		= $sSymbolNameCaptureTypeID
-  	$d_User3            		= $sSpecialLogo
+  	$d_User3            		= $sSymbolNameSpecialLogo
         $d_IsPremium			= FALSE	
 	$d_Symbol			= $txtSymbolName
 	IF $bTagUnavailable = TRUE
@@ -1213,6 +1235,7 @@ BEGINSUB Name=ModifyDatabase
         ENDIF
 
   IF $bUseMunzeeType=TRUE
+    			$d_CacheType 	= "T"
 	BEGINCASE
 	    CASE $sSymbolNameCaptureTypeID = "munzee"
     			$d_CacheType 	= "T"
@@ -1228,11 +1251,11 @@ BEGINSUB Name=ModifyDatabase
     			$d_CacheType 	= "M"
 	    CASE $sSymbolNameCaptureTypeID = "nfc"
     			$d_CacheType 	= "L"
-            CASE $sSymbolNameSpecialLogo <> ""
-                	$d_CacheType    = "E"
-	    OTHERWISE
-    			$d_CacheType 	= "T"
 	ENDCASE
+   IF $sSymbolNameSpecialLogo <> ""
+     $d_CacheType    			= "E"
+   ENDIF
+
   ENDIF
 
 	BEGINCASE
@@ -1259,7 +1282,8 @@ BEGINSUB Name=ModifyDatabase
 	TABLE Active=Caches
  
 #	GC Owner-ID 
-	IF (($sOwnerName + $sCodeSeparator) = $sMunzeeCode) AND $d_Status <> "X"
+	#Own Munzee
+	IF (($sOwnerName + $sCodeSeparator) = $sMunzeeCode) AND $d_Status <> "X" AND $optIncludeOwn
 		$d_OwnerID 		= $txtGCUserID
 	ENDIF
 			
@@ -1285,6 +1309,7 @@ BEGINSUB Name=UpdateCapturedMunzees
 	IF $bNoInternetAvailable = TRUE
 	 SHOWSTATUS msg="Previous captured datafile will be used. Caption=Warning: no Internet!" Width=400
 	ENDIF
+	GOSUB Name=CheckDatabase
         $sPath 				= ($fldImportPath + "\MZcapfile.txt")
         GOSUB Name=FileExistCheck
 
@@ -1305,7 +1330,9 @@ BEGINSUB Name=UpdateCapturedMunzees
 	$sUserData 			= RegExReplace("\\u00c4",$sUserData,"Ä")
 	$sUserData 			= RegExReplace("\\u00d6",$sUserData,"Ö")
 	$sUserData 			= RegExReplace("\\u00fc",$sUserData,"ü")
+	$sUserData 			= RegExReplace("\\u00fd",$sUserData,"ý")
 	$sUserData 			= RegExReplace("\\u00dc",$sUserData,"Ü")
+	$sUserData 			= RegExReplace("\\u00dd",$sUserData,"Ý")
 	$sUserData 			= RegExReplace("\\u00df",$sUserData,"ß")
 	$sUserData 			= RegExReplace("\\u00eb",$sUserData,"ë")
 	$sUserData 			= RegExReplace("\\u00cb",$sUserData,"Ë")
@@ -1351,17 +1378,17 @@ BEGINSUB Name=UpdateCapturedMunzees
 		$sUserCapturedMunzeeName = ""
 		$sUserCapturedOwner      = ""
 
-		 $sEspression  		= "{'friendlyname':'(.*?)','code':'http://www.munzee.com/m/(.*?)/(.*?)/','capturedat':'(.*?) (.*?), (.*?) (.*?)','points':'(.*?)'}"
+		 $sEspression 		= "capturedat':'(.*?) (.*?), (.*?) (.*?)','points':'(.*?)','friendlyname':'(.*?)','code':'http://www.munzee.com/m/(.*?)/(.*?)/','munzeeid':'(.*?)'}"
 
-		 $sFriendlyName  	= RegExSub ($sEspression,$sUserData,$nCntUserLoop,1)
-		 $sUserCapturedOwner    = RegExSub ($sEspression,$sUserData,$nCntUserLoop,2)
-		 $sUserCapturedMunzeeID = RegExSub ($sEspression,$sUserData,$nCntUserLoop,3)
-		 $sShortNameMonth	= RegExSub ($sEspression,$sUserData,$nCntUserLoop,4)
-		 $sCaptureDate_Day	= RegExSub ($sEspression,$sUserData,$nCntUserLoop,5)
-		 $sCaptureDate_Year	= RegExSub ($sEspression,$sUserData,$nCntUserLoop,6)
-		#  $sPreCaptureTime	= RegExSub ($sEspression,$sUserData,$nCntUserLoop,7)
-		 $sCapturePoints  	= RegExSub ($sEspression,$sUserData,$nCntUserLoop,8)
-
+		 $sShortNameMonth	= RegExSub ($sEspression,$sUserData,$nCntUserLoop,1)
+		 $sCaptureDate_Day	= RegExSub ($sEspression,$sUserData,$nCntUserLoop,2)
+		 $sCaptureDate_Year	= RegExSub ($sEspression,$sUserData,$nCntUserLoop,3)
+		#  $sPreCaptureTime	= RegExSub ($sEspression,$sUserData,$nCntUserLoop,4)
+		 $sCapturePoints  	= RegExSub ($sEspression,$sUserData,$nCntUserLoop,5)
+		 $sFriendlyName  	= RegExSub ($sEspression,$sUserData,$nCntUserLoop,6)
+		 $sUserCapturedOwner    = RegExSub ($sEspression,$sUserData,$nCntUserLoop,7)
+		 $sUserCapturedMunzeeID = RegExSub ($sEspression,$sUserData,$nCntUserLoop,8)
+		 $sMunzeeUniqueID	= RegExSub ($sEspression,$sUserData,$nCntUserLoop,9)
 
 #		$sEspression 		= "(.*?):(.*?) (\w\w)"
 # 		$sCaptureTimeHour	= RegExSub ($sEspression,$sPreCaptureTime,1,1)
@@ -1382,14 +1409,18 @@ BEGINSUB Name=UpdateCapturedMunzees
 		$sUserCapturedOwnerURL 	= "http://www.munzee.com/m/" + $sUserCapturedOwner  + "/" + $sUserCapturedMunzeeID 
 
  	 	$sCode			= $sUserCapturedOwner + "/" + $sUserCapturedMunzeeID
-		$CacheID 		= crc32($sUserCapturedOwner + $sUserCapturedMunzeeID)
+
+		IF $bMunzeeUniqueId = FALSE
+		 $CacheID 		= crc32($sUserCapturedOwner + $sUserCapturedMunzeeID)
+		ELSE
+		 $CacheID 		= 100000000 + val($sMunzeeUniqueID)
+		ENDIF
 
 	IF $bVer2xCompatible = FALSE
 		$sCode 			= "MZ" + NumToGsCode("$CacheID")
 	ENDIF
 
 		SHOWSTATUS Msg="Processing $nCntUserLoop of $nNumberOfCaptured captured munzees : $sCode" Width= 400 Title=Updating captured munzees 
- 	  		  	
 
 	GOSUB Name=ConvertMonth
   
@@ -1397,16 +1428,20 @@ BEGINSUB Name=UpdateCapturedMunzees
 	$dFoundByMeDate 		= StringToDate(Keep ($sCaptureDate,"\d*","R"))
 
   	$bCompleteMunzeeData 		= FALSE	
-        $AddNotFound			= FALSE
+        $AddNotFound			= TRUE
         $bGetFromHTML			= FALSE
 	$bMunzeeExist			= FALSE
 
         $bGetFromHTML			= ($bUpdateFoundsHTML=TRUE) AND ($bNoInternetAvailable=FALSE)
-	$bMunzeeExist			= (Seek($sCode))
 
-	IF $bIncOutOfScope = TRUE
-	 $AddNotFound			= NOT ($bMunzeeExist)
-	Endif
+	IF $bGetFromHTML = TRUE OR $bIncOutOfScope = TRUE
+	 $bMunzeeExist			= (Seek($sCode))
+	 IF $bMunzeeExist = TRUE
+	  $AddNotFound			= FALSE
+	 ELSE
+	  $AddNotFound			= TRUE
+	 ENDIF
+	ENDIF
 
 	IF $optUpdateDbCaptures = TRUE
 	 $AddNotFound			= TRUE
@@ -1418,7 +1453,8 @@ BEGINSUB Name=UpdateCapturedMunzees
 	IF $bGetFromHTML = TRUE
          $sMunzeeData			= GetUrl($sUserCapturedOwnerURL)
 	ENDIF
-  	GOSUB Name=GetFoundDate
+	GOSUB Name=GetFoundDate
+
 	$bMunzeeExist			= TRUE
 	$sCreatedAt			= $sDeployedAt
 	$sUsername			= $sUserCapturedOwner
@@ -1443,6 +1479,16 @@ BEGINSUB Name=UpdateCapturedMunzees
 
 	IF $_Count<>0 AND $bMunzeeExist=TRUE
   	 $nCntURL 			= RegExCount($sUserCapturedOwnerURL + "/",$sUserData)  	
+	 IF $d_NumberOfLogs > $nCntURL
+	  TABLE Active=Logs Scope=Parent
+	  MACRODELETE Action=DelScope
+	  MACRODELETE Action=Commit
+	  RESYNCLOGS
+  	  TABLE Active=Caches
+	 ENDIF
+	 IF INTRANSACTION=FALSE
+	  TRANSACTION Action=Begin
+	 ENDIF
  	 IF $d_NumberOfLogs < $nCntURL  
 	  TABLE Active=Logs Scope=Parent
 	  ADDNEW
@@ -1495,13 +1541,15 @@ BEGINSUB Name=CheckDatabase
   	IF $_CurrentDatabase <> $cboDatabase
 	 IF YesNo("Are you sure you want to change to "+$cboDatabase+" database?") OR $AutoRun=TRUE
 	  DATABASE Name=$cboDatabase Action=Select
-  	  $File				= $_ExePath + "\static.db3"
+  	  $_CurrentDatabase		= $cboDatabase
+	  $File				= $_ExePath + "\static.db3"
   	  $_sql				= "ATTACH '$File' AS TStatic"
   	  $Status			= Sqlite("sql",$_sql)
   	  $File				= $_ExePath + "\bb.db3"
   	  $_sql				= "ATTACH '$File' AS Tbb"
   	  $Status			= Sqlite("sql",$_sql)
 	 ELSE
+ 	  $cboDatabase			= $_CurrentDatabase
 	  $bExitLoop = FALSE
 	 ENDIF
 	ENDIF  	
@@ -1510,6 +1558,7 @@ BEGINSUB Name=CheckDatabase
 	 GOTO Position=Top
 	 IF Left($d_code,2) <> "MZ"
 	  $bVer2xCompatible		= TRUE
+	  $bMunzeeUniqueId		= FALSE
 	 ENDIF
 	ENDIF
 ENDSUB
@@ -1563,10 +1612,9 @@ BEGINSUB Name=CheckRadiusFilter
 			MSGOK Msg=$sMessage	Caption=Error
 			EXITSUB
 		ELSE
-			$sDFXcoord	= Replace(";","\%2C",$sDegrees)
+			$sDFXcoord	= Replace(";","%2C",$sDegrees)
 			$sDegrees 	= Replace(";"," ",$sDegrees)
 		ENDIF
-		
 	ENDIF
 	
 	IF $chkLocations = TRUE 
@@ -1685,6 +1733,7 @@ BEGINSUB Name=InitCountryList
    $nLocationPointer			= 0
    Array(1,0)				="20"				#Lat
    Array(2,0)				="20"				#Lon
+   $sCurSelectedLoc			= "List Selected Country - State - County"+$_CrLf
   ENDIF
 # selecting location files of GSAK
   $bCountrySelected			= FALSE
@@ -1696,6 +1745,7 @@ BEGINSUB Name=InitCountryList
   $bAddLoc 				= FALSE
   $County				= "Not Selected"
   $State				= "Not Selected"
+  $lstPolygon				= ""
 
   GOSUB Name=GetCountryList
 
@@ -1734,14 +1784,13 @@ BEGINSUB Name=SelectCountry
 	IF $bStateAvail = TRUE
 	 $_sql				= "Select File from Tbb.bb_state WHERE Country='$sISO' ORDER BY File ASC"
 	 $Statetemp			= Sqlite("sql",$_sql)
-	 $State				= $Statetemp
 	ENDIF
 ENDSUB
 
 #------------------------------------------------------------------------------	
 BEGINSUB Name=SelectState
 #------------------------------------------------------------------------------	
-	 IF  $bStateSelected = TRUE
+	 IF  $bCountrySelected = TRUE
 	  $_sql				= "Select MaxLat,MinLat,MaxLon,MinLon from Tbb.bb_state WHERE File='$State'"
 	  $MaxLatLon			= Sqlite("sql",$_sql)
 	 ENDIF
@@ -1749,13 +1798,11 @@ BEGINSUB Name=SelectState
 	 $_sql				= "Select File from Tbb.bb_county WHERE State='$State' ORDER BY File ASC"
 	 $Countytemp			= Sqlite("sql",$_sql)
 	 $Countytemp			= RegExData("([a-z\s-])",$Countytemp,0)
-	 $County			= $Countytemp
 	ENDIF
 	IF $bCountyAvail=TRUE
 	 $_sql				= "Select File from Tbb.bb_county WHERE State='All_$sISO' ORDER BY File ASC"
 	 $Countytemp			= Sqlite("sql",$_sql)
 	 $Countytemp			= RegExData("([a-z\s-])",$Countytemp,0)
-	 $County			= $Countytemp
 	ENDIF
 	$bExitLoop 			= FALSE
 ENDSUB
@@ -1986,7 +2033,7 @@ BEGINSUB Name=GetFoundDate
 	$nMunzeeDataLen 		= Len($sMunzeeData)
 
 	IF $bDebug = TRUE
-	$sStatus 			= PutFile($_AppData + "\temp\" + $sUser + "http.txt",$sMunzeeData)
+	$sStatus 			= PutFile($_install + "\temp\" + $sUser + "http.txt",$sMunzeeData)
 	IF Left($sStatus,7) = "*Error*"
 	    Pause Msg="$Data"
 	#   Cancel
@@ -1996,6 +2043,10 @@ BEGINSUB Name=GetFoundDate
 #Munzee Type
   	$sEspression 			= "icon: '/images/pins/(.*?).png'"
 	$sSymbolNameCaptureTypeID	= RegExSub($sEspression,$sMunzeeData,1,1)
+
+#Munzee Unique ID
+#	$sEspression 			= "<span class='munzee_id' style='display:none;'>(.*?)</span>"
+#	$sMunzeeUniqueID		= RegExSub($sEspression,$sMunzeeData,1,1)
 
 # Creator
 #  	$sEspression 			= "<li><h5>Creator: <small><a href='(.*?)'>(.*?)</a></small></h5></li>"
@@ -2031,7 +2082,7 @@ BEGINSUB Name=GetFoundDate
 	$sLocation 			= RegExSub($sEspression,$sMunzeeData,1,1)
 
 # First To Capture
-	$sEspression 			= "<li><h5>First to Capture: <small><a href='(.*?)'>(.*?)</a>"
+	$sEspression 			= "<li><h5>First to Capture: <small>      <a href='(.*?)'>(.*?)</a>"
 	$sFirstToCapture 		= RegExSub($sEspression,$sMunzeeData,1,2)
 
 # Last Capture
@@ -2273,6 +2324,10 @@ BEGINSUB Name=Declarations
 	DECLARE Var=$nLocationPointer			Type=Numeric
 	DECLARE Var=$optUseDFXdownload			Type=Boolean
 	DECLARE Var=$optUpdateDbCaptures		Type=Boolean
+	DECLARE Var=$bCountrySelected			Type=Boolean
+	DECLARE Var=$bStateSelected			Type=Boolean
+	DECLARE Var=$bCountySelected			Type=Boolean
+
 
 	DECLARE Var=$bDebug1				Type=Boolean
 	DECLARE Var=$sDebug1				Type=String
@@ -11971,3 +12026,4 @@ PTNEImltYWdlMDEwLnBuZyIvPg0KIDxvOkZpbGUgSFJlZj0zRCJpbWFnZTAxMS5wbmciLz4NCiA8bzpG
 aWxlIEhSZWY9M0QiZmlsZWxpc3QueG1sIi8+DQo8L3htbD4NCi0tLS0tLT1fTmV4dFBhcnRfMDFDREIy
 RUEuNjIyRDI2QjAtLQ0K
 <enddata>
+

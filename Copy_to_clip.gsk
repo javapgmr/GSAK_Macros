@@ -1,5 +1,5 @@
 #*******************************************
-# MacVersion = 1.8
+# MacVersion = 1.9
 # MacDescription = Copy cache links to Forums, IRC, or HTML
 # MacAuthor = Dave H. aka brdad
 # MacFileName = Copy_to_clip.gsk
@@ -10,6 +10,8 @@
 
  IF Sysinfo("gsakini;TfmConfig;EdtGeoName.Text")="brdad" OR Sysinfo("gsakini;TfmConfig;EdtGeoName.Text")="61905" OR Sysinfo("gsakini;TfmConfig;EdtGeoName.Text")="mainiac1957" OR Sysinfo("gsakini;TfmConfig;EdtGeoName.Text")="139598"
      $Form = EditForm($form,"ButtonEventList","Visible","Yes")
+     $Form = EditForm($form,"ComboboxUserData","Visible","Yes")
+     $Form = EditForm($form,"Lbl4","Visible","Yes")
  ENDIF 
 
  $format = ""
@@ -114,10 +116,28 @@ $FormExit = form($form,"")
          CASE $ButtonEventList
 
 #Change this to indicate the column containing the town
-             $Town = $d_UserData
+             #$Town = $d_UserData
+             #IF $Town = ""
+             #    $Town = "????"
+             #ENDIF 
+
+	BeginCase
+
+        Case $ComboboxUserData = "User Data"
+        	$Town = $d_UserData
+        Case $ComboboxUserData = "User Data 2" 
+        	$Town = $d_User2
+        Case $ComboboxUserData = "User Data 3"
+        	$Town = $d_User3
+        Case $ComboboxUserData = "User Data 4" 
+        	$Town = $d_User4
+	Case $ComboboxUserData = "Town" 
+		$Town = CustomGet("Town")
+      EndCase
+
              IF $Town = ""
                  $Town = "????"
-             ENDIF 
+	     ENDIF
 
 #Change this to indicate the column containing the time
              $TimeColumn = $d_User2
@@ -169,7 +189,7 @@ $FormExit = form($form,"")
      CLIP Data=$data
      $status = Seek($Mycode)
  ENDIF 
- MACSETTINGS Type=S Vars=CheckBoxDistance,CheckBoxDT,CheckBoxContainer,CheckBoxCacheType
+ MACSETTINGS Type=S Vars=CheckBoxDistance,CheckBoxDT,CheckBoxContainer,CheckBoxCacheType,ComboboxUserData
 
 Break
 EndWhile
@@ -231,7 +251,7 @@ Name = Lbl2
   Height = 13
   Left = 15
   Top = 154
-  Width = 94
+  Width = 102
   Caption = Maximum to display:
 
 Name = Lbl3
@@ -239,7 +259,7 @@ Name = Lbl3
   Height = 13
   Left = 15
   Top = 176
-  Width = 115
+  Width = 123
   Caption = (Leave blank for no limit)
 
 Name = CheckBoxMultiple
@@ -267,6 +287,25 @@ Name = CheckBoxDistance
   Width = 233
   Taborder = 13
   Caption = Display distances from curent centerpoint
+
+Name = ComboboxUserData
+  Type = Combobox
+  Height = 21
+  Left = 135
+  Top = 70
+  Visible = No
+  Values = Town;User Data;User Data 2;User Data 3;User Data 4
+  Width = 100
+  Taborder = 2
+
+Name = Lbl4
+  Type = Label
+  Height = 13
+  Left = 135
+  Top = 50
+  Visible = No
+  Width = 96
+  Caption = Town Data Colum:
 
 Name = CheckBoxCacheType
   Type = Checkbox
@@ -296,4 +335,3 @@ Name = CheckBoxContainer
   Caption = Display Cache Container
 
 <enddata>
-

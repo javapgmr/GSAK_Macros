@@ -1,5 +1,5 @@
 #*******************************************
-# MacVersion = 1.5
+# MacVersion = 1.8
 # MacDescription = Total any column
 # MacAuthor = clyde
 # MacFileName = Totals.gsk
@@ -7,7 +7,7 @@
 #*******************************************
 
 Vercheck version=7.5.0.188
-$form = replace("Ver xxx","Ver 1.5",$form,true)
+$form = replace("Ver xxx","Ver 1.8",$form,true)
 
 # Declar all variables
 
@@ -15,7 +15,7 @@ GoSub Name=Declare
 
 # Set up column descriptions
 
-$Cols = "Bearing;Cache Type;Container;County;Country;Last changed date;Difficulty;DNF Date;Found count;Found by me date;Last found date;"
+$Cols = "Bearing;Cache Type;Container;County;Country;Last changed date;Difficulty;DNF Date;Elevation;Found count;Found by me date;Last found date;"
 $cols = $cols + "Last GPX update;Last log;Last user update;Latitude;Longitude;Macro sort;Number of logs;Owner name;Placed by;"
 $cols = $cols + "Data source;State;Terrain;User data;User data 2;User data 3;User data 4;User note date;User sort"
 $ColList = list("ColList","create",";")
@@ -23,7 +23,7 @@ $ColList = list("ColList","replace",$cols)
 
 # Set up corresponding database field names
 
-$DbCols = "bearing;cachetype;container;county;country;changed;Difficulty;dnfdate;foundcount;foundbymedate;lastfounddate;"
+$DbCols = "bearing;cachetype;container;county;country;changed;Difficulty;dnfdate;elevation;foundcount;foundbymedate;lastfounddate;"
 $DbCols = $DbCols + "lastgpxdate;lastlog;lastuserdate;latitude;Longitude;macrosort;numberoflogs;ownername;placedby;"
 $DbCols = $DbCols + "source;state;Terrain;userdata;user2;user3;user4;usernotedate;usersort"
 
@@ -51,10 +51,8 @@ EndIf
 # Set form variables and show it
 
 
-if ShowForm($form)
-  If $FrmBtnCancel
-    cancel
-  EndIf
+$result = Form($form,"")
+If $result = "FrmBtnOK"
   # Save settings
   $status = PutFile($Settings,$column + ";" + BoolToStr($SortCol,"T","F") + ";" + BoolToStr($Ascending,"T","F") + ";" + BoolToStr($Rank,"T","F"))
 else
@@ -65,10 +63,19 @@ EndIf
 
 $DbCol = Val(list("ColList","find",$column))
 $dbField = extract($dbcols,";",$dbcol)
+$totl = $dbfield
+$dbfield2 = $dbfield
 
-if not(regex("NumberOfLogs|UserSort|FoundCount",$dbfield))
+if $dbField = "cachetype"
+  $dbfield = "(select vto from gsak_static.lookup where Vfrom = CacheType) as CacheType"
+  $dbField2 = "CacheType"
+Endif
+
+if not(regex("NumberOfLogs|UserSort|FoundCount|CacheType|elevation",$dbfield))
   $dbField2 = "g_upper($dbfield)"
 endif
+
+
 
 If $SortTot
   $sort = "tot"
@@ -83,8 +90,7 @@ else
 endif
 
 # Run SQL statements to generate the required totals
-sqlitecaches
-$data = sqlite("sql","select $dbfield, count($dbfield) as tot from cachestemp group by $dbField2 order by $sort $sequence")
+$data = sqlite("sql","select $dbfield, count($totl) as tot from caches where $_where group by $dbField2 order by $sort $sequence")
 $count = $_SqlRows
 $list = list("sc","create",$_NewLine)
 $list = list("sc","Replace",$data)
@@ -124,7 +130,7 @@ FileOpen File=$file
 BeginSub Name=Declare
 #*******************************************************
 #   Variable declarations for
-#   Totals.gsk
+#   C:\gsak\Macros\Totals.gsk
 #
 #   Generated 4/07/2007 7:58:33 PM on GSAKVariables.gsk Rev V0.20 B5
 #
@@ -158,6 +164,8 @@ Declare Var=$SortTot Type=Boolean
 Declare Var=$Decending Type=Boolean
 Declare Var=$out Type=String
 Declare Var=$RankSetting Type=String
+Declare Var=$result Type=String
+Declare Var=$totl Type=String
 Declare Var=$Rank Type=Boolean
 EndSub
 

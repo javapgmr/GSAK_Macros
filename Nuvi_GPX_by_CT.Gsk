@@ -1,11 +1,19 @@
 ###################################################################################
 # MacFileName    = Nuvi_GPX_by_CT.Gsk
 # MacAuthor      = jjreds - now maintained by Red Roo (Wayne)
-# MacVersion     = 1.10 beta
+# MacVersion     = 1.11 beta
+# DevVersion     = 1.11 
 # MacDescription = Export GPX files by cache type w/spoiler pics for POI Loader
 # MacUrl         = http://gsak.net/board/index.php?showtopic=21209&view=findpost&p=
 # MacRecognition = jjreds;cron;pilotsnipes;Clyde;Kai Team;Lignumaqua;Vincent05
 ###################################################################################
+  NOERROR Commands=UPDATECHECK
+  UPDATECHECK Frequency=5
+
+  VERCHECK Version=8.1.0.10 (please update GSAK to the latest version to run this macro - see http://gsak.net. It has not been tested with older versions.)
+  OPTION Explicit=Yes
+
+###############################################################################
 #  Change History...
 # ===================
 # 1.00 Now requires Gsak Version 8.1.0.10 or later - Gsak v7 is not supported anymore.
@@ -33,17 +41,23 @@
 #      Standard and AllRaid exports have been updated for the Deprecated 'Expression'
 #      If a filter had been previously set but was not present when the macro was started, 
 #        a 'filter' containing all caches in the database was restored for each cachetype export. (the Gosub immiediately after Macsettings Restore)
-#
+# 1.11 Removed some Deprecated code (that was already commented out).
+#      Added a MTP Bypass button on the GPS Connection form. This is a temporary solution only prior to testing further with MTP devices.
 ###################################################################################
 #  Changes in this version
 # =========================
+# Added option to allows connection in MTP mode (a bypass button on the GPS detect screen). 
+#   Previously the macro would not run POILoader.exe unless a gps was detected. 
+#   Note: I am not able to test whether POILoader will export to MTP devices - this is the realm of Garmin.
+#
+#
 # 
 ###################################################################################
 #  The 'LIST'...
 # ===================================================
 # 
 # Replace Deprecated DB variables ($d_Archived / $d_TempDisabled)
-# Relpace Deprecated MFILTER parameters (If / Expression)
+# Replace Deprecated MFILTER parameters (If / Expression)
 # Option to choose adhoc a Saved Filter.
 #
 # Use Gsak GRABIMAGES (ImageSync) and current Grabbed Images instead of Spoilersync.
@@ -57,17 +71,15 @@
 ###################################################################################
 #  Development Notes...
 # ======================
-# Xml files are not directly transferable. Use <Shift> at startup to overcome this.
 # 0.84 MainMenu 'DevBtn' controls toggle access to Development Mode
 # 0.84 <Alt D> Development mode added to the main form - sets any function controlled by $Devuser to be run. This may include debug points and untested code.
 # 0.84 <Alt S> Development mode>Advanced Options switches output base folder between $_AppData and C:\GsakPoi for $TourGuideToolsFolder and $GPX_Output_Folder.
 # 1.00 <Alt B> Buchholtz mode is now active but does nothing.
 # 1.09 <CTRL>  runs a batch file ATTRIB command on $_AppData
+#      GA caches which match Owner criteria have IsOwner set.
 #
 ###################################################################################
 
-  VERCHECK Version=8.1.0.10 (please update GSAK to the latest version to run this macro - see http://gsak.net. It has not been tested with older versions.)
-  OPTION Explicit=Yes
 
   SHOWSTATUS Msg="Initializing - Please wait..."
 
@@ -83,7 +95,7 @@
 #@ >>>>>>>>>>> IF NEW NUVI MODELS ARE ADDED - PUT THEM HERE <<<<<<<<<<<<<<<<<<<<<<
 
 # When $Montana is to be added permanently, references in Sub.ToggleDevelopmentMode should be removed or commented and 'Montana' should be added to $NuviModels.
-  $NuviModels="Nuvi 12xx;Nuvi 13xx;Nuvi 14xx;Nuvi 16xx;Nuvi 2xx;Nuvi 2xxW;Nuvi 3xx;Nuvi 5xx;Nuvi 6xx;Nuvi 7xx;Nuvi 8xx;Colorado;Oregon"
+  $NuviModels="Nuvi 12xx;Nuvi 13xx;Nuvi 14xx;Nuvi 16xx;Nuvi 2xx;Nuvi 2xxW;Nuvi 3xx;Nuvi 5xx;Nuvi 6xx;Nuvi 7xx;Nuvi 8xx;Colorado;Oregon;Montana;"
 
 # Set the max number of characters for each Nuvi model - to quote jjreds... "If I recall correctly an overflow of chars caused the gps to shut down or reboot - the number was arbitrary and found by trial and error. I haven't looked at the code in a few years, but I think it was a huge description that caused the problem."
 
@@ -283,6 +295,7 @@
             SQLSORT OrderBy=$StartupSS
           ENDIF 
           GOSUB Name=DetachAlertsDb
+#          GOSUB Name=DisplayAlertsDb
           RETURN                                                             # Exits the macro
         CASE $SelectOption="DexAmp"
           GOSUB Name=DisplayExample
@@ -590,10 +603,12 @@
       IF $Use_Current_Filter
 #         GOSUB Name=RestoreFilter
 #        MFILTER Expression=NOT ($d_Found OR $d_Archived OR $d_TempDisabled) AND ($d_OwnerID<>$My_GC_ID_1) AND ($d_OwnerID<>$My_GC_ID_2) AND ($d_OwnerID<>$My_GC_ID_3) AND ($d_OwnerID<>$My_GC_ID_4) AND ($d_OwnerID<>$My_GC_ID_5) JOIN="AND"
-        MFILTER Where=Status='A' AND NOT Found AND OwnerID<>$My_GC_ID_1 AND OwnerID<>$My_GC_ID_2 AND OwnerID<>$My_GC_ID_3 AND OwnerID<>$My_GC_ID_4 AND OwnerID<>$My_GC_ID_5 JOIN="AND"
+#        MFILTER Where=Status='A' AND NOT Found AND OwnerID<>$My_GC_ID_1 AND OwnerID<>$My_GC_ID_2 AND OwnerID<>$My_GC_ID_3 AND OwnerID<>$My_GC_ID_4 AND OwnerID<>$My_GC_ID_5 JOIN="AND"
+         MFILTER Where=CacheType<>'U' OR HasCorrected AND NOT Found AND NOT OwnerId in ($My_GC_ID_1,$My_GC_ID_2,$My_GC_ID_3,$My_GC_ID_4,$My_GC_ID_5)  JOIN="AND"
       ELSE 
 #        MFILTER Expression=NOT ($d_Found OR $d_Archived OR $d_TempDisabled) AND ($d_OwnerID<>$My_GC_ID_1) AND ($d_OwnerID<>$My_GC_ID_2) AND ($d_OwnerID<>$My_GC_ID_3) AND ($d_OwnerID<>$My_GC_ID_4) AND ($d_OwnerID<>$My_GC_ID_5) JOIN="NONE"
-        MFILTER Where=Status='A' AND NOT Found AND OwnerID<>$My_GC_ID_1 AND OwnerID<>$My_GC_ID_2 AND OwnerID<>$My_GC_ID_3 AND OwnerID<>$My_GC_ID_4 AND OwnerID<>$My_GC_ID_5 JOIN="NONE"
+#        MFILTER Where=Status='A' AND NOT Found AND OwnerID<>$My_GC_ID_1 AND OwnerID<>$My_GC_ID_2 AND OwnerID<>$My_GC_ID_3 AND OwnerID<>$My_GC_ID_4 AND OwnerID<>$My_GC_ID_5 JOIN="NONE"
+         MFILTER Where=CacheType<>'U' OR HasCorrected AND NOT Found AND NOT OwnerId in ($My_GC_ID_1,$My_GC_ID_2,$My_GC_ID_3,$My_GC_ID_4,$My_GC_ID_5)  JOIN="NONE"
       ENDIF 
       IF $_FilterCount > 0
         $Cache_Unavailable=FALSE
@@ -612,11 +627,11 @@
       SHOWSTATUS Msg="Building Group: $CacheTypeName"
       IF $Use_Current_Filter
         GOSUB Name=RestoreFilter
-        MFILTER Expression=($d_UserFlag) JOIN="AND"
-#        MFILTER Where=USERFLAG JOIN="AND"
+#        MFILTER Expression=($d_UserFlag) JOIN="AND"
+        MFILTER Where=USERFLAG JOIN="AND"
       ELSE 
-        MFILTER Expression=($d_UserFlag) JOIN="NONE"
-#        MFILTER Where=USERFLAG JOIN="NONE"
+#        MFILTER Expression=($d_UserFlag) JOIN="NONE"
+        MFILTER Where=USERFLAG JOIN="NONE"
       ENDIF 
       IF $_FilterCount > 0
         $Cache_Unavailable=FALSE
@@ -863,8 +878,8 @@
         GOSUB Name=Detect_GPSr
         $Fx=Form($ConnectForm,"")
         BEGINCASE 
-          CASE $Fx="ReadyOK" OR $Fx="DelayExit"
-            IF $GPSConnected
+          CASE $Fx="ReadyOK" OR $Fx="DelayExit" OR $Fx="MTPBypass"
+            IF $GPSConnected OR $Fx="MTPBypass"
               $RunCntr=$RunCntr+1
               IF $RunCntr < 1
                 $TempStr="POI Loader will run manually the first time you run it from this macro.$_NewLine"
@@ -2791,11 +2806,11 @@
     $GPX_Time="$Year"+"-"+$Month+"-"+$Day+"T"+$Time+"Z"
   ENDSUB 
 ###################################################################################
-  BEGINSUB Name=DisplayAlertsDb
-    IF $DevUser
-      $_sql="PRAGMA database_list"
-      $Result=Sqlite("sql",$_sql)
-      MSGOK Msg="Current Setting: $CurrentSetting$_NewLine$_NewLine$Result $_NewLine $_NewLine Startup Sort: $StartupSS" Caption="SqlAlerts Detached"
+  BEGINSUB Name=AttachAlertsDb
+    IF NOT($DbAttached)
+      $SQL_Command = Sqlite("sql","ATTACH $sqlinputfile AS SqlAlerts","")
+      $AttachedSetting=$CurrentSetting
+      $DbAttached=TRUE
     ENDIF 
   ENDSUB 
 ###################################################################################
@@ -2806,15 +2821,14 @@
       $_sql = "Detach SqlAlerts"
       $TempStr=Sqlite("sql",$_sql)
       $DbAttached=FALSE
-      GOSUB Name=DisplayAlertsDb
     ENDIF 
   ENDSUB 
 ###################################################################################
-  BEGINSUB Name=AttachAlertsDb
-    IF NOT($DbAttached)
-      $SQL_Command = Sqlite("sql","ATTACH $sqlinputfile AS SqlAlerts","")
-      $AttachedSetting=$CurrentSetting
-      $DbAttached=TRUE
+  BEGINSUB Name=DisplayAlertsDb
+    IF $DevUser
+      $_sql="PRAGMA database_list"
+      $Result=Sqlite("sql",$_sql)
+      MSGOK Msg="Current Setting: $CurrentSetting$_NewLine$_NewLine$Result $_NewLine $_NewLine Startup Sort: $StartupSS" Caption="SqlAlerts Detached"
     ENDIF 
   ENDSUB 
 ###################################################################################
@@ -3939,13 +3953,13 @@
       $Devuser=FALSE
       $MainMenuExpanded=EditForm($MainMenuExpanded,"Label9","Caption","Development Mode")
       $MainMenuExpanded=EditForm($MainMenuExpanded,"Label9","Visible","No")
-      $NuviModels=REPLACE(";Montana","",$NuviModels)
+#      $NuviModels=REPLACE(";Montana","",$NuviModels)
     ELSE 
       $Devuser=TRUE
       $BuchMode=FALSE
       $MainMenuExpanded=EditForm($MainMenuExpanded,"Label9","Caption","Development Mode")
       $MainMenuExpanded=EditForm($MainMenuExpanded,"Label9","Visible","Yes")
-      $NuviModels=$NuviModels+";Montana"
+#      $NuviModels=$NuviModels+";Montana"
       IF NOT($RedRoo)
         MSGOK Msg="This mode may contain Debug Points, Code errors or cause a Loss of Data" Caption="***  CAUTION - DEVELOPMENT MODE  ***"
       ENDIF 
@@ -5153,23 +5167,23 @@ Name = Label15
 ###################################################################################
 <Data> VarName=$connectform
 #********************************************************************
-# Form generated by GSAK form designer on Tue 05-Jun-2012 15:50:42
+# Form generated by GSAK form designer on Thu 27-Dec-2012 09:02:14
 #********************************************************************
 
 Name = NuviConnect
   Type = Form
   Caption = Garmin Connection
   Delay = 5
-  Height = 177
+  Height = 186
   Visible = Yes
   Width = 260
 
 Name = ReadyOK
   Type = Button
   Height = 49
-  Left = 57
-  Top = 56
-  Width = 129
+  Left = 61
+  Top = 52
+  Width = 130
   Taborder = 8
   Caption = Checking Connection
 
@@ -5187,8 +5201,8 @@ Name = Label1
 Name = ConnectMessage
   Type = Label
   Height = 13
-  Left = 16
-  Top = 128
+  Left = 17
+  Top = 138
   Visible = Yes
   Width = 34
 
@@ -5196,12 +5210,24 @@ Name = NuviExit
   Type = Button
   Height = 25
   Left = 184
-  Top = 103
+  Top = 110
   Width = 45
   Taborder = 11
   Caption = Exit
 
+Name = MTPBypass
+  Type = Button
+  Height = 25
+  Left = 85
+  Top = 110
+  Width = 75
+  Taborder = 12
+  Caption = MTP Bypass
+
 <enddata>
+
+
+
 ###################################################################################
 <Data> VarName=$Update
 #********************************************************************

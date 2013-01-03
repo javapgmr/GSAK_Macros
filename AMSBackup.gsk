@@ -1,11 +1,17 @@
 ###################################################################################
 # MacFileName    = AMSBackup.gsk
-# MacVersion     = 1.02
-# DevVersion     = 1.02
+# MacVersion     = 1.03
+# DevVersion     = 1.03
 # MacDescription = A self maintaining Series Backup macro which uses Date/Time stamps when naming the backup file.
 # MacAuthor      = Wayne (Team Red Roo)
 # MacUrl         = http://gsak.net/board/index.php?act=ST&f=15&t=9678
 ###################################################################################
+  NOERROR Commands=UPDATECHECK
+  UPDATECHECK Frequency=10
+
+  VERCHECK Version=7.7.4.36 (Please update your version of Gsak At http://gsak.net)
+  OPTION Explicit=YES
+###############################################################################
 #  MacNotes...
 # ==============
 # Everyday Backups will run on every occasion. 
@@ -20,14 +26,9 @@
 # 1.01 - Fixed a bug which stopped databases from being backed up in Everyday Backups.
 # 1.02 - Now breaks after a normal backup - but not after a manual Periodical backup.
 #        Added option to shutdown Gsak after a normal backup.
-#
+# 1.03 - Fixed filename/date probelm where the first 9 months and days were assigned single characters instead of double.
+#          This caused the file names to be not sorted.
 ###################################################################################
-
-  NOERROR Commands=UPDATECHECK
-  UPDATECHECK Frequency=10
-
-  VERCHECK Version=7.7.4.36 (Please update your version of Gsak At http://gsak.net)
-  OPTION Explicit=YES
 
   GOSUB Name=Initialise
 
@@ -198,7 +199,9 @@
            $LeapYear=TRUE
         ENDIF 
      ENDIF 
-     $CurrentDateTime="$Year$Month$Day $Time"
+     $DayStr=Right("00$Day",2)
+     $MonStr=Right("00$Month",2)
+     $CurrentDateTime="$Year$MonStr$DayStr $Time"
   ENDSUB 
 ###############################################################################
   BEGINSUB Name=SaveSettings
@@ -271,6 +274,8 @@
   DECLARE Var=$Day   Type=Numeric
   DECLARE Var=$Month Type=Numeric
   DECLARE Var=$Year  Type=Numeric
+  DECLARE Var=$DayStr Type=String
+  DECLARE Var=$MonStr Type=String
   DECLARE Var=$DoItNow Type=Boolean
   DECLARE Var=$Dbs Type=String
   DECLARE Var=$Gi Type=String

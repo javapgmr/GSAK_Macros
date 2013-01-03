@@ -5,7 +5,7 @@
 # Offline=No
 #***************************************
 
-# MacVersion = 1.7
+# MacVersion = 1.8
 # MacDescription = Select Images for Export
 # MacAuthor = Lignumaqua
 # MacFileName = HTML_SelectImages.gsk
@@ -29,6 +29,7 @@
 #   2-26-12  V1.5 Support .jpeg, fix select all in User Note local images.
 #   7-24-12  V1.6 Remove deprecated HTML() function
 #   8-12-12  V1.7 Add support for DualScreen
+#		11-3-12  V1.8 Support $_Appdata in file path in user notes
 #   Mike Wood (Lignumaqua)
 #***************************************
 Option Explicit=Yes
@@ -315,6 +316,9 @@ BEGINSUB name=NoteLocalImages
 
 	WHILE $count > 0
 		$fname = AllTrim(RegExSub($regex,$d_UserNote,$count,2))
+		
+		# Substitute for system variable if present
+		$fname = Replace("$" + "_Appdata",$_AppData,$fname)
 		
 		# Check if corrected name is available
 		$_sql = "select correctedname from correctednames where yname = '$fname'"
@@ -723,3 +727,4 @@ Declare Var=$suffix Type=String
 Declare Var=$test Type=String
 Declare Var=$tmpS Type=String
 Declare Var=$ToggleIncludeImage Type=String
+

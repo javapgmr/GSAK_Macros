@@ -1,7 +1,7 @@
 # MacDescription = Google Maps with Elevation profile
 # MacFileName =HTML_Google Map Elevation.gsk
 # MacAuthor = Lignumaqua
-# MacVersion=0.8
+# MacVersion=0.9
 # MacUrl = http://gsak.net/board/index.php?showtopic=15008
 
 #***************************************
@@ -18,15 +18,16 @@
 #===========================================================================#
 #   GMaps Split Screen Nearest Change History
 #
-#   v0.1  (4/4/10) 	First trial release
-#   v0.2  (4/4/10) 	Added MyTopo maps, auto scale chart width,
-#										Click to add multiple markers
-#   v0.3  (4/4/10) 	Added 'Clear Markers' button
-#   v0.4  (4/8/10)  Avoid grabbed images issue.
-#   v0.5  (4/11/10) Maptype cookie
-#   v0.6  (8/7/12)  Remove deprecated HTML()
-#   v0.7  (8/8/12)  Fix MyTopo maps
-#   v0.8  (8/8/12)  Fix cookies
+#   v0.1  (4/4/10) 	 First trial release
+#   v0.2  (4/4/10) 	 Added MyTopo maps, auto scale chart width,
+#										 Click to add multiple markers
+#   v0.3  (4/4/10) 	 Added 'Clear Markers' button
+#   v0.4  (4/8/10)   Avoid grabbed images issue.
+#   v0.5  (4/11/10)  Maptype cookie
+#   v0.6  (8/7/12)   Remove deprecated HTML()
+#   v0.7  (8/8/12)   Fix MyTopo maps
+#   v0.8  (8/8/12)   Fix cookies
+#   v0.9  (12/22/12) Added x axis labels for distance
 #
 #===========================================================================#
 #   This GSAK macro creates a split screen format
@@ -364,7 +365,7 @@ $_HTML = $split_html
 <!-----external references----->
 
 <script type="text/javascript" src="http://www.google.com/jsapi"></script>
-<script type="text/javascript" src="http://maps.google.com/maps/api/js?sensor=false"></script>
+<script type="text/javascript" src="http://maps.google.com/maps/api/js?libraries=geometry&sensor=false"></script>
 
 <script type="text/javascript">
 
@@ -753,17 +754,38 @@ function updateCopyright() {
 			strokeColor: "#6060FF",
 		map: map});
 
+		pathLength = google.maps.geometry.spherical.computeLength(path);
+		
 		var data = new google.visualization.DataTable();
 		data.addColumn('string', 'Sample');
 		data.addColumn('number', 'Elevation');
 		for (var i = 0; i < results.length; i++) {
-			data.addRow(['', distconv*elevations[i].elevation]);
+		
+		if (distunits == 'ft') {
+			if (Math.round(distconv*pathLength) > 10000) {
+				pathDistance = (Math.round(distconv*pathLength*(i+1)/results.length/528)/10).toString();
+				labelDistance = 'miles';
+			} else {
+				pathDistance = (Math.round(distconv*pathLength*(i+1)/results.length)).toString();
+				labelDistance = 'ft';
+			}
+		} else {
+			if (Math.round(distconv*pathLength) > 5000) {
+				pathDistance = (Math.round(distconv*pathLength*(i+1)/results.length/100)/10).toString();
+				labelDistance = 'km';
+			} else {
+				pathDistance = (Math.round(distconv*pathLength*(i+1)/results.length)).toString();
+				labelDistance = 'm';
+			}
+		}
+		
+		data.addRow([pathDistance, distconv*elevations[i].elevation]);
 		}
 
 		var cdiv = document.getElementById('chart_div');
 		var c_width = parseInt(cdiv.style.width); // removes the "px" at the end
 		c_width = c_width * .9;
-
+				
 		document.getElementById('chart_header').style.display = 'none';
 		document.getElementById('chart_footer').style.display = 'block';
 		document.getElementById('chart_div').style.display = 'block';
@@ -773,10 +795,16 @@ function updateCopyright() {
 			height: 200,
 			legend: 'none',
 			titleY: 'Elevation (' + distunits + ')',
+			titleX: 'Distance (' + labelDistance + ')',
 			focusBorderColor: '#00ff00'
 		});
+		
+
+		
+		
 	}
 
+	
 	// Remove the green rollover marker when the mouse leaves the chart
 	function clearMouseMarker() {
 		if (mousemarker != null) {
