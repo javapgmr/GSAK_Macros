@@ -21,6 +21,7 @@
 # V4.4.01B 10-01-12 Most States in Day duplicate states in differing countries #
 # V4.4.02B 10-11-12 Support Block Party type P                                 #
 # V4.4.03B 12-9-12 Fix most types in a day icons                               #
+# V4.4.04B 1-14-13 Move Finds By Month chart to POST                           #
 #                                                                              #
 # Bug reports, feature suggestions and any other comments should be posted     #
 # on the GSAK forums.                                                          #
@@ -30,7 +31,7 @@
 # I will get around to applying a formal License to it, but in the short term: #
 # If it breaks, you get to keep both pieces.                                   #
 #                                                                              #
-# MacVersion = 4.4.03B
+# MacVersion = 4.4.04B
 # MacDescription = Find Statistics Generator (4.4)
 # MacAuthor = Rutson & Lignumaqua
 # MacFileName = FindStatGen44Beta.gsk
@@ -3561,6 +3562,7 @@ BEGINSUB Name=DoYearStats
 		IF $num > 0
 			$out = AddStr(1,"add","$num<br />")
 			$height = Int(80 * $Num / $MostInMonth)
+			#$height = Int(80 * Ln($Num) / Ln($MostInMonth))
 			IF $UseImageBars
 				IF $num = $MostInMonth
 					$image = $imagepath + $ImageRV
@@ -5140,11 +5142,11 @@ ENDSUB
 
 
 
-
-BEGINSUB name=Month_Chart
+BEGINSUB name=Month_Chart_Post
 	# Initialise Section variables
 	$colspan = 1
 	$text=$Lang134
+	$PostData = ""
 	GOSUB Name=SectionHead
 
 	$pc = 0
@@ -5155,15 +5157,21 @@ BEGINSUB name=Month_Chart
 	$YearNow = Val(left(DateToString($RunDate),4))
 
 	$tmpS = RegExSub("background:\s*?#(.*?);",$stMainDiv,1,1)
+	
+	#Make best guess at OwnerID
+	$_sql = "SELECT lOwnerid FROM (SELECT lOwnerid, Count(lOwnerID) AS c FROM Allfinds GROUP BY lownerid ORDER BY c DESC LIMIT 1)"
+	$OwnerID = Sqlite("sql",$_sql)
 
 	# Chart
-	$out = AddStr(1,"add","<img src='http://chart.googleapis.com/chart?cht=lxy&chs=740x300&chf=bg,s,$tmpS&chxt=r,x,y&chxr=0,0,$FindsWithDuplicates|2,0,$BestInYear")
+	
+	$PostData = "'cht','lxy','chs','740x300','chf','bg,s,$tmpS','chxt','r,x,y','chxr','0,0,$FindsWithDuplicates|2,0,$BestInYear'"
 
 	# Axes colors
-	$out = AddStr(1,"add","&chxs=0,0000FF|2,FF0000")
+	
+	$PostData = $PostData + ",'chxs','0,0000FF|2,FF0000'"
 
 	# Main chart data variables
-	$text1 = "&chd=e:__,"
+	$text1 = ",'chd','e:__,"
 	$text9 = ""
 
 	# Dynamic grid spacing
@@ -5177,16 +5185,16 @@ BEGINSUB name=Month_Chart
 	ENDCASE
 	$text2 = NumToStr(Round(100 * $tmpN/$BestInYear,2))
 	$text2 = Replace(",",".",$text2,TRUE)
-	$text2 = "&chg=0," + $text2
+	$text2 = ",'chg','0," + $text2
 
 	# Chart colors
-	$text3 = "&chco=0000ff"
+	$text3 = ",'chco','0000ff"
 
 	# Labels
-	$text4 = "&chxl=1:"
+	$text4 = ",'chxl','1:"
 
 	# Chart shading
-	$text5 = "&chm=B,76A4FBB0,0,0,0"
+	$text5 = ",'chm','B,76A4FBB0,0,0,0"
 	
 	# Comment 2-5-11 - this can now be done with a repeating vertical line marker
 	# chm=B,76A4FBB0,0,0,0|v,6060ff,0,11:84:12,1
@@ -5195,7 +5203,7 @@ BEGINSUB name=Month_Chart
 	$text6 = ","
 
 	# Line Styles
-	$text10 = "&chls=2,1,0"
+	$text10 = ",'chls','2,1,0"
 
 	$tmpN = 1
 
@@ -5298,7 +5306,25 @@ BEGINSUB name=Month_Chart
 
 	ENDWHILE
 
-	$out = AddStr(1,"add",$text1 + $text6 + $text4 + "|" + $text3 + $text5 + $text2 + $text10 + "' />" + $CR)
+	$PostData = $PostData + $text1 + $text6 + "'" + $text4 + "|'" + $text3 + "'" + $text5 + "'" + $text2 + "'" + $text10 + "'"
+	
+	
+	$URL = "http://gsak.net/stats/charts/monthchart.php"
+	$PostData = $PostData + ",'name','$OwnerID','settings','$Settings'"
+	
+#	CLIP data=$PostData
+#	CANCEL
+	
+	$result = PostUrl($url,$PostData)
+	
+	$tmpN=Random(0)
+	$tmpS = Remove("$tmpN",".0","C")
+	
+	$url = "http://gsak.net/stats/charts/usermonthcharts/" + $OwnerID + "_" + "$Settings" + ".png" + "?" + $tmpS
+		
+	$out = AddStr(1,"add","<img src='$url'/>" + $CR)
+
+
 
 	# Div for legend overlay
 	$out = AddStr(1,"add","<div style = 'height: 0px;'>" + $CR)
@@ -5307,7 +5333,178 @@ BEGINSUB name=Month_Chart
 	$out = AddStr(1,"add","</div>" + $CR)
 	$out = AddStr(1,"add","</div>" + $CR)
 
-ENDSUB # name=Month_Chart
+ENDSUB # name=Month_Chart_Post
+
+
+
+#
+#BEGINSUB name=Month_Chart
+#	# Initialise Section variables
+#	$colspan = 1
+#	$text=$Lang134
+#	GOSUB Name=SectionHead
+#
+#	$pc = 0
+#	$pc3 = 0
+#
+#	$FirstYear = Val(left(DateToString($DateFirstFind),4))
+#	$ThisYear = $FirstYear
+#	$YearNow = Val(left(DateToString($RunDate),4))
+#
+#	$tmpS = RegExSub("background:\s*?#(.*?);",$stMainDiv,1,1)
+#
+#	# Chart
+#	$out = AddStr(1,"add","<img src='http://chart.googleapis.com/chart?cht=lxy&chs=740x300&chf=bg,s,$tmpS&chxt=r,x,y&chxr=0,0,$FindsWithDuplicates|2,0,$BestInYear")
+#
+#	# Axes colors
+#	$out = AddStr(1,"add","&chxs=0,0000FF|2,FF0000")
+#
+#	# Main chart data variables
+#	$text1 = "&chd=e:__,"
+#	$text9 = ""
+#
+#	# Dynamic grid spacing
+#	BEGINCASE
+#	CASE $BestInYear <=250
+#		$tmpN = 25
+#	CASE $BestInYear >250 AND $BestInYear <=500
+#		$tmpN = 50
+#	CASE $BestInYear >500
+#		$tmpN = 100
+#	ENDCASE
+#	$text2 = NumToStr(Round(100 * $tmpN/$BestInYear,2))
+#	$text2 = Replace(",",".",$text2,TRUE)
+#	$text2 = "&chg=0," + $text2
+#
+#	# Chart colors
+#	$text3 = "&chco=0000ff"
+#
+#	# Labels
+#	$text4 = "&chxl=1:"
+#
+#	# Chart shading
+#	$text5 = "&chm=B,76A4FBB0,0,0,0"
+#	
+#	# Comment 2-5-11 - this can now be done with a repeating vertical line marker
+#	# chm=B,76A4FBB0,0,0,0|v,6060ff,0,11:84:12,1
+#	# v,color,up to line #,from:to:spacing,size
+#
+#	$text6 = ","
+#
+#	# Line Styles
+#	$text10 = "&chls=2,1,0"
+#
+#	$tmpN = 1
+#
+#	# Calculate total number of months to be plotted
+#
+#	$TotalMonths = 12 * (Val(SubStr(DateToString($RunDate),1,4)) - Val(SubStr(DateToString($DateFirstFind),1,4)))
+#	$TotalMonths = $TotalMonths + Val(SubStr(DateToString($RunDate),5,2)) - Val(SubStr(DateToString($DateFirstFind),5,2)) + 1
+#
+#	$text7 = ""
+#	$text8 = ""
+#
+#	WHILE $ThisYear <= $YearNow
+#		# Compile stats for year, $ThisYear
+#		# Initialise some variables
+#		$Month = 1		# Current working month, starting at Jan
+#		$EndMonth = 12	# Last month of the year
+#		$pc2 = 0
+#
+#		# First year and current year to date are less than 12 months
+#
+#		IF ($ThisYear = $YearNow) AND ($ThisYear = $FirstYear)
+#			$Month = Val(SubStr(DateToString($DateFirstFind),5,2))
+#			$EndMonth = Val(SubStr(DateToString($RunDate),5,2))
+#		ELSE
+#			IF $ThisYear = $YearNow
+#				$EndMonth = Val(SubStr(DateToString($RunDate),5,2))
+#			ELSE
+#				IF $ThisYear = $FirstYear
+#					$Month = Val(SubStr(DateToString($DateFirstFind),5,2))
+#				ENDIF
+#			ENDIF
+#		ENDIF
+#
+#		IF ($ThisYear = $FirstYear) AND $Month = 12
+#			$tmpB = FALSE
+#		ELSE
+#			$tmpB = TRUE
+#		ENDIF
+#
+#		# Step through each month in ThisYear
+#		WHILE $Month <= $Endmonth
+#			$_sql = "SELECT Count(lDate) from AllFinds WHERE strftime('%Y',lDate)+0=$ThisYear and strftime('%m',lDate)+0=$Month"
+#			$num = Val(Sqlite("sql",$_sql))
+#
+#			#$text2 = $text2 + "|" + "$Month"
+#			$pc = $pc + ($num/$FindsWithDuplicates) * 4095
+#			$z = Int($pc)
+#			GOSUB name=Extended
+#			$text1 = $text1 + $tmpS
+#
+#			# $pc2 accumulates the year stats into $text7, $pc3 accumulates the x coordinate for each year stats into $text8
+#			$pc2 = $pc2 + ($num/$BestInYear) * 4095
+#			$z = Int($pc2)
+#			GOSUB name=Extended
+#			$text7 = $text7 + $tmpS
+#
+#			IF $TotalMonths <= 1
+#				$pc3 = 0
+#			ELSE
+#				$pc3 = ($tmpN-1) * 4095 / ($TotalMonths-1)
+#			ENDIF
+#			$z = Int($pc3)
+#			GOSUB name=Extended
+#			$text8 = $text8 + $tmpS
+#
+#			IF $tmpN = 1
+#				$text4 = $text4 + "|" + "$ThisYear"
+#			ENDIF
+#			IF $Month = 1 AND $tmpN<>1
+#				$num = $tmpN - 2
+#				$text4 = $text4 + "|" + "$ThisYear"
+#				$text5 = $text5 + "|v,6060FF,0," + "$num" + ",1.0"
+#			ELSE
+#				IF (NOT(($Month=$Endmonth) AND ($ThisYear = $YearNow))) AND $tmpN <> 1
+#					$text4 = $text4 + "|"
+#				ENDIF
+#			ENDIF
+#			IF ($Month=$Endmonth) AND NOT($ThisYear = $YearNow)
+#				$text7 = $text7 + ","
+#			ENDIF
+#			$tmpN = $tmpN + 1
+#			$Month = $Month + 1
+#		ENDWHILE
+#		$text8 = $text8 + ","
+#
+#		# skip a single value year if it's also the first year
+#		IF $tmpB
+#			$text6 = $text6 + $text8 + $text7
+#		ELSE
+#			$text6 = ","
+#		ENDIF
+#
+#		$ThisYear = $ThisYear + 1
+#		$text3 = $text3 + ",ff0000"
+#
+#		# Add artifical zero value at the beginning of each year (AA is zero in extended encoding)
+#		$text7 = "AA"
+#		$text8 = "$tmpS"
+#		$text10 = $text10 + "|2,2,4"
+#
+#	ENDWHILE
+#
+#	$out = AddStr(1,"add",$text1 + $text6 + $text4 + "|" + $text3 + $text5 + $text2 + $text10 + "' />" + $CR)
+#
+#	# Div for legend overlay
+#	$out = AddStr(1,"add","<div style = 'height: 0px;'>" + $CR)
+#	$out = AddStr(1,"add","<div style='border: 1px solid black; position: relative; top: -288px; left: -250px; width: 150px; height: 34px; background-color: rgb(255, 255, 255);'>" + $CR)
+#	$out = AddStr(1,"add","<font color='#0000FF'>$Lang135</font>" + "<br />" + "<font color='#FF0000'>$Lang136</font>" + $CR)
+#	$out = AddStr(1,"add","</div>" + $CR)
+#	$out = AddStr(1,"add","</div>" + $CR)
+#
+#ENDSUB # name=Month_Chart
 
 BEGINSUB name=Extended
 	# Enter with value from 0-4095 in $z, exits with encoded value in $tmpS
@@ -5320,7 +5517,7 @@ ENDSUB
 BEGINSUB Name=Month
 
 	IF $Cumulative
-		GOSUB Name=Month_Chart		# Full width - Graph of finds over time
+		GOSUB Name=Month_Chart_Post		# Full width - Graph of finds over time
 	ENDIF
 
 	# Initialise Section variables
@@ -7932,7 +8129,7 @@ BEGINSUB name=CustomCountyMap
 ENDSUB #CustomCountyMap
 
 BEGINSUB name=MainCountyMap
-
+	$colspan = 1
 	# Exclude locationless?
 	IF $Excludelocationless
 		$Locationless = " AND Cachetype <>'L' AND Exclude <> '1'"
@@ -13314,6 +13511,7 @@ BEGINSUB name=UsCountyMap
 	ELSE
 		$text = "$CountryLocalName - $StateLocalName - $Countrytotal $Lang43 $count/$tmpS $s"
 	ENDIF
+	$colspan = 1
 	GOSUB name=SectionHead
 	$out = AddStr(1,"add",$code)
 
@@ -20256,7 +20454,7 @@ BEGINSUB name=DeclareVariables
 	Declare Var=$cellwidth Type=Numeric
 	Declare Var=$Center Type=Boolean
 	Declare Var=$CenterText Type=String
-	Declare Var=$Closest Type=Numeric
+	DECLARE Var=$Closest Type=Numeric
 	Declare Var=$ClosestText Type=String
 	Declare Var=$Code Type=String
 	Declare Var=$Codefield Type=String

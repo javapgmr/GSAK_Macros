@@ -1,8 +1,8 @@
 ###################################################################################
 # MacFileName    = Nuvi_GPX_by_CT.Gsk
 # MacAuthor      = jjreds - now maintained by Red Roo (Wayne)
-# MacVersion     = 1.11 beta
-# DevVersion     = 1.11 
+# MacVersion     = 1.12 beta
+# DevVersion     = 1.12
 # MacDescription = Export GPX files by cache type w/spoiler pics for POI Loader
 # MacUrl         = http://gsak.net/board/index.php?showtopic=21209&view=findpost&p=
 # MacRecognition = jjreds;cron;pilotsnipes;Clyde;Kai Team;Lignumaqua;Vincent05
@@ -42,14 +42,12 @@
 #      If a filter had been previously set but was not present when the macro was started, 
 #        a 'filter' containing all caches in the database was restored for each cachetype export. (the Gosub immiediately after Macsettings Restore)
 # 1.11 Removed some Deprecated code (that was already commented out).
-#      Added a MTP Bypass button on the GPS Connection form. This is a temporary solution only prior to testing further with MTP devices.
+#      Added a MTP Bypass button on the GPS Connection form as a temporary solution prior to testing further with MTP devices.
+# 
 ###################################################################################
 #  Changes in this version
 # =========================
-# Added option to allows connection in MTP mode (a bypass button on the GPS detect screen). 
-#   Previously the macro would not run POILoader.exe unless a gps was detected. 
-#   Note: I am not able to test whether POILoader will export to MTP devices - this is the realm of Garmin.
-#
+# Added Nuvi 35xx to the list of supported GPS's (experimental).
 #
 # 
 ###################################################################################
@@ -66,7 +64,6 @@
 # Increase the size of the Nuvi icons. - this is unlikely since it is controlled by Garmin but I will look into it at some stage.
 #
 # Extra data to be shown as first log e.g. FavPoints: %caches_favpoints $_newline Finds: %NumberOfLogs - now commented out for DevUser only (2017) *
-# It would be great to have a text version of the cache attributes somewhere. Maybe as a enhancement of the user notes (Sven)
 #
 ###################################################################################
 #  Development Notes...
@@ -95,7 +92,7 @@
 #@ >>>>>>>>>>> IF NEW NUVI MODELS ARE ADDED - PUT THEM HERE <<<<<<<<<<<<<<<<<<<<<<
 
 # When $Montana is to be added permanently, references in Sub.ToggleDevelopmentMode should be removed or commented and 'Montana' should be added to $NuviModels.
-  $NuviModels="Nuvi 12xx;Nuvi 13xx;Nuvi 14xx;Nuvi 16xx;Nuvi 2xx;Nuvi 2xxW;Nuvi 3xx;Nuvi 5xx;Nuvi 6xx;Nuvi 7xx;Nuvi 8xx;Colorado;Oregon;Montana;"
+  $NuviModels="Nuvi 12xx;Nuvi 13xx;Nuvi 14xx;Nuvi 16xx;Nuvi 2xx;Nuvi 2xxW;Nuvi 3xx;Nuvi 35xx;Nuvi 5xx;Nuvi 6xx;Nuvi 7xx;Nuvi 8xx;Colorado;Oregon;Montana;"
 
 # Set the max number of characters for each Nuvi model - to quote jjreds... "If I recall correctly an overflow of chars caused the gps to shut down or reboot - the number was arbitrary and found by trial and error. I haven't looked at the code in a few years, but I think it was a huge description that caused the problem."
 
@@ -106,6 +103,7 @@
   $Nuvi2xx  = 11000  #Display 320x240 - 11000
   $Nuvi2xxW = 16500  #Display 480x272 - 16500
   $Nuvi3xx  = 20000  #Display 320x240 - 20000
+  $Nuvi35xx = 19000  #Display 800x400 - Experimental - This value is a guestimate but follows max settings for like resolution displays (Nuvi6xx) 
   $Nuvi5xx  = 16500  #Display 480x272 - 16500
   $Nuvi6xx  = 19000  #Display 480x272 - 19000
   $Nuvi7xx  = 19999  #Display 480x272 - 19999
@@ -790,6 +788,8 @@
             $Width = 480
           CASE $nuvimodel = "Nuvi 3xx"
             $Width = 320
+          CASE $nuvimodel = "Nuvi 35xx"
+            $Width = 800
           CASE $nuvimodel = "Nuvi 5xx"
             $Width = 480
           CASE $nuvimodel = "Nuvi 6xx"
@@ -1433,7 +1433,7 @@
 
 #zxzx Delete after linking
     IF RegEx("TourGuide",$geofile)
-      IF (Left($nuvimodel,6) = "Nuvi 2") or (Left($nuvimodel,6) = "Nuvi 1")
+      IF (Left($nuvimodel,6) = "Nuvi 2") or (Left($nuvimodel,6) = "Nuvi 1") OR $nuvimodel="Nuvi 35xx"
         $Soundfile_Target="$GPX_Output_Path\$DB\$geofile.wav"
       ELSE 
         $Soundfile_Target="$GPX_Output_Path\$DB\$geofile.mp3"
@@ -1507,6 +1507,8 @@
         $GPSr = $Nuvi2xxW
       CASE $nuvimodel = "Nuvi 3xx"
         $GPSr = $Nuvi3xx
+      CASE $Nuvimodel=  "Nuvi 35xx"
+        $GPSr = $Nuvi35xx
       CASE $nuvimodel = "Nuvi 5xx"
         $GPSr = $Nuvi5xx
       CASE $nuvimodel = "Nuvi 6xx"
@@ -1861,7 +1863,7 @@
       $exportmp3 = "$GPX_Output_Path\" + $DB + "\" + $geofile +".mp3"
       $exportwav = "$GPX_Output_Path\" + $DB + "\" + $geofile +".wav"
       IF NOT ($SaveAlertType="Custom")
-        IF (Left($nuvimodel,6) = "Nuvi 2") or (Left($nuvimodel,6) = "Nuvi 1")
+        IF (Left($nuvimodel,6) = "Nuvi 2") or (Left($nuvimodel,6) = "Nuvi 1") OR $nuvimodel="Nuvi 35xx"
           IF NOT (FileExists($exportwav))
             BEGINCASE 
               CASE $Volume="Soft"
@@ -1897,7 +1899,7 @@
       $exportmp3 = "$GPX_Output_Path\" + $DB + "\" + $geofile +".mp3"
       $exportwav = "$GPX_Output_Path\" + $DB + "\" + $geofile +".wav"
 
-      IF (Left($nuvimodel,6) = "Nuvi 2") or (Left($nuvimodel,6) = "Nuvi 1")
+      IF (Left($nuvimodel,6) = "Nuvi 2") or (Left($nuvimodel,6) = "Nuvi 1") OR $nuvimodel="Nuvi 35xx"
         BEGINCASE 
           CASE $POI_Icon="Red Light Camera"
             IF $Use_Custom_Sounds
@@ -2492,14 +2494,14 @@
   ENDSUB 
 ###################################################################################
   BEGINSUB Name=Move_SOX_4_200_Series             # Only if a nuvi 1xxx or 2xxx and only then if the file does not exist.
-    IF (Left($nuvimodel,6) = "Nuvi 2") or (Left($nuvimodel,6) = "Nuvi 1")
+    IF (Left($nuvimodel,6) = "Nuvi 2") or (Left($nuvimodel,6) = "Nuvi 1") OR $nuvimodel="Nuvi 35xx"
       IF NOT (FileExists($POILPath+"\SOX.exe"))
         $Embedded_POIL_File="SOX.exe"          # Distributed version of SOX.Exe is v14.0.1 - works with POILoader
         $POILPath=$POILPath+"\"
         IF FolderExists($POILPath)
           FILECOPY FROM=$ZIPPath$Embedded_POIL_File TO=$POILPath$Embedded_POIL_File OnError=Prompt
         ELSE 
-          MSGOK MSG="Unable to copy SOx.exe.  Please check the path.  Macro will now abort." Caption="CHECK PATH TO POI LOADER"
+          MSGOK MSG="Unable to copy SOX.exe.  Please check the path.  Macro will now abort." Caption="CHECK PATH TO POI LOADER"
           GOSUB Name=DetachAlertsDb
           CANCEL 
         ENDIF 
@@ -2900,7 +2902,7 @@
       $SQL_Data = sqlite("sql","select * from SqlAlerts.Alert_Array where Code='$CacheTypeLetter'")
       $AlertByTypeForm=Replace("CacheType"+"$Count"+"x","$CacheTypeLetter"+" - "+"$CacheTypeName",$AlertByTypeForm,TRUE)
 
-      IF (Left($nuvimodel,6) = "Nuvi 2") or (Left($nuvimodel,6) = "Nuvi 1")
+      IF (Left($nuvimodel,6) = "Nuvi 2") or (Left($nuvimodel,6) = "Nuvi 1") OR $nuvimodel="Nuvi 35xx"
         BEGINCASE 
           CASE $Volume="Soft"
             $Embedded_POIL_File="TourGuideSoft.wav"
@@ -4313,6 +4315,7 @@ Yes;No
   DECLARE Var=$Nuvi2xx Type=Numeric
   DECLARE Var=$Nuvi2xxW Type=Numeric
   DECLARE Var=$Nuvi3xx Type=Numeric
+  DECLARE Var=$Nuvi35xx Type=Numeric      
   DECLARE Var=$Nuvi5xx Type=Numeric
   DECLARE Var=$Nuvi6xx Type=Numeric
   DECLARE Var=$Nuvi7xx Type=Numeric
