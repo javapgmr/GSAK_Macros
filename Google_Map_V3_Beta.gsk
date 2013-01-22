@@ -1,7 +1,7 @@
 # MacDescription = Google Maps V3
 # MacFileName = Google_Map_V3_Beta.gsk
 # MacAuthor = Lignumaqua
-# MacVersion=3.5
+# MacVersion=3.7
 # MacUrl = 
 
 #==============================================================================#
@@ -47,9 +47,13 @@
 # V3.3 8-30-12 Fix backslash in parking point name and quotes in code
 # V3.4 1-12-13 Polygon drawing
 # V3.5 1-17-13 Options to: 1. Auto close Infowindow, 2. One click flag/sort/both
+# V3.6 1-18-13 Bug fix to database selection
+# V3.7 1-18-13 Option to show flags on screen, right-click always shows info-window
+
 
 PREPROCESS Shift=$StartShift
 VERCHECK Version=7.7.4.28 (Note: this macro requires at least  GSAK Version 7.7.4.28, found here:  http://gsak.net/board/index.php?showtopic=17668  Recommended w/ the latest "patch")
+$JavascriptVersion = "1.7"
 
 Option Explicit=Yes
 
@@ -68,10 +72,11 @@ $AdditionalFields = ""
 $CloseWindow = FALSE
 $QuickFlag = FALSE
 $QuickSort = FALSE
+$ShowFlags = FALSE
 
 # Load and save necessary to update old xml files
 MACSETTINGS Type=R File=GoogleMapsV3.xml FileCheck=N
-MACSETTINGS Type=S Vars=ShowChild,ShowText,UseOriginal,UseScrollWheel,Silent,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields,CloseWindow,QuickFlag,QuickSort File=GoogleMapsV3.xml
+MACSETTINGS Type=S Vars=ShowChild,ShowText,UseOriginal,UseScrollWheel,Silent,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields,CloseWindow,QuickFlag,QuickSort,ShowFlags File=GoogleMapsV3.xml
 
 $ShowChild = FALSE
 $ShowText = FALSE
@@ -88,13 +93,14 @@ $AdditionalFields = ""
 $CloseWindow = FALSE
 $QuickFlag = FALSE
 $QuickSort = FALSE
+$ShowFlags = FALSE
 
 $versionnumber = MacHeader("macversion")
 $form = Replace("%v%","v" + $versionnumber,$form)
 
 
 # Read in settings (Options only show if SHIFT is pressed)
-MACSETTINGS Type=R Vars=UseScrollWheel,Silent,ShowChild,ShowText,UseOriginal,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields,CloseWindow,QuickFlag,QuickSort File=GoogleMapsV3.xml FileCheck=N
+MACSETTINGS Type=R Vars=UseScrollWheel,Silent,ShowChild,ShowText,UseOriginal,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields,CloseWindow,QuickFlag,QuickSort,ShowFlags File=GoogleMapsV3.xml FileCheck=N
 
 IF $StartShift
 	$errors = TRUE
@@ -111,9 +117,9 @@ IF $StartShift
 
 	WHILE $errors
 		$errors = FALSE
-		MACSETTINGS Type=R Vars=ShowChild,ShowText,UseOriginal,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields,CloseWindow,QuickFlag,QuickSort File=GoogleMapsV3.xml FileCheck=N
+		MACSETTINGS Type=R Vars=ShowChild,ShowText,UseOriginal,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields,CloseWindow,QuickFlag,QuickSort,ShowFlags File=GoogleMapsV3.xml FileCheck=N
 		$result = Form($form,"")
-		MACSETTINGS Type=S Vars=ShowChild,ShowText,UseOriginal,UseScrollWheel,Silent,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields,CloseWindow,QuickFlag,QuickSort File=GoogleMapsV3.xml
+		MACSETTINGS Type=S Vars=ShowChild,ShowText,UseOriginal,UseScrollWheel,Silent,ShowName,ShowCode,ShowSmart,Small,Medium,Large,AdditionalFields,CloseWindow,QuickFlag,QuickSort,ShowFlags File=GoogleMapsV3.xml
 		IF $result = "SystemExit"
 			RETURN
 		ENDIF
@@ -233,13 +239,31 @@ ENDIF
 	$_sql = "SELECT "
 	$_sql = $_sql + "'var latlng = new google.maps.LatLng(' || $lat || ',' || $lon || ');"
 	$_sql = $_sql + "u' || rowid || ' = new google.maps.Marker({position: latlng"
-	$_sql = $_sql + ", map: map, icon:unavailable_icon, title:" + $_quote + "' || replace(replace(name,'" + $_Quote + "',''''),'\','\\') || '" + $_Quote + ", draggable:false, zIndex:99999});'"
+	$_sql = $_sql + ", map: map, icon:unavailable_icon, title:" + $_quote + "' || replace(replace(name,'" + $_Quote + "',''''),'\','\\') || '" + $_Quote + ", draggable:false, zIndex:2000000});'"
 	$_sql = $_sql + "|| 'u' || rowid || '.bindTo(" + $_Quote + "map" + $_Quote + ", m' || rowid || ');'"
 	$_sql = $_sql + " FROM cachesall WHERE (Archived OR TempDisabled) AND code IN(SELECT code from cachesall WHERE $_Where ORDER BY g_Distance('$d_latitude','$d_longitude',latitude,longitude,'M') LIMIT $Limit)"
 
 	$unavailable = Sqlite("sql",$_sql, "delim=%%delim%%")
 
 #u6434.bindTo('map', m6434);
+
+
+#SQLite query for flagged marker
+
+$flagged = ""
+
+IF $ShowFlags
+	$_sql = "SELECT "
+	$_sql = $_sql + "'var latlng = new google.maps.LatLng(' || $lat || ',' || $lon || ');"
+	$_sql = $_sql + "f' || rowid || ' = new google.maps.Marker({position: latlng"
+	$_sql = $_sql + ", map: map, icon:flagicon, title:" + $_quote + "' || replace(replace(name,'" + $_Quote + "',''''),'\','\\') || '" + $_Quote + ", draggable:false, zIndex:2000000, visible:' || CASE WHEN userflag THEN 'true' ELSE 'false' END || '});'"
+	$_sql = $_sql + "|| 'f' || rowid || '.bindTo(" + $_Quote + "map" + $_Quote + ", m' || rowid || ');'"
+	$_sql = $_sql + " FROM cachesall WHERE $_Where LIMIT $Limit"
+
+	$flagged = Sqlite("sql",$_sql, "delim=%%delim%%")
+ENDIF
+
+
 
 $child=""
 
@@ -301,7 +325,12 @@ $current = HttpEncode($_CurrentDatabase)
 	$info1 = $info1 + "' || CASE WHEN Archived THEN '<b><i><font color=!&!ff0000!&!>Archived</font></i></b><br /><br />' ELSE '' END || '"
 	$info1 = $info1 + "' || CASE WHEN TempDisabled THEN '<b><i><font color=!&!ff0000!&!>Temporarily Disabled</font></i></b><br /><br />' ELSE '' END || '"
 
-	$info1 = $info1 + "$_Quote + gsakButtons(''' || replace(replace(code,'" + $_Quote + "',''),'\','\\') || ''' ," + Lower("$CloseWindow") + ") + $_Quote <br><br /></center></div>"
+	IF $ShowFlags
+		$info1 = $info1 + "$_Quote + gsakButtons(''' || replace(replace(code,'" + $_Quote + "',''),'\','\\') || ''' ," + Lower("$CloseWindow") + ",''f' || rowid || ''') + $_Quote <br><br /></center></div>"
+	ELSE
+		$info1 = $info1 + "$_Quote + gsakButtons(''' || replace(replace(code,'" + $_Quote + "',''),'\','\\') || ''' ," + Lower("$CloseWindow") + ",''null'') + $_Quote <br><br /></center></div>"
+	ENDIF
+	
 
 #	$href = "<a href=\" + $_Quote + "gsak://%FF/search/' || replace(replace(code,'" + $_Quote + "',''),'\','\\') || '/$Current\" + $_Quote + ">"
 #	$info1 = $info1 + "<b>View:</b>" + $href + "<img src=!&!$viewicon!&! align=!&!top!&! hspace=!&!4!&!></a>&nbsp;&nbsp;"
@@ -318,7 +347,7 @@ $current = HttpEncode($_CurrentDatabase)
 IF $Quickflag OR $QuickSort
 	$_sql = "SELECT "
 	$_sql = $_sql + "'google.maps.event.addListener(m' || rowid || ', " + $_Quote + "click" + $_Quote + ", function() "
-	$_sql = $_sql + "{ quick(''' || replace(replace(code,'" + $_Quote + "',''),'\','\\') || '''," + Lower("$QuickFlag") + "," + Lower("$QuickSort") + ");});'"
+	$_sql = $_sql + "{ quick(''' || replace(replace(code,'" + $_Quote + "',''),'\','\\') || '''," + Lower("$QuickFlag") + "," + Lower("$QuickSort") + ",f' || rowid || ');});'"
 	$_sql = $_sql + " FROM cachesall WHERE $_Where LIMIT $Limit"
 ELSE
 	$_sql = "SELECT "
@@ -328,6 +357,14 @@ ELSE
 ENDIF
 
 $info = Sqlite("sql",$_sql, "delim=%%delim%%")
+
+
+	$_sql = "SELECT "
+	$_sql = $_sql + "'google.maps.event.addListener(m' || rowid || ', " + $_Quote + "rightclick" + $_Quote + ", function() "
+	$_sql = $_sql + "{ infowindow.setContent(" + $_Quote + $info1 + $_Quote + ");infowindow.open(map,m' || rowid || ');});'"
+	$_sql = $_sql + " FROM cachesall WHERE $_Where LIMIT $Limit"
+
+$info = $info + $_CrLf + Sqlite("sql",$_sql, "delim=%%delim%%")
 
 $_sql = "SELECT "
 $_sql = $_sql + "'google.maps.event.addListener(u' || rowid || ', " + $_Quote + "click" + $_Quote + ", function() "
@@ -347,6 +384,10 @@ $html = Replace("!!ScrollWheel!!",$UseScrollWheelString,$html)
 $html = Replace("!!LabelSize!!",$labelsize,$html)
 $html = Replace("!!HashGoesHere!!",$hash,$html)
 $html = Replace("!!UnavailableGoHere!!",$unavailable,$html)
+$html = Replace("!!FlaggedGoHere!!",$flagged,$html)
+$html = Replace("!!SilentStringGoesHere!!",$SilentString,$html)
+$html = Replace("!!DatabaseGoesHere!!",$Current,$html)
+$html = Replace("!!RequiredVersionHere!!",$JavascriptVersion,$html)
 
 $Filename = $_install + "\macros\" + $_CurrentDatabase + ".html"
 
@@ -376,6 +417,7 @@ Declare Var=$current Type=String
 Declare Var=$errormessage Type=String
 Declare Var=$errors Type=Boolean
 Declare Var=$Filename Type=String
+Declare Var=$flagged Type=String
 Declare Var=$flagicon Type=String
 Declare Var=$form Type=String
 Declare Var=$hash Type=String
@@ -385,6 +427,7 @@ Declare Var=$IncSort Type=String
 Declare Var=$incsorticon Type=String
 Declare Var=$info Type=String
 Declare Var=$info1 Type=String
+Declare Var=$JavascriptVersion Type=String
 Declare Var=$labelsize Type=String
 Declare Var=$labeltext Type=String
 Declare Var=$Large Type=Boolean
@@ -400,6 +443,7 @@ Declare Var=$QuickSort Type=Boolean
 Declare Var=$result Type=String
 Declare Var=$ShowChild Type=Boolean
 Declare Var=$ShowCode Type=Boolean
+Declare Var=$ShowFlags Type=Boolean
 Declare Var=$ShowName Type=Boolean
 Declare Var=$ShowSmart Type=Boolean
 Declare Var=$ShowText Type=Boolean
@@ -508,6 +552,10 @@ Declare Var=$y Type=Numeric
 <script type="text/javascript">
 var useScrollWheel = !!ScrollWheel!!;
 var hash = '!!HashGoesHere!!';
+var silent = '!!SilentStringGoesHere!!';
+var database = '!!DatabaseGoesHere!!';
+var requiredversion = '!!RequiredVersionHere!!';
+
 </script>
     
 <!-----external references----->
@@ -516,7 +564,7 @@ var hash = '!!HashGoesHere!!';
 <script type="text/javascript" src="http://gsak.net/stats/maps/markerclustererplus_packed.js"></script>
 <script type="text/javascript" src="http://gsak.net/stats/maps/markerwithlabel.js"></script>
 <script type="text/javascript" src="http://gsak.net/stats/maps/keydragzoom_packed.js"></script>
-<script type="text/javascript" src="http://gsak.net/stats/maps/gmaps3scriptpoly.js?v3"></script>
+<script type="text/javascript" src="http://gsak.net/stats/maps/gmaps3scriptpoly.js?v6"></script>
 
 <script type="text/javascript">
 
@@ -527,7 +575,10 @@ function localData() {
 	
 !!UnavailableGoHere!!
 
+!!FlaggedGoHere!!
+
 !!InfoHere!!
+
 
 }
 </script>
@@ -562,19 +613,19 @@ margin: 0;
 
 <Data> VarName=$form
 #********************************************************************
-# Form generated by GSAK form designer on Thu 17-Jan-2013 19:27:26
+# Form generated by GSAK form designer on Fri 18-Jan-2013 22:41:18
 #********************************************************************
 
 Name = Form1
   Type = Form
   Caption = Google Maps V3
-  Height = 460
+  Height = 480
   Width = 300
 
 Name = Groupbox1
   Type = Groupbox
   Caption = Options
-  Height = 165
+  Height = 185
   Left = 20
   Top = 46
   Width = 251
@@ -585,7 +636,7 @@ Name = Groupbox2
   Caption = Text Labels
   Height = 151
   Left = 20
-  Top = 220
+  Top = 240
   Width = 251
   Taborder = 1
 
@@ -644,7 +695,7 @@ Name = Button1
   Type = Button
   Height = 25
   Left = 104
-  Top = 390
+  Top = 410
   Width = 75
   Taborder = 2
   Caption = <img src="idx:0" align="middle"> OK
@@ -777,7 +828,7 @@ Name = versionlabel
   Type = Label
   Height = 17
   Left = 250
-  Top = 405
+  Top = 425
   Width = 30
   Caption = %v%
 
@@ -814,7 +865,19 @@ Name = QuickSort
   Taborder = 6
   Caption = 'One Click' User Sort
 
+Name = ShowFlags
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox1
+  Height = 17
+  Left = 19
+  Top = 158
+  Width = 215
+  Taborder = 7
+  Caption = Show User Flags
+
 <enddata>
+
 
 
 

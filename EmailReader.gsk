@@ -1237,7 +1237,7 @@
     ENDSUB 
 ###################################################################################
     BEGINSUB Name=ClearUserFlags
-    SPEEDMODE Status=Off
+    SPEEDMODE Status=refresh
     IF $SetUF
       IF NOT($UfCleared)
         MFILTER Where=UserFlag
@@ -1278,7 +1278,7 @@
       IF NOT($ER_ReRun) OR ($ER_ReRun AND $ReReadFlag)
         SHOWSTATUS Msg="Checking for an Exit Macro" Width=300
         IF $ExitMacro AND FileExists($EmName)
-          SPEEDMODE Status=OFF
+          SPEEDMODE Status=refresh
             WHILE NOT($_EOL)
               MACRO File=$EmName VarScope=Local
               IF $er_AdvanceDP
@@ -1708,6 +1708,7 @@
 ###################################################################################
   BEGINSUB Name=SelectUpdates
     CANCELFILTER 
+	SpeedMode Status=ON
     SHOWSTATUS Msg="Select Updates ..." Top=0
     IF $ExitDisplayOwned
       MFILTER Where=IsOwner AND MACROFLAG
@@ -1734,7 +1735,7 @@
         GOTO Position=Next
       ENDWHILE 
     ENDIF 
-
+  SpeedMode Status=Refresh
   ENDSUB 
 ###################################################################################
   BEGINSUB Name=TransactionBegin
