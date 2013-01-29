@@ -2,10 +2,10 @@
 # MacDescription = Review for Archived Caches after loading a fresh pocket query
 # MacFileName = Review_For_Archive_API.gsk
 # MacAuthor = GeePa
-# MacVersion=1.8
-#MacUrl=http://gsak.net/board/index.php?showtopic=19171&view=findpost&p=147823
+# MacVersion=1.83
+#MacUrl=http://gsak.net/board/index.php?showtopic=19171&view=findpost&p=181119
 #*******************************************
-VERCHECK Version=8.0.0.92 (please update GSAK to version 8.0.0.92 or later to run this macro - see http://gsak.net)
+VERCHECK Version=8.2.1.65 (please update GSAK to version 8.2.1.65 or later to run this macro - see http://gsak.net)
 $DB1=SysInfo("Databases")
 $DBs="*Current Database*" + ";" + $DB1
 $Filters = SysInfo("filters")
@@ -68,14 +68,6 @@ BEGINSUB Name=MainForm
 
 			CASE $FormExit = "Cancel"
 				RETURN #Msg="Macro Cancelled"
-
-    		Case $FormExit = "DelayExit"
-				IF $NoParams
-					MACSETTINGS Type=S Vars=DBCombobox,UpdateFrequency,FlagsYes,IgnoreYes,WarnNum,cboFilter,MoveDB,rbDelete,rbArchive,rbMove,DisabledDays,IncludeDisabled
-				ENDIF
-				GOSUB Name=Run
-				BREAK
-			
 		ENDCASE
 	ENDWHILE
 	
@@ -137,10 +129,7 @@ BEGINSUB Name=Run
 						
 					CASE $FormExit = "btnContinue"
 						BREAK
-    		        
-					Case $FormExit = "DelayExit"
-						BREAK
-						
+
 					CASE $FormExit = "btnGoBack"
 						GoSub Name=RestorFilt
 						GOSUB Name=MainForm
@@ -150,6 +139,7 @@ BEGINSUB Name=Run
 		ENDIF
 	ENDIF
 	
+	#SPEEDMODE Status=Refresh
 	GcStatusCheck Scope=Filter ShowSummary=N
 	
 	MFILTER WHERE=Status='X' Join=AND
@@ -167,39 +157,15 @@ BEGINSUB Name=Run
 		TRANSACTION Action=End
 		
         WHILE TRUE
+			#SPEEDMODE Status=Refresh
+			SPEEDMODE Status=Off
 			IF $NoParams
 				$FormExit = form($ConfirmForm,"")
 			ELSE
 				$FormExit = "OK"
 			ENDIF
             BEGINCASE
-			
-     			Case $FormExit = "DelayExit"
-                					IF $NoParams
-					MACSETTINGS Type=S Vars=DBCombobox,UpdateFrequency,FlagsYes,IgnoreYes,WarnNum,cboFilter,MoveDB,rbDelete,rbArchive,rbMove,DisabledDays,IncludeDisabled
-					ENDIF
-					
-					IF $rbDelete
-						MACRODELETE Action=Commit
-						GoSub Name=RestorFilt
-						BREAK
-					ENDIF
-
-					IF $rbArchive
-						GoSub Name=RestorFilt
-						BREAK
-					ENDIF
-				
-					IF $rbMove
-						IF $MoveDB<>$_CurrentDatabase
-							$MoveCopy = Replace("XXXDBXXX",$MoveDB,$MoveCopy)
-							MacroSet Dialog=MoveCopy VarName=$MoveCopy
-							MoveCopy Settings=<macro>
-						ENDIF
-						GoSub Name=RestorFilt
-						BREAK
-					ENDIF
-				CASE $FormExit = "SystemExit"
+                CASE $FormExit = "SystemExit"
 					GoSub Name=RestorFilt
 					RETURN #Msg="Macro Cancelled"
 				CASE $FormExit = "OK"
@@ -260,7 +226,6 @@ ENDSUB
 
 Name = ConfigForm
   Type = Form
-  Delay = 5
   Caption = Review for Archived
   Color = 8388608
   Height = 342
@@ -434,7 +399,6 @@ Name = Label4
 
 Name = ConfirmForm
   Type = Form
-  Delay = 5
   Caption = Confirm Action
   Color = 8404992
   Height = 230
@@ -589,5 +553,6 @@ rbtCustomHalt.Checked=False
 rbtCustomIgnore.Checked=False
 rbtCustomSync.Checked=True
 <enddata>
+
 
 

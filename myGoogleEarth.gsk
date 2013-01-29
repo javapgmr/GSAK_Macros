@@ -1,5 +1,5 @@
 #================================================================================================#
-# MacVersion = 2.2.1
+# MacVersion = 2.2.2
 # MacDescription = my Google Earth Export
 # MacAuthor = Hulmgulm
 # MacFileName = myGoogleEarth.gsk
@@ -17,6 +17,9 @@
 # This macro is based on the work of Bert Geenen and markp99                                     #
 #================================================================================================#
 # History of changes:                                                                            #
+#================================================================================================#
+# 03/01/13 - v2.2.2                                                                              #
+#	 Fixed: Links from child waypoints to geocaching.com							             #
 #================================================================================================#
 # 22/07/12 - v2.2.1                                                                              #
 #	 Changed: removed deprecated macro functions	 											 #
@@ -101,7 +104,7 @@ PREPROCESS Ctrl=$forceShowConfig
 VERCHECK Version=7.5.0.000 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
 GOSUB Name=DECLAREVariables
 
-$myVersion = "2.1.1"
+$myVersion = MacHeader("MacVersion") 
 
 $currentsort = $_OrderBy
 	
@@ -843,7 +846,7 @@ BEGINSUB Name=ExportChildren
         $cBody = $cBody + "<styleUrl>#[CACHETYPE]</styleUrl>" + $_newLine
         $cBody = $cBody + "<description>" + $_newLine
         $cBody = $cBody + "<![CDATA[<table width='250'><tr><td align='center'>" + $_newLine
-        $cBody = $cBody + "<a href='[URL]'>[WPCODE]</a><br>" + $_newLine
+        $cBody = $cBody + "<a href='[WPURL]'>[WPCODE]</a><br>" + $_newLine
         $cBody = $cBody + "<font size+1><b>[WP_DESCRIPTION]</b></font><br>" + $_newLine
         $cBody = $cBody + "<i>[WP_TYPE]</i><br><br>" + $_newLine
         $cBody = $cBody + "[COMMENT]<br><br>" + $_newLine
@@ -856,7 +859,7 @@ BEGINSUB Name=ExportChildren
 
         $cBody = $cBody + "</td></tr></table>]]>" + $_newLine
         $cBody = $cBody + "</description>" + $_newLine
-        $cBody = $cBody + "<Snippet><![CDATA[<a href='[URL]'>[WPCODE]</a> [WP_DESCRIPTION]]]></Snippet>" + $_newLine
+        $cBody = $cBody + "<Snippet><![CDATA[<a href='[WPURL]'>[WPCODE]</a> [WP_DESCRIPTION]]]></Snippet>" + $_newLine
         $cBody = $cBody + "<Point><coordinates>[LON], [LAT]</coordinates></Point>" + $_newLine
         $cBody = $cBody + "</Placemark>" + $_newLine
 
@@ -868,7 +871,12 @@ BEGINSUB Name=ExportChildren
         $cBody = replace("[WP_TYPE]",     $d_cType,                     $cBody, TRUE)
         $cBody = replace("[ICONPATH]",    "http://hulmgulm.de/gc/myGoogleEarth/",   $cBody, TRUE)
         $cBody = replace("[COORDS]",      $cLatLon,                     $cBody, TRUE)
-        $cBody = replace("[URL]",         $d_cUrl,                      $cBody, TRUE)
+		IF len($d_cUrl) > 0
+			$cBody = replace("[WPURL]",       $d_cUrl,                      $cBody, TRUE)
+		ELSE
+			$cBody = replace("[WPURL]",       $d_Url,                       $cBody, TRUE)
+		ENDIF
+        $cBody = replace("[URL]",         $d_Url,                       $cBody, TRUE)
         $cBody = replace("[SNIPPET]",     $cSnippet,                    $cBody, TRUE)
         $cBody = replace("[PLACED]",      $placedDate,                  $cBody, TRUE)
         $cBody = replace("[FOUNDDATE]",   $foundDate,                   $cBody, TRUE)
@@ -1638,4 +1646,5 @@ BEGINSUB Name=DECLAREVariables
     DECLARE Var=$validchars Type=String
     DECLARE Var=$zipFile Type=String
 ENDSUB # DECLAREVariables
+
 
