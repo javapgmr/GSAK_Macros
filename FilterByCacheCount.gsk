@@ -1610,11 +1610,15 @@ Var
 Function eliminateDNFs (nofind: extended) : extended;
 Var
  _sql, status, data : string;
- totalCount, count  : integer;
+ totalCount, count, countdnf, countwn, countna  : integer;
  del : boolean;
 
  begin
  count := 0;
+ countdnf := 0;
+ countna := 0;
+ countwn := 0;
+ totalCount := 0;
   _sqleol := 0;
   _sql := 'update gccodes set gcsel=''1'' where gccode in (select lparent from logs where llogid in (select max(llogid) from logs as l1 where llogid < (select max(llogid) from logs as l2 where l1.lparent = l2.lparent) group by lparent) and (ltype = ''Didn''''t find it'' or ltype = ''Needs Archived'')) AND gccode in (select lparent from Logs where llogid in (select max(llogid) from logs group by lparent) and (ltype = ''Didn''''t find it'' or ltype = ''Needs Archived''))'; 
    status := sqlite('sql',_sql);
@@ -1633,20 +1637,23 @@ Var
          del := false;
           _sql := 'select ltype from logs where logs.lparent = ''' + data + '''  order by ldate desc, llogid desc limit 0,' + inttostr(nofind);    
           status := sqlite('sql', _sql );
-	         count := regexcount('(?m)^Didn.*it',status);
-	         if (count = nofind)  then 
+	         countdnf := regexcount('(?m)^Didn.*it',status);
+  			 countwn  := regexcount('(?m)^Write note',status);
+ 			 countna  := regexcount('(?m)^Needs.*rchived',status);  
+			 count := countdnf + countwn + countna;
+	         if (count >= nofind)  then 
 	           del := true;	         
-	     end;
+	          end;
 	     if (del) then begin
 	        _sql := 'delete from gccodes where gccode = ''' + data + '''';
 	         status := sqlite('sql', _sql);
-	         inc(count);	         
+	         inc(totalCount);	         
 	     end;
 	 
   sqlnext;
    end;
   sqlgetclose;  
-	 Showmessage('Dnf''s removed: ' + inttostr(count));
+	 Showmessage('Dnf''s removed: ' + inttostr(totalCount));
   result := count;
   end;
  end;
