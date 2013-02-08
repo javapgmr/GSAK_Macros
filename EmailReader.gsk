@@ -993,7 +993,7 @@
 ###################################################################################
   BEGINSUB Name=AddNewCacheRecord                           # v7.6 code
     TRANSACTION Action=Begin
-    SPEEDMODE Status=ON
+    SPEEDMODE Status=Refresh
       $Approved = FALSE
       IF $ER_Cdr AND $LogType=Extract($ER_nTypes,";",3)                   # CreateDummyRecord AND PUBLISHED
         $Approved = TRUE
@@ -1254,7 +1254,7 @@
               SHOWSTATUS Msg="User Flags have NOT been altered" Top=0
               $SetUF=FALSE
               DELAY MS=1200
-              SPEEDMODE Status=On
+              SPEEDMODE Status=Refresh
                 EXITSUB 
               CASE $Result=2
                 SHOWSTATUS Msg="User Flags have NOT been altered" Top=0
@@ -1268,12 +1268,12 @@
 #           CANCELFILTER
         ENDIF 
       ENDIF 
-    SPEEDMODE Status=On
+    SPEEDMODE Status=Refresh
   ENDSUB 
 ###################################################################################
   BEGINSUB Name=TestAndUpdate 
   # Run the ExitMacro if flagged and named
-  SpeedMode Status=On
+  SpeedMode Status=Refresh
     MFILTER Where=MACROFLAG
     IF $_FilterCount > 0                                          # If there are records to update
       GOTO Position=Top
@@ -1287,7 +1287,7 @@
                 GOTO Position=Next
               ENDIF 
             ENDWHILE 
-          SPEEDMODE Status=ON
+          SPEEDMODE Status=Refresh
         ENDIF 
       ENDIF 
     ENDIF 
@@ -1710,7 +1710,7 @@
 ###################################################################################
   BEGINSUB Name=SelectUpdates
     CANCELFILTER 
-	SpeedMode Status=ON
+	SpeedMode Status=Refresh
     SHOWSTATUS Msg="Select Updates ..." Top=0
     IF $ExitDisplayOwned
       MFILTER Where=IsOwner AND MACROFLAG
