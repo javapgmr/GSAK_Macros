@@ -2,12 +2,16 @@
 # MacDescription = FSG Plugin - generates a list of Well-Rounded Cacher Challenge
 # MacFileName = FSGPlugin_WRCC.gsk
 # MacAuthor = VeeN
-# MacVersion=1.02
+# MacVersion=1.03
 # MacUrl=http://gsak.net/board/index.php?showtopic=23274&st=0&#entry172447
 #*******************************************
 # v.1.0 - NEW ver.
 #
 # v. 1.01 correct images link 
+#
+# v. 1.02 correct second images link 
+#
+# v. 1.03 replace "." or "," for stars  
 #
 
 IF $_MacroLevel = 1
@@ -20,14 +24,19 @@ GOSUB Name=DeclareVariables
 
 SHOWSTATUS msg="FSGPlugin - Well-Rounded Cacher Challenge"
 $MyOut = "<br>" + $divstyle + "Well-Rounded Cacher Challenge</div><br><table>"
-$MyOut = $MyOut + "<tr><td>&nbsp;</td><td>&nbsp;</td><td><font color='#808080'>Waypoint</font></td><td><font color='#808080'>Cache Name</font></td><td><font color='#808080'>Date Found</font></td>"
+$MyOut = $MyOut + "<tr><td><font color='#808080'>difficulty</font></td><td><font color='#808080'>terrain</font></td><td><font color='#808080'>Waypoint</font></td><td><font color='#808080'>Cache Name</font></td><td><font color='#808080'>Date Found</font></td>"
 
 $difficulty = 1
 WHILE $difficulty <= 5
     $terrain=1
     WHILE $terrain <= 5
     $xdifficulty=Replace(",","_",NumToStr($difficulty))
+#    $xdifficulty=Replace(".0","",$xdifficulty)
+    $xdifficulty=Replace(".5","_5",$xdifficulty)
     $xterrain   =Replace(",","_",NumToStr($terrain))
+#    $xterrain   =Replace(".0","",$xterrain)
+    $xterrain   =Replace(".5","_5",$xterrain)
+#MSGOK msg="$difficulty/$terrain >> $xdifficulty/$xterrain"
 	 $_sql = "Select difficulty, Code, Name, FoundByMeDate, terrain from AllFinds where difficulty=$difficulty and terrain = $terrain order by ldate asc, usersort asc, llogid asc limit 1"
 	 $line = Sqlite("sql",$_sql)
          $MyOut = $MyOut + "<tr><td><img src='http://www.geocaching.com/images/stars/stars$xdifficulty.gif'></td><td><img src='http://www.geocaching.com/images/stars/stars$xterrain.gif'></td>"
@@ -62,3 +71,4 @@ ENDSUB
 <data> varname=$divstyle
 <div style='width:740px; background: #666699; font-weight: bold; line-height: 20px; font-size: 13px; color: white; border: 1px solid #000000;   text-align: center; margin-bottom: 6px;font-weight: bold; line-height: 20px; font-size: 13px; color: white; border: 1px solid #000000;   text-align: center; margin-bottom: 6px;; background: #CCCCD4; color: black'>
 <enddata>
+

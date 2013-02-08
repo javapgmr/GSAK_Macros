@@ -1,10 +1,10 @@
-# MacVersion = 1.60.00
+# MacVersion = 1.60.10
 # MacDescription = Create Map of Delorme pages for US Delorme Challenges
 # MacAuthor = KoosKoos (modified by byonke)
 # MacFileName = MapDelorme.gsk
 # MacUrl = http://gsak.net/board/index.php?showtopic=9645&st=0&#entry62269
 #
-# Current version release date = 2012-01-11
+# Current version release date = 2012-11-14
 #
 # This macro owes its existence to the fine work of Lignumaqua and specifically, his
 # CheckCounties.gsk macro and all the additions provided by KoosKoos.
@@ -63,6 +63,7 @@
 # 2010-09-27	1.50.09 Fixed errors in Virginia
 # 2012-01-11 	1.50.10 Fixed errors for pages 26 and 27 in Texas
 # 2012-07-25 	1.60.00 Replaced deprecated commands
+# 2012-11-14 	1.60.10 Fixed so filter will work again
 
 
 VERCHECK Version=7.6.2.17 (Note: this macro requires at least GSAK "patch" 7.6.2.17 - please see the 7.6.2 patch thread here: http://gsak.net/board/index.php?showtopic=12781)
@@ -181,24 +182,6 @@ $status = sqlite("import",$DelormeSQlFile,"table=USDelorme")
 
 SHOWSTATUS msg="Loading Delorme Definitions...75%" Width=200 Height=150 Title="Initializing"
 
-#Save the State and User Data fields from the current GSAK database out to an SQL table in the SQL database 
-# Attach our main database	
-	$sqlinputfile = SqlQuote($_CurrentDataPath + "\sqlite.db3")
-	
-	$_sql = "drop table if exists Caches"
-	$status = Sqlite("sql",$_sql,"") 
-	
-	$_sql = "ATTACH $sqlinputfile AS gsakdb"
-	$status = Sqlite("sql",$_sql)
-
-#       $Status = DbToSQLite("caches","State,UserData,User2,User3,User4,CacheType",$file)
-
-	$data = "CREATE TABLE Caches AS select State, County, UserData, User2, User3, User4, CacheType from gsakdb.caches"
-	$_sql = $data
-	$status = Sqlite("sql",$_sql,"")
-
-	$_sql = "DETACH gsakdb"
-		$status = Sqlite("sql",$_sql)
 
 # Get a list of States to populate the combo box on the menu form
 $_sql = "SELECT DISTINCT State FROM USDelorme ORDER BY State"
@@ -266,38 +249,31 @@ WHILE TRUE
       CANCEL
   ENDCASE
 
-  #$Status = DbToSQLite("caches","State,$UserDataWhere,CacheType",$file)
+#Save the State and User Data fields from the current GSAK database out to an SQL table in the SQL database using current filter.
 
+# Attach our main database	
+
+	$sqlinputfile = SqlQuote($_CurrentDataPath + "\sqlite.db3")
+	
+	$_sql = "drop table if exists Caches"
+	$status = Sqlite("sql",$_sql,"") 
+	
+	$_sql = "ATTACH $sqlinputfile AS gsakdb"
+	$status = Sqlite("sql",$_sql)
+
+#	$data = "CREATE TABLE Caches AS select State, County, UserData, User2, User3, User4, CacheType from gsakdb.caches WHERE $_where"
+	$data = "CREATE TABLE Caches AS select State, " + $UserDataWhere + ", CacheType from gsakdb.caches WHERE $_where"
+	$_sql = $data
+	$status = Sqlite("sql",$_sql,"")
+
+	$_sql = "DETACH gsakdb"
+		$status = Sqlite("sql",$_sql)
 
   BEGINCASE #Buttons
     CASE $Cancel
       CANCEL
     CASE $GetDelorme
-	
 		$tmpS=GetPolygon($UserDataSelected,"gsak_Delorme_"+$StateAbbreviation)
-		# Attach our main database	
-		$sqlinputfile = SqlQuote($_CurrentDataPath + "\sqlite.db3")
-		
-		$_sql = "drop table if exists Caches"
-		$status = Sqlite("sql",$_sql,"") 
-	
-		$_sql = "ATTACH $sqlinputfile AS gsakdb"
-		$status = Sqlite("sql",$_sql)
-
-		# $Status = DbToSQLite("caches","State,UserData,User2,User3,User4,CacheType",$file)
-
-		$data = "CREATE TABLE Caches AS select State, County, UserData, User2, User3, User4, CacheType from gsakdb.caches"
-		$_sql = $data
-		$status = Sqlite("sql",$_sql,"")
-
-		$_sql = "DETACH gsakdb"
-		$status = Sqlite("sql",$_sql)
-
-		If $FilterChosen = "NONE"
-			CancelFilter
-		Else
-			Filter Name="$FilterChosen"	
-		EndIF
     CASE $OK
 		IF $MapTest
 		$TestMode = 1
@@ -556,7 +532,7 @@ $legendTable = $legendTable + "<TD style='width:10px;height:10px;border:1px soli
 IF $TestMode = 1
   $_sql = " '$tmpN' "
 ENDIF
-
+ 
 #test code to load ALL counties
 IF $TestMode = 1
   #$_sql = "SELECT substr('$encodingString', (round((xFill / 64)-0.5))+1,1) || substr('$encodingString',(xFill % 64)+1,1) xfill, substr('$encodingString', (round((yFill / 64)-0.5))+1,1) || substr('$encodingString',(yFill % 64)+1,1) yfill, $_sql, USDelorme.DelormePage, cnt FROM USDelorme, (select DelormePage, count(*) cnt from USDelorme WHERE State like '$StateChosen' GROUP BY DelormePage) counts WHERE State like '$StateChosen' and counts.DelormePage like USDelorme.DelormePage GROUP BY xfill,yfill order by cnt desc, USDelorme.DelormePage asc"

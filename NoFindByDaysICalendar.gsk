@@ -17,7 +17,7 @@
 # V1.3.0 2011-09-24  Language Detection (Drop words shoud contain the          #
 #						ISO 639-2/B code of the language)                      #
 #                       (http://en.wikipedia.org/wiki/List_of_ISO_639-1_codes  #
-#                    French Language Added  (Fre)                              #
+#                    French Language Added  (Fre)                              # 
 #					 Change for iCal Title (Number of cache added)			   #
 #					 Cosmetic change										   #
 #                    Added: summary in the dialog box                          #
@@ -32,6 +32,13 @@
 #                    Corrected: Some german translation 					   #
 # V1.5 2011-10-20    Add: Text Edition										   #
 #                    Corrected: Inconsistency of the counter				   #
+# V1.6 2012-01-03    Corrected: Bug with first or second day of the year	   #
+#                    Added: Percentage in description and summary              # 
+# V1.7 2012-08-19    Corrected: Bug with first or second day of the year	   #
+#                    Added: Percentage in description and summary              # 
+# V1.8 2012-12-18    Corrected: Seems forget to miss the last day of year	   #
+#                    Corrected: Don't calculate Benchmark			           #
+# V1.9 2012-12-18    Corrected: No error if database is deleted                #
 #                                                                              #
 # Bug reports, feature suggestions and any other comments can be posted        #
 # on the GSAK forums or by contacting me by Geocaching.com website (Marvin A)  #
@@ -40,7 +47,7 @@
 # This code is Open Source and comes with no warranty implied or otherwise.    #
 # Feel free to modify the code, but share with others!                         #
 #                                                                              #
-# MacVersion = 1.5       													   #
+# MacVersion = 1.9     													       #
 # MacDescription = Generate iCalendar for Found By Day Challenge               #
 # MacAuthor = Marvin A"                                                        #
 # MacFileName = NoFindByDaysICalendar.gsk                                      #
@@ -132,29 +139,34 @@ $FrmVersion = $CfgVersion
 
 while 1=1
 
-	if $cmbDatabase <> $_CurrentDatabase
-		Database Name=$cmbDatabase Action=Select StopStartupMacro=Y
+	if ($cmbDatabase <> $_CurrentDatabase)
+	    if DataBaseExists($cmbDatabase)
+			Database Name=$cmbDatabase Action=Select StopStartupMacro=Y
+		else
+			$cmbDatabase = $_CurrentDatabase
+		endif
 	endif 
 
-	array(1,0) = "366"  # Total
+	array(1,0) = "366"  # Total Max
 	array(2,0) = "366"  # By Year
 	array(1,-1) = "0"
 	array(2,-1) = "0"
 
 	# Calculate Array of found / days
 	# Find all year where you found at least one cache
-	$_sql = "Select distinct(cast(strftime('%Y',FoundByMeDate) as integer)) as Years from caches where Found = 1"
+
+	$_sql = "Select distinct(cast(strftime('%Y',FoundByMeDate) as integer)) as Years from caches where (Found = 1 and CacheType <> 'G')"
 	$Years = Sqlite("sql",$_sql)
 	# Find number of years where you found at least one cache
-	$_sql = "Select count(distinct(cast(strftime('%Y',FoundByMeDate) as integer))) as NbrYears from caches where Found = 1"
+	$_sql = "Select count(distinct(cast(strftime('%Y',FoundByMeDate) as integer))) as NbrYears from caches where (Found = 1 and CacheType <> 'G')"
 	$NbrYears = val(Sqlite("sql",$_sql))
-
+	
 	$NoCurrentYear = 1
 	while $NoCurrentYear <= $NbrYears
 
 		$CurrentYear = Extract($Years, $_NewLine, $NoCurrentYear)
 		# For each year, found total caches for one day
-		$_sql = "Select cast(strftime('%j',FoundByMeDate) as integer) as DayNbr, sum('1') as Total from caches where Found = 1 and cast(strftime('%Y',FoundByMeDate) as integer) = '$CurrentYear' group by DayNbr"
+		$_sql = "Select cast(strftime('%j',FoundByMeDate) as integer) as DayNbr, sum('1') as Total from caches where (Found = 1 and CacheType <> 'G') and cast(strftime('%Y',FoundByMeDate) as integer) = '$CurrentYear' group by DayNbr"
 		$result = Sqlite("sql",$_sql,"sqlget=yes")
 		
 		$Leap = ValidDate($CurrentYear + "0229")
@@ -169,7 +181,6 @@ while 1=1
 			array(1, $DayNbr) = NumToStr(val(array(1, $DayNbr)) + $Total)
 			sqlnext
 		Endwhile
-
 
 		$NoCurrentYear = $NoCurrentYear + 1
 	endwhile
@@ -199,8 +210,7 @@ while 1=1
 	endif
 
 	#lblNbrDays
-	
-	$_sql = "SELECT strftime('%Y','now') as CurrentYear, strftime('%Y','now', '+1 year') as NextYear, strftime('%j','now') as StartDayNbr, strftime('%j','now','+364 days') as EndDayNbr"
+	$_sql = "SELECT strftime('%Y','now') as CurrentYear, strftime('%Y','now', '+1 year') as NextYear, strftime('%j','now') as StartDayNbr, strftime('%j','now','+1 year') as EndDayNbr"
 	$result = Sqlite("sql",$_sql, "sqlget=yes")
 	$CurrentYear = sqlget("CurrentYear")
 	$NextYear = sqlget("NextYear")
@@ -212,10 +222,14 @@ while 1=1
 	
 	$CurrentDayNbr = $StartDayNbr
 	$NumberOfDay = val($FrmMonth) * 31
+	if $FrmMonth = "12"
+		$NumberOfDay = 365
+	endif
 	$CalculNbrDays = 0
 	$NoDay = 0
 
-	while ($CurrentDayNbr <> $EndDayNbr) and ($NumberOfDay > 0)
+	while ($CurrentDayNbr <> $EndDayNbr) and ($NumberOfDay >= 0)
+
 		if ($CurrentDayNbr >= 60) and ($CurrentLeap = False)
 			$Adjustement = 1
 		else
@@ -229,7 +243,7 @@ while 1=1
 		endif
 
 		$CurrentDayNbr = $CurrentDayNbr + 1
-		if $CurrentDayNbr = 366
+		if ($CurrentDayNbr = 367) and ($EndDayNbr <> 366)
 			$CurrentDayNbr = 1
 			$CurrentLeap = $NextLeap
 			$CurrentYear = $NextYear
@@ -318,7 +332,7 @@ while 1=1
 			$BeginVCal = $BeginVCal + "X-WR-CALDESC:$iCalParamsCalDescription$_NewLine"
 			$result = PutFile($FrmFilename, $BeginVCAL)
 
-			$_sql = "SELECT strftime('%Y','now') as CurrentYear, strftime('%Y','now', '+1 year') as NextYear, strftime('%j','now') as StartDayNbr, strftime('%j','now','+364 days') as EndDayNbr"
+			$_sql = "SELECT strftime('%Y','now') as CurrentYear, strftime('%Y','now', '+1 year') as NextYear, strftime('%j','now') as StartDayNbr, strftime('%j','now','+1 year') as EndDayNbr"
 			$result = Sqlite("sql",$_sql, "sqlget=yes")
 			$CurrentYear = sqlget("CurrentYear")
 			$NextYear = sqlget("NextYear")
@@ -330,6 +344,7 @@ while 1=1
 			$CurrentDayNbr = $StartDayNbr
 			$NumberOfDay = val($FrmMonth) * 31
 			$CalculNbrEvents = 0
+			$TotalNbrDays = $CalculNbrDays
 			while ($CurrentDayNbr <> $EndDayNbr) and ($NumberOfDay > 0)
 				if ($CurrentDayNbr >= 60) and ($CurrentLeap = False)
 					$Adjustement = 1
@@ -360,9 +375,11 @@ while 1=1
 					else
 						$Text = $TextFewLogs
 					endif
+					$percent = AllTrim(Str(($CalculNbrDays / $TotalNbrDays) * 100, 5, 2))
 					$Text = Replace("%a", $FrmNumber, $Text)
 					$Text = Replace("%f", NumToStr($TodayFind), $Text)
 					$Text = Replace("%r", NumToStr($CalculNbrDays), $Text)
+					$Text = Replace("%p", $percent, $Text)
 					$Text = UTF8($Text,"e")
 					$SubParam = "SUMMARY:$Text"
 					Gosub Name=CutLine
@@ -376,6 +393,7 @@ while 1=1
 					$Text = Replace("%a", $FrmNumber, $Text)
 					$Text = Replace("%f", NumToStr($TodayFind), $Text)
 					$Text = Replace("%r", NumToStr($CalculNbrDays), $Text)
+					$Text = Replace("%p", $percent, $Text)
 					$Text = UTF8($Text,"e")
 					$SubParam = "DESCRIPTION:$Text"
 					Gosub Name=CutLine
@@ -397,7 +415,7 @@ while 1=1
 				endif
 
 				$CurrentDayNbr = $CurrentDayNbr + 1
-				if $CurrentDayNbr = 366
+				if ($CurrentDayNbr = 367) and ($EndDayNbr <> 366)
 					$CurrentDayNbr = 1
 					$CurrentLeap = $NextLeap
 					$CurrentYear = $NextYear
@@ -1380,7 +1398,7 @@ Name = btnEditText
 
 <Data> VarName=$formsTxtEng
 #********************************************************************
-# Form generated by GSAK form designer on jeu. 20-oct.-2011 14:35:03
+# Form generated by GSAK form designer on mar. 03-janv.-2012 17:03:55
 #********************************************************************
 
 Name = FormTxtEng
@@ -1513,7 +1531,7 @@ Name = HTMLabel8
   Type = Label
   Height = 17
   Left = 132
-  Top = 256
+  Top = 271
   Width = 198
   Caption = \n = New line (only in Event Description)
 
@@ -1522,7 +1540,7 @@ Name = btnOk
   Enter = Yes
   Height = 25
   Left = 132
-  Top = 322
+  Top = 335
   Width = 75
   Taborder = 16
   Caption = Ok
@@ -1532,7 +1550,7 @@ Name = btnCancel
   Escape = Yes
   Height = 25
   Left = 242
-  Top = 322
+  Top = 335
   Width = 75
   Taborder = 17
   Caption = Cancel
@@ -1541,23 +1559,32 @@ Name = btnResetText
   Type = Button
   Height = 25
   Left = 132
-  Top = 290
+  Top = 303
   Width = 185
   Taborder = 18
   Caption = Default Texts
 
+Name = HTMLabel9
+  Type = Label
+  Height = 17
+  Left = 129
+  Top = 254
+  Width = 180
+  Caption = %p = Pourcentage of days remaining
+
 <enddata>
+
 
 
 <Data> VarName=$formsTxtFre
 #********************************************************************
-# Form generated by GSAK form designer on jeu. 20-oct.-2011 15:06:54
+# Form generated by GSAK form designer on mar. 03-janv.-2012 17:04:35
 #********************************************************************
 
 Name = FormTxtFre
   Type = Form
   Caption = Text
-  Height = 482
+  Height = 502
   Width = 470
 
 Name = Label1
@@ -1682,9 +1709,9 @@ Name = HTMLabel7
 
 Name = HTMLabel8
   Type = Label
-  Height = 17
+  Height = 22
   Left = 132
-  Top = 295
+  Top = 308
   Width = 197
   Caption = \n = Nouvelle ligne   (Seulement dans la
 
@@ -1693,7 +1720,7 @@ Name = btnOk
   Enter = Yes
   Height = 44
   Left = 130
-  Top = 367
+  Top = 375
   Width = 75
   Taborder = 16
   Caption = Ok
@@ -1703,7 +1730,7 @@ Name = btnCancel
   Escape = Yes
   Height = 44
   Left = 240
-  Top = 367
+  Top = 375
   Width = 75
   Taborder = 17
   Caption = Cancel
@@ -1718,9 +1745,9 @@ Name = Label4
 
 Name = HTMLabel9
   Type = Label
-  Height = 17
+  Height = 22
   Left = 154
-  Top = 307
+  Top = 320
   Width = 141
   Caption = description d'un événement)
 
@@ -1728,18 +1755,28 @@ Name = btnResetText
   Type = Button
   Height = 25
   Left = 130
-  Top = 335
+  Top = 343
   Width = 185
   Taborder = 18
   Caption = Textes par défaut
+
+Name = HTMLabel10
+  Type = Label
+  Height = 17
+  Left = 132
+  Top = 293
+  Width = 165
+  Caption = %p = Pourcentage restant au défi
 
 <enddata>
 
 
 
+
+
 <Data> VarName=$formsTxtDeu
 #********************************************************************
-# Form generated by GSAK form designer on jeu. 20-oct.-2011 14:55:03
+# Form generated by GSAK form designer on mar. 03-janv.-2012 17:06:36
 #********************************************************************
 
 Name = FormTxtDeu
@@ -1872,7 +1909,7 @@ Name = HTMLabel8
   Type = Label
   Height = 17
   Left = 94
-  Top = 293
+  Top = 309
   Width = 197
   Caption = \n = New Line (nur in der Beschreibung)
 
@@ -1881,7 +1918,7 @@ Name = btnOk
   Enter = Yes
   Height = 44
   Left = 142
-  Top = 373
+  Top = 380
   Width = 75
   Taborder = 16
   Caption = Ok
@@ -1891,7 +1928,7 @@ Name = btnCancel
   Escape = Yes
   Height = 44
   Left = 252
-  Top = 373
+  Top = 380
   Width = 75
   Taborder = 17
   Caption = Abbrechen
@@ -1908,12 +1945,21 @@ Name = btnResetText
   Type = Button
   Height = 25
   Left = 142
-  Top = 341
+  Top = 348
   Width = 185
   Taborder = 18
   Caption = Standard-Text
 
+Name = HTMLabel9
+  Type = Label
+  Height = 17
+  Left = 92
+  Top = 292
+  Width = 322
+  Caption = %p = Prozentsatz der verbleibenden Tage auf die Herausforderung
+
 <enddata>
+
 
 
 

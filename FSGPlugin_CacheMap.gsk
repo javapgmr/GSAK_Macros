@@ -2,7 +2,7 @@
 # MacDescription = FSG Plugin - Display a map of found or placed caches
 # MacFileName = FSGPlugin_CacheMap.gsk
 # MacAuthor = Doblinus
-# MacVersion = 3.01
+# MacVersion = 3.02
 # MacUrl=http://gsak.net/board/index.php?showtopic=17937&view=findpost&p=127452
 #*******************************************
 
@@ -52,6 +52,8 @@
 #                    new parameter OUTFILE
 #  V3.01 2012-01-09  AddStr()
 #                    minor code improvements
+#  V3.02 2012-06-10  max. zom level now 21
+#                    new parameter POI for evaluating file with poi data
 
 
 #MSGOK msg=Macro start, MacroParms: $_MacroParms
@@ -103,8 +105,8 @@ $zoom = Int($zoom)
 if $zoom < 1
 	$zoom = 1
 endif
-if $zoom > 14
-	$zoom = 14
+if $zoom > 21
+	$zoom = 21
 endif
 $corr = 2 ^ ($zoom - 1)
 
@@ -230,6 +232,7 @@ else
 	$_sql = "SELECT $sqlcorr,CacheType,Code,Name FROM $tab_name where $Locationless"
 endif
 GOSUB Name=CheckArchivedAndCountry
+#msgok msg=$_sql
 $work = Sqlite("sql",$_sql)
 $list = list("MyList","create",$_CrLf)
 $list = list("MyList","replace",$work)
@@ -314,6 +317,82 @@ while $count < $num_caches
 	endif
 endwhile
 $list = list("MyList","destroy","")
+
+# check for poi file
+if $poi_file<>""
+	if FileExists($poi_file)
+		SHOWSTATUS msg="Macro CacheMap checking POI" Width=350
+		if $poi_logo_size=0
+			$poi_logo_size = $logo_size
+		endif
+		FileRead File=$poi_file
+#			msgok msg="line: $line"
+			$poi_code = AllTrim(Extract($line,";",1))
+			if $poi_code<>""
+				$poi_lat = Val(AllTrim(Extract($line,";",2)))
+				$poi_lon = Val(AllTrim(Extract($line,";",3)))
+				$poi_title = AllTrim(Extract($line,";",4))
+				$poi_logo = AllTrim(Extract($line,";",5))
+				$poi_link = AllTrim(Extract($line,";",6))
+#				msgok msg="$poi_lat$_CrLf$poi_lon$_CrLf$poi_title$_CrLf$poi_logo$_CrLf$poi_link"
+				
+				$y = $poi_lat
+				$x = $poi_lon
+				$phi = $y
+				GOSUB Name=Mercator
+				$y = $mphi
+				if ($x > $x_min2) and ($x < $x_max2) and ($y > $y_min) and ($y < $y_max) 
+					# poi hits map
+
+					# get bitmap position x
+					$x = ($x - $x_min) / $x_scale - $poi_logo_size / 2 
+
+					# get bitmap position y
+					$y = Int(($y - $y_min) / $y_scale + $poi_logo_size / 2)
+
+					$x = Int($x / 2 + $x_size / 4)
+
+					# check for out of border in x
+					if $x < 0
+						$x = 0
+					endif
+					if $x > ($x_size - $poi_logo_size)
+						$x = $x_size - $poi_logo_size
+					endif
+		
+					$x = $x + $indent
+
+					# change top/bottom
+					$y = $y_size - $y
+
+					# check for out of border in y
+					if $y < 0
+						$y = 0
+					endif
+					if $y > ($y_size - $poi_logo_size)
+						$y = $y_size - $poi_logo_size
+					endif
+
+					# calculate back move
+					$deltay = $y + $poi_logo_size
+
+					# finally output stuff
+					$MyOut = AddStr(9,"add","<div style='margin-top:$y"+"px;margin-left:$x"+"px;width:$poi_logo_size"+"px;height:$poi_logo_size"+"px;'>")	
+					if $poi_link<>""
+						$MyOut = AddStr(9,"add","<a href='$poi_link'target='_blank'>")	
+					endif
+					$MyOut = AddStr(9,"add","<img width='$poi_logo_size'src='$poi_logo'border='0'title=$_Quote$poi_title$_Quote>")		
+					if $poi_link<>""
+						$MyOut = AddStr(9,"add","</a>")	
+					endif
+					$MyOut = AddStr(9,"add","</div><div style='margin-top:-$deltay"+"px;'></div>$_CrLf")		
+				endif
+			endif
+		EndRead
+	else
+		RETURN msg=POI file '$poi_file' not found.$_CrLf Plugin CacheMap will now terminate.
+	endif
+endif
 
 $MyOut = AddStr(9,"add","<div style='margin-top: $y_size"+"px;'></div>$_CrLf")
 
@@ -429,6 +508,14 @@ BEGINSUB Name=DeclareVariables
 	Declare Var=$CallerFSG Type=Boolean
 	Declare Var=$strOutFileName Type=String
 	Declare Var=$strOutPathName Type=String
+	Declare Var=$poi_file Type=String
+	Declare Var=$poi_code Type=String
+	Declare Var=$poi_lat Type=Numeric
+	Declare Var=$poi_lon Type=Numeric
+	Declare Var=$poi_logo_size Type=Numeric
+	Declare Var=$poi_title Type=String
+	Declare Var=$poi_logo Type=String
+	Declare Var=$poi_link Type=String
 ENDSUB
 
 
@@ -442,7 +529,7 @@ BEGINSUB name=GetParameters
 		while $i <= $count+1
 			$Text1 = extract($Parms,"&",$i)
 			$Text2 = upper($Text1)
-			#MSGOK msg="parameter $i:   '$Text1'   '$Text2'"
+#			MSGOK msg="parameter $i:   '$Text1'   '$Text2'"
 			
 			if (AT("MAPTYPE", $Text2) = 1)
 				$Text2 = upper(extract($Text1,"=",2))
@@ -605,6 +692,22 @@ BEGINSUB name=GetParameters
 				$Text2 = ""
 			endif
 
+			if (AT("POIFILE", $Text2) = 1)
+				$Text2 = extract($Text1,"=",2)
+				if $Text2 <> ""
+					$poi_file = "$_Install\Macros\"+$Text2
+				endif
+				$Text2 = ""
+			endif
+
+			if (AT("POILOGO", $Text2) = 1)
+				$Text2 = extract($Text1,"=",2)
+				if $Text2 <> ""
+					$poi_logo_size = Val($Text2)
+				endif
+				$Text2 = ""
+			endif
+
 			$i = $i+1
 		endwhile
 	else
@@ -665,7 +768,7 @@ BEGINSUB name=GetHome
 		#MSGOK msg="data: $data"
 		if upper(Extract($data,",",1)) = "HOME"
 			$HomeCoords = Extract($data,",",2)
-			$HomeCoords = $HomeCoords+Extract($data,",",3)
+			$HomeCoords = $HomeCoords+" "+Extract($data,",",3)
 		endif
 		$incr = $incr + 1
 	endwhile
@@ -677,7 +780,7 @@ BEGINSUB name=GetHome
 		#MSGOK msg="trans HomeCoords: $Temp1"
 		$y_center = Val(Extract($Temp1,";",1))
 		$x_center = Val(Extract($Temp1,";",2))
-#		msgok msg="Home $y_center,$x_center"
+		#MSGOK msg="Home $y_center,$x_center"
 	endif
 ENDSUB
 
@@ -706,6 +809,8 @@ BEGINSUB Name=InitVariables
 	$CallerFSG = true
 	$strOutPathName = "$_Install\Macros\"
 	$strOutFileName = $strOutPathName+"CacheMap_output.htm"
+	$poi_file = ""
+	$poi_logo_size = 0
 
 	# constants
 	$x_scale = 360/512    # arround the world 
@@ -837,6 +942,7 @@ else
 #	msgok msg="CacheMap running stand alone!"
 endif
 ENDSUB
+
 
 
 

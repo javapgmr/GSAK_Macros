@@ -1,4 +1,5 @@
-# MacVersion = 3.1.28
+#*******************************************
+# MacVersion = 3.2.01
 # MacDescription = Generates badges based on your geocaching accomplishments.
 # MacAuthor = ky.m.guy
 # MacFileName = BadgeGen.gsk
@@ -8,7 +9,7 @@
 
 
 #Changes:
-#-Fixed issue with Scuba badge that happened if user had found 9 scuba caches.
+#-Fixed issue with geocaching belt IF user has less than 100 finds.
 
 
 
@@ -18,9 +19,9 @@ ENDSUB
 
 
 TIMER status=on
-$Version = "V3.1.28"
+$Version = "V" + MacHeader("MacVersion")
 #$Version = GetUrl("http://badgegen.com/MacroFiles/CurrentReleaseVersion.php") ##Uncomment to hide 'New Version Banner'
-VERCHECK Version=8.1.1.11 (please update GSAK to version 8.1.1.11 to run this macro.)
+VERCHECK Version=8.1.1.11 (please update GSAK to version 8.0 to run this macro.)
 
 
 GOSUB name=VersionCheck
@@ -67,7 +68,7 @@ BEGINSUB name=VersionCheck
 			$Form = EditForm($Form,"NoNewVersion","File","GeocoinAdimg.jpg")
 			$Form = EditForm($Form,"NoNewVersion","Name","GeocoinAdimg")
 			$picName = "GeocoinAdimg"
-		ENDIF		
+		ENDIF
 		IF $Version <> $MostRecentVersion
 			$Form = EditForm($Form,$picName,"ExitonClick","Yes")
 			$Form = EditForm($Form,$picName,"File","Version.gif")
@@ -92,7 +93,7 @@ DECLARE Var=$AvailableCountries type=string
 OPTION explicit=off
 $AvailableCountries = ""
 $Size="100"
-$Refreshplaced = TRUE
+$Refreshplaced = FALSE
 $Light="FFCCCC"
 $Dark="FF8080"
 $Current=$_CurrentDatabase
@@ -219,11 +220,13 @@ BEGINSUB name=StateForm
 		$FormExit = Form($stateform,"")
 		BEGINCASE
 		CASE $FormExit = "OK"
+			GOSUB name="CheckSelectedStates"
 			GOSUB name=MainForm
 		CASE $FormExit = "SystemExit"
+			GOSUB name="CheckSelectedStates"
 			GOSUB name=MainForm
-		#CASE $FormExit = "SelectAll"
-		#	$AvailableCountries = $StateValues
+			#CASE $FormExit = "SelectAll"
+			#	$AvailableCountries = $StateValues
 			GOSUB name=StateForm
 		CASE $FormExit = "SelectNone"
 			$AvailableCountries = ""
@@ -231,15 +234,6 @@ BEGINSUB name=StateForm
 		ENDCASE
 	ENDWHILE
 ENDSUB #name=StateForm
-
-
-
-
-
-
-
-
-
 
 
 
@@ -324,7 +318,7 @@ BEGINSUB name=SpecialHelper
 
 
 	BEGINSUB name=HELP
-	
+
 		$Help_NotTag = Replace("BadgeGen","BadgeGenNot",$Help_tag)
 		MFILTER Where=$_sql
 		IF $_FilterCount>0
@@ -445,14 +439,13 @@ chkSaveDatabase.Checked=False
 #------------------------------------------------------------------------------------------------------------------------------------------
 
 BEGINSUB name=RUN
-
 	$HasRun=TRUE
-	MACSETTINGS Type=S Vars=GetLogsMsg,Geocoin_submit,RefreshPlaced,AvailableCountries,Dark,Light,AutoCountTrackables,DelayRun,HasRun,Override,HomeCoords,SortBadges,MultipleLines,TopDiamond,TopBronze,ShowBelt,NotesSettings,NotesSection,Editbox,Editbox2,Suppress,Username,Size,ShowType,CoinString,TravString,ShowSize,ShowHidd,ShowDate,ShowTrack,ShowDT,ShowLocation,ShowOther,Hide_selection,PostMacroFile,RunPostMacro,WritetoFSG File="$BadgeGenSettings"
+	MACSETTINGS Type=S Vars=GetLogsMsg,Geocoin_submit,RefreshPlaced,AvailableCountries,Feedback,SeparateFlags,Dark,Light,AutoCountTrackables,DelayRun,HasRun,Override,HomeCoords,Sortbadges,MultipleLines,TopDiamond,TopBronze,ShowBelt,NotesSettings,NotesSection,Editbox,Editbox2,Suppress,Username,Size,ShowType,CoinString,TravString,ShowSize,ShowHidd,ShowDate,ShowTrack,ShowDT,ShowLocation,ShowOther,Hide_selection,PostMacroFile,RunPostMacro,WritetoFSG File="$BadgeGenSettings"
 
-#######	IF $FirstPerson=FALSE AND $Username=""
-#######		MSGOK msg=" You did not input a username but selected 'Third Person'.$_NewLine Please enter a username."
-#######		GOSUB name=MainForm
-#######	ENDIF
+	#######	IF $FirstPerson=FALSE AND $Username=""
+	#######		MSGOK msg=" You did not input a username but selected 'Third Person'.$_NewLine Please enter a username."
+	#######		GOSUB name=MainForm
+	#######	ENDIF
 	TIMER status=on
 	SHOWSTATUS msg="Preparing Databases" top=10 Left=10
 	GOSUB name=Tense
@@ -469,16 +462,16 @@ ENDSUB #name=run
 #------------------------------------------------------------------------------------------------------------------------------------------
 
 BEGINSUB name=Tense
-###########	IF $FirstPerson=TRUE
-###########		$iYou="I"
-###########		$hh="have"
-###########		$nn="need"
-###########	ELSE
+	###########	IF $FirstPerson=TRUE
+	###########		$iYou="I"
+	###########		$hh="have"
+	###########		$nn="need"
+	###########	ELSE
 
-		$iYou = Replace("'","",$Username)
-		$hh="has"
-		$nn="needs"
-###########	ENDIF
+	$iYou = Replace("'","",$Username)
+	$hh="has"
+	$nn="needs"
+	###########	ENDIF
 ENDSUB #name=Tense
 
 #------------------------------------------------------------------------------------------------------------------------------------------
@@ -489,7 +482,7 @@ BEGINSUB name=Counter
 	$Temp = Sqlite("close","","")
 	#Selects the desired database:
 	IF not(DatabaseExists($Editbox))
-		MSGOK msg="That database does not exist.  Please try again"
+		MSGOK msg="Your found database does not exist.  Please try again"
 		GOSUB name=MainForm
 	ENDIF
 
@@ -537,16 +530,17 @@ BEGINSUB name=Counter
 	$Geoc = Val(Sqlite("sql","select count(*) from Logs where g_foundlog(ltype) AND lParent in(Select code from caches where found and CacheType<>'Y' and CacheType<>'G') and lIsOwner"))
 	$homecoords = Replace(","," ",$homecoords) #Removes any commas from the home coordinates
 	$Dist = Round(Val(Sqlite("sql","Select max(g_Distance(" + Extract(GCalc($homecoords,"FormatDegrees"),";",1) + "," + Extract(GCalc($homecoords,"FormatDegrees"),";",2) + ",latitude,longitude,'K')) from caches where found and code in(select lParent from logs where lisowner AND g_FoundLog(lType))")),0)
-	$Cale = Val(Sqlite("sql","select count(distinct substr(lDate,6,5)) from logs where lisowner and g_foundlog(ltype) and NOT lParent in(select code from caches where CacheType='G' or CacheType='Y')"))
-	$Vete = Val(Sqlite("sql","select count(distinct substr(lDate,1,4)) from logs where lisowner and g_foundlog(ltype) and NOT lParent in(select code from caches where CacheType='G' or CacheType='Y')"))
+	$Mont = Val(Sqlite("sql","SELECT count(distinct substr(PlacedDate,1,7)) from Caches where Code in (Select lParent from Logs where g_foundlog(lType) AND lIsOwner)"))
+	$Cale = Val(Sqlite("sql","select count(distinct substr(g_gcDate(lDate,lTime),6,5)) from logs where lisowner and g_foundlog(ltype) and NOT lParent in(select code from caches where CacheType='G' or CacheType='Y')"))
+	$Vete = Val(Sqlite("sql","select count(distinct substr(g_gcDate(lDate,lTime),1,4)) from logs where lisowner and g_foundlog(ltype) and NOT lParent in(select code from caches where CacheType='G' or CacheType='Y')"))
 	$Type = Val(Sqlite("sql","Select count(distinct CacheType) as types from caches where code in (select lParent from Logs where lIsowner and g_foundlog(ltype) and NOT lParent in(select code from caches where CacheType='G' or CacheType='Y')) group by FoundByMeDate order by types desc limit 1"))
-	#OLD PHOTO QUERY (Pre-API)#$Phot = Val(Sqlite("sql","select count(*) from LogImages where iLogid in (select lLogId from Logs where g_FoundLog(lType) AND lIsowner and lParent in (select code from caches where found and (CacheType<>'Y' OR CacheType<>'G')))"))
+	##OLD pre-API query:  #$Phot = Val(Sqlite("sql","select count(*) from LogImages where iLogid in (select lLogId from Logs where g_FoundLog(lType) AND lIsowner and lParent in (select code from caches where found and (CacheType<>'Y' OR CacheType<>'G')))"))
 	SHOWSTATUS msg="Getting Photo information from Grounspeak" top=10 Left=10
 	GOSUB name="Photo_API_Request"
 	SHOWSTATUS msg="Calculating States" top=10 Left=10
 	GOSUB name=CalculateStateBadge
 	SHOWSTATUS msg="Counting Max Finds in a Day" top=10 Left=10
-	$Twen = Val(Sqlite("sql","SELECT count(*) as rows from logs where lIsOwner and g_foundlog(ltype) group by lDate order by rows desc limit 1"))
+	$Twen = Val(Sqlite("sql","SELECT count(*) as rows from logs where lIsOwner and g_foundlog(ltype) group by g_gcDate(lDate,lTime) order by rows desc limit 1"))
 	SHOWSTATUS msg="Calculating Consecutive Days with finds" top=10 Left=10
 	GOSUB name=CalculateConsecutive
 	SHOWSTATUS msg="Counting Countries" top=10 Left=10
@@ -583,6 +577,8 @@ BEGINSUB name=Counter
 	SHOWSTATUS msg="Determining other hidden cache numbers" top=10 Left=10
 	$CountTemp = Sqlite("sql","select count(distinct CacheType) from caches where IsOwner")
 	$HiddTypes = Val($CountTemp)
+	$CountTemp = Sqlite("sql","select count(distinct container) from caches where IsOwner")
+	$HiddSizes = Val($CountTemp)
 	SHOWSTATUS msg="Count Complete" top=10 Left=10
 	$RANDOMVARR=1
 	$TEMP = List("*all","destroy","")
@@ -1882,7 +1878,7 @@ BEGINSUB name=Assignment
 	OTHERWISE
 		$VeteLeft = $VeteB1 - $Vete
 	ENDCASE #Vete
-	
+
 	BEGINCASE #Favo
 	CASE $Favo>=$FavoB1 AND $Favo<=$FavoB2
 		$FavoLeft = $FavoS1 - $Favo
@@ -1946,6 +1942,16 @@ BEGINSUB name=Assignment
 		$PhotLeft = $PhotB1 - $Phot
 	ENDCASE #Phot
 
+
+
+
+
+
+
+
+
+
+
 #Get level for each badge as a single character (for data collection)
 $GeocL = Left(Right($geocHTML,5),1)
 $TradL = Left(Right($tradHTML,5),1)
@@ -1990,6 +1996,9 @@ $MatrL = Left(Right($MatrHTML,5),1)
 $TravL = Left(Right($TravHTML,5),1)
 $CoinL = Left(Right($CoinHTML,5),1)
 #$MontL = Left(Right($MontHTML,5),1)
+
+
+
 
 
 
@@ -2305,23 +2314,26 @@ ENDSUB #name=PrepareHTML
 BEGINSUB name=Output
 	GOSUB name="Report"
 
-	IF $ShowBelt
-		SHOWSTATUS msg="Determining Geocaching Belt" top=10 Left=10
-		GOSUB name=Belts
-	ENDIF
+
 
 
 	SHOWSTATUS msg="Outputting HTML Code" top=10 Left=10
 
 	#GOSUB name=convert
-	$HTMLCode= $HTMLCode + "$GeocCode$TradCode$MultCode$MystCode$VirtCode$EartCode$WherCode$LettCode$WebcCode$ApecCode$EvenCode$CitoCode$MegaCode$TenyCode$BencCode$WaymCode$MicrCode$SmalCode$ReguCode$LargCode$FTFCode$CounCode$FiveCode$DifiCode$TerrCode$TwenCode$ConsCode$CaleCode$VeteCode$NighCode$PhotCode$WritCode$ElevCode$LoweCode$DistCode$MatrCode$UndeCode$HiddCode$HostCode$FavoCode$TravCode$CoinCode"
+	$HTMLCode= $HTMLCode + "$GeocCode$TradCode$MultCode$MystCode$VirtCode$EartCode$WherCode$LettCode$WebcCode$ApecCode$EvenCode$CitoCode$MegaCode$TenyCode$BencCode$WaymCode$MicrCode$SmalCode$ReguCode$LargCode$FTFCode$CounCode$FiveCode$DifiCode$TerrCode$TwenCode$ConsCode$CaleCode$VeteCode$NighCode$WritCode$PhotCode$ElevCode$LoweCode$DistCode$MatrCode$UndeCode$HiddCode$HostCode$FavoCode$TravCode$CoinCode"
 
+
+	IF $ShowBelt
+		SHOWSTATUS msg="Determining Geocaching Belt" top=10 Left=10
+		GOSUB name=Belts
+	ENDIF
 	IF $SortBadges
 		GOSUB name=SortBadges
+		$HTMLCode = $HTMLCode +  "<br>$BeltCode<br>$_NewLine $Link $_NewLine</Center>"
 	ELSE
 		$HTMLCode="$Centre$_NewLine" + "$HTMLCode" + "<br>$BeltCode<br>$_NewLine $Link $_NewLine$endcentre"
 	ENDIF
-		$HTMLCode = $HTMLCode + "<p align=center><font size=1 face=Verdana>$Hide_text</p></font>"
+	$HTMLCode = $HTMLCode + "<p align=center><font size=1 face=Verdana>$Hide_text</p></font>"
 	SHOWSTATUS msg="Generating 'More Information' table" top=10 Left=10
 	GOSUB name=MoreInfo
 	SHOWSTATUS msg="Outputting...copying to clipboard" top=10 Left=10
@@ -2331,7 +2343,7 @@ BEGINSUB name=Output
 	SHOWSTATUS msg="Outputting...saving preview" top=10 Left=10
 	$Data = PutFile($SaveLocation,"$HTMLCode")
 	$Data = PutFile("$BadgeGenArchive"+"\Current.htm","$HTMLCode")
-	$Data = PutFile($_AppData + "\Macros\BadgeTemp.htm","$HTMLCode") #depreciated....left in for legacy support.
+	$Data = PutFile($_AppData + "\Macros\BadgeTemp.htm","$HTMLCode") #deprecated....left in for legacy support.
 	SHOWSTATUS msg="Collecting Data" top=10 Left=10
 	$URL = $datasubmiturl + "user_id=$userid&version=$version&data=$username,$Geoc,$Trad,$Mult,$Myst,$Virt,$Eart,$Lett,$Wher,$Mega,$Even,$Cito,$Teny,$Benc,$Waym,$Webc,$Apec,$Micr,$Smal,$Regu,$Larg,$Five,$Difi,$Terr,$FTF,$Coun,$Hidd,$Favo,$Elev,$Lowe,$Twen,$Cons,$Cale,$Vete,$Unde,$Nigh,$Host,$Writ,$Phot,$Dist,$Matr,$Trav,$Coin,$point_total,$Mont"
 	#$Data = GetUrl($datasubmitURL)
@@ -2354,13 +2366,13 @@ BEGINSUB name=Output
 		ELSE
 			$Data = "$FirstLine"+"$_NewLine"+"$HTMLCODE"
 		ENDIF
-	
+
 		$FSGContents = GetFile("$_AppData\macros\FindStatGenNotes$NotesSettings$NotesSection.dat")
 		IF Not(RegEx("<file>BadgeGen/Archive/Current.htm</file>",$FSGContents))
 			$FSGContents = $FSGContents + $_NewLine + "<subhead>BadgeGen Achievement Badges</subhead><file>BadgeGen/Archive/Current.htm</file>"
 			$data = PutFile("$_AppData\macros\FindStatGenNotes$NotesSettings$NotesSection.dat",$FSGContents)
-		ENDIF	
-		
+		ENDIF
+
 	ENDIF
 	IF $RunPostMacro=TRUE
 		SHOWSTATUS msg="Removing Conflicting Variables" top=10 Left=10
@@ -2398,48 +2410,48 @@ ENDSUB #name=Declaration
 
 BEGINSUB name=HoverText
 	SHOWSTATUS msg="Creating Hover Text..." top=10 Left=10
-	$TradAlt="$TradName:  Awarded for finding $TradB1 or more Traditional type caches  |  $Iyou $hh $Trad and $nn $TradLeft to go up a level"
-	$MultAlt="$MultName:  Awarded for finding $MultB1 or more Multi-cache type caches  |  $Iyou $hh $Mult and $nn $MultLeft to go up a level"
-	$MystAlt="$MystName:  Awarded for finding $MystB1 or more Mystery/Puzzle type caches  |  $Iyou $hh $Myst and $nn $MystLeft to go up a level"
-	$VirtAlt="$VirtName:  Awarded for finding $VirtB1 or more Virtual type caches  |  $Iyou $hh $Virt and $nn $VirtLeft to go up a level"
-	$EartAlt="$EartName:  Awarded for finding $EartB1 or more Earthcache type caches  |  $Iyou $hh $Eart and $nn $EartLeft to go up a level"
-	$LettAlt="$LettName:  Awarded for finding $LettB1 or more Letterbox type caches  |  $Iyou $hh $Lett and $nn $LettLeft to go up a level"
-	$WherAlt="$WherName:  Awarded for finding $WherB1 or more Wherigo type caches  |  $Iyou $hh $Wher and $nn $WherLeft to go up a level"
-	$MegaAlt="$MegaName:  Awarded for attending $MegaB1 or more Mega Event caches  |  $Iyou $hh $Mega and $nn $MegaLeft to go up a level"
-	$EvenAlt="$EvenName:  Awarded for attending $EvenB1 or more Event caches  |  $Iyou $hh $Even and $nn $EvenLeft to go up a level"
-	$CITOAlt="$CITOName:  Awarded for attending $CITOB1 or more Cache-In-Trash-Out (CITO) event caches  |  $Iyou $hh $Cito and $nn $CitoLeft to go up a level"
+	$TradAlt="$TradName:  Awarded for finding $TradB1 or more Traditional type caches  |  $Iyou $hh $Trad and $nn $TradLeft more to go up a level"
+	$MultAlt="$MultName:  Awarded for finding $MultB1 or more Multi-cache type caches  |  $Iyou $hh $Mult and $nn $MultLeft more to go up a level"
+	$MystAlt="$MystName:  Awarded for finding $MystB1 or more Mystery/Puzzle type caches  |  $Iyou $hh $Myst and $nn $MystLeft more to go up a level"
+	$VirtAlt="$VirtName:  Awarded for finding $VirtB1 or more Virtual type caches  |  $Iyou $hh $Virt and $nn $VirtLeft more to go up a level"
+	$EartAlt="$EartName:  Awarded for finding $EartB1 or more Earthcache type caches  |  $Iyou $hh $Eart and $nn $EartLeft more to go up a level"
+	$LettAlt="$LettName:  Awarded for finding $LettB1 or more Letterbox type caches  |  $Iyou $hh $Lett and $nn $LettLeft more to go up a level"
+	$WherAlt="$WherName:  Awarded for finding $WherB1 or more Wherigo type caches  |  $Iyou $hh $Wher and $nn $WherLeft more to go up a level"
+	$MegaAlt="$MegaName:  Awarded for attending $MegaB1 or more Mega Event caches  |  $Iyou $hh $Mega and $nn $MegaLeft more to go up a level"
+	$EvenAlt="$EvenName:  Awarded for attending $EvenB1 or more Event caches  |  $Iyou $hh $Even and $nn $EvenLeft more to go up a level"
+	$CITOAlt="$CITOName:  Awarded for attending $CITOB1 or more Cache-In-Trash-Out (CITO) event caches  |  $Iyou $hh $Cito and $nn $CitoLeft more to go up a level"
 	$TenyAlt="$TenyName:  Awarded for attending $TenyB1 or more Ten Years! event caches  |  $Iyou $hh $Teny"
-	$BencAlt="$BencName:  Awarded for finding $BencB1  or more Benchmarks  |  $Iyou $hh $Benc and $nn $BencLeft to go up a level"
-	$WaymAlt="$WaymName:  Awarded for logging $WaymB1 or more Waymarks  |  $Iyou $hh $Waym and $nn $WaymLeft to go up a level"
-	$WebcAlt="$WebcName:  Awarded for taking pictures at $WebcB1 or more Webcam type caches  |  $Iyou $hh $Webc and $nn $WebcLeft to go up a level"
-	$ApecAlt="$ApecName:  Awarded for finding $ApecB1 or more Project: A.P.E. type caches  |  $Iyou $hh $Apec and $nn $ApecLeft to go up a level"
-	$MicrAlt="$MicrName:  Awarded for finding $MicrB1 or more micro sized cache containers  |  $Iyou $hh $Micr and $nn $MicrLeft to go up a level"
-	$SmalAlt="$SmalName:  Awarded for finding $SmalB1 or more small sized cache containers  |  $Iyou $hh $Smal and $nn $SmalLeft to go up a level"
-	$ReguAlt="$ReguName:  Awarded for finding $ReguB1 or more regular sized cache containers  |  $Iyou $hh $Regu and $nn $ReguLeft to go up a level"
-	$LargAlt="$LargName:  Awarded for finding $LargB1 or more large sized cache containers  |  $Iyou $hh $Larg and $nn $LargLeft to go up a level"
-	$FiveAlt="$FiveName:  Awarded for finding $FiveB1 or more caches with a Difficulty/Terrain rating of 5/5  |  $Iyou $hh $Five and $nn $FiveLeft to go up a level"
-	$DifiAlt="$DifiName:  Awarded for finding $DifiB1 or more Difficulty 5 caches  |  $Iyou $hh $Difi and $nn $DifiLeft to go up a level"
-	$TerrAlt="$TerrName:  Awarded for finding $TerrB1 or more Terrain 5  |  $Iyou $hh $Terr and $nn $TerrLeft to go up a level"
-	$FTFAlt="$FTFName:  Awarded for being the first cacher to find $FTFB1 or more caches  |  $Iyou $hh $FTF and $nn $FTFLeft to go up a level"
-	$CounAlt="$CounName:  Awarded for finding a cache in $CounB1 or more countries  |  $Iyou $hh $Coun and $nn $CounLeft to go up a level"
-	$HiddAlt="$HiddName:  Awarded for hiding/hosting $HiddB1 or more geocaches/event caches  |  $Iyou $hh $Hidd and $nn $HiddLeft to go up a level"
-	$FavoAlt="$FavoName:  Awarded for acquiring $FavoB1 or more favourite points on hidden caches  |  $Iyou $hh $Favo and $nn $FavoLeft to go up a level"
+	$BencAlt="$BencName:  Awarded for finding $BencB1  or more Benchmarks  |  $Iyou $hh $Benc and $nn $BencLeft more to go up a level"
+	$WaymAlt="$WaymName:  Awarded for logging $WaymB1 or more Waymarks  |  $Iyou $hh $Waym and $nn $WaymLeft more to go up a level"
+	$WebcAlt="$WebcName:  Awarded for taking pictures at $WebcB1 or more Webcam type caches  |  $Iyou $hh $Webc and $nn $WebcLeft more to go up a level"
+	$ApecAlt="$ApecName:  Awarded for finding $ApecB1 or more Project: A.P.E. type caches  |  $Iyou $hh $Apec"
+	$MicrAlt="$MicrName:  Awarded for finding $MicrB1 or more micro sized cache containers  |  $Iyou $hh $Micr and $nn $MicrLeft more to go up a level"
+	$SmalAlt="$SmalName:  Awarded for finding $SmalB1 or more small sized cache containers  |  $Iyou $hh $Smal and $nn $SmalLeft more to go up a level"
+	$ReguAlt="$ReguName:  Awarded for finding $ReguB1 or more regular sized cache containers  |  $Iyou $hh $Regu and $nn $ReguLeft more to go up a level"
+	$LargAlt="$LargName:  Awarded for finding $LargB1 or more large sized cache containers  |  $Iyou $hh $Larg and $nn $LargLeft more to go up a level"
+	$FiveAlt="$FiveName:  Awarded for finding $FiveB1 or more caches with a Difficulty/Terrain rating of 5/5  |  $Iyou $hh $Five and $nn $FiveLeft more to go up a level"
+	$DifiAlt="$DifiName:  Awarded for finding $DifiB1 or more Difficulty 5 caches  |  $Iyou $hh $Difi and $nn $DifiLeft more to go up a level"
+	$TerrAlt="$TerrName:  Awarded for finding $TerrB1 or more Terrain 5  |  $Iyou $hh $Terr and $nn $TerrLeft more to go up a level"
+	$FTFAlt="$FTFName:  Awarded for being the first cacher to find $FTFB1 or more caches  |  $Iyou $hh $FTF and $nn $FTFLeft more to go up a level"
+	$CounAlt="$CounName:  Awarded for finding a cache in $CounB1 or more countries  |  $Iyou $hh $Coun and $nn $CounLeft more to go up a level"
+	$HiddAlt="$HiddName:  Awarded for hiding/hosting $HiddB1 or more geocaches/event caches  |  $Iyou $hh $Hidd and $nn $HiddLeft more to go up a level"
+	$FavoAlt="$FavoName:  Awarded for acquiring $FavoB1 or more favourite points on hidden caches  |  $Iyou $hh $Favo and $nn $FavoLeft more to go up a level"
 	$ElevAlt="$ElevName:  Awarded for finding a cache above $ElevB1$units in elevation  |  $Iyou $hh found a cache above $Elev" + "$units and $nn to find one at $ElevLeft" + "$units to go up a level"
 	$LoweAlt="$LoweName:  Awarded for finding a cache below sea level  |  $Iyou $hh found a cache below $Lowe" + "$units and $nn to find a cache below $LoweLeft" + "$units to go up a level"
 	$TwenAlt="$TwenName:  Awarded for finding $TwenB1 or more caches in a single day  |  $Iyou $hh $Twen and $nn $TwenLeft to go up a level"
 	$ConsAlt="$ConsName:  Awarded for having $ConsB1 or more consecutive days with finds  |  $Iyou $hh $Cons and $nn $ConsLeft to go up a level"
 	$CaleAlt="$CaleName:  Awarded for having found a cache on $CaleB1 or more different dates  |  $Iyou $hh $Cale and $nn $CaleLeft to go up a level"
 	$VeteAlt="$VeteName:  Awarded for finding a cache in $VeteB1 different years  |  $Iyou $hh $Vete and $nn $VeteLeft to go up a level"
-	$UndeAlt="$UndeName:  Awarded for finding $UndeB1 or more caches underwater  |  $Iyou $hh $Unde and $nn $UndeLeft to go up a level"
+	$UndeAlt="$UndeName:  Awarded for finding $UndeB1 or more caches underwater  |  $Iyou $hh $Unde and $nn $UndeLeft more to go up a level"
 	$HostAlt="$HostName:  Awarded for hosting $HostB1 or more event caches  |  $Iyou $hh hosted $Host and $nn to host $HostLeft more to go up a level"
-	$GeocAlt="$GeocName:  Awarded for finding $GeocB1 or more geocaches (any type)  |  $Iyou $hh $Geoc and $nn $GeocLeft to go up a level"
+	$GeocAlt="$GeocName:  Awarded for finding $GeocB1 or more geocaches (any type)  |  $Iyou $hh $Geoc and $nn $GeocLeft more to go up a level"
 	$DistAlt="$DistName:  Awarded for finding a cache at least $DistB1 $unitsbig from home  |  $Iyou $hh geocached $Dist" + "$unitsbig from home and $nn to geocache $DistLeft" + "$unitsbig to go up a level"
-	$MatrAlt="$MatrName:  Awarded for finding $MatrB1 caches with unique Difficulty/Terrain ratings  |  $Iyou $hh $Matr and $nn $MatrLeft to go up a level"
-	$TravAlt="$TravName:  Awarded for moving/discovering $TravB1 Travel Bugs  |  $Iyou $hh $Trav and $nn $TravLeft to go up a level"
-	$CoinAlt="$CoinName:  Awarded for moving/discovering $CoinB1 Geocoins  |  $Iyou $hh $Coin and $nn $CoinLeft to go up a level"
+	$MatrAlt="$MatrName:  Awarded for finding $MatrB1 caches with unique Difficulty/Terrain ratings  |  $Iyou $hh $Matr and $nn $MatrLeft more to go up a level"
+	$TravAlt="$TravName:  Awarded for moving/discovering $TravB1 Travel Bugs  |  $Iyou $hh $Trav and $nn $TravLeft more to go up a level"
+	$CoinAlt="$CoinName:  Awarded for moving/discovering $CoinB1 Geocoins  |  $Iyou $hh $Coin and $nn $CoinLeft more to go up a level"
 	$WritAlt="$WritName:  Awarded for having an average log length of $WritB1 words  |  $Iyou $hh approximately $Writ words/log and $nn $WritLeft to go up a level"
-	$NighAlt="$NighName:  Awarded for finding $NighB1 or more night-time caches  |  $Iyou $hh $Nigh and $nn $NighLeft to go up a level"
-	$PhotAlt="$PhotName:  Awarded for a photo gallery count of $PhotB1 or more photos  |  $Iyou $hh $Phot and $nn $PhotLeft to go up a level"
+	$NighAlt="$NighName:  Awarded for finding $NighB1 or more night-time caches  |  $Iyou $hh $Nigh and $nn $NighLeft more to go up a level"
+	$PhotAlt="$PhotName:  Awarded for a photo gallery count of $PhotB1 or more photos  |  $Iyou $hh $Phot and $nn $PhotLeft more to go up a level"
 
 	SHOWSTATUS msg="" top=10 Left=10
 ENDSUB #name=HoverText
@@ -2512,20 +2524,6 @@ ENDSUB #Convert
 
 
 
-
-
-
-#BEGINSUB name=SuggestUnde
-#	IF Not($_CurrentDatabase = $Editbox)
-#		SHOWSTATUS msg="Switching to $Editbox Database" top=10 Left=10
-#		DATABASE name=$editbox
-#	ENDIF
-#	$_sql="SELECT Count(*) FROM Caches WHERE Found AND (code in (select distinct acode from attributes where aid = 5))" #Thanks Kai Team
-#	$UndeString = Sqlite("sql",$_sql)
-#	MSGOK msg=" BadgeGen analysed your finds and thinks that you have found $UndeString caches underwater$_NewLine because $UndeString caches in your found database had a 'Scuba Gear Required' attribute. $_NewLine$_NewLine$_NewLine Press OK to return to the main form.  You may edit the number that BadgeGen suggested from there."
-#	GOSUB name=MainForm
-#ENDSUB
-
 BEGINSUB name=CalculateElevation
 	$data = Sqlite("sql","Select count(*) from caches where found and resolution=''")
 	IF Not(Val($data)=0)
@@ -2554,6 +2552,7 @@ BEGINSUB name=GetElevation
 			IF FileExists($mac)
 				MFILTER where=found #Filters for only found caches before running elevation macro.
 				IF $_FilterCount<>0
+					$mac = $mac + "?silent=true&aster30=true"
 					MACRO file=$mac
 					CANCELFILTER
 				ENDIF
@@ -2576,13 +2575,13 @@ BEGINSUB name=LogWordCount
 	$Words=RegExCount(".\b",$Data)/2
 	$_sql="select count(*) from logsall where lisowner and g_foundlog(ltype)"
 	$Count=Val(Sqlite("sql",$_sql))
-	$Writ=Round($Words/$Count,0)
+	$Writ=Round($Words/$Count,3)
 ENDSUB #name=LogWordCount
 
 
 BEGINSUB name=CalculateConsecutive
 	$TEST = list("sql","create","$_NewLine")
-	$_sql = "select distinct g_gcdate(ldate,ltime) from logs where g_foundlog(ltype) and lisowner order by ldate"
+	$_sql = "select distinct g_gcdate(ldate,ltime) from logs where g_foundlog(ltype) and lisowner order by g_gcdate(ldate,ltime)"
 	$tmpS = Sqlite("sql",$_sql)
 	$list = list("sql","replace",$tmpS)
 	$count = $_sqlrows
@@ -2641,44 +2640,6 @@ BEGINSUB name=CalculateConsecutive
 	$TEST = list("sql","destroy","")
 ENDSUB #name=Calculate Consecutive
 
-
-
-BEGINSUB name="Photo_API_Request"
-	$data = GCAPI("GetYourUserProfile",$Photo_API_Request)
-
-	IF  $_GcApiError
-		PAUSE msg="There was an error getting your posted image count.  Make sure you have an internet connection! $_NewLine $_NewLine The macro will continue with a Photo count of 0."
-		$Phot=0
-	ELSE
-		$Phot = Val(Sqlite("sql","Select Data from gcAPI where Key='/GetUserProfileResponse/Profile/a:User/a:GalleryImageCount'"))
-	ENDIF
-
-
-	<Data> Varname=$Photo_API_Request
-	<GetYourUserProfileRequest xmlns="http://www.geocaching.com/Geocaching.Live/data">
-	<AccessToken>{ACCESSTOKEN}</AccessToken>
-	<ProfileOptions>
-	<GalleryImageCount xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">true</GalleryImageCount>
-	</ProfileOptions>
-	<DeviceInfo>
-	<ApplicationCurrentMemoryUsage xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">2147483647</ApplicationCurrentMemoryUsage>
-	<ApplicationPeakMemoryUsage xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">2147483647</ApplicationPeakMemoryUsage>
-	<ApplicationSoftwareVersion xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">String content</ApplicationSoftwareVersion>
-	<DeviceManufacturer xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">String content</DeviceManufacturer>
-	<DeviceName xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">String content</DeviceName>
-	<DeviceOperatingSystem xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">String content</DeviceOperatingSystem>
-	<DeviceTotalMemoryInMB xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">1.26743233E+15</DeviceTotalMemoryInMB>
-	<DeviceUniqueId xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">String content</DeviceUniqueId>
-	<MobileHardwareVersion xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">String content</MobileHardwareVersion>
-	<WebBrowserVersion xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">String content</WebBrowserVersion>
-	</DeviceInfo>
-	</GetYourUserProfileRequest>
-	<enddata>
-
-ENDSUB ##name="Photo_API_Request"
-
-
-
 BEGINSUB name=CountTrackables
 	$FormExit = form($Form1,"")
 	BEGINCASE
@@ -2731,7 +2692,86 @@ BEGINSUB name=CountTrackables
 	ENDSUB #AutoCountTrackables
 ENDSUB #CountTrackables
 
+
+BEGINSUB name="Photo_API_Request"
+	$data = GCAPI("GetYourUserProfile",$Photo_API_Request)
+
+	IF  $_GcApiError
+		PAUSE msg="There was an error getting your posted image count.  Make sure you have an internet connection! $_NewLine $_NewLine The macro will continue with a Photo count of 0."
+		$Phot=0
+	ELSE
+		$Phot = Val(Sqlite("sql","Select Data from gcAPI where Key='/GetUserProfileResponse/Profile/a:User/a:GalleryImageCount'"))
+	ENDIF
+
+
+	<Data> Varname=$Photo_API_Request
+	<GetYourUserProfileRequest xmlns="http://www.geocaching.com/Geocaching.Live/data">
+	<AccessToken>{ACCESSTOKEN}</AccessToken>
+	<ProfileOptions>
+	<GalleryImageCount xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">true</GalleryImageCount>
+	</ProfileOptions>
+	<DeviceInfo>
+	<ApplicationCurrentMemoryUsage xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">2147483647</ApplicationCurrentMemoryUsage>
+	<ApplicationPeakMemoryUsage xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">2147483647</ApplicationPeakMemoryUsage>
+	<ApplicationSoftwareVersion xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">String content</ApplicationSoftwareVersion>
+	<DeviceManufacturer xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">String content</DeviceManufacturer>
+	<DeviceName xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">String content</DeviceName>
+	<DeviceOperatingSystem xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">String content</DeviceOperatingSystem>
+	<DeviceTotalMemoryInMB xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">1.26743233E+15</DeviceTotalMemoryInMB>
+	<DeviceUniqueId xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">String content</DeviceUniqueId>
+	<MobileHardwareVersion xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">String content</MobileHardwareVersion>
+	<WebBrowserVersion xmlns="http://schemas.datacontract.org/2004/07/Tucson.Geocaching.WCF.API.Geocaching.Types">String content</WebBrowserVersion>
+	</DeviceInfo>
+	</GetYourUserProfileRequest>
+	<enddata>
+
+ENDSUB ##name="Photo_API_Request"
+
+
+
+
+BEGINSUB name="CheckSelectedStates"
+	
+		IF not($_CurrentDatabase=$Editbox) AND DataBaseExists($Editbox)
+			DATABASE name=$Editbox StopStartupMacro=Y
+		ENDIF
+			
+			$tempStr = Replace(";",", ",$AvailableCountries) + ", XXX"
+			$counter = 1
+			$str_Bad_countries = ""
+			
+			WHILE Extract($tempStr,", ",$counter) <> "XXX"
+				$CurrentCountry = Extract($tempStr,", ",$counter)
+				$null_state = Val(Sqlite("sql","Select count(*) from caches where  country='$CurrentCountry' AND (state='Nil' OR state='') AND found"))
+				$total_in_country = Val(Sqlite("sql","Select count(*) from caches where country='$CurrentCountry' and FOUND"))
+				
+				IF ($null_state = $total_in_country) AND ($null_state<>0 AND $total_in_country<>0)
+					$str_Bad_countries = $_NewLine + $str_Bad_countries + "  - " +  $CurrentCountry
+				ENDIF
+				$counter = $counter + 1
+				
+			ENDWHILE		
+			
+			IF $str_Bad_countries<>""
+				$tempStr = "All of the caches that you have found in the following selected countries have blank " + $_Quote + "State" + $_Quote + " fields: " + $_NewLine 
+				$tempStr = $tempStr  + $str_Bad_countries + $_NewLine + $_NewLine + "You will not receive a badge for these countries until you populate the state field." + $_NewLine
+				$tempStr = $tempStr  + "Your selection has however been saved."
+				MSGOK msg=$tempStr
+			ENDIF
+			
+			$tempstr = ""
+			$counter = 1
+			
+			
+ENDSUB
+
+
+
+
+
+
 BEGINSUB name=CalculateStateBadge
+
 	$TotalStateBadges=0
 	$NOSTATEBADGE=FALSE
 	IF $ShowCoun
@@ -2751,6 +2791,7 @@ BEGINSUB name=CalculateStateBadge
 			$maxstates = Val($status)
 			#Build Regex Query to read total states in country selected
 			GOSUB name=InterpretStateData
+			
 			BEGINSUB name=InterpretStateData
 				$separator = "]["
 				$newdata = ""
@@ -2773,6 +2814,7 @@ BEGINSUB name=CalculateStateBadge
 				#Pick out total states
 				$totalstates = RegExData("[0-9]*",$entry,1)
 			ENDSUB #name=InterpretStateData
+			
 			#Skip Badge if TotalStates is zero
 			IF Not(Val($TotalStates) = 0)
 				$percentstate = Round(($maxstates / Val($totalstates)),2) * 100
@@ -2780,10 +2822,11 @@ BEGINSUB name=CalculateStateBadge
 				$percentstate = 0
 			ENDIF
 			#Set the value of $Stat
+			$StatLeft_str = ""
 			$Stat = $percentstate
 			#Determine which level of badge should be awarded and allocate image URL to $StatHTML
 			BEGINCASE #Stat
-			CASE $Stat>=$StatB1 AND $Stat<=$StatB2
+			CASE $Stat>=0.000001 AND $Stat<=$StatB2
 				$StatLeft = $StatS1 - $Stat
 				$StatLEVEL="B"
 			CASE $Stat>=$StatS1 AND $Stat<=$StatS2
@@ -2809,37 +2852,40 @@ BEGINSUB name=CalculateStateBadge
 				$StatLEVEL="D"
 			OTHERWISE
 				$NoStateBadge=TRUE
-				$StatLeft = $StatB1
+				$StatLeft_str = "> "
+				$StatLeft = 0
 				$StatHTML=""
 				$StatLevel="X"
 			ENDCASE #Stat
-
+					
+			$countryString = Replace(" ","",$MaxCountry) #Country name without spaces  for image URL
+		
 			IF Not($StatLevel="X")
-				$StatHTML=$HotlinkURL + "badgescripts/statebadge.php?level=" + "$StatLevel" + "&country=" + "$maxcountry&x=" + "$StatLevel" + ".png"
+					$StatHTML=$HotlinkURL + "country_badge/" + $countryString + $StatLevel + ".png"
 			ENDIF
 			#IF $NOSTATEBADGE=FALSE
 			#Initialize country specific variables
 			$StatName = "The $maxcountry Cacher"
 			$StatAlt="$StatName:  Awarded for finding caches in a percentage of states in $maxcountry  |  $Iyou $hh $stat"+"%"+" ($maxstates of $totalstates states) and $nn $StatLeft"+"%"+" more to go up a level"
-			$StatCODEALT ="$1$2$3$2$5$6$2 $HotlinkURL"+"/badgescripts/statebadge.php?level=" + "$StatLevel" + "&country=$maxcountry&x=" + "$StatLevel" + ".png $2$5$20$2$StatAlt$2$5$28$2$StatAlt$2$23"
+			$StatCODEALT ="$1$2$3$2$5$6$2 $HotlinkURL" + "country_badge/" + $countryString + $StatLevel + ".png $2$5$20$2$StatAlt$2$5$28$2$StatAlt$2$23"
 			#	ENDIF
 			#IF $MaxStates <> 0
 			#Open SQLite Database
 			$database = $BadgeGenFolder + "BadgeGenData.db3"
 			$data = Sqlite("open",$database)
 			#Write to SQLite Database
-			$data = Sqlite("sql","insert into chart values('','$StatName','$StatCodeAlt','$StatB1 %', '$StatS1 %', '$StatG1 %', '$StatP1 %', '$StatR1 %', '$StatSa1 %', '$StatE1 %', '$StatD %', '$Stat %',  '$Statleft %')")
+			$data = Sqlite("sql","insert into chart values('','$StatName','$StatCodeAlt','> 0 %', '$StatS1 %', '$StatG1 %', '$StatP1 %', '$StatR1 %', '$StatSa1 %', '$StatE1 %', '$StatD %', '$Stat %',  '$Statleft_str $StatLeft%')")
 			#Close SQLite Database
 			$data = Sqlite("close","")
 			#ENDIF
 			#	IF $NOSTATEBADGE=FALSE
 			#Build Badge HTML code if the badge should be awarded
-	#IF Not(RegEx(Left(Right($StatHTML,5),1),$Hide_levels))
+			#IF Not(RegEx(Left(Right($StatHTML,5),1),$Hide_levels))
 			IF not($StatHTML="")
 				$StatCode=" $1$2$3$2$5$6$2$StatHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$StatAlt$2$5$28$2$20$StatAlt$2$5$23$_NewLine"
 				$BADGENUMBER=$BADGENUMBER+1
 			ENDIF
-		#ENDIF
+			#ENDIF
 			#Append Badge HTML Code to $HTMLCode
 
 			IF $NOSTATEBADGE=FALSE
@@ -2854,130 +2900,525 @@ BEGINSUB name=CalculateStateBadge
 			$Level=""
 			$StatName=""
 			$StatCodeAlt=""
+			$StatLevel=""
 			$NOSTATEBADGE=FALSE
 		ENDWHILE
 	ENDIF
+	
+	
+	##TAYBEE's FLAG SORTING MODIFICATION:
+	         $dataflag=""
+           IF $separateflags=TRUE      # turn the split display ON/OFF
+           					 GOSUB  name=SortBadges #NEW ADDITION
+                     $dataflag = "<br><br><img src='http://www.gsak.net/bgv2/additional/flagbadges.png' /><br><br>"+ $HTMLCode +"<br>"  # put in a row
+                     $HTMLCode = ""  #reset $htmlcode to remove the flags from it
+           ENDIF 
+  ##END TAYBEE's FLAG SORTING MODIFICATION:         
+           
+           
+	
+	
+	
+	
+	
 ENDSUB #name=CalculateStateBadge
 
 
+
+
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+
+
+
+
+
+
+
 BEGINSUB name=Belts
-	$BeltHTML="$HotlinkURL"+"Belt_White.png"
+	$point_total=0
 	$BeltHSize = Val($Size) * 0.83
 	$BeltWSize = Val($Size) * 1.75
 	$BeltAlt ="Geocaching Belt"
-	GOSUB name=CountContainerGolds
-	GOSUB name=BrownConditions
-	GOSUB name=BlackConditions
+	$completion_status = ""
+	$more_belt_info = ""
+	$data_pass = ""
+	$num_temp = 0
+	$arrow = "<img src='http://badgegen.com/belt_images/arrow.png'>"
 
-	IF ($Geoc >= 100) AND ($Hidd >= 5)
-		$BeltHTML=$HotLinkURL +"Belt_Yellow.png"
+	#Start listing conditions
+
+	###
+	$condition = "1 point per 100 geocaches found."
+	$data_pass = "found"
+	$comp = $geoc
+	$num_temp = ($comp/100) - Frac($comp/100)
+	IF $comp >= 100 
+	 $completion_status = "p"
 	ENDIF
-	IF ($Geoc >= 300) AND ($Hidd >= 10)
-		$BeltHTML=$HotLinkURL +"Belt_Orange.png"
+	GOSUB name=update
+
+	###
+	$condition = "2 points per event hosted (max. 30pt)"
+	$data_pass = "hosted"
+	$comp = $host
+	$num_temp = $comp * 2
+		IF $comp >= 1
+		$completion_status = "p"
 	ENDIF
-	IF ($Geoc >= 500) AND ($Hidd >= 15) AND ($State >= 2) AND (($Even+$Mega+$Cito) >= 1)
-		$BeltHTML=$HotLinkURL +"Belt_Green.png"
+	IF $num_temp >= 30
+		$num_temp = 30
+		$completion_status = "d"
 	ENDIF
-	IF ($Geoc >= 1000) AND ($Hidd >= 20) AND ($State >= 4) AND (($Even+$Mega+$Cito) >= 3)
-		$BeltHTML=$HotLinkURL +"Belt_Blue.png"
+	GOSUB name=update
+
+	###
+	$condition = "0.5 points per Difficulty/Terrain combination after 40 combinations"
+	$data_pass = "out of 41"
+	$comp = $matr - 40
+	IF $comp>=0
+		$num_temp = $comp * 0.5
+		IF $comp = 41
+			$completion_status = "d"
+		ELSE
+			$completion_status = "p"
+		ENDIF
+	ELSE
+		$num_temp=0
+		$completion_status = "n"
 	ENDIF
-	IF ($Geoc >= 2000) AND ($State >= 8) AND ($Hidd >= 50) AND ($Host >= 1) AND (($Even+$Mega+$Cito) >= 3) AND ($BrownConditions >= 5)
-		$BeltHTML=$HotLinkURL +"Belt_Brown.png"
+	GOSUB name=update
+	
+	###
+	$condition = "10 points for completing the Difficulty/Terrain matrix"
+	$data_pass = "out of 81"
+	$comp = $matr
+	IF $comp=81
+		$num_temp = 10
+		$completion_status = "d"
+	ELSE
+		$num_temp=0
+		$completion_status = "n"
 	ENDIF
-	IF ($Geoc >= 3000) AND ($State >= 8) AND ($Hidd >= 50) AND ($Host >= 1) AND (($Even+$Mega+$Cito) >= 3) AND ($BlackConditions >= 8)
-		$BeltHTML=$HotLinkURL +"Belt_Black.png"
+	GOSUB name=update
+	
+	###
+	$condition = "20 points for finding caches in 15 states <u>OR</u> 5 countries."
+	IF $State >= 15
+		$num_temp = 20
+		$comp = $state
+		$data_pass = "states"
+		$completion_status = "d"
 	ENDIF
+	IF $coun >= 5
+		$num_temp = 20
+		$comp = $coun
+		$data_pass = "countries"
+		$completion_status = "d"
+	ENDIF
+	GOSUB name=update
+
+	###
+	$condition = "10 points per 50 caches found on date with most finds (max. 40pt)"
+	$data_pass = "caches"
+	$comp = $twen
+	$num_temp = (($comp/50) - Frac($comp/50))*10
+	IF $num_temp < 40 AND $num_temp > 0
+		$completion_status = "p"
+	ENDIF
+	IF $num_temp >= 40
+		$num_temp = 40
+		$completion_status = "d"
+	ENDIF
+	GOSUB name=update
+
+	###
+	$condition = "0.5 points per 7 consecutive days with finds. 10 point bonus at 366 days"
+	$data_pass = "days"
+	$comp = $cons
+	$num_temp = (($comp/7) - Frac($comp/7))*0.5
+	IF $comp >=366
+		$num_temp = $num_temp + 10
+	ENDIF
+	IF $num_temp > 0
+		$completion_status = "p"
+	ENDIF
+	GOSUB name=update
+
+	###
+	$condition = "0.1 points per favorite point on owned caches"
+	$data_pass = "fav. pts."
+	$comp = $favo
+	$num_temp = $comp * 0.1
+	IF $comp > 1
+		$completion_status = "p"
+	ENDIF	
+	GOSUB name=update
+
+
+	###
+	$condition = "2 points per distinct cache type on day with most distinct types found"
+	$data_pass = "types"
+	$comp = $Type
+	$num_temp = ($comp)*2
+	IF $num_temp > 0
+		$completion_status = "p"
+	ENDIF	
+	GOSUB name=update
+
+	###
+	$condition = "2 points per cache type hidden"
+	$data_pass = "types"
+	$comp = $HiddTypes
+	$num_temp = ($comp)*2
+	IF $num_temp > 0
+		$completion_status = "p"
+	ENDIF
+	GOSUB name=update
+
+	###
+	$condition = "2 points per cache size hidden"
+	$data_pass = "sizes"
+	$comp = $HiddSizes
+	$num_temp = ($comp)*2
+	IF $num_temp > 0
+		$completion_status = "p"
+	ENDIF	
+	GOSUB name=update
+
+	###
+	$condition = "0.5 points per FTF (max. 30pt)"
+	$data_pass = "FTFs"
+	$comp = $FTF
+	$num_temp = ($comp)*0.5
+	IF $num_temp > 0
+		$completion_status = "p"
+	ENDIF
+	IF $num_temp >= 30
+		$num_temp = 30
+		$completion_status = "d"
+	ENDIF
+	GOSUB name=update
+
+
+	###
+	$condition = "1 point per 5/5 difficulty/terrain cache found (max. 5pt)"
+	$data_pass = "caches"
+	$comp = $five
+	$num_temp = $comp
+		IF $num_temp > 0
+		$completion_status = "p"
+	ENDIF
+	IF $num_temp >= 5
+		$num_temp = 5
+		$completion_status = "d"
+	ENDIF
+
+	GOSUB name=update
+
+
+	###
+	$condition = "1 point per gemstone badge (excluding country badges)"
+	$data_pass = "badges"
+	$comp = RegExCount("gsak.net[\/]bgv2[\/][A-z|a-z]*([R]|[S][a]|[E]|[D]).png",$HTMLCode)
+	$num_temp = $comp
+	IF $num_temp > 0
+		$completion_status = "p"
+	ENDIF
+	GOSUB name=update
+
+
+	###
+	$condition = "2 points for every year since first find"
+	$data_pass = "years"
+	$comp = $vete
+	$num_temp = $comp * 2
+	IF $num_temp > 0
+		$completion_status = "p"
+	ENDIF	
+	GOSUB name=update
+
+
+	###
+	$condition = "0.08 points per calendar day cached on (<u>minimum</u> 8pt)"
+	$data_pass = "days"
+	$comp = $cale	
+	IF $comp<100
+		$num_temp = 0
+	ENDIF
+	IF $comp >= 100
+		$num_temp = $comp * 0.08
+		$completion_status = "p"
+	ENDIF
+	IF $num_temp >= 29.279
+		$completion_status = "d"
+	ENDIF	
+	GOSUB name=update
+
+	###
+	$condition = "0.05 points per trackable moved/discovered (max. 25pt)"
+	$data_pass = "trackables"
+	$comp = $trav + $coin
+	$num_temp = ($comp) * 0.05
+	IF $num_temp > 0
+		$completion_status = "p"
+	ENDIF	
+	IF $num_temp >= 25
+		$num_temp=25
+		$completion_status = "d"
+	ENDIF
+	GOSUB name=update
+
+	###
+	$condition = "0.1 points per photo uploaded (max. 25pt)"
+	$data_pass = "photos"
+	$comp = $phot
+	$num_temp = $comp*0.1
+	IF $num_temp > 0
+		$completion_status = "p"
+	ENDIF
+	IF $num_temp >= 25
+		$num_temp = 25
+		$completion_status = "d"
+	ENDIF
+	GOSUB name=update
 
 
 
+
+	BEGINSUB name=update
+		$point_total = $point_total + $num_temp
+		IF $feedback
+			PAUSE msg="$_Quote $condition $_Quote $_NewLine $_NewLine Received $num_temp points for this condition.  $_NewLine $_NewLine $_NewLine $_NewLine  Total points so far: $point_total."
+		ENDIF
+
+		##BUILD HTML
+		BEGINCASE
+		CASE $completion_status = "d" ##done
+			$icon_b = "<img src='http://badgegen.com/belt_images/complete.png' width=14>"
+		CASE $completion_status = "p" ##in progress
+			$icon_b = "<img src='http://badgegen.com/belt_images/partial.png' width=14>"
+		CASE $completion_status = "n" ##none
+			$icon_b = "<img src='http://badgegen.com/belt_images/none.png' width=14>"
+		OTHERWISE
+			$icon_b = "<img src='http://badgegen.com/belt_images/none.png' width=14>"
+		ENDCASE
+
+		$more_belt_info = $more_belt_info + $icon_b + "&nbsp;&nbsp;&nbsp;" + $condition + "&nbsp;" + "<font color=#4D9E4F>(" + "$comp" + "&nbsp;" + $data_pass + $arrow + "$num_temp" + "pt)</font> </br>"
+		
+		
+		
+		$comp = 0
+		$data_pass = ""
+		$completion_status = "n"
+	ENDSUB #name=update
+
+
+
+	#Assigns the number of the image based on point total.
+	GOSUB name=Assign_Image_Number
+	BEGINSUB name=Assign_Image_Number
+		IF $point_total>=30
+			$img_num=1
+		ELSE
+			$img_num=0
+		ENDIF
+		IF $point_total>=40
+			$img_num=2
+		ENDIF
+		IF $point_total>=50
+			$img_num=3
+		ENDIF
+		IF $point_total>=60
+			$img_num=4
+		ENDIF
+		IF $point_total>=70
+			$img_num=5
+		ENDIF
+		IF $point_total>=80
+			$img_num=6
+		ENDIF
+		IF $point_total>=90
+			$img_num=7
+		ENDIF
+		IF $point_total>=100
+			$img_num=8
+		ENDIF
+		IF $point_total>=110
+			$img_num=9
+		ENDIF
+		IF $point_total>=120
+			$img_num=10
+		ENDIF
+		IF $point_total>=130
+			$img_num=11
+		ENDIF
+		IF $point_total>=140
+			$img_num=12
+		ENDIF
+		IF $point_total>=150
+			$img_num=13
+		ENDIF
+		IF $point_total>=160
+			$img_num=14
+		ENDIF
+		IF $point_total>=170
+			$img_num=15
+		ENDIF
+		IF $point_total>=180
+			$img_num=16
+		ENDIF
+		IF $point_total>=190
+			$img_num=17
+		ENDIF
+		IF $point_total>=200
+			$img_num=18
+		ENDIF
+		IF $point_total>=210
+			$img_num=19
+		ENDIF
+		IF $point_total>=220
+			$img_num=20
+		ENDIF
+		IF $point_total>=232
+			$img_num=21
+		ENDIF
+		IF $point_total>=244
+			$img_num=22
+		ENDIF
+		IF $point_total>=256
+			$img_num=23
+		ENDIF
+		IF $point_total>=268
+			$img_num=24
+		ENDIF
+		IF $point_total>=280
+			$img_num=25
+		ENDIF
+		IF $point_total>=292
+			$img_num=26
+		ENDIF
+		IF $point_total>=304
+			$img_num=27
+		ENDIF
+		IF $point_total>=316
+			$img_num=28
+		ENDIF
+		IF $point_total>=328
+			$img_num=29
+		ENDIF
+		IF $point_total>=340
+			$img_num=30
+		ENDIF
+		IF $point_total>=352
+			$img_num=31
+		ENDIF
+		IF $point_total>=364
+			$img_num=32
+		ENDIF
+		IF $point_total>=376
+			$img_num=33
+		ENDIF
+		IF $point_total>=388
+			$img_num=34
+		ENDIF
+		IF $point_total>=400
+			$img_num=35
+		ENDIF
+	ENDSUB #name=Assign_Image_Number
+	$BeltHTML="$HotlinkURL"+"belts/belt" + NumToStr($img_num) + ".png"
+	$Beltalt = "Geocaching Belt: Level $img_num of 35  |  $point_total total points."
 	$BeltCode = "$HoverExplaination$1$2$3$2$5$6$2$BeltHTML$2$5$10$2$BeltWSize$2$5$15$2$BeltHSize$2$5$20$2$BeltAlt$2$5$28$2$20$BeltAlt$2$5$23$_NewLine"
 	#CLIP data=$BeltCode
 	#MSGOK msg="BeltCode is copied to clipboard"
-
-	BEGINSUB name=CountContainerGolds
-		$NumContainerGolds = 0
-		IF $Micr >= $MicrG1
-			$NumContainerGolds = $NumContainerGolds + 1
-		ENDIF
-		IF $Smal >= $SmalG1
-			$NumContainerGolds = $NumContainerGolds + 1
-		ENDIF
-		IF $Regu >= $ReguG1
-			$NumContainerGolds = $NumContainerGolds + 1
-		ENDIF
-		IF $Larg >= $LargG1
-			$NumContainerGolds = $NumContainerGolds + 1
-		ENDIF
-	ENDSUB
-
-
-	BEGINSUB name=BrownConditions
-		$BrownConditions = 0
-		IF $FTF>=50
-			$BrownConditions = $BrownConditions + 1
-		ENDIF
-		IF $Coun>=4
-			$BrownConditions = $BrownConditions + 1
-		ENDIF
-		IF $Matr >= 72
-			$BrownConditions = $BrownConditions + 1
-		ENDIF
-		IF $Five >=1
-			$BrownConditions = $BrownConditions + 1
-		ENDIF
-		IF $Cons >= 30
-			$BrownConditions = $BrownConditions + 1
-		ENDIF
-		IF $Twen >= 50
-			$BrownConditions = $BrownConditions + 1
-		ENDIF
-		IF $Dist >= 500
-			$BrownConditions = $BrownConditions + 1
-		ENDIF
-		IF $NumContainerGolds >= 3
-			$BrownConditions = $BrownConditions + 1
-		ENDIF
-		IF $Elev >= 1000
-			$BrownConditions = $BrownConditions + 1
-		ENDIF
-		IF $HiddTypes >= 3
-			$BrownConditions = $BrownConditions + 1
-		ENDIF
-	ENDSUB #BrownConditions
-	BEGINSUB name=BlackConditions
-		$BlackConditions = 0
-		IF $FTF >= 50
-			$BlackConditions = $BlackConditions + 1
-		ENDIF
-		IF $Coun >= 8
-			$BlackConditions = $BlackConditions + 1
-		ENDIF
-		IF $Matr = 81
-			$BlackConditions = $BlackConditions + 1
-		ENDIF
-		IF $Five >= 1
-			$BlackConditions = $BlackConditions + 1
-		ENDIF
-		IF $Cons >= 90
-			$BlackConditions = $BlackConditions + 1
-		ENDIF
-		IF $Twen >= 50
-			$BlackConditions = $BlackConditions + 1
-		ENDIF
-		IF $Dist >= 500
-			$BlackConditions = $BlackConditions + 1
-		ENDIF
-		IF $NumContainerGolds >= 3
-			$BlackConditions = $BlackConditions + 1
-		ENDIF
-		IF $Elev >= 1000
-			$BlackConditions = $BlackConditions + 1
-		ENDIF
-		IF $HiddTypes >= 5
-			$BlackConditions = $BlackConditions + 1
-		ENDIF
-	ENDSUB #BlackConditions
+	
 ENDSUB
+
+
+
+
+
+
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+###############################################################################################################################################################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3084,9 +3525,9 @@ BEGINSUB name=SortBadges
 
 	BEGINCASE
 	CASE $TopDiamond
-		$HTMLcode="<center> $DatalineD$DatalineE$DatalineA$DatalineR$DatalineP$DatalineG$DatalineS$DataLineB <br>$BeltCode<br>$_NewLine $Link $_NewLine</Center>"
+		$HTMLcode="<center> $DatalineD$DatalineE$DatalineA$DatalineR$DatalineP$DatalineG$DatalineS$DataLineB$dataFlag "#<br>$BeltCode<br>$_NewLine $Link $_NewLine</Center>" NEW ADDITION
 	CASE $TopBronze
-		$HTMLcode="<center> $DatalineB$DatalineS$DatalineG$DatalineP$DatalineR$DatalineA$DatalineE$DataLineD <br>$BeltCode<br>$_NewLine $Link $_NewLine</Center>"
+		$HTMLcode="<center> $DatalineB$DatalineS$DatalineG$DatalineP$DatalineR$DatalineA$DatalineE$DataLineD$dataFlag "#<br>$BeltCode<br>$_NewLine $Link $_NewLine</Center>" NEW ADDITION
 	ENDCASE
 ENDSUB #Sort Badges
 
@@ -3181,6 +3622,10 @@ BEGINSUB name=VarDec
 	DECLARE VAR=$BENCE2 TYPE=NUMERIC
 	DECLARE VAR=$BENCG1 TYPE=NUMERIC
 	DECLARE VAR=$BENCG2 TYPE=NUMERIC
+	DECLARE Var=$point_total Type=NUMERIC
+	DECLARE Var=$img_num   Type=numeric
+	DECLARE Var=$Feedback  Type=BOOLEAN
+	DECLARE Var=$condition   Type=string
 	DECLARE VAR=$BENCHTML TYPE=STRING
 	DECLARE VAR=$BENCLEFT TYPE=NUMERIC
 	DECLARE VAR=$BENCLIMIT TYPE=NUMERIC
@@ -3265,6 +3710,7 @@ BEGINSUB name=VarDec
 	DECLARE VAR=$COINSA1 TYPE=NUMERIC
 	DECLARE VAR=$COINSA2 TYPE=NUMERIC
 	DECLARE VAR=$CONS TYPE=NUMERIC
+	DECLARE VAR=$HIDDSIZES TYPE=NUMERIC
 	DECLARE VAR=$CONSALT TYPE=STRING
 	DECLARE VAR=$CONSB1 TYPE=NUMERIC
 	DECLARE VAR=$CONSB2 TYPE=NUMERIC
@@ -3474,6 +3920,7 @@ BEGINSUB name=VarDec
 	DECLARE VAR=$EVENS2 TYPE=NUMERIC
 	DECLARE VAR=$EVENSA1 TYPE=NUMERIC
 	DECLARE VAR=$EVENSA2 TYPE=NUMERIC
+	DECLARE VAR=$EXTRA_S TYPE=STRING
 	DECLARE Var=$Favo Type=Numeric
 	DECLARE Var=$FavoHTML Type=String
 	DECLARE Var=$FavoNAME Type=String
@@ -3629,6 +4076,7 @@ BEGINSUB name=VarDec
 	DECLARE VAR=$HOSTSA2 TYPE=NUMERIC
 	DECLARE VAR=$HOTLINKURL TYPE=STRING
 	DECLARE VAR=$HOVEREXPLAINATION TYPE=STRING
+	DECLARE VAR=$ICON_B TYPE=STRING
 	DECLARE VAR=$INCREMENT TYPE=NUMERIC
 	DECLARE VAR=$KM TYPE=STRING
 	DECLARE VAR=$LARG TYPE=NUMERIC
@@ -3870,7 +4318,7 @@ BEGINSUB name=VarDec
 	DECLARE VAR=$NUMBER1  TYPE=NUMERIC
 	DECLARE VAR=$NUMBER2  TYPE=NUMERIC
 	DECLARE VAR=$NUMCONTAINERGOLDS TYPE=NUMERIC
-	DECLARE VAR=$NUMSTATES TYPE=NUMERIC	
+	DECLARE VAR=$NUMSTATES TYPE=NUMERIC
 	DECLARE VAR=$ON_NO_RESULTS TYPE=STRING
 	DECLARE VAR=$PERCENT TYPE=NUMERIC
 	DECLARE VAR=$PERCENTSTATE TYPE=NUMERIC
@@ -4277,7 +4725,7 @@ BEGINSUB name=VarDec
 	DECLARE Var=$WritE2  Type=Numeric
 	DECLARE Var=$WritD   Type=Numeric
 	DECLARE VAR=$WRITETOFSG TYPE=BOOLEAN
-		 DECLARE var=$GeocL Type=String
+	 DECLARE var=$GeocL Type=String
  DECLARE var=$TradL Type=String
  DECLARE var=$MultL Type=String
  DECLARE var=$MystL Type=String
@@ -4328,7 +4776,7 @@ BEGINSUB name=VarDec
 	$TempStr = $BadgeGenFolder + "badgegentempdata.BadgeGen"
 	$Data = PutFile($TempStr,MimeDecode($DataDataData))
 	MACRO file=$TempStr
-	#PAUSE msg="Macro Paused. See file at $TempStr" #Uncomment line to be able to access file on computer.
+	#PAUSE msg="Macro Paused." #Uncomment line to be able to access file on computer.
 	FILEERASE file=$TempStr
 
 <data> VarName=$DataDataData
@@ -4466,35 +4914,36 @@ CiRDYWxlQjEgPSAxMDANCiRDYWxlQjIgPSAxNDkNCiRDYWxlUzEgPSAxNTANCiRDYWxlUzIgPSAxOTkN
 CiRDYWxlRzEgPSAyMDANCiRDYWxlRzIgPSAyNDkNCiRDYWxlUDEgPSAyNTANCiRDYWxlUDIgPSAyOTkN
 CiRDYWxlUjEgPSAzMDANCiRDYWxlUjIgPSAzNDkNCiRDYWxlU2ExID0gMzUwDQokQ2FsZVNhMiA9IDM2
 NA0KJENhbGVFMSA9IDM2NQ0KJENhbGVFMiA9IDM2NQ0KJENhbGVEICA9IDM2Ng0KJFdyaXRCMSA9IDMw
-DQokV3JpdEIyID0gMzkNCiRXcml0UzEgPSA0MA0KJFdyaXRTMiA9IDQ5DQokV3JpdEcxID0gNTANCiRX
-cml0RzIgPSA1OQ0KJFdyaXRQMSA9IDYwDQokV3JpdFAyID0gNjkNCiRXcml0UjEgPSA3MA0KJFdyaXRS
-MiA9IDc5DQokV3JpdFNhMSA9IDgwDQokV3JpdFNhMiA9IDg5DQokV3JpdEUxID0gOTANCiRXcml0RTIg
-PSA5OQ0KJFdyaXREICA9IDEwMA0KJFN0YXRCMSA9IDEwDQokU3RhdEIyID0gMTQuOTk5OTkNCiRTdGF0
-UzEgPSAxNQ0KJFN0YXRTMiA9IDE5Ljk5OTk5DQokU3RhdEcxID0gMjANCiRTdGF0RzIgPSAyOS45OTk5
-OQ0KJFN0YXRQMSA9IDMwDQokU3RhdFAyID0gMzkuOTk5OTkNCiRTdGF0UjEgPSA0MA0KJFN0YXRSMiA9
-IDQ5Ljk5OTk5DQokU3RhdFNhMSA9IDUwDQokU3RhdFNhMiA9IDc0Ljk5OTk5DQokU3RhdEUxID0gNzUN
-CiRTdGF0RTIgPSA5OS45OTk5OQ0KJFN0YXREICA9IDEwMA0KJERpZmlCMSA9IDINCiREaWZpQjIgPSAz
-DQokRGlmaVMxID0gNA0KJERpZmlTMiA9IDUNCiREaWZpRzEgPSA2DQokRGlmaUcyID0gOA0KJERpZmlQ
-MSA9IDkNCiREaWZpUDIgPSAxNA0KJERpZmlSMSA9IDE1DQokRGlmaVIyID0gMjQNCiREaWZpU2ExID0g
-MjUNCiREaWZpU2EyID0zOQ0KJERpZmlFMSA9IDQwDQokRGlmaUUyID0gNTkNCiREaWZpRCAgPSA2MA0K
-JFRlcnJCMSA9IDUNCiRUZXJyQjIgPSA5DQokVGVyclMxID0gMTANCiRUZXJyUzIgPSAxOQ0KJFRlcnJH
-MSA9IDIwDQokVGVyckcyID0gMjkNCiRUZXJyUDEgPSAzMA0KJFRlcnJQMiA9IDQ5DQokVGVyclIxID0g
-NTANCiRUZXJyUjIgPSA3OQ0KJFRlcnJTYTEgPSA4MA0KJFRlcnJTYTIgPTExOQ0KJFRlcnJFMSA9IDEy
-MA0KJFRlcnJFMiA9IDE3OQ0KJFRlcnJEICA9IDE4MA0KJE5pZ2hCMSA9IDQNCiROaWdoQjIgPSA5DQok
-TmlnaFMxID0gMTANCiROaWdoUzIgPSAxOQ0KJE5pZ2hHMSA9IDIwDQokTmlnaEcyID0gMjkNCiROaWdo
-UDEgPSAzMA0KJE5pZ2hQMiA9IDQ5DQokTmlnaFIxID0gNTANCiROaWdoUjIgPSA3OQ0KJE5pZ2hTYTEg
-PSA4MA0KJE5pZ2hTYTIgPSAgMTE5DQokTmlnaEUxID0gMTIwDQokTmlnaEUyID0gMTc5DQokTmlnaEQg
-ID0gMTgwDQokVmV0ZUIxID0gMw0KJFZldGVCMiA9IDMNCiRWZXRlUzEgPSA0DQokVmV0ZVMyID0gNQ0K
-JFZldGVHMSA9IDYNCiRWZXRlRzIgPSA3DQokVmV0ZVAxID0gOA0KJFZldGVQMiA9IDkNCiRWZXRlUjEg
-PSAxMA0KJFZldGVSMiA9IDEzDQokVmV0ZVNhMSA9IDE0DQokVmV0ZVNhMiA9IDE2DQokVmV0ZUUxID0g
-MTcNCiRWZXRlRTIgPSAxOQ0KJFZldGVEID0gMjANCiRGYXZvQjEgPSAyNQ0KJEZhdm9CMiA9IDM5DQok
-RmF2b1MxID00MAkNCiRGYXZvUzIgPSA1OQ0KJEZhdm9HMSA9IDYwDQokRmF2b0cyID0gODkNCiRGYXZv
-UDEgPSA5MA0KJEZhdm9QMiA9IDE0OQ0KJEZhdm9SMSA9IDE1MA0KJEZhdm9SMiA9IDIwOQ0KJEZhdm9T
-YTEgPSAyMTANCiRGYXZvU2EyID0zMTkNCiRGYXZvRTEgPSAzMjANCiRGYXZvRTIgPSA0OTkNCiRGYXZv
-RCAgPSA1MDANCiRQaG90QjEgPSAgNTANCiRQaG90QjIgPSA3NA0KJFBob3RTMSA9IDc1CQ0KJFBob3RT
-MiA9IDE0OQ0KJFBob3RHMSA9IDE1MA0KJFBob3RHMiA9IDI0OQ0KJFBob3RQMSA9IDI1MA0KJFBob3RQ
-MiA9IDQ5OQ0KJFBob3RSMSA9IDUwMA0KJFBob3RSMiA9IDc0OQ0KJFBob3RTYTEgPSA3NTANCiRQaG90
-U2EyID0gMTQ5OQ0KJFBob3RFMSA9IDE1MDANCiRQaG90RTIgPSAyNDk5DQokUGhvdEQgID0gMjUwMA==
+DQokV3JpdEIyID0gMzkuOTk5OTk5DQokV3JpdFMxID0gNDANCiRXcml0UzIgPSA0OS45OTk5OTkNCiRX
+cml0RzEgPSA1MA0KJFdyaXRHMiA9IDU5Ljk5OTk5OQ0KJFdyaXRQMSA9IDYwDQokV3JpdFAyID0gNjku
+OTk5OTk5DQokV3JpdFIxID0gNzANCiRXcml0UjIgPSA3OS45OTk5OTkNCiRXcml0U2ExID0gODANCiRX
+cml0U2EyID0gODkuOTk5OTk5DQokV3JpdEUxID0gOTANCiRXcml0RTIgPSA5OS45OTk5OTkNCiRXcml0
+RCAgPSAxMDANCiRTdGF0QjEgPSAxMA0KJFN0YXRCMiA9IDE0Ljk5OTk5DQokU3RhdFMxID0gMTUNCiRT
+dGF0UzIgPSAxOS45OTk5OQ0KJFN0YXRHMSA9IDIwDQokU3RhdEcyID0gMjkuOTk5OTkNCiRTdGF0UDEg
+PSAzMA0KJFN0YXRQMiA9IDM5Ljk5OTk5DQokU3RhdFIxID0gNDANCiRTdGF0UjIgPSA0OS45OTk5OQ0K
+JFN0YXRTYTEgPSA1MA0KJFN0YXRTYTIgPSA3NC45OTk5OQ0KJFN0YXRFMSA9IDc1DQokU3RhdEUyID0g
+OTkuOTk5OTkNCiRTdGF0RCAgPSAxMDANCiREaWZpQjEgPSAyDQokRGlmaUIyID0gMw0KJERpZmlTMSA9
+IDQNCiREaWZpUzIgPSA1DQokRGlmaUcxID0gNg0KJERpZmlHMiA9IDgNCiREaWZpUDEgPSA5DQokRGlm
+aVAyID0gMTQNCiREaWZpUjEgPSAxNQ0KJERpZmlSMiA9IDI0DQokRGlmaVNhMSA9IDI1DQokRGlmaVNh
+MiA9MzkNCiREaWZpRTEgPSA0MA0KJERpZmlFMiA9IDU5DQokRGlmaUQgID0gNjANCiRUZXJyQjEgPSA1
+DQokVGVyckIyID0gOQ0KJFRlcnJTMSA9IDEwDQokVGVyclMyID0gMTkNCiRUZXJyRzEgPSAyMA0KJFRl
+cnJHMiA9IDI5DQokVGVyclAxID0gMzANCiRUZXJyUDIgPSA0OQ0KJFRlcnJSMSA9IDUwDQokVGVyclIy
+ID0gNzkNCiRUZXJyU2ExID0gODANCiRUZXJyU2EyID0xMTkNCiRUZXJyRTEgPSAxMjANCiRUZXJyRTIg
+PSAxNzkNCiRUZXJyRCAgPSAxODANCiROaWdoQjEgPSA0DQokTmlnaEIyID0gOQ0KJE5pZ2hTMSA9IDEw
+DQokTmlnaFMyID0gMTkNCiROaWdoRzEgPSAyMA0KJE5pZ2hHMiA9IDI5DQokTmlnaFAxID0gMzANCiRO
+aWdoUDIgPSA0OQ0KJE5pZ2hSMSA9IDUwDQokTmlnaFIyID0gNzkNCiROaWdoU2ExID0gODANCiROaWdo
+U2EyID0gIDExOQ0KJE5pZ2hFMSA9IDEyMA0KJE5pZ2hFMiA9IDE3OQ0KJE5pZ2hEICA9IDE4MA0KJFZl
+dGVCMSA9IDMNCiRWZXRlQjIgPSAzDQokVmV0ZVMxID0gNA0KJFZldGVTMiA9IDUNCiRWZXRlRzEgPSA2
+DQokVmV0ZUcyID0gNw0KJFZldGVQMSA9IDgNCiRWZXRlUDIgPSA5DQokVmV0ZVIxID0gMTANCiRWZXRl
+UjIgPSAxMw0KJFZldGVTYTEgPSAxNA0KJFZldGVTYTIgPSAxNg0KJFZldGVFMSA9IDE3DQokVmV0ZUUy
+ID0gMTkNCiRWZXRlRCA9IDIwDQokRmF2b0IxID0gMjUNCiRGYXZvQjIgPSAzOQ0KJEZhdm9TMSA9NDAJ
+DQokRmF2b1MyID0gNTkNCiRGYXZvRzEgPSA2MA0KJEZhdm9HMiA9IDg5DQokRmF2b1AxID0gOTANCiRG
+YXZvUDIgPSAxNDkNCiRGYXZvUjEgPSAxNTANCiRGYXZvUjIgPSAyMDkNCiRGYXZvU2ExID0gMjEwDQok
+RmF2b1NhMiA9MzE5DQokRmF2b0UxID0gMzIwDQokRmF2b0UyID0gNDk5DQokRmF2b0QgID0gNTAwDQok
+UGhvdEIxID0gIDUwDQokUGhvdEIyID0gNzQNCiRQaG90UzEgPSA3NQkNCiRQaG90UzIgPSAxNDkNCiRQ
+aG90RzEgPSAxNTANCiRQaG90RzIgPSAyNDkNCiRQaG90UDEgPSAyNTANCiRQaG90UDIgPSA0OTkNCiRQ
+aG90UjEgPSA1MDANCiRQaG90UjIgPSA3NDkNCiRQaG90U2ExID0gNzUwDQokUGhvdFNhMiA9IDE0OTkN
+CiRQaG90RTEgPSAxNTAwDQokUGhvdEUyID0gMjQ5OQ0KJFBob3REICA9IDI1MDA=
 <enddata>
 
 
@@ -4554,7 +5003,7 @@ U2EyID0gMTQ5OQ0KJFBob3RFMSA9IDE1MDANCiRQaG90RTIgPSAyNDk5DQokUGhvdEQgID0gMjUwMA==
 	$BadgeGenSettings = "$BadgeGenFolder" + "BadgeGenSavedSettings.data"
 	$Supplementary = "$MacroPath"+"\BadgeGenSupplementaryNotes.txt"
 	$Ad_File = "$BadgeGenFolder" + "Geocoin_Ad_Displayed.BADGEGEN"
-	$datasubmiturl = "http://www.badgegen.com/data_collection/submit.php?"
+	$datasubmiturl = "http://www.badgegen.com/data_collection/new_submit.php?"
 	$timer = 0
 	$TotalStateBadges=0
 	$UndeString="0"
@@ -4619,38 +5068,6 @@ U2EyID0gMTQ5OQ0KJFBob3RFMSA9IDE1MDANCiRQaG90RTIgPSAyNDk5DQokUGhvdEQgID0gMjUwMA==
 	$NighName = "The Night-Owl"
 	$FavoName = "The Favourite Cacher"
 	$PhotName = "The Shutterbug"
-	#	$TradAlt="$TradName:  Awarded for finding $TradB1 or more Traditional type caches"
-	#	$MultAlt="$MultName:  Awarded for finding $MultB1 or more Multi-cache type caches"
-	#	$MystAlt="$MystName:  Awarded for finding $MystB1 or more Mystery/Puzzle type caches"
-	#	$VirtAlt="$VirtName:  Awarded for finding $VirtB1 or more Virtual type caches"
-	#	$EartAlt="$EartName:  Awarded for finding $EartB1 or more Earthcache type caches"
-	#	$LettAlt="$LettName:  Awarded for finding $LettB1 or more Letterbox type caches"
-	#	$WherAlt="$WherName:  Awarded for finding $WherB1 or more Wherigo type caches"
-	#	$MegaAlt="$MegaName:  Awarded for attending $MegaB1 or more Mega Event caches"
-	#	$EvenAlt="$EvenName:  Awarded for attending $EvenB1 or more Event caches"
-	#	$CITOAlt="$CITOName:  Awarded for attending $CITOB1 or more Cache-In-Trash-Out (CITO) event caches"
-	#	$TenyAlt="$TenyName:  Awarded for attending $TenyB1 or more Ten Years! event caches"
-	#	$BencAlt="$BencName:  Awarded for finding $BencB1  or more Benchmarks"
-	#	$WaymAlt="$WaymName:  Awarded for logging $WaymB1 or more Waymarks"
-	#	$WebcAlt="$WebcName:  Awarded for taking pictures at $WebcB1 or more Webcam type caches"
-	#	$ApecAlt="$ApecName:  Awarded for finding $ApecB1 or more Project: A.P.E. type caches"
-	#	$MicrAlt="$MicrName:  Awarded for finding $MicrB1 or more micro sized cache containers"
-	#	$SmalAlt="$SmalName:  Awarded for finding $SmalB1 or more small sized cache containers"
-	#	$ReguAlt="$ReguName:  Awarded for finding $ReguB1 or more regular sized cache containers"
-	#	$LargAlt="$LargName:  Awarded for finding $LargB1 or more large sized cache containers"
-	#	$FiveAlt="$FiveName:  Awarded for finding $FiveB1 or more caches with a Difficulty/Terrain rating of 5/5"
-	#	$FTFAlt="$FTFName:  Awarded for being the first cacher to find $FTFB1 or more caches"
-	#	$CounAlt="$CounName:  Awarded for finding a cache in $CounB1 or more countries"
-	#	$HiddAlt="$HiddName:  Awarded for hiding/hosting $HiddB1 or more geocaches/event caches"
-	#	$ElevAlt="$ElevName:  Awarded for finding a cache above $ElevB1 metres in elevation"
-	#	$LoweAlt="$LoweName:  Awarded for finding a cache below sea level"
-	#	$TwenAlt="$TwenName:  Awarded for finding $TwenB1 or more caches in a single day"
-	#	$ConsAlt="$ConsName:  Awarded for having $ConsB1 or more consecutive days with finds"
-	#	$UndeAlt="$UndeName:  Awarded for finding $UndeB1 or more caches underwater"
-	#	$HostAlt="$HostName:  Awarded for hosting $HostB1 or more event caches"
-	#	$GeocAlt="$GeocName:  Awarded for finding $GeocB1 or more geocaches (any type)"
-	#	$DistAlt="$DistName:  Awarded for finding a cache at least $DistB1 kilometres from home"
-	#$MatrAlt="$MatrName:  Awarded for finding $MatrB1 caches with unique Difficulty/Terrain ratings"
 	$TradCODEALT ="$1$2$3$2$5$6$2 $HotlinkURL"+"TradP.png $2$5$20$2$TradAlt$2$5$28$2$TradAlt$2$23"
 	$MultCODEALT ="$1$2$3$2$5$6$2 $HotlinkURL"+"MultP.png $2$5$20$2$MultAlt$2$5$28$2$MultAlt$2$23"
 	$VirtCODEALT ="$1$2$3$2$5$6$2 $HotlinkURL"+"VirtP.png $2$5$20$2$VirtAlt$2$5$28$2$VirtAlt$2$23"
@@ -4704,7 +5121,7 @@ ENDSUB #name=VarDec
 
 BEGINSUB Name=MoreInfo
 	SHOWSTATUS msg="Generating 'More Information' table: Converting units" top=10 Left=10 width=500
-	#GOSUB name=convert
+
 
 	$Datalinemax = $TotalNumberofBadges + $TotalStateBadges      # max number of badges  add easy to change
 	$DatalineHave =""
@@ -4712,21 +5129,20 @@ BEGINSUB Name=MoreInfo
 	$DataLine7= ""
 
 
-	#IF not(FileExists($database))
+
 	SHOWSTATUS msg="Generating 'More Information' table: Creating SQLite report" top=10 Left=10 width=500
+	
 	GOSUB name=report                     # test database
-	#ENDIF
 	$data = Sqlite("open",$database)
 	$datanumber1=2
 	$Datalineheader="<tr>" + $_NewLine + "<th style=" + $_Quote + "background: #B3B3B3; align=center" + $_Quote + "> Icons &nbsp;</th>" + $_NewLine + "<th style=" + $_Quote + "background: #B3B3B3; align=center" + $_Quote + ">Bronze&nbsp;</th>" + $_NewLine + "<th style=" + $_Quote + "background: #B3B3B3; align=center" + $_Quote + ">Silver&nbsp;</th>" + $_NewLine + "<th style=" + $_Quote + "background: #B3B3B3; align=center" + $_Quote + ">Gold&nbsp;</th>" + $_NewLine + "<th style=" + $_Quote + "background: #B3B3B3; align=center" + $_Quote + ">Platinum&nbsp;</th>" + $_NewLine + "<th style=" + $_Quote + "background: #B3B3B3; align=center" + $_Quote + ">Ruby&nbsp;</th>" + $_NewLine + "<th style=" + $_Quote + "background: #B3B3B3; align=center" + $_Quote + ">Sapphire&nbsp;</th>" + $_NewLine + "<th style=" + $_Quote + "background: #B3B3B3; align=center" + $_Quote + ">Emerald&nbsp;</th>" + $_NewLine + "<th style=" + $_Quote + "background: #B3B3B3; align=center" + $_Quote + ">Diamond&nbsp;</th>" + $_NewLine + "<th style=" + $_Quote + "background: #B3B3B3; align=center" + $_Quote + ">You Have&nbsp;</th>" + $_NewLine + "<th style=" + $_Quote + "background: #B3B3B3; align=center" + $_Quote + ">You Need&nbsp;</th>" + $_NewLine + "</tr>" + $_NewLine + "<tr>"
 
-	$HTMLcode=$HTMLcode + $_NewLine + "<br>" + $_NewLine + "<Center>" + $_NewLine
+	$HTMLcode=$HTMLcode + $_NewLine + "<br><span style='font-family:Sans-serif'>" + $_NewLine + "<Center>" + $_NewLine
 	$HTMLcode=$HTMLcode + "<div id='tglbuton' style='display:none'>" + $_NewLine + "</div>" + $_NewLine
-	$HTMLcode=$HTMLcode + "<span style='cursor:pointer; border: 1px solid #000000' onmousedown=  $_Quote  document.getElementById('genbutton').style.display = (getElementById('genbutton').style.display != 'none' ? 'none' : ''); $_Quote  >" + $_NewLine + " <b><font face=Verdana>&nbsp; More Information about the Badges &nbsp;</font></b></span> " + $_NewLine + " <span style='cursor:pointer; border: 1px solid #000000' onmousedown= $_Quote var s=(getElementById('tglbuton').style.display != 'none' ? 'none' : ''); document.getElementById('genbutton').style.display=s; $_Quote >" + $_NewLine + "</span> " + $_NewLine
-	#$HTMLcode=$HTMLcode + "<br /><br />" + $_NewLine
+	$HTMLcode=$HTMLcode + "<span style='cursor:pointer;' onmousedown=  $_Quote  document.getElementById('genbutton').style.display = (getElementById('genbutton').style.display != 'none' ? 'none' : ''); $_Quote  >" + $_NewLine + "<img src='http://www.gsak.net/bgv2/additional/moreinformationbadge.png' height='32px' /></span> " + $_NewLine + " <span style='cursor:pointer; border: 1px solid #000000' onmousedown= $_Quote var s=(getElementById('tglbuton').style.display != 'none' ? 'none' : ''); document.getElementById('genbutton').style.display=s; $_Quote >" + $_NewLine + "</span> " + $_NewLine
 	$HTMLcode=$HTMLcode + "<div id='genbutton' style='display:none'>" + $_NewLine
-	$HTMLcode=$HTMLcode + "<div style='width:750px; background: #c8ddc8; font-weight: bold; line-height: 20px; font-size: 13px; color: navy; border: 1px solid #000000; text-align: center;;'>" + $_NewLine
-	$HTMLcode=$HTMLcode + "</a>Generated on $_Today with BadgeGen $Version </div>" + $_NewLine
+	$HTMLcode=$HTMLcode + "<br><br><div style='width:750px; background: #c8ddc8; font-weight: bold; line-height: 20px; font-size: 13px; color: navy; border: 1px solid #000000; text-align: center;;'>" + $_NewLine
+	$HTMLcode=$HTMLcode + "</a>Generated on $_Today with BadgeGen $Version </div><br><br>" + $_NewLine
 	$HTMLcode=$HTMLcode + "<table border=4 bordercolor=#000000 summary=" + $_Quote + $_Quote + ">"
 	$HTMLcode=$HTMLcode + $Datalineheader
 
@@ -4750,6 +5166,7 @@ BEGINSUB Name=MoreInfo
 		IF  $DataIcon <> ""
 			$dataStart = RegExPos("$_Quote",$DataICON,4) #missing lines
 			$DataIcon = Substr($DataIcon,0 ,$dataStart-7) #missing lines
+			#MSGOK msg=$DataIcon
 			$alt = Substr($DataIcon,$dataStart-10 ,$dataStart-7) #missing lines
 			BEGINCASE
 				$DatalineHTML  = "<th align=" + $_Quote + "center" + $_Quote + ">"
@@ -4761,9 +5178,15 @@ BEGINSUB Name=MoreInfo
 				$DatalineHTMLA = "<th align=" + $_Quote + "center" + $_Quote + ">"
 				$DatalineHTMLE = "<th align=" + $_Quote + "center" + $_Quote + ">"
 				$DatalineHTMLD = "<th align=" + $_Quote + "center" + $_Quote + ">"
+				
+			#If the badge is a country badge, an extra S isn't needed.		
+			IF RegEx("country_",$DataIcon)
+				$extra_S = ""
+			ELSE
+				$extra_S = "S"
+			ENDIF
 
-
-			CASE Abs(val($datalinehave)) <  Abs(val($datalineB))
+			CASE (Abs(val($datalinehave)) <  Abs(val($datalineB)) OR Abs(Val($datalinehave))=0)  
 				$DatalineTemp=$DataIcon +"X.png"
 				$DatalineHTMLD ="<th align=" + $_Quote + "center" + $_Quote + ">"
 
@@ -4797,14 +5220,14 @@ BEGINSUB Name=MoreInfo
 				$DatalineHTMLP="<th style=" + $_Quote + "background: #$LIGHT; " + $_quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
 				$DatalineHTMLR="<th style=" + $_Quote + "background: #$DARK; " + $_quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
 
-			CASE Abs(val($datalinehave)) >= Abs(val($datalineA)) and Abs(val($datalinehave)) < Abs(val($datalineE))
-				$DatalineTemp=$DataIcon + "Sa.png"                        #Sa
-				$DatalineHTMLB="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
-				$DatalineHTMLS="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
-				$DatalineHTMLG="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
-				$DatalineHTMLP="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
-				$DatalineHTMLR="<th style=" + $_Quote + "background: #$LIGHT; " + $_quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
-				$DatalineHTMLA="<th style=" + $_Quote + "background: #$DARK; " + $_quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
+			CASE Abs(val($datalinehave)) >= Abs(val($datalineA)) and Abs(val($datalinehave)) < Abs(val($datalineE)) 
+				$DatalineTemp=$DataIcon + $Extra_S + "a.png" #If the badge is a country badge, an extra S isn't needed.		
+				$DatalineHTMLB="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine 
+				$DatalineHTMLS="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine 
+				$DatalineHTMLG="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine 
+		  	$DatalineHTMLP="<th style=" + $_Quote + "background: #$LIGHT; " + $_Quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine 
+				$DatalineHTMLR="<th style=" + $_Quote + "background: #$LIGHT; " + $_quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine 
+				$DatalineHTMLA="<th style=" + $_Quote + "background: #$DARK; "  + $_quote + "align=" + $_Quote + "center" + $_Quote + ">"+$_NewLine
 
 			CASE Abs(val($datalinehave)) >= Abs(val($datalineE)) and Abs(val($datalinehave)) < Abs(val($datalineD))
 				$DatalineTemp=$DataIcon + "E.png"                        #E
@@ -4829,9 +5252,7 @@ BEGINSUB Name=MoreInfo
 			ENDCASE
 
 			$dataicon = $datalinetemp
-			#			IF $datanumber1=8 or $datanumber1=16 or $datanumber1=24 or $datanumber1=30 or $datanumber1=38 or $datanumber1=46 or $datanumber1=54
-			#				$HTMLcode=$HTMLcode +$Datalineheader
-			#			ENDIF
+
 
 			$DataIcon=replace(">"," ",$DataIcon)               # ste up to and Size to the icons
 			$DataIcon=Replace(" http://","http://",$DataIcon)
@@ -4852,456 +5273,158 @@ BEGINSUB Name=MoreInfo
 		$Datanumber1=$datanumber1+1                                   # next step
 	ENDWHILE
 	SHOWSTATUS msg="Generating 'More Information' table: " top=10 Left=10 width=500
-	$HTMLcode=$HTMLcode + "</table></div>"
+	$HTMLcode=$HTMLcode + "</table><br><a href='http://www.badgegen.com/badges.html' target='_blank'><img src='http://www.gsak.net/bgv2/additional/evenmoreinformation.png'></a><br><br></span></div>"
 	IF $ShowBelt
-		#$HTMLcode=$HTMLcode + MimeDecode($BeltExplanationHTML)
 		GOSUB name="BeltHTMLMod"
 	ENDIF
-	#$HTMLcode=$HTMLcode + "</Table></div>"
 
 ENDSUB #name=MoreInfo
 
 
 BEGINSUB name=BeltHTMLMOD
+
+
+	$header2 = "<img src='http://www.gsak.net/bgv2/additional/moreinformationbelt.png' height='32px' />"
+
 	SHOWSTATUS msg="Generating 'More Information' table: Building Belt Information" top=10 Left=10 width=500
+
 	DECLARE Var= $DataTemp Type=String
-	# Temp files of icons
-	$HTMLCodeyes="<img src=" + $_Quote + "http://www.geocaching.com/images/icons/icon_enabled.gif" +  $_Quote + " width=" + $_Quote + "14" + $_Quote + ">"
-	$HTMLCodeNo= "<img src=" + $_Quote + "http://www.geocaching.com/images/icons/icon_disabled.gif" +  $_Quote + " width=" + $_Quote + "14" + $_Quote + ">"
-	$Spaces2="&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
-	#Size of icon
+	DECLARE VAR=$Datatemp2 TYPE=NUMERIC
+	DECLARE VAR=$HTMLCodeMax TYPE=STRING
+	DECLARE VAR=$belttextcolor TYPE=STRING    # use in taybee color system If not set will default to Black and white.
+
+	$space2="&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
+	# icons
+	$HTMLCodeMax="<img src=" + $_Quote + "http://badgegen.com/belt_images/complete.png" +  $_Quote + " width=" + $_Quote + "14" + $_Quote + "> &nbsp;&nbsp;"
+	$HTMLCodeNo="<img src=" + $_Quote + "http://badgegen.com/belt_images/none.png" +  $_Quote + " width=" + $_Quote + "14" + $_Quote + "> &nbsp;&nbsp;"
+	$HTMLCodeyes="<img src=" + $_Quote + "http://badgegen.com/belt_images/partial.png" +  $_Quote + " width=" + $_Quote + "14" + $_Quote + ">&nbsp;&nbsp;"
+
+	# Size of icon
 	$FontSIZE = "</font> <Font colour="+$_Quote + "Black" + $_Quote + "Point-size= " + $_quote + "8" + $_Quote + ">"
 
-	$HTMLcode=$HTMLcode + "<div id='tglbuton' style='display:none'>" + $_NewLine + "</div>" + $_NewLine
-	$HTMLcode=$HTMLcode + "<span style='cursor:pointer; border: 1px solid #000000' onmousedown=  " + $_Quote + "  document.getElementById('Belt').style.display = (getElementById('Belt').style.display != 'none' ? 'none' : ''); " + $_Quote + "  >" + $_NewLine + " <b><font face=Verdana>&nbsp; More Information about the Belt &nbsp;</font></b></span> " + $_NewLine + " <span style='cursor:pointer; border: 1px solid #000000' onmousedown= " + $_Quote + " var s=(getElementById('tglbuton').style.display != 'none' ? 'none' : ''); document.getElementById('Belt').style.display=s; " + $_Quote + " >" + $_NewLine + "</span> " + $_NewLine
-	$HTMLcode=$HTMLcode + "<br /><br />" + $_NewLine
-	$HTMLcode=$HTMLcode + "<div id='Belt' style='display:none'><br>" + $_NewLine
+	#Button
 
-	$HTMLCode=$HTMLcode +"<table border=" + $_Quote + "2" + $_Quote + " cellspacing=" + $_Quote +  "7"  + $_Quote  + " cellpadding="  + $_Quote  + "7"  + $_Quote  + " width=" + $_Quote + "750" + $_Quote + " frame=" + $_Quote + "box" + $_Quote + " align=" + $_Quote + "" + $_Quote + " bordercolor=" + $_Quote + "white" + $_Quote + " bordercolordark=" + $_Quote + "White" + $_Quote + " bordercolorlight=" + $_Quote + "White" + $_Quote + " style= " + $_Quote + "border-collapse: separate;" + $_Quote + ">"
-	$HTMLCode=$HTMLCode + "<tr><th align=" + $_Quote + " center" + $_Quote + " colspan=" + $_Quote + "78" + $_Quote + " bgcolor=" + $_Quote + "silver" + $_Quote + "><b>"
-	$HTMLCode=$HTMLCode + "<span ><Center>Geocaching Belts</center></span></b></font></th></tr><tr><th align=" + $_Quote + "left" + $_Quote + " valign=" + $_Quote + "top" + $_Quote + ">"
-	#white
-	$HTMLCode=$HTMLCode + "<img src=" + $_Quote + "$HotlinkURL"+"Belt_White.png" + $_Quote + " align=" + $_Quote + "right" + $_Quote + " width=" + $_Quote + "140" + $_Quote + " border=" + $_Quote + "0" + $_Quote + " style=" + $_Quote + "border-top-width: 0px; border-right-width: 0px; border-bottom-width: 0px; border-left-width: 0px; border-style: initial; border-color: initial;" + $_Quote + " /><b style=" + $_Quote + "font-weight: bold;" + $_Quote + ">WHITE:</b><b>"
-	$HTMLCode=$HTMLCode + "This is awarded if a cacher doesn't qualify for another colour belt</font>"
-	$HTMLCODE= $Htmlcode + "<center>" + $HTMLCodeyes + "</center>"
-	$HTMLCODE= $Htmlcode + "</th></tr><tr><th align=" + $_Quote + "left" + $_Quote + " valign=" + $_Quote + "top" + $_Quote + "><font face=" + $_Quote + "Verdana" + $_Quote + ">"
+		$HTMLcode=$HTMLcode + "<span style=' Cursor:pointer;' onmousedown=  " + $_Quote + "  document.getElementById('Belt').style.display = (getElementById('Belt').style.display != 'none' ? 'none' : ''); " + $_Quote + "  >" + $_NewLine + $header2 +"</span> " + $_NewLine
+		$HTMLcode=$HTMLcode + "<br /><br />" + $_NewLine
+		$HTMLcode=$HTMLcode + "<div id='Belt' style='display:none'><br>" + $_NewLine
+		$HTMLcode=$HTMLcode + "<div style='width:75%;  line-height: 20px; font-size: 13px; border: 1px solid #00000; text-align: center;;'>" + $_NewLine
+		$HTMLcode=$HTMLcode + "</a></div>" + $_NewLine
+		$HTMLCode=$HTMLcode + "<table border=" + $_Quote + "2" + $_Quote + " cellspacing=" + $_Quote +  "7"  + $_Quote  + " cellpadding="  + $_Quote  + "7"  + $_Quote  + " width=" + $_Quote + "75%" + $_Quote + " frame=" + $_Quote + "box" + $_Quote + " align=" + $_Quote + "" + $_Quote + " bordercolor=" + $_Quote + "white" + $_Quote + " bordercolordark=" + $_Quote + "White" + $_Quote + " bordercolorlight=" + $_Quote + "White" + $_Quote + " style= " + $_Quote + "border-collapse: separate;" + $_Quote + ">"
+		$HTMLCode=$HTMLCode + "<tr><td align=" + $_Quote + " center" + $_Quote + " colspan=" + $_Quote + "78" + $_Quote + " bgcolor=" + $_Quote + "silver" + $_Quote + ">"
+		$HTMLCode=$HTMLCode + "<span ><Center>Summary</center></span></font></td></tr><tr><th align=" + $_Quote + "left" + $_Quote + " valign=" + $_Quote + "top" + $_Quote + ">"
 
-	#YELLOW
-	$HTMLCode=$HTMLCode + "<img src=" + $_Quote + "$HotlinkURL"+"Belt_Yellow.png" + $_Quote + " align=" + $_Quote + "right" + $_Quote + " width=" + $_Quote + "140" + $_Quote + " border=" + $_Quote + "0" + $_Quote + " style=" + $_Quote + "border-top-width: 0px; border-right-width: 0px; border-bottom-width: 0px; border-left-width: 0px; border-style: initial; border-color: initial;" + $_Quote + " /><b style=" + $_Quote + "font-weight: bold;" + $_Quote + ">YELLOW:</b>"
-	$HTMLCode=$HTMLCode + "This is awarded if the following conditions are met:<br />"
-	IF  $Geoc>=100
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Geoc)</Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Geoc)</Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  100 cache finds (any type)"+ $DataTemp +" AND<br />"
-	IF  $Hidd >= 5
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Hidd)</Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Hidd) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeNo
-	ENDIF
-	$HTMLCode=$HTMLCode + "  5 cache hides  $DataTemp"
-	$HTMLCode=$HTMLCode + "</th></tr><tr>"
-	#ORANGE
-	$HTMLCode=$HTMLCode + "<th align=" + $_Quote + "left" + $_Quote + " valign=" + $_Quote + "top" + $_Quote + "><font face=" + $_Quote + "Verdana" + $_Quote + ">"
-	$HTMLCode=$HTMLCode + "<img border=" + $_Quote + "0" + $_Quote + " src=" + $_Quote + "$HotlinkURL"+"Belt_Orange.png" + $_Quote + " align=" + $_Quote + "right" + $_Quote + " width=" + $_Quote + "140" + $_Quote + " style=" + $_Quote + "border-top-width: 0px; border-right-width: 0px; border-bottom-width: 0px; border-left-width: 0px; border-style: initial; border-color: initial;" + $_Quote + " /><b style=" + $_Quote + "font-weight: bold;" + $_Quote + ">ORANGE:</b>"
-	$HTMLCode=$HTMLCode + "This is awarded if the following conditions are met:<br />"
-	IF  $Geoc>=300
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Geoc) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-	ELSE
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Geoc) </Font>"
-	ENDIF
-	$HTMLCode=$HTMLCode + "  300 cache finds (any type) $Datatemp AND<br />"
-	IF  $Hidd >= 10
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Hidd) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Hidd) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  10 cache hides $DataTemp"
-	$HTMLCode=$HTMLCode + "</th></tr><tr>"
-	#Green
-	$HTMLCode=$HTMLCode + "<th align=" + $_Quote + "left" + $_Quote + " valign=" + $_Quote + "top" + $_Quote + "><font face=" + $_Quote + "Verdana" + $_Quote + ">"
-	$HTMLCode=$HTMLCode + "<img border=" + $_Quote + "0" + $_Quote + " src=" + $_Quote + "$HotlinkURL"+"Belt_Green.png" + $_Quote + " align=" + $_Quote + "right" + $_Quote + " width=" + $_Quote + "140" + $_Quote + " style=" + $_Quote + "border-top-width: 0px; border-right-width: 0px; border-bottom-width: 0px; border-left-width: 0px; border-style: initial; border-color: initial;" + $_Quote + " /><b style=" + $_Quote + "font-weight: bold;" + $_Quote + ">GREEN:</b>"
-	$HTMLCode=$HTMLCode + "This is awarded if the following conditions are met:<br />"
-	IF  $Geoc>=500
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Geoc) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Geoc) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  500 cache finds (any type) $Datatemp AND<br />"
-	IF  $Hidd >= 15
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Hidd) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-	ELSE
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Hidd) </Font>"
-	ENDIF
-	$HTMLCode=$HTMLCode + "  15 cache hides $datatemp AND<br />"
-	$datanumber1=$Even + $Mega+ $Cito + $Teny
-	IF  $datanumber1 >= 1
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($datanumber1) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($datanumber1) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  1 event (any type) $DataTemp attended AND <br/>"
-	IF  $State >= 2
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($State) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($State) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  at least one cache find in 2 distinct states $datatemp"
-	$HTMLCode=$HTMLCode + "</th></tr><tr>"
-	#Blue
-	$HTMLCode=$HTMLCode + "<th align=" + $_Quote + "left" + $_Quote + " valign=" + $_Quote + "top" + $_Quote + "><font face=" + $_Quote + "Verdana" + $_Quote + ">"
-	$HTMLCode=$HTMLCode + "<img border=" + $_Quote + "0" + $_Quote + " src=" + $_Quote + "$HotlinkURL"+"Belt_Blue.png" + $_Quote + " align=" + $_Quote + "right" + $_Quote + " width=" + $_Quote + "140" + $_Quote + " style=" + $_Quote + "border-top-width: 0px; border-right-width: 0px; border-bottom-width: 0px; border-left-width: 0px; border-style: initial; border-color: initial;" + $_Quote + " /><b style=" + $_Quote + "font-weight: bold;" + $_Quote + ">BLUE:</b>"
-	$HTMLCode=$HTMLCode + "This is awarded if the following conditions are met:<br />"
 
-	IF  $Geoc>=1000
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Geoc) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Geoc) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  1000 cache finds (any type) $DataTemp AND<br />"
-	IF  $Hidd >= 20
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Hidd) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Hidd) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  20 cache hides $DataTemp AND<br />"
-	$datanumber1=$Even + $Mega+ $Cito + $Teny
-	IF   $datanumber1 >= 3
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($datanumber1) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($datanumber1) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  3 events (any type) $dataTemp attended<br />"
-	IF  $State >= 4
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($State) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-	ELSE
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($State) </Font>"
-	ENDIF
-	$HTMLCode=$HTMLCode + "  at least one cache find in 4 distinct states $datatemp</th></tr>"
-	$HTMLCode=$HTMLCode + "<tr><th align=" + $_Quote + "left" + $_Quote + " valign=" + $_Quote + "top" + $_Quote + "><font face=" + $_Quote + "Verdana" + $_Quote + ">"
+$HTMLCode = $HTMLCode + $more_belt_info
 
-	#Brown
 
-	$HTMLCode=$HTMLCode + "<img border=" + $_Quote + "0" + $_Quote + " src=" + $_Quote + "$HotlinkURL"+"Belt_Brown.png" + $_Quote + "align=" + $_Quote + "right" + $_Quote + " width=" + $_Quote + "140" + $_Quote + " style=" + $_Quote + "border-top-width: 0px; border-right-width: 0px; border-bottom-width: 0px; border-left-width: 0px; border-style: initial; border-color: initial;" + $_Quote + " /><b style=" + $_Quote + "font-weight: bold;" + $_Quote + ">BROWN:</b>This is awarded if the following conditions are met:<br />"
-	IF  $Geoc >= 2000
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Geoc) </Font>"
-	ELSE
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Geoc) </Font>"
-	ENDIF
-	$HTMLCode=$HTMLCode + "  2000 cache finds (any type) $DataTemp AND<br />"
-	IF  $Hidd >= 50
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Hidd) </Font>"
-	ELSE
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Hidd) </Font>"
-	ENDIF
-	$HTMLCode=$HTMLCode + "  50 cache hides $Datatemp AND<br />"
-	$datanumber1=$Even + $Mega+ $Cito + $Teny
-	IF  $datanumber1 >= 3
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($datanumber1) </Font >"
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-	ELSE
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($datanumber1) </Font>"
-	ENDIF
-	$HTMLCode=$HTMLCode + "  3 events (any type) $dataTemp attended AND<br />"
-	IF  $State >= 8
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($State) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($State) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  at least one cache find in 8 distinct states $Datatemp AND<br />"
-	IF  $Host >= 1
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Host) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Host) </Font>"
-		$HTMLCODE= $Htmlcode +$HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  hosted one event (any type) $Datatemp AND<br/> "
-	$HTMLCode=$HTMLCode + "  any 5 of the following conditions are met:<br/>$FontSIZE "
-	IF  $FTF >= 50
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($FTF)$FontSIZE  "
-		$HTMLCODE= $Htmlcode + $Spaces2 +$HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($FTF)$FontSIZE  "
-		$HTMLCODE= $Htmlcode + $Spaces2 +$HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  at least 50 FTFs  $datatemp $FontSIZE<br>"
-	IF  $Coun >= 4
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Coun) $Fontsize "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Coun) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  at least one find in 4 distinct countries $datatemp <br>"
-	IF  $Matr >= 72
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Matr) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Matr) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  at least 72 out of the 81 D/T $datatemp combinations completed <br>"
-	IF  $Five >= 1
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Five)$FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Five) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  one 5/5 D/T rated cache $datatemp<br>"
-	IF   $Cons >= 30
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Cons)$FontSIZE  "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Cons) $FontSIZE "
-	ENDIF
-	$HTMLCode=$HTMLCode + "  30 consecutive days with a cache find $Datatemp <br>"
-	IF  $Twen >= 50
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Twen) $FontSIZE"
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Twen) $FontSIZE "
-	ENDIF
-	$HTMLCode=$HTMLCode + "  50 caches found on a single day $datatemp <br>"
-	IF  $Dist >= 500
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Dist)$FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Dist) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  Furthest cache found 500km or more away from home $datatemp $FontSIZE<br>"
-	$NumContainerGolds = 0
-	IF $Micr >= $MicrG1
-		$NumContainerGolds = $NumContainerGolds + 1
-	ENDIF
-	IF $Smal >= $SmalG1
-		$NumContainerGolds = $NumContainerGolds + 1
-	ENDIF
-	IF $Regu >= $ReguG1
-		$NumContainerGolds = $NumContainerGolds + 1
-	ENDIF
-	IF $Larg >= $LargG1
-		$NumContainerGolds = $NumContainerGolds + 1
-	ENDIF
-	IF  $NumContainerGolds >= 3
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($NumContainerGolds) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($NumContainerGolds) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  3 gold badges for container size $datatemp <br>"
-	IF  $Elev >= 1000
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Elev) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Elev) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  at least one cache found above 1000m elevation $Datatemp <br>"
-	IF  $HiddTypes >= 3
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($HiddTypes) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($HiddTypes) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  3 distinct types of caches hidden(any types incl. events) $datatemp </font> "
-	$HTMLCode=$HTMLCode + "</th></tr><tr><th align=" + $_Quote + "left" + $_Quote + " valign=" + $_Quote + "top" + $_Quote + "><font face=" + $_Quote + "Verdana" + $_Quote + ">"
-	#BLACK
+	$HTMLCode=$HTMLCode + "<br><center><table width='29%'><tr><td bgcolor='#E5E5E5'><Center>"
+	$HTMLCode=$HTMLCode + "$HTMLCodeNo no points earned <br> $HTMLCodeYes more points available <br> $HTMLCodeMax maximum points earned $space2</Center>"
+	$HTMLCode=$HTMLCode + "</td></tr></table></center><br>"
 
-	$HTMLCode=$HTMLCode + "<img border=" + $_Quote + "0" + $_Quote + " src=" + $_Quote + "$HotlinkURL"+"Belt_Black.png" + $_Quote + " align=" + $_Quote + "right" + $_Quote + " width=" + $_Quote + "140" + $_Quote + " style=" + $_Quote + "border-top-width: 0px; border-right-width: 0px; border-bottom-width: 0px; border-left-width: 0px; border-style: initial; border-color: initial;" + $_Quote + " /><b style=" + $_Quote + "font-weight: bold;" + $_Quote + ">BLACK:</b>This is awarded if the following conditions are met:<br />"
-	IF  $Geoc >= 3000
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Geoc) </Font>"
-		$HTMLCODE= $Htmlcode + $HTMLCodeyes
-	ELSE
-		$HTMLCODE= $Htmlcode + $HTMLCodeno
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Geoc) </Font>"
-	ENDIF
-	$HTMLCode=$HTMLCode + "  3000 cache finds (any type) $datatemp <i>AND</i><br />"
-	IF  $Hidd >= 50
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Hidd) </Font>"
-		$HTMLCODE= $Htmlcode +  $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Hidd) </Font>"
-		$HTMLCODE= $Htmlcode +  $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  50 cache hides $Datatemp <i>AND</i><br />"
-	$datanumber1=$Even + $Mega+ $Cito + $Teny
-	IF  $datanumber1 >= 3
-		$HTMLCODE= $Htmlcode +  $HTMLCodeyes
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($datanumber1) </Font>"
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($datanumber1) </Font>"
 
-		$HTMLCODE= $Htmlcode +  $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  3 events (any type) attended $DataTemp <i>AND</i><br />"
-	IF  $State >= 8
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($State) </Font>"
-		$HTMLCODE= $Htmlcode +  $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($State) </Font>"
-		$HTMLCODE= $Htmlcode +  $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  at least one cache find in 8 distinct states $Datatemp <i>AND</i><br />"
-	IF  $Host >= 1
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Host) </Font>"
-		$HTMLCODE= $Htmlcode +   $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Host) </Font>"
-		$HTMLCODE= $Htmlcode +  $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  hosted one event (any type)$datatemp <i>AND</i><br />"
-	$HTMLCode=$HTMLCode + "  any 8 of the following conditions are met: <br></font> $FontSIZE"
-	IF  $FTF >= 50
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($FTF) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($FTF) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  at least 50 FTFs $datatemp <i>OR</i><br>"
-	IF  $Coun >= 8
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Coun) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Coun) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  at least one find in 8 distinct countries $datatemp <br>"
-	IF  $Matr >= 81
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Matr) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Matr) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  81 D/T combinations completed $datatemp (100%) <i>OR</i><br>"
-	IF  $Five >= 1
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Five) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Five) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  one 5/5 D/T rated cache $datatemp <i>OR</i><br>"
-	IF  $Cons >= 90
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Cons) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Cons) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  90 consecutive days with a cache find $datatemp <i>OR</i><br>"
-	IF  $Twen >= 50
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Twen) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Twen) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeNO
-	ENDIF
-	$HTMLCode=$HTMLCode + "  50 caches found on a single day $datatemp <i>OR</i><br>"
-	IF  $Dist >= 500
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Dist) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Dist)$FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  Furthest cache found 500km or more away from home $Datatemp <i>OR</i><br>"
-	$BlackConditions = 0
-	IF $FTF >= 50
-		$BlackConditions = $BlackConditions + 1
-	ENDIF
-	IF $Coun >= 8
-		$BlackConditions = $BlackConditions + 1
-	ENDIF
-	IF $Matr = 81
-		$BlackConditions = $BlackConditions + 1
-	ENDIF
-	IF $Five >= 1
-		$BlackConditions = $BlackConditions + 1
-	ENDIF
-	IF $Cons >= 90
-		$BlackConditions = $BlackConditions + 1
-	ENDIF
-	IF $Twen >= 50
-		$BlackConditions = $BlackConditions + 1
-	ENDIF
-	IF $Dist >= 500
-		$BlackConditions = $BlackConditions + 1
-	ENDIF
-	IF $NumContainerGolds >= 3
-		$BlackConditions = $BlackConditions + 1
-	ENDIF
-	IF $Elev >= 1000
-		$BlackConditions = $BlackConditions + 1
-	ENDIF
-	IF $HiddTypes >= 5
-		$BlackConditions = $BlackConditions + 1
-	ENDIF
-	IF $NumContainerGolds >= 3
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($NumContainerGolds) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($NumContainerGolds) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  3 gold badges for container size $Datatemp <i>OR</i><br>"
-	IF  $Elev >= 1000
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($Elev) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($Elev) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  at least one cache found above 1000m elevation $datatemp <i>OR</i><br>"
-	IF $HiddTypes>= 5
-		$DataTemp="<Font color=" + $_Quote +"GREEN" +$_Quote +"> ($HiddTypes) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeyes
-	ELSE
-		$DataTemp="<Font color=" + $_Quote +"RED" +$_Quote +"> ($HiddTypes) $FontSIZE "
-		$HTMLCODE= $Htmlcode + $Spaces2 + $HTMLCodeno
-	ENDIF
-	$HTMLCode=$HTMLCode + "  5 distinct types of caches hidden $datatemp(any types incl. events)</font> "
-	$HTMLCode=$HTMLCode + "</th></tr></table></div></center>"#</span>
+	$HTMLCode=$HTMLCode + "<center>Total points $username has: $point_total <br>"
+	
+	
+	##Calculate points required to move up a level:
+	
+GOSUB name=BeltRemaining
+BEGINSUB name=BeltRemaining
+	BEGINCASE
+	CASE $point_total >= 0 AND $point_total < 30
+		$points_left = 30 - $point_total
+	CASE $point_total >= 30 AND $point_total < 40
+		$points_left = 40 - $point_total
+	CASE $point_total >= 40 AND $point_total < 50
+		$points_left = 50 - $point_total
+	CASE $point_total >= 50 AND $point_total < 60
+		$points_left = 60 - $point_total
+	CASE $point_total >= 60 AND $point_total < 70
+		$points_left = 70 - $point_total
+	CASE $point_total >= 70 AND $point_total < 80
+		$points_left = 80 - $point_total
+	CASE $point_total >= 80 AND $point_total < 90
+		$points_left = 90 - $point_total
+	CASE $point_total >= 90 AND $point_total < 100
+		$points_left = 100 - $point_total
+	CASE $point_total >= 100 AND $point_total < 110
+		$points_left = 110 - $point_total
+	CASE $point_total >= 110 AND $point_total < 120
+		$points_left = 120 - $point_total
+	CASE $point_total >= 120 AND $point_total < 130
+		$points_left = 130 - $point_total
+	CASE $point_total >= 130 AND $point_total < 140
+		$points_left = 140 - $point_total
+	CASE $point_total >= 140 AND $point_total < 150
+		$points_left = 150 - $point_total
+	CASE $point_total >= 150 AND $point_total < 160
+		$points_left = 160 - $point_total
+	CASE $point_total >= 160 AND $point_total < 170
+		$points_left = 170 - $point_total
+	CASE $point_total >= 170 AND $point_total < 180
+		$points_left = 180 - $point_total
+	CASE $point_total >= 180 AND $point_total < 190
+		$points_left = 190 - $point_total
+	CASE $point_total >= 190 AND $point_total < 200
+		$points_left = 200 - $point_total
+	CASE $point_total >= 200 AND $point_total < 210
+		$points_left = 210 - $point_total
+	CASE $point_total >= 210 AND $point_total < 220
+		$points_left = 220 - $point_total
+	CASE $point_total >= 220 AND $point_total < 232
+		$points_left = 232 - $point_total
+	CASE $point_total >= 232 AND $point_total < 244
+		$points_left = 244 - $point_total
+	CASE $point_total >= 244 AND $point_total < 256
+		$points_left = 256 - $point_total
+	CASE $point_total >= 256 AND $point_total < 268
+		$points_left = 268 - $point_total
+	CASE $point_total >= 268 AND $point_total < 280
+		$points_left = 280 - $point_total
+	CASE $point_total >= 280 AND $point_total < 292
+		$points_left = 292 - $point_total
+	CASE $point_total >= 292 AND $point_total < 304
+		$points_left = 304 - $point_total
+	CASE $point_total >= 304 AND $point_total < 316
+		$points_left = 316 - $point_total
+	CASE $point_total >= 316 AND $point_total < 328
+		$points_left = 328 - $point_total
+	CASE $point_total >= 328 AND $point_total < 340
+		$points_left = 340 - $point_total
+	CASE $point_total >= 340 AND $point_total < 352
+		$points_left = 352 - $point_total
+	CASE $point_total >= 352 AND $point_total < 364
+		$points_left = 364 - $point_total
+	CASE $point_total >= 364 AND $point_total < 376
+		$points_left = 376 - $point_total
+	CASE $point_total >= 376 AND $point_total < 388
+		$points_left = 388 - $point_total
+	CASE $point_total >= 388 AND $point_total < 400
+		$points_left = 400 - $point_total
+	CASE $point_total >= 400
+		$points_left = 0
+
+	ENDCASE
+ENDSUB #name=BeltRemaining
+
+
+$temp_str = "Points required for next level: $points_left"
+
+#Don't display message if at level 400
+IF $point_total >=400
+	$temp_str = ""
+ENDIF
+
+
+  $HTMLCode = $HTMLCode + "<center> $temp_str </center>"
+	
+	
+	
+	$BeltCode2 = "$1$2$3$2$5$6$2$BeltHTML$2$5$10$2$BeltWSize$2$5$15$2$BeltHSize$2$5$20$2$BeltAlt$2$5$28$2$20$BeltAlt$2$5$23$_NewLine"
+	$HTMLCode=$HTMLCode + "$Beltcode2</center><br>"
+	$HTMLCode=$HTMLCode + "<center>__________________________________________________________________________</center><br>"
+
+	$HTMLCode=$HTMLCode + "</tr></table>"
+	$HTMLCode=$HTMLCode + "</th></tr></table></div></center>"
 ENDSUB
 
 
@@ -5309,7 +5432,7 @@ ENDSUB
 
 
 BEGINSUB name=CheckMissingLogs
-  #Filter for caches with missing logs.	
+	#Filter for caches with missing logs.
 	MFILTER where="found AND Cachetype<>'Y' AND Cachetype<>'G' AND code not in (select lParent from Logs where g_FoundLog(lType) AND lIsOwner)"
 	IF $_FilterCount > 0
 		SPEEDMODE status=OFF
@@ -5329,7 +5452,7 @@ ENDSUB
 # Form generated by GSAK form designer on Tue 22-Nov-2011 21:13:57
 #********************************************************************
 
-Name = Form1
+Name = MissingLogs
 Type = Form
 Height = 250
 Width = 453
@@ -5438,6 +5561,11 @@ BEGINSUB name=Report
 
 
 ENDSUB #Report
+
+
+
+
+
 
 
 #####_#_#_#_#_#_#_###_#_#__#
@@ -6137,21 +6265,21 @@ Z87NzRF4CsOpNUm3++3l/wCwJYHq9DzPoAAAAABJRU5ErkJggg==
 
 <Data> VarName=$form
 #********************************************************************
-# Form generated by GSAK form designer on Mon 19-Dec-2011 17:07:10
+# Form generated by GSAK form designer on Wed 05-Sep-2012 15:45:14
 #********************************************************************
 
 Name = Form1
   Type = Form
   Color = 15790320
-  Height = 608
+  Height = 637
   Width = 642
 
 Name = Groupbox2
   Type = Groupbox
   Caption = Other Options
-  Height = 113
+  Height = 118
   Left = 320
-  Top = 368
+  Top = 383
   Width = 289
   Taborder = 3
 
@@ -6167,7 +6295,7 @@ Name = Groupbox3
 Name = Groupbox5
   Type = Groupbox
   Caption = Layout
-  Height = 129
+  Height = 144
   Left = 320
   Top = 232
   Width = 289
@@ -6226,7 +6354,7 @@ Name = Button1
   Enter = Yes
   Height = 41
   Left = 254
-  Top = 520
+  Top = 545
   Width = 121
   Taborder = 1
   Caption = OK
@@ -6235,7 +6363,7 @@ Name = Forum
   Type = Button
   Height = 21
   Left = 4
-  Top = 548
+  Top = 573
   Width = 99
   Taborder = 2
   Caption = Support Website
@@ -6531,7 +6659,7 @@ Name = Version
   Readonly = Yes
   Style = bold
   Textcolor = 8421504
-  Top = 548
+  Top = 573
   Width = 77
   Wrap = No
   Taborder = 9
@@ -6562,7 +6690,7 @@ Name = DelayRun
   Type = Checkbox
   Height = 17
   Left = 232
-  Top = 492
+  Top = 522
   Width = 161
   Taborder = 11
   Caption = Autorun next time (with delay)
@@ -6661,7 +6789,7 @@ Name = ConfigureState
   Top = 10
   Width = 121
   Taborder = 7
-  Caption = Configure State Badges
+  Caption = Configure Flag Badges
 
 Name = SpecialcaseHelper
   Type = Button
@@ -6730,7 +6858,19 @@ Name = Label8
   Width = 150
   Caption = Use this to help identify candidates<br>for the Scuba, Night-Owl and<br>Ten Year! Badges.
 
+Name = SeparateFlags
+  Type = Checkbox
+  Container = Groupbox5
+  Height = 20
+  Left = 8
+  Top = 120
+  Width = 188
+  Taborder = 8
+  Caption = Separate flag badges from the rest
+
 <enddata>
+
+
 
 
 
@@ -6871,56 +7011,56 @@ Caption = Trackables
 #********************************************************************
 
 Name = State Form
-  Type = Form
-  Height = 348
-  Width = 313
+Type = Form
+Height = 348
+Width = 313
 
 Name = Label1
-  Type = Label
-  Color = 0
-  Font = Arial Black
-  Height = 27
-  Left = 75
-  Size = 14
-  Top = 11
-  Width = 149
-  Caption = State Badges
+Type = Label
+Color = 0
+Font = Arial Black
+Height = 27
+Left = 75
+Size = 14
+Top = 11
+Width = 149
+Caption = State Badges
 
 Name = Label2
-  Type = Label
-  Height = 13
-  Left = 42
-  Top = 53
-  Width = 119
-  Caption = Display state badge for:
+Type = Label
+Height = 13
+Left = 42
+Top = 53
+Width = 119
+Caption = Display state badge for:
 
 Name = AvailableCountries
-  Type = Checklistbox
-  Columns = 0
-  Height = 171
-  Left = 41
-  Top = 70
-  Values = Values;were;not;correctly;given;
-  Width = 210
-  Taborder = 0
+Type = Checklistbox
+Columns = 0
+Height = 171
+Left = 41
+Top = 70
+Values = Values;were;not;correctly;given;
+Width = 210
+Taborder = 0
 
 Name = OK
-  Type = Button
-  Height = 28
-  Left = 118
-  Top = 273
-  Width = 75
-  Taborder = 1
-  Caption = <b><font size=12>OK</font></b>
+Type = Button
+Height = 28
+Left = 118
+Top = 273
+Width = 75
+Taborder = 1
+Caption = <b><font size=12>OK</font></b>
 
 Name = SelectNone
-  Type = Button
-  Height = 21
-  Left = 45
-  Top = 245
-  Width = 61
-  Taborder = 2
-  Caption = <font size=7.5>Deselect All</font>
+Type = Button
+Height = 21
+Left = 45
+Top = 245
+Width = 61
+Taborder = 2
+Caption = <font size=7.5>Deselect All</font>
 
 <enddata>
 
@@ -8414,30 +8554,30 @@ ENDSUB
 #********************************************************************
 
 Name = Form1
-  Type = Form
-  Color = 9291444
-  Height = 465
-  Width = 316
-  Caption = This message will only show once.
+Type = Form
+Color = 9291444
+Height = 465
+Width = 316
+Caption = This message will only show once.
 
 Name = GeocoinAdimg
-  Type = Image
-  Exitonclick = Yes
-  File = GeocoinAd.jpg
-  Height = 400
-  Left = 0
-  Source = Macro
-  Top = 0
-  Width = 300
+Type = Image
+Exitonclick = Yes
+File = GeocoinAd.jpg
+Height = 400
+Left = 0
+Source = Macro
+Top = 0
+Width = 300
 
 Name = Button1
-  Type = Button
-  Height = 20
-  Left = 115
-  Top = 405
-  Width = 66
-  Taborder = 10
-  Caption = Close
+Type = Button
+Height = 20
+Left = 115
+Top = 405
+Width = 66
+Taborder = 10
+Caption = Close
 
 <enddata>
 
@@ -9118,4 +9258,5 @@ MPrmzd+IHlXrH6qc54d6o58p4EuQaDPE+V8Ny1l7LWGTV380mhwugoi3nStJp8zMTJtJU6WsDtyt0d2d
 2MjXZ5QybdC1a1DWpalqiJUpRMYDYIHGJmVm8e9l3mqw5cKkgQMAIHpFX+oixosaKERAERF0AAFgBxBQ
 TrlzVer3PV6vc9Xq9z1er3PV6vc9Xq//2Q==
 <enddata>
+
 

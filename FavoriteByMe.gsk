@@ -2,11 +2,12 @@
 # MacDescription = Update (add if not exist) custom field "FavoriteByMe" indicating caches I awarded a favorite point
 # MacFileName = FavoriteByMe.gsk
 # MacAuthor = The CEO
-# MacVersion=1.01
+# MacVersion=1.02
 # MacUrl=
 #*******************************************
 
-VERCHECK Version=8.1.1.10 (please update GSAK to version 8.1.1.10 or later to run this macro)
+UpdateCheck Frequency=10
+VERCHECK Version=8.2.1.24 (please update GSAK to version 8.2.1.24 or later to run this macro)
 
 $_sql="PRAGMA table_info(Custom)"
 $Status=Sqlite("sql",$_sql)
@@ -14,55 +15,28 @@ IF At("FavoriteByMe",$Status)=0
     $Create = CustomConfig("Add","FavoriteByMe,Boolean,Global,,0")
 ENDIF
 
-
 $data = gcapi("GetCachesFavoritedByUser")
-# $data = gcapi("GetUsersWhoFavoritedCache?CacheCode=" + $d_code)
+
 if $_GcApiError
 	# Error running api, so show the error message
 	msgok msg=$data
-else
-	$_sql = "code not in (select data from GcApi where g_Contains('a:CacheCode',key))"
-	MFILTER where=$_sql
-        MACROSET Dialog=Replace VarName=$ReplaceFalse
-        GLOBALREPLACE Settings=<macro>	
+ELSE
+	$_sql = "UPDATE Custom SET FavoriteByMe = 0 WHERE cCode not in (select data from GcApi where g_Contains('a:CacheCode',key)) "
+	$result = Sqlite("sql", $_sql, "")
+	
+	$_sql = "UPDATE Custom SET FavoriteByMe = 1 WHERE cCode in (select data from GcApi where g_Contains('a:CacheCode',key)) "
+	$result = Sqlite("sql", $_sql, "")
+
+	ReSync # redraw the grid		
+	
+	CANCELFILTER
+	MFILTER WHERE=FavoriteByMe  	
+	
+ENDIF
 
 
-	$_sql = "code in (select data from GcApi where g_Contains('a:CacheCode',key))"
-	MFILTER where=$_sql
-        MACROSET Dialog=Replace VarName=$ReplaceTrue
-        GLOBALREPLACE Settings=<macro>	
-endif
 
-CANCELFILTER
-MFILTER WHERE=FavoriteByMe  
 
-<data> VarName=$ReplaceFalse
-[TfmReplace]
-cbxFields.Text=FavoriteByMe
-cbxWith.Text=False
-edtDate.Text=~Date~
-edtString.Text=
-rbtAdd.Checked=False
-rbtRemove.Checked=False
-rbtReplace.Checked=True
-rbtSwap.Checked=False
-chkClose.Checked=True
-rbtAddBefore.Checked=False
-<enddata>
-
-<data> VarName=$ReplaceTrue
-[TfmReplace]
-cbxFields.Text=FavoriteByMe
-cbxWith.Text=True
-edtDate.Text=~Date~
-edtString.Text=
-rbtAdd.Checked=False
-rbtRemove.Checked=False
-rbtReplace.Checked=True
-rbtSwap.Checked=False
-chkClose.Checked=True
-rbtAddBefore.Checked=False
-<enddata>
 
 
 

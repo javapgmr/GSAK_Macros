@@ -1,26 +1,35 @@
 ###################################################################################
 # MacFileName	    = PqLoader.gsk
-# MacVersion      = 2.26
+# MacVersion      = 2.28
+# DevVersion      = 2.28
 # MacAuthor	      = Wayne (Red Roo)
 # MacDescription  = For loading PQ's to a database named in their subjectline.
-# MacUrl          = 
+# MacUrl          = http://gsak.net/board/index.php?showtopic=10201
 ###################################################################################
-# Includes $DevUser.Gsk if it exists (this is a development macro on my system)
+   NOERROR Commands=GCREFRESH;GCGETPQ;UPDATECHECK 
+   UPDATECHECK Frequency=5
+
+   OPTION Explicit=Yes
+   VERCHECK Version=7.7.4.36 (Please update your version of GSAK At http://gsak.net)
+###############################################################################
 # DevUser does not download Pq's from Online.
 # =============================================================================
-#  Changes from v2.25
+#  Changes from v2.27
 # ====================
-# Removed reference to $PqLoaded which caused the macro to fail
-#
+# Removed references to the Colorization routine(s) and Color variables.
+# Lockable fields routine now allows more flexibility - Users can now input the names of fields that they want to lock during updates.
+# Databases that have been updated are now also added to the string variable $LoadedDbs and written to UpdatedDbs.xml
+# 
 ###################################################################################
-
-   VERCHECK Version=7.7.2.56 (Please update your version of GSAK At http://gsak.net)
-   OPTION Explicit=Yes
-   NOERROR Commands=GCREFRESH;GCGETPQ
+#  It would be nice if...
+# ========================
+# The 'No Update' routine was removed in preference for a proper GC Refresh.
+#
+###############################################################################
 
    GOSUB Name=Initialise
-
    GOSUB Name=FindOwnerName
+
    $Forma=EditForm($Forma,"RegName","Caption","$OwnerName")
    $OperatorAction=TRUE
    $StatMsg=""
@@ -105,24 +114,30 @@
 
    RETURN 
 ###################################################################################
-###############################     End of Macro    ###############################
+###############################    End of Macro    ###############################
 ###################################################################################
    BEGINSUB Name=PqGetMail               # TRANS ACTION commented out because of unbalance
      DECLARE Var=$FilePart Type=String
+     DECLARE Var=$Cnt Type=Numeric 
+     DECLARE Var=$Cntr Type=Numeric
+#
      $LockStr=""
-     IF $StateCb OR $CountryCb OR $ElevationCb AND $_Count>0
-       VSUB Status=OFF
-       IF $StateCb
-         $LockStr=$LockStr+"$d_State;"
+     IF $LockFields<>""
+       $LockFields=REPLACE(",",";",$LockFields)
+       $LockFields=REPLACE("$d_","",$LockFields)
+       IF Right($LockFields,1)<>";"
+       	 $LockFields=$LockFields+";"
        ENDIF 
-       IF $CountryCb
-         $LockStr=$LockStr+"$d_Country;"
-       ENDIF 
-       IF $ElevationCb
-         $LockStr=$LockStr+"$d_Elevation;"
-       ENDIF 
-       VSUB Status=ON
+     	 $Cnt=RegExCount(";",$LockFields)
+     	 $Cntr=0
+     	 WHILE $Cntr<$Cnt
+     	 	 $Cntr=$Cntr+1
+         VSUB Status=OFF
+     	 	 $LockStr=$LockStr+"$d_"+Extract($LockFields,";",$Cntr)+";"
+         VSUB Status=On
+     	 ENDWHILE 
      ENDIF 
+#
      $ServerBug=FALSE
      BEGINCASE 
        CASE $MacroSvr
@@ -225,8 +240,8 @@
          $Pattern="$PqFolder\*.$Extn"
          GOSUB Name=FolderLoad
        ELSE 
-         WHILE RegEx(".Zip",$FileList) OR RegEx(".Gpx",$FileList)                # $FileList is a sorted list - the file being loaded is now known
-           $Ftl=Extract($FileList,";",1)                                        # Ftl: File to load
+         WHILE RegEx(".Zip",$FileList) OR RegEx(".Gpx",$FileList)              # $FileList is a sorted list - the file being loaded is now known
+           $Ftl=Extract($FileList,";",1)                                       # Ftl: File to load
            $StatMsg=">>>  Processing $Ftl  <<<"
            GOSUB Name=ShowStat
            IF RegEx(".Zip",$Ftl) OR RegEx(".Gpx",$Ftl)
@@ -234,7 +249,7 @@
              $DynLoad=Replace("**FileDel**","$FileDelCbx",$StaticLoad)
              $DynLoad=Replace("**Pattern**","$Pattern",$DynLoad)
              IF $PqLoadFile
-               $DynLoad=Replace("**SetUser**","TRUE",$DynLoad)                # Should be set to True for individual file loads
+               $DynLoad=Replace("**SetUser**","TRUE",$DynLoad)                 # Should be set to True for individual file loads
              ENDIF 
              $DynLoad=Replace("**ClrUser**","TRUE",$DynLoad)                   # Should be set to True for individual file loads
              MACROSET Dialog=LOAD VarName=$DynLoad
@@ -281,7 +296,7 @@
          $FilePattern="$PqFolder\$Db *.*"
          GOSUB Name=GetFileList
          WHILE RegEx("^$Db",$FileList)                                        # $FileList is a sorted list - the file being loaded is now known
-           $Ftl=Extract($FileList,";",1)                                     # Ftl: File to load
+           $Ftl=Extract($FileList,";",1)                                      # Ftl: File to load
            $StatMsg=">>>  Processing $Ftl  <<<"
            GOSUB Name=ShowStat
 # We only want to load .Zip or .Gpx files
@@ -416,7 +431,6 @@
        GOSUB Name=CheckLogFile
      ENDIF 
      GOSUB Name=NoUpdate
-     GOSUB Name=SetColors
      GOSUB Name=Refresh
    ENDSUB 
 ###################################################################################
@@ -892,25 +906,6 @@
      ENDCASE 
    ENDSUB 
 ###################################################################################
-   BEGINSUB Name=DisplayColorCfg
-     $FormA=EditForm($FormA,"Form1","Delay","0")
-     WHILE TRUE
-       $FormExit = Form($Formc,"")
-       BEGINCASE 
-         CASE $FormExit="Test"
-           $RunColor=TRUE
-           GOSUB Name=SetColors
-         CASE $FormExit="Clear"
-           SPEEDMODE Status=OFF
-             CANCELFILTER 
-             SETCOLOR Color=CLEAR
-           SPEEDMODE Status=ON
-         CASE $FormExit="ExitF3"
-           BREAK 
-       ENDCASE 
-     ENDWHILE 
-   ENDSUB 
-###################################################################################
    BEGINSUB Name=NoUpdateConfig                            # Display No Update Config
      $FormA=EditForm($FormA,"Form1","Delay","0")
      WHILE TRUE
@@ -965,78 +960,6 @@
      $Forma=EditForm($Forma,"ActionLb2","Caption",$TempStr2)
    ENDSUB 
 ###################################################################################
-   BEGINSUB Name=SetColors
-     IF $AutoColor AND $RunColor
-       CANCELFILTER 
-       $Routine="all caches"
-       $Color=$C0
-       GOSUB Name=LineColor
-       IF $OwnerName <> $UnknownUser
-         $Routine="Owned caches"
-         MFILTER Where=IsOwner
-         $Color=$C1
-         GOSUB Name=LineColor
-       ENDIF 
-       $Routine="Archived caches"
-       MFILTER Where=Status='X'
-       $Color=$C2
-       GOSUB Name=LineColor
-       $Routine="Temporarily Disabled caches"
-       MFILTER Where=Status='T'
-       $Color=$C3
-       GOSUB Name=LineColor
-       IF $OwnerName <> $UnknownUser
-         $Routine="Found caches"
-         MFILTER Where=Found
-         $Color=$C4
-         GOSUB Name=LineColor
-       ENDIF 
-       $Routine="Archived and Found caches"
-       MFILTER Where=Found AND Status='X'
-       $Color=$C5
-       GOSUB Name=LineColor
-       $Routine="FTF's"
-       MFILTER Where=Ftf
-       $Color=$C6
-       GOSUB Name=LineColor
-       $Routine="New (Unfound) caches"
-#       MFILTER Where=(LastFoundDate <[20000101])And Status='A'
-       MFILTER Where=LastFoundDate < '2000-01-01' And Status='A'
-       $Color=$C7
-       GOSUB Name=LineColor
-       $Routine="DNF's"
-       MFILTER Where=Dnf
-       $Color=$C8
-       GOSUB Name=LineColor
-       $Routine="Locked caches"
-       MFILTER Where= (Lock) And (CacheType='U' Or CacheType='O')
-       $Color=$C9
-       GOSUB Name=LineColor
-       SQLSORT OrderBy=Distance
-     ENDIF 
-     $RunColor=FALSE
-   ENDSUB 
-###################################################################################
-   BEGINSUB Name=LineColor
-     $LCnt=1
-     $ClrCnt=RegExCount($Colors,";")
-     $NewColor=0
-     WHILE $Lcnt > $ClrCnt
-       IF $Color=Extract($Colors,";",$LCnt)
-         $NewColor=$LCnt
-         BREAK 
-       ENDIF 
-       $Lcnt=$LCnt+1
-     ENDWHILE 
-     $StatMsg="Coloring $Routine $Color"
-     GOSUB Name=ShowStat
-     IF ($_FilterCount > 0) Or ($Color=$C0)
-       $ThisColor=Val(Extract($CCodes,";",$NewColor))
-       SETCOLOR Color=$ThisColor
-     ENDIF 
-     CANCELFILTER 
-   ENDSUB 
-###################################################################################
    BEGINSUB Name=FindOwnerName
      $ResultStr = sqlite("open","$_CurrentDataPath\sqlite.db3")
      $OwnerName = sqlite("sql","select distinct lby from logs where lisowner limit 1")
@@ -1062,12 +985,6 @@
    ENDSUB 
 ###################################################################################
    BEGINSUB Name=SetOptionDisplays
-# Enable or Disable the Color button
-     IF $AutoColor
-       $Forma=EditForm($Forma,"ColorConfig","Enabled","Yes")
-     ELSE 
-       $Forma=EditForm($Forma,"ColorConfig","Enabled","No")
-     ENDIF 
 # Enable or Disable the Default DataBase box
      IF $FileDelCbx
        $Forma=EditForm($Forma,"GroupBox2","Enabled","Yes")
@@ -1170,7 +1087,7 @@
        $Password=MimeEncode($Password)
      ENDIF 
      MACSETTINGS Type=S Vars=MailServer,LoginName,Password File="$MacroFolder\PqLoaderServerData.Xml"
-     MACSETTINGS Type=S Vars=WindowsVersion,GsakVers,MacName,_exePath,MailServer,Port,SSL,RunCount,EncrPwrd,StatsCBx,FileDelCbx,BackupCbx,AutoColor,AutoArc,QuietMode,DaysOld,C0,C1,C2,C3,C4,C5,C6,C7,C8,C9,MfDelay,NewMsgs,DbCb,DbBox,FilterCb,FilterBox,MacroCb,MacroBox,StateCb,CountryCb,ElevationCb,DefaultLoadCb,DefaultDb,NothingBtn,ArchiveBtn,DeleteBtn,MoveCb,ArchiveDb,RunIfUpdated,RunMacro,Fl,Ft,SettingsLst,AltSettings,BypassGetMail,PqFolder,FldrListAfterLastDownLoad,DbXmlList,MfPqDb,MacroSvr,NsSeparatorStr,RemNonLtrs,PqlRap,RunAgm,MacroAgm,GcSetting,GcDays,CheckNotRefreshed,StatusNotUpdated,UserField,PqLoadFldr,PqLoadFile,UpdateList
+     MACSETTINGS Type=S Vars=WindowsVersion,GsakVers,MacName,_exePath,MailServer,Port,SSL,RunCount,EncrPwrd,StatsCBx,FileDelCbx,BackupCbx,AutoArc,QuietMode,DaysOld,MfDelay,NewMsgs,DbCb,DbBox,FilterCb,FilterBox,MacroCb,MacroBox,LockFields,DefaultLoadCb,DefaultDb,NothingBtn,ArchiveBtn,DeleteBtn,MoveCb,ArchiveDb,RunIfUpdated,RunMacro,Fl,Ft,SettingsLst,AltSettings,BypassGetMail,PqFolder,FldrListAfterLastDownLoad,DbXmlList,MfPqDb,MacroSvr,NsSeparatorStr,RemNonLtrs,PqlRap,RunAgm,MacroAgm,GcSetting,GcDays,CheckNotRefreshed,StatusNotUpdated,UserField,PqLoadFldr,PqLoadFile,UpdateList
      IF $EncrPwrd
        $Password=MimeDecode($Password)
      ENDIF 
@@ -1322,7 +1239,6 @@
      $BackupCbx= FALSE
      $RunColor= FALSE
      $AutoArc=FALSE
-     $AutoColor=FALSE
      $DefaultLoadCb=FALSE
      $DbCb=FALSE
      $FilterCb=FALSE
@@ -1332,9 +1248,6 @@
      $MfDelay="0"                                                    # Default value for 1st use.
      $DefaultDb=""
      $MacroBox=""
-     $StateCb=FALSE
-     $CountryCb=FALSE
-     $ElevationCb=FALSE
 
 #    Settings associated with FormA
      $FilterList=$Ns+";"+SysInfo("Filters")
@@ -1370,18 +1283,6 @@
      $ClrB4LOAD=FALSE
      $DefaultLoadClear=FALSE
      $StatusNotUpdated=FALSE
-
-#    FormC - Form3      Color Configuration
-     $C0=""
-     $C1=""
-     $C2=""
-     $C3=""
-     $C4=""
-     $C5=""
-     $C6=""
-     $C7=""
-     $C8=""
-     $C9=""
 
 # Form D - Form 4     Archiver Configuration
      $NothingBtn=TRUE
@@ -1479,9 +1380,8 @@
    DECLARE Var=$DevUser Type=Boolean
    DECLARE Var=$LoadedDbs Type=String
 
-   DECLARE Var=$StateCb Type=Boolean
-   DECLARE Var=$CountryCb Type=Boolean
-   DECLARE Var=$ElevationCb Type=Boolean
+   DECLARE Var=$LockFields Type=String
+   
    DECLARE Var=$PqSetting Type=String
 
    DECLARE Var=$AgeDays Type=String
@@ -1489,19 +1389,8 @@
    DECLARE Var=$ArchiveBtn Type=Boolean
    DECLARE Var=$ArchiveDb Type=String
    DECLARE Var=$AutoArc Type=Boolean
-   DECLARE Var=$AutoColor Type=Boolean
    DECLARE Var=$BackupCbx Type=Boolean
    DECLARE Var=$BypassGetMail Type=Boolean
-   DECLARE Var=$C0 Type=String
-   DECLARE Var=$C1 Type=String
-   DECLARE Var=$C2 Type=String
-   DECLARE Var=$C3 Type=String
-   DECLARE Var=$C4 Type=String
-   DECLARE Var=$C5 Type=String
-   DECLARE Var=$C6 Type=String
-   DECLARE Var=$C7 Type=String
-   DECLARE Var=$C8 Type=String
-   DECLARE Var=$C9 Type=String
    DECLARE Var=$Ccodes Type=String
    DECLARE Var=$CheckNotRefreshed Type=Boolean
    DECLARE Var=$ClrB4LOAD Type=Boolean
@@ -1814,14 +1703,14 @@ edtFolder.Text=C:\Documents and Settings\Wayne\Desktop
 ###################################################################################
 <DATA> VarName=$forma
 #********************************************************************
-# Form generated by GSAK form designer on Fri 06-Jan-2012 17:34:43
+# Form generated by GSAK form designer on Fri 04-Jan-2013 08:32:39
 #********************************************************************
 
 Name = Form1
   Type = Form
   Color = 15138815
   Height = 552
-  Top = 3
+  Top = 104
   Width = 610
 
 Name = Groupbox1
@@ -1842,16 +1731,16 @@ Name = Groupbox2
   Left = 242
   Top = 135
   Width = 273
-  Taborder = 10
+  Taborder = 8
 
 Name = Groupbox3
   Type = Groupbox
   Container = Groupbox1
-  Height = 244
+  Height = 280
   Left = 11
-  Top = 135
+  Top = 22
   Width = 220
-  Taborder = 14
+  Taborder = 12
 
 Name = Process
   Type = Button
@@ -1872,27 +1761,6 @@ Name = Exit
   Taborder = 1
   Caption = Quit / Exit
 
-Name = AutoColor
-  Type = Checkbox
-  Container = Groupbox1
-  Exitonchange = Yes
-  Height = 17
-  Left = 14
-  Top = 38
-  Width = 15
-  Taborder = 0
-
-Name = ColorConfig
-  Type = Button
-  Container = Groupbox1
-  Enabled = No
-  Height = 25
-  Left = 40
-  Top = 73
-  Width = 156
-  Taborder = 1
-  Caption = Color Configuration
-
 Name = Label1
   Type = Label
   Color = 4210816
@@ -1903,16 +1771,6 @@ Name = Label1
   Top = 20
   Width = 238
   Caption = Action to take if caches are not updated
-
-Name = Label3
-  Type = Label
-  Color = 16711680
-  Container = Groupbox1
-  Height = 13
-  Left = 40
-  Top = 40
-  Width = 158
-  Caption = Enable coloring of the database
 
 Name = StatsCbx
   Type = Checkbox
@@ -1948,17 +1806,6 @@ Name = BackupCbx
   Taborder = 2
   Caption = Backup the logfile after each load
 
-Name = Label7
-  Type = Label
-  Color = 16711680
-  Container = Groupbox1
-  Height = 13
-  Left = 15
-  Style = bold;underline
-  Top = 20
-  Width = 74
-  Caption = Colorization
-
 Name = Label9
   Type = Label
   Color = 16711680
@@ -1979,7 +1826,7 @@ Name = AutoArc
   Left = 255
   Top = 38
   Width = 15
-  Taborder = 2
+  Taborder = 0
 
 Name = Label10
   Type = Label
@@ -1995,10 +1842,10 @@ Name = MainCfg
   Type = Button
   Container = Groupbox1
   Height = 25
-  Left = 178
-  Top = 103
+  Left = 40
+  Top = 334
   Width = 157
-  Taborder = 3
+  Taborder = 1
   Caption = Mail Configuration
 
 Name = RegName
@@ -2082,7 +1929,7 @@ Name = FilterCb
   Left = 250
   Top = 307
   Width = 15
-  Taborder = 4
+  Taborder = 2
 
 Name = Label16
   Type = Label
@@ -2102,7 +1949,7 @@ Name = FilterBox
   Top = 306
   Values = $FilterList
   Width = 149
-  Taborder = 5
+  Taborder = 3
 
 Name = MacroCb
   Type = Checkbox
@@ -2112,7 +1959,7 @@ Name = MacroCb
   Left = 250
   Top = 333
   Width = 15
-  Taborder = 6
+  Taborder = 4
 
 Name = Label17
   Type = Label
@@ -2131,7 +1978,7 @@ Name = MacroBox
   Left = 361
   Top = 332
   Width = 149
-  Taborder = 7
+  Taborder = 5
 
 Name = DbCb
   Type = Checkbox
@@ -2141,7 +1988,7 @@ Name = DbCb
   Left = 250
   Top = 281
   Width = 15
-  Taborder = 8
+  Taborder = 6
 
 Name = Label13
   Type = Label
@@ -2161,7 +2008,7 @@ Name = DbBox
   Top = 280
   Values = $DbList
   Width = 149
-  Taborder = 9
+  Taborder = 7
 
 Name = ThenA
   Type = Label
@@ -2192,31 +2039,9 @@ Name = Label14
   Height = 13
   Left = 6
   Style = bold;underline
-  Top = 85
+  Top = 117
   Width = 204
   Caption = Fields to be locked during updates
-
-Name = CountryCb
-  Type = Checkbox
-  Container = Groupbox3
-  Fontcolor = 33023
-  Height = 17
-  Left = 10
-  Top = 120
-  Width = 60
-  Taborder = 5
-  Caption = Country
-
-Name = StateCb
-  Type = Checkbox
-  Container = Groupbox3
-  Fontcolor = 33023
-  Height = 17
-  Left = 10
-  Top = 103
-  Width = 50
-  Taborder = 3
-  Caption = State
 
 Name = DefaultLoadCb
   Type = Checkbox
@@ -2275,10 +2100,10 @@ Name = ArchiveCfg
   Type = Button
   Container = Groupbox1
   Height = 25
-  Left = 315
-  Top = 73
+  Left = 307
+  Top = 85
   Width = 157
-  Taborder = 11
+  Taborder = 9
   Caption = No Update Configuration
 
 Name = ActionLbl
@@ -2316,7 +2141,7 @@ Name = RunMacro
   Left = 266
   Top = 334
   Width = 15
-  Taborder = 12
+  Taborder = 10
 
 Name = RunIfUpdated
   Type = Radiobutton
@@ -2325,7 +2150,7 @@ Name = RunIfUpdated
   Left = 266
   Top = 353
   Width = 15
-  Taborder = 13
+  Taborder = 11
 
 Name = Label8
   Type = Label
@@ -2334,7 +2159,7 @@ Name = Label8
   Height = 13
   Left = 6
   Style = bold;underline
-  Top = 149
+  Top = 184
   Width = 86
   Caption = Other Options
 
@@ -2344,9 +2169,9 @@ Name = PqlRap
   Fontcolor = 16512
   Height = 17
   Left = 10
-  Top = 219
+  Top = 254
   Width = 199
-  Taborder = 6
+  Taborder = 3
   Caption = Return to this form after processing
 
 Name = Freset
@@ -2358,17 +2183,6 @@ Name = Freset
   Width = 75
   Taborder = 4
   Caption = &Reset
-
-Name = ElevationCb
-  Type = Checkbox
-  Container = Groupbox3
-  Fontcolor = 33023
-  Height = 17
-  Left = 95
-  Top = 103
-  Width = 97
-  Taborder = 4
-  Caption = Elevation
 
 Name = Label11
   Type = Label
@@ -2386,9 +2200,9 @@ Name = PqLoadFldr
   Fontcolor = 16512
   Height = 20
   Left = 10
-  Top = 166
+  Top = 201
   Width = 153
-  Taborder = 7
+  Taborder = 4
   Caption = Original PQ Load (faster)
 
 Name = PqLoadFile
@@ -2398,9 +2212,9 @@ Name = PqLoadFile
   Fontcolor = 16512
   Height = 20
   Left = 10
-  Top = 184
+  Top = 219
   Width = 117
-  Taborder = 8
+  Taborder = 5
   Caption = Insert Pq Name into
 
 Name = ClrB4Load
@@ -2409,19 +2223,19 @@ Name = ClrB4Load
   Fontcolor = 16512
   Height = 20
   Left = 22
-  Top = 202
+  Top = 237
   Width = 191
-  Taborder = 9
+  Taborder = 6
   Caption = Clear User Field before Loading Pq's
 
 Name = UserField
   Type = Combobox
   Container = Groupbox3
   Height = 21
-  Left = 139
-  Top = 185
-  Width = 73
-  Taborder = 10
+  Left = 127
+  Top = 220
+  Width = 85
+  Taborder = 7
 
 Name = DefaultLoadClear
   Type = Checkbox
@@ -2434,7 +2248,25 @@ Name = DefaultLoadClear
   Taborder = 2
   Caption = Clear User Field before Loading Pq's
 
+Name = LockFields
+  Type = Edit
+  Container = Groupbox3
+  Height = 21
+  Left = 6
+  Top = 134
+  Width = 206
+  Taborder = 8
+
 <enddata>
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2476,7 +2308,7 @@ Name = DefaultLoadClear
 ###################################################################################
 <DATA> VarName=$formb
 #********************************************************************
-# Form generated by GSAK form designer on Tue 31-Jul-2012 09:44:37
+# Form generated by GSAK form designer on Mon 31-Dec-2012 08:33:51
 #********************************************************************
 
 Name = Form2
@@ -2935,7 +2767,7 @@ Name = Label17
   Container = Groupbox2
   Height = 17
   Left = 34
-  Top = 334
+  Top = 337
   Width = 323
   Caption = available caches not included in the download and not updated for
 
@@ -2943,14 +2775,15 @@ Name = UpdateList
   Type = Checklistbox
   Columns = 3
   Container = Groupbox2
-  Height = 103
-  Left = 133
+  Height = 88
+  Left = 122
   Top = 249
   Values = $DbList
-  Width = 503
+  Width = 514
   Taborder = 15
 
 <enddata>
+
 
 
 
@@ -2989,239 +2822,6 @@ Name = UpdateList
 
 
 ###################################################################################
-<DATA> VarName=$formc
-#********************************************************************
-# Form generated by GSAK form designer on Tue 28-Apr-2009 21:54:23
-#********************************************************************
-
-Name = Form3
-  Type = Form
-  Color = 9820631
-  Height = 400
-  Top = 5
-  Width = 369
-
-Name = Label1
-  Type = Label
-  Color = 255
-  Font = Comic Sans MS
-  Height = 30
-  Left = 79
-  Size = 16
-  Style = bold
-  Top = 17
-  Width = 194
-  Caption = Color Configuration
-
-Name = Label3
-  Type = Label
-  Color = 16711680
-  Height = 13
-  Left = 70
-  Top = 83
-  Width = 34
-  Caption = Owned
-
-Name = Label4
-  Type = Label
-  Color = 16711680
-  Height = 13
-  Left = 70
-  Top = 104
-  Width = 42
-  Caption = Archived
-
-Name = Label5
-  Type = Label
-  Color = 16711680
-  Height = 13
-  Left = 70
-  Top = 125
-  Width = 71
-  Caption = Temp Disabled
-
-Name = Label6
-  Type = Label
-  Color = 16711680
-  Height = 13
-  Left = 70
-  Top = 147
-  Width = 30
-  Caption = Found
-
-Name = Label7
-  Type = Label
-  Color = 16711680
-  Height = 13
-  Left = 70
-  Top = 169
-  Width = 93
-  Caption = Found but Archived
-
-Name = Label8
-  Type = Label
-  Color = 16711680
-  Height = 13
-  Left = 70
-  Top = 190
-  Width = 89
-  Caption = First to Find (FTF's)
-
-Name = Label9
-  Type = Label
-  Color = 16711680
-  Height = 13
-  Left = 70
-  Top = 211
-  Width = 70
-  Caption = New (unfound)
-
-Name = Label10
-  Type = Label
-  Color = 16711680
-  Height = 13
-  Left = 70
-  Top = 232
-  Width = 95
-  Caption = Did not Find (DNF's)
-
-Name = Label11
-  Type = Label
-  Color = 16711680
-  Height = 13
-  Left = 70
-  Top = 253
-  Width = 36
-  Caption = Locked
-
-Name = C0
-  Type = Combobox
-  Height = 21
-  Left = 174
-  Top = 57
-  Values = $Colors
-  Width = 100
-  Taborder = 20
-
-Name = C1
-  Type = Combobox
-  Height = 21
-  Left = 174
-  Top = 79
-  Values = $Colors
-  Width = 100
-  Taborder = 8
-
-Name = C2
-  Type = Combobox
-  Height = 21
-  Left = 174
-  Top = 100
-  Values = $Colors
-  Width = 100
-  Taborder = 9
-
-Name = C3
-  Type = Combobox
-  Height = 21
-  Left = 174
-  Top = 121
-  Values = $Colors
-  Width = 100
-  Taborder = 10
-
-Name = C4
-  Type = Combobox
-  Height = 21
-  Left = 174
-  Top = 143
-  Values = $Colors
-  Width = 100
-  Taborder = 11
-
-Name = C5
-  Type = Combobox
-  Height = 21
-  Left = 174
-  Top = 165
-  Values = $Colors
-  Width = 100
-  Taborder = 12
-
-Name = C6
-  Type = Combobox
-  Height = 21
-  Left = 174
-  Top = 186
-  Values = $Colors
-  Width = 100
-  Taborder = 13
-
-Name = C7
-  Type = Combobox
-  Height = 21
-  Left = 174
-  Top = 207
-  Values = $Colors
-  Width = 100
-  Taborder = 14
-
-Name = C8
-  Type = Combobox
-  Height = 21
-  Left = 174
-  Top = 228
-  Values = $Colors
-  Width = 100
-  Taborder = 15
-
-Name = C9
-  Type = Combobox
-  Height = 21
-  Left = 174
-  Top = 249
-  Values = $Colors
-  Width = 100
-  Taborder = 16
-
-Name = ExitF3
-  Type = Button
-  Height = 33
-  Left = 70
-  Top = 302
-  Width = 151
-  Taborder = 17
-  Caption = Return to Main Form
-
-Name = Test
-  Type = Button
-  Height = 25
-  Left = 260
-  Top = 290
-  Width = 75
-  Taborder = 18
-  Caption = Test Colors
-
-Name = Clear
-  Type = Button
-  Height = 25
-  Left = 260
-  Top = 322
-  Width = 75
-  Taborder = 19
-  Caption = Clear Colors
-
-Name = Label2
-  Type = Label
-  Color = 16711680
-  Height = 13
-  Left = 70
-  Top = 61
-  Width = 43
-  Caption = Available
-
-<enddata>
-
 <DATA> VarName=$FormD
 #********************************************************************
 # Form generated by GSAK form designer on Tue 28-Apr-2009 21:54:43

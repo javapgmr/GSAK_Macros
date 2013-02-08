@@ -2,7 +2,7 @@
 # MacDescription = FSG Plugin - Displays the well known "Found by Date" stats for just one year
 # MacFileName = FSGPlugin_FoundByDate.gsk
 # MacAuthor = hulmgulm
-# MacVersion=1.0.0
+# MacVersion=1.0.2
 # MacUrl=http://gsak.net/board/index.php?showtopic=23436
 #**************************************************************************************
 # Usage:
@@ -71,7 +71,7 @@ BEGINSUB Name=FindsByFoundDate
 	$numcombF = 0                              # number of found Month/Day Combinations
 	$monthday = "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,;"
 
-	$_sql = "CREATE table FindsByDay_2 as Select cast(strftime('%m',lDate) as integer) as Month, cast(strftime('%d',lDate) as integer) as Day, Count(code) as Count, Sum(FTF) as FTF  from AllFinds where FoundByMeDate like '$selectedyear-%' group by strftime('%m',lDate), strftime('%d',lDate)"
+	$_sql = "CREATE table FindsByDay_2 as Select cast(strftime('%m',lDate) as integer) as Month, cast(strftime('%d',lDate) as integer) as Day, Count(code) as Count, Sum(FTF) as FTF from AllFinds where FoundByMeDate like '$selectedyear-%' group by strftime('%m',lDate), strftime('%d',lDate)"
 	$status = Sqlite("sql",$_sql)
 
 	WHILE $month <= 12
@@ -116,7 +116,7 @@ BEGINSUB Name=FindsByFoundDate
 	$month = 1
 	
 	# Title row
-	$pluginoutput = AddStr(1,"add","<tr><td height='16' style='$stTab2cHead' colspan='32' align='center'><B>$Lang32</B></td></tr>" + $CR)
+	$pluginoutput = AddStr(1,"add","<tr><td height='16' style='$stTab2cHead' colspan='32' align='center'><B>$selectedyear</B></td></tr>" + $CR)
 	$pluginoutput = AddStr(1,"add","<tr>" + $CR)
 
 	$pluginoutput = AddStr(1,"add","<td height='16' style='$st2c1'></td>")
@@ -127,7 +127,7 @@ BEGINSUB Name=FindsByFoundDate
 		# Get one result
 		$text = Extract($data, ",", $indext)
 		$tmpB = FALSE
-		$_sql = "select count(distinct substr(ldate,6)) from allfinds where cast (substr(ldate,9) as integer) = $text"
+		$_sql = "select count(distinct substr(ldate,6)) from allfinds where cast (substr(ldate,9) as integer) = $text and ldate like '$selectedyear-%'"
 		$tmpN = Val(Sqlite("sql",$_sql))
 		BEGINCASE
 			CASE ($indext <= 29)
@@ -162,7 +162,7 @@ BEGINSUB Name=FindsByFoundDate
 		$tindexd = Extract($tmpS,";",$month)
 		
 		$tmpB = FALSE
-		$_sql = "select count(distinct substr(ldate,9)) from allfinds where cast (substr(ldate,6,2) as integer) = $month"
+		$_sql = "select count(distinct substr(ldate,9)) from allfinds where cast (substr(ldate,6,2) as integer) = $month and ldate like '$selectedyear-%'"
 		$tmpN = Val(Sqlite("sql",$_sql))
 		BEGINCASE
 			CASE ($month=2)
@@ -381,4 +381,6 @@ BEGINSUB name=DeclareVariables
 	Declare Var=$pluginoutput Type=String
 	Declare Var=$selectedyear Type=String
 ENDSUB
+
+
 

@@ -2,7 +2,7 @@
 # MacDescription = FSG Plugin - Check your alphabetical challenge
 # MacFileName = FSGPlugin_ABC.gsk
 # MacAuthor = sbeelis
-# MacVersion = 1.05
+# MacVersion = 1.06
 # MacUrl = http://gsak.net/board/index.php?showtopic=20037&view=findpost&p=143616
 #*******************************************
 
@@ -32,6 +32,7 @@
 # V1.03   2012-02-01  fixed broken links for GC codes
 # V1.04               skipped to avoid confusion with Daemonic's version
 # V1.05   2012-09-28  added support for limiting year (Daemonic)
+# V1.06   2012-10-19  added support for owner name
 
   # Declares
   Declare Var=$LettersList Type=String
@@ -51,6 +52,7 @@
   DECLARE Var=$LettersShowLimits Type=Boolean
   DECLARE Var=$LettersLimitHeading Type=String
   DECLARE Var=$LettersUseCountyOverState Type=Boolean
+  DECLARE Var=$owner Type=Boolean
 
   # Make sure we aren't being called directly
   IF $_MacroLevel = 1
@@ -73,6 +75,7 @@
   $LettersLimitHeading=""
   $length = len($_MacroParms)
   $count = 1
+  $owner = FALSE
 
   WHILE ($count <= $length)
     $param = Extract($_MacroParms,"&",$count)
@@ -99,6 +102,9 @@
     ENDIF
     IF lower(left($param, len("state="))) = "state="
       $LettersState = Substr($param, len("state=")+1, 0)
+    ENDIF
+    IF Lower(Left($param, Len("owner="))) = "owner="
+      $owner = TRUE
     ENDIF
     $count = $count + 1
   ENDWHILE
@@ -145,8 +151,12 @@
 
   # Initialize Section header
   $colspan = 1
-  $text= $LangHeader
-  If $LettersShowHeading
+  IF $owner
+    $text = $LangHeaderOwner
+  ELSE
+    $text= $LangHeader
+  ENDIF
+  IF $LettersShowHeading
     GOSUB Name=SectionHead
   ENDIF
 
@@ -167,11 +177,15 @@
   $text3 = "<b>$Lang32</b>" # Date
   $text4 = "<b>$Lang49</b>" # Country
   IF $LettersUseCountyOverState
-  $text5 = "<b>$LangCounty</b>" # County
-    ELSE
-  $text5 = "<b>$Lang169</b>" # State
-    ENDIF
-  $text6 = "<b>$Lang35</b>" # Name
+    $text5 = "<b>$LangCounty</b>" # County
+  ELSE
+    $text5 = "<b>$Lang169</b>" # State
+  ENDIF
+  IF $owner
+    $text6 = "<b>$LangT6</b>" # Name
+  ELSE
+    $text6 = "<b>$Lang35</b>" # Name
+  ENDIF
 
   # Build the table header for this state
   $out = $out + "<tr>" + "$_CrLf " + $_CrLf
@@ -201,7 +215,11 @@
 
     SHOWSTATUS msg="$LangMsgSearch1 $letterU $LangMsgSearch2" Width=350
 
-    $_sql = "SELECT rowid, ldate, state, code, cachetype, name, llogid, url, country, county FROM allfinds WHERE (name like '$letterU%' or name like '$letterL%') and $Locationless $LettersLimit ORDER BY FoundByMeDate, cast(cacheId as integer) LIMIT 1"
+    IF $owner
+      $_sql = "SELECT rowid, ldate, state, code, cachetype, ownername, llogid, url, country, county FROM allfinds WHERE (ownername like '$letterU%' or ownername like '$letterL%') and $Locationless $LettersLimit ORDER BY FoundByMeDate, cast(cacheId as integer) LIMIT 1"
+    ELSE
+      $_sql = "SELECT rowid, ldate, state, code, cachetype, name, llogid, url, country, county FROM allfinds WHERE (name like '$letterU%' or name like '$letterL%') and $Locationless $LettersLimit ORDER BY FoundByMeDate, cast(cacheId as integer) LIMIT 1"
+    ENDIF
     $work = Sqlite("sql",$_sql)
     $LogTotal = $_SqlRows
 
@@ -254,8 +272,7 @@
           $text4 = Extract($GetCache,";",3)   # state
         ENDIF
 
-      $text5 = Extract($GetCache,";",6)   # name
-      $text5 = "$text5"
+      $text5 = Extract($GetCache,";",6)   # name / owner name
 
       IF $miletypes
         $tmpB = FALSE
@@ -411,6 +428,7 @@ BEGINSUB Name=InitLanguage
   DECLARE Var=$LangLetter Type=String
   DECLARE Var=$LangYear Type=String
   DECLARE Var=$LangHeader Type=String
+  DECLARE Var=$LangHeaderOwner Type=String
   DECLARE Var=$LangMsgSearch1 Type=String
   DECLARE Var=$LangMsgSearch2 Type=String
   DECLARE Var=$LangMsgOutput Type=String
@@ -428,6 +446,7 @@ BEGINSUB Name=InitLanguage
   $LangLetter = "Letter"
   $LangYear = "Year"
   $LangHeader ="Caches starting with letters of the alphabet"
+  $LangHeaderOwner ="Caches of owners, whose names start with letters of the alphabet"
   $LangMsgSearch1="Searching caches starting with "
   $LangMsgSearch2=""
   $LangMsgOutput="Generating output for alphabetical list."
@@ -445,6 +464,7 @@ BEGINSUB Name=InitLanguage
     $LangLetter = "Buchstabe"
     $LangYear = "Jahr"
     $LangHeader ="Caches, welche mit allen Buchstaben des Alphabetes starten"
+    $LangHeaderOwner ="Caches von Ownern, deren Namen mit allen Buchstaben des Alphabetes starten"
     $LangMsgSearch1="Suche nach Caches, die mit"
     $LangMsgSearch2="starten"
     $LangMsgOutput="Erzeuge alphabetische Liste."
@@ -466,6 +486,7 @@ BEGINSUB Name=InitLanguage
     $LangLetter = "Letter"
     $LangYear = "Year"
     $LangHeader ="Caches starting with letters of the alphabet"
+    $LangHeaderOwner ="Caches of owners, whose names start with letters of the alphabet"
     $LangMsgSearch1="Searching caches starting with "
     $LangMsgSearch2=""
     $LangMsgOutput="Generating output for alphabetical list."
@@ -482,4 +503,5 @@ BEGINSUB Name=InitLanguage
   ###########################################
 
 ENDSUB
+
 

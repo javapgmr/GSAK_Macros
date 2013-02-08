@@ -1,19 +1,19 @@
-################################################################################ 
-#                          GSAK Create a Log                                   # 
-#                (c) 2007 written by Lignumaqua 2007                           # 
-#                                                                              # 
+################################################################################
+#                          GSAK Create a Log                                   #
+#                (c) 2007 written by Lignumaqua 2007                           #
+#                                                                              #
 # This script allows you to create a new log of any type for a waypoint        #
 #                                                                              #
 # MacDescription = Create a log
 # MacFileName = Createlog.gsk
 # MacAuthor = Lignumaqua
-# MacVersion=0.2
+# MacVersion=0.3
 
 # Version check
 VERCHECK Version=7.1.1.32 (You can find the latest version of GSAK in the forums at http://support.gsak.net/)
 
 GOSUB name=declarevariables
-$Revision = "V0.2"
+$Revision = "V0.3"
 $form = Editform($form,"VersionLabel","caption","$Revision")
 $form = Editform($form,"CacheName","caption","$d_Name")
 $left = Int(250 - Len($d_Name)*3.1)
@@ -25,43 +25,46 @@ $Type= "Archive;Attended;Didn't find it;Enable Listing;Found it;Needs Archived;N
 $DataFile=$_Install + "\Macros\CreateLogsData.dat"
 
 IF (FileExists($DataFile))
-	
+
 	# If the file exists then read the saved values and assign them to variables
 	# now $line will hold the contents of the file
 	FILEREAD File=$DataFile
-	
-	# Geocaching user name
-	$MyName = Extract($line, ";", 1)
-	
-	# Geocaching user ID
-	$MyID = Extract($line, ";", 2)
+
+		# Geocaching user name
+		$MyName = Extract($line, ";", 1)
+
+		# Geocaching user ID
+		$MyID = Extract($line, ";", 2)
+		
+		# Log Type
+		$LogType = Extract($line, ";", 3)
 	ENDREAD
 ENDIF
 
 IF Sysinfo("gsakini;TfmConfig;rbtID.Checked") = "True" AND $MyID=""
-	$MyId=Sysinfo("gsakini;TfmConfig;EdtGeoName.Text") 
+	$MyId=Sysinfo("gsakini;TfmConfig;EdtGeoName.Text")
 ENDIF
 
 IF Sysinfo("gsakini;TfmConfig;rbtExact.Checked") = "True" AND $MyName=""
-	$MyName=Sysinfo("gsakini;TfmConfig;EdtGeoName.Text") 
+	$MyName=Sysinfo("gsakini;TfmConfig;EdtGeoName.Text")
 ENDIF
 
 $flag = FALSE
 WHILE $flag=FALSE
-	IF Showform($form)
-		IF $LogCancel
-			GOSUB name=SaveData
-			CANCEL msg="Create log cancelled"
+	$result = Form($form,"")
+	BEGINCASE
+	CASE $LogOK OR $AddStatus
+		$flag=TRUE
+		IF $MyName = "" OR $MyID = ""
+			MSGOK msg="You must enter both a Name and an ID #"
+			$flag=FALSE
 		ENDIF
-	ELSE
-		CANCEL msg="Macro cancelled"
-	ENDIF
-	$flag=TRUE
-	IF $MyName = "" OR $MyID = ""
-		MSGOK msg="You must enter both a Name and an ID #"
-		$flag=FALSE
-	ENDIF
+	OTHERWISE
+		GOSUB name=SaveData
+		CANCEL msg="Create log cancelled"
+	ENDCASE
 ENDWHILE
+
 
 # If we get to here then the user must have clicked on either the Add or AddStatus button
 
@@ -73,11 +76,11 @@ MFILTER Expression=$GCcode = $d_Code
 
 TABLE Active=Logs Scope=Parent
 ADDNEW
-	$d_lDate = $LogDate
-	$d_lBy = $MyName
-	$d_lType = $LogType
-	$d_lText = $LogText
-	$d_lOwnerid = Val($MyID)
+$d_lDate = $LogDate
+$d_lBy = $MyName
+$d_lType = $LogType
+$d_lText = $LogText
+$d_lOwnerid = Val($MyID)
 TABLE Active=caches
 
 IF $addStatus
@@ -93,7 +96,7 @@ IF $addStatus
 	IF $LogType = "Enable Listing"
 		$d_TempDisabled = FALSE
 	ENDIF
-	IF $LogType = "Found" OR $LogType = "Attended" OR $LogType = "Webcam Photo Taken"
+	IF $LogType = "Found it" OR $LogType = "Attended" OR $LogType = "Webcam Photo Taken"
 		$d_Found = TRUE
 	ENDIF
 	IF $LogType = "Didn't find it"
@@ -110,13 +113,13 @@ SPEEDMODE status=on
 
 BEGINSUB name=SaveData
 	# Save the value into $datafile to be reused the next time the macro is run
-	$variables = $MyName + ";" + $MyID + ";"
+	$variables = $MyName + ";" + $MyID + ";" + $LogType + ";"
 	$result = PutFile($DataFile, $variables)
 	IF Left($result, 7) = "*Error*"
 		# If theres any error abort the macro
 		CANCEL Msg="Unable to write to $datafile!"
 	ENDIF
-ENDSUB 
+ENDSUB
 
 <Data> VarName=$form
 #********************************************************************
@@ -124,176 +127,177 @@ ENDSUB
 #********************************************************************
 
 Name = Form1
-  Type = Form
-  Height = 383
-  Width = 500
+Type = Form
+Height = 383
+Width = 500
 
 Name = Groupbox1
-  Type = Groupbox
-  Height = 95
-  Left = 30
-  Top = 74
-  Width = 441
+Type = Groupbox
+Height = 95
+Left = 30
+Top = 74
+Width = 441
 
 Name = Label1
-  Type = Label
-  Color = 16711680
-  Height = 29
-  Left = 158
-  Size = 18
-  Top = 10
-  Width = 175
-  Caption = Create New Log
+Type = Label
+Color = 16711680
+Height = 29
+Left = 158
+Size = 18
+Top = 10
+Width = 175
+Caption = Create New Log
 
 Name = LogText
-  Type = Memo
-  Height = 101
-  Left = 30
-  Top = 190
-  Width = 440
+Type = Memo
+Height = 101
+Left = 30
+Top = 190
+Width = 440
 
 Name = LogType
-  Type = Combobox
-  Container = Groupbox1
-  Height = 21
-  Left = 48
-  Top = 20
-  Values = $type
-  Width = 145
+Type = Combobox
+Container = Groupbox1
+Height = 21
+Left = 48
+Top = 20
+Values = $type
+Width = 145
 
 Name = Label2
-  Type = Label
-  Container = Groupbox1
-  Height = 13
-  Left = 8
-  Top = 24
-  Width = 27
-  Caption = Type:
+Type = Label
+Container = Groupbox1
+Height = 13
+Left = 8
+Top = 24
+Width = 27
+Caption = Type:
 
 Name = LogDate
-  Type = Date
-  Container = Groupbox1
-  Height = 21
-  Left = 288
-  Top = 20
-  Width = 145
+Type = Date
+Container = Groupbox1
+Height = 21
+Left = 288
+Top = 20
+Width = 145
 
 Name = Label3
-  Type = Label
-  Container = Groupbox1
-  Height = 13
-  Left = 248
-  Top = 24
-  Width = 26
-  Caption = Date:
+Type = Label
+Container = Groupbox1
+Height = 13
+Left = 248
+Top = 24
+Width = 26
+Caption = Date:
 
 Name = MyName
-  Type = Edit
-  Container = Groupbox1
-  Height = 21
-  Left = 48
-  Top = 60
-  Width = 145
+Type = Edit
+Container = Groupbox1
+Height = 21
+Left = 48
+Top = 60
+Width = 145
 
 Name = Label4
-  Type = Label
-  Container = Groupbox1
-  Height = 13
-  Left = 8
-  Top = 64
-  Width = 31
-  Caption = Name:
+Type = Label
+Container = Groupbox1
+Height = 13
+Left = 8
+Top = 64
+Width = 31
+Caption = Name:
 
 Name = MyID
-  Type = Edit
-  Container = Groupbox1
-  Height = 21
-  Left = 288
-  Top = 60
-  Width = 145
+Type = Edit
+Container = Groupbox1
+Height = 21
+Left = 288
+Top = 60
+Width = 145
 
 Name = Label5
-  Type = Label
-  Container = Groupbox1
-  Height = 13
-  Left = 248
-  Top = 64
-  Width = 24
-  Caption = ID #:
+Type = Label
+Container = Groupbox1
+Height = 13
+Left = 248
+Top = 64
+Width = 24
+Caption = ID #:
 
 Name = Label6
-  Type = Label
-  Height = 13
-  Left = 30
-  Top = 174
-  Width = 24
-  Caption = Text:
+Type = Label
+Height = 13
+Left = 30
+Top = 174
+Width = 24
+Caption = Text:
 
 Name = LogOK
-  Type = Button
-  Height = 25
-  Left = 76
-  Top = 310
-  Width = 80
-  Caption = Add
+Type = Button
+Height = 25
+Left = 76
+Top = 310
+Width = 80
+Caption = Add
 
 Name = LogCancel
-  Type = Button
-  Height = 25
-  Left = 336
-  Top = 310
-  Width = 80
-  Caption = Cancel
+Type = Button
+Height = 25
+Left = 336
+Top = 310
+Width = 80
+Caption = Cancel
 
 Name = AddStatus
-  Type = Button
-  Height = 25
-  Left = 206
-  Top = 310
-  Width = 80
-  Caption = Add + Update
+Type = Button
+Height = 25
+Left = 206
+Top = 310
+Width = 80
+Caption = Add + Update
 
 Name = VersionLabel
-  Type = Label
-  Height = 13
-  Left = 450
-  Top = 335
-  Width = 34
-  Caption = version
+Type = Label
+Height = 13
+Left = 450
+Top = 335
+Width = 34
+Caption = version
 
 Name = CacheName
-  Type = Label
-  Height = 16
-  Left = 208
-  Size = 10
-  Top = 50
-  Width = 76
-  Caption = CacheName
+Type = Label
+Height = 16
+Left = 208
+Size = 10
+Top = 50
+Width = 76
+Caption = CacheName
 
 <enddata>
 
 BEGINSUB name=declarevariables
-#*******************************************************
-#   Variable declarations for
-#   C:\Program Files\GSAK\Macros\CreateLog.gsk
-#
-#   Generated 10/27/2007 10:08:09 PM on GSAKVariables.gsk Rev V0.20 B13
-#
-#*******************************************************
+	#*******************************************************
+	#   Variable declarations for
+	#   C:\Program Files\GSAK\Macros\CreateLog.gsk
+	#
+	#   Generated 10/27/2007 10:08:09 PM on GSAKVariables.gsk Rev V0.20 B13
+	#
+	#*******************************************************
 
-Option Explicit=Yes
+	Option Explicit=Yes
 
-Declare Var=$DataFile Type=String
-Declare Var=$flag Type=Boolean
-Declare Var=$form Type=String
-Declare Var=$GCcode Type=String
-Declare Var=$left Type=Numeric
-Declare Var=$MyID Type=String
-Declare Var=$MyName Type=String
-Declare Var=$result Type=String
-Declare Var=$Revision Type=String
-Declare Var=$tmpB Type=Boolean
-Declare Var=$Type Type=String
-Declare Var=$variables Type=String
+	Declare Var=$DataFile Type=String
+	Declare Var=$flag Type=Boolean
+	Declare Var=$form Type=String
+	Declare Var=$GCcode Type=String
+	Declare Var=$left Type=Numeric
+	Declare Var=$LogType Type=String
+	Declare Var=$MyID Type=String
+	Declare Var=$MyName Type=String
+	Declare Var=$result Type=String
+	Declare Var=$Revision Type=String
+	Declare Var=$tmpB Type=Boolean
+	Declare Var=$Type Type=String
+	Declare Var=$variables Type=String
 
 ENDSUB
