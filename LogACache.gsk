@@ -1,0 +1,508 @@
+###################################################################################
+# MacVersion     = 1.55
+# MacDescription = Log cache online using data keyed into GSAK notes (log section)
+# MacAuthor      = Clyde - heavily modified with ideas from Kai Team.
+# MacFileName    = LogACache.gsk
+# MacUrl         = http://gsak.net/board/index.php?showtopic=12105&view=findpost&p=87903
+###################################################################################
+
+#Set variable to display macro version in the form header:
+$MacroVersion=Alltrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath") + "\" + SysInfo("Macrofile")),1,1))
+$Form = Editform($Form,"Form1","caption","Log A Cache V$MacroVersion")
+$URL=""
+$FormLeft=""
+$FormTop=""
+$FndBtn=TRUE
+$PurgeNote=FALSE
+$PurgeLog=TRUE
+$FTFCkBx=FALSE
+$LogInFormCB=TRUE
+$SettingsFile=SysInfo("MacroPath") + "\" + SysInfo("MacroFile")
+$SettingsFile=Left($Settingsfile,Len($Settingsfile)-4) + ".xml"
+MACSETTINGS Type=R FileCheck=N
+IF $FndBtn=FALSE
+    $Form = editform($Form,"FTFCkBx","visible","No")
+ELSE
+    $Form = editform($Form,"FTFCkBx","visible","Yes")
+ENDIF
+
+GOSUB Name=ResizeForm
+
+$UserNoteMemo=Extract($d_UserNote,"$~",1)
+$LogMemo=Extract($d_UserNote,"$~",2)
+
+WHILE TRUE AND Not($_EOL)
+   IF FileExists($SettingsFile)
+        $Form = editform($Form,"Form1","Top",$FormTop)
+        $Form = editform($Form,"Form1","Left",$FormLeft)
+   ENDIF
+   $FormExit = Form($Form,"")
+   BEGINCASE
+      CASE $TodayBtn
+        $Date1=$_Today
+      CASE $FormExit="FndBtn"
+         $Form = editform($Form,"FTFCkBx","visible","Yes")
+      CASE $FormExit="DnfBtn"
+         $FTFCkBx=FALSE
+         $Form = editform($Form,"FTFCkBx","visible","No")
+      CASE $FormExit="OtherBtn"
+         $FTFCkBx=FALSE
+         $Form = editform($Form,"FTFCkBx","visible","No")
+      CASE $FormExit = "SystemExit"
+         RETURN
+      CASE $FormExit = "Cancel"
+         RETURN
+      CASE $FormExit = "OK"
+         $FormLeft=$_FormLeft
+         $FormTop=$_FormTop
+         MacSettings Type=S  Vars=Date1,FndBtn,DnfBtn,OtherBtn,MultiLog,PurgeLog,Purgenote,LogInFormCB,FormLeft,FormTop
+         IF $UserNoteMemo<>"" OR $LogMemo<>""
+            $d_UserNote=$UserNoteMemo + "$~" + $LogMemo
+         ENDIF
+            GOSUB Name=LogCache
+         IF $PurgeLog OR $PurgeNote
+                GOSUB Name=PurgeLog
+         ENDIF
+         IF $MultiLog
+            GOSUB Name=MultiLog
+         ELSE
+            BREAK
+         ENDIF
+   ENDCASE
+ENDWHILE
+
+BEGINSUB Name=LogCache
+    CLIP Data=$LogMemo
+        BEGINCASE
+        CASE $d_Source="GA"     # It's a Geocaching Australia cache
+            $URL="http://geocaching.com.au/my/log/new/" + $d_Code
+        CASE $d_Source="GC"     # It's a Geocaching.com cache
+            BEGINCASE
+                CASE $d_CacheType="Y" OR $d_CacheType="O"
+                    $URL=$d_Url
+                CASE $d_CacheType="G"
+                    $URL="http://www.geocaching.com/mark/log.aspx?WP=%code"
+                OTHERWISE
+                    $URL="http://www.geocaching.com/seek/log.aspx?ID=%gcid"
+            ENDCASE
+        OTHERWISE
+            MSGOK Msg="The source of this waypoint is ambiguous.  Opening waypoint URL"
+            $URL=$d_Url
+        ENDCASE
+        IF Not($LoginFormCB)
+            WEB URL="$URL"
+        ELSE
+            $LogForm = Editform($LogForm,"Browser1","Url",$URL)
+            WHILE TRUE
+                $FormExit = form($LogForm,"")
+                IF $FormExit = "SystemExit"
+                    BREAK
+                ENDIF
+            ENDWHILE
+        ENDIF
+
+    BEGINCASE
+       CASE $FndBtn
+          $DNFOldStatus=$d_DNF
+          $DNFOldDate=$d_DNFDate
+          $FoundOldStatus=$d_Found
+          $FoundOldDate=$d_FoundByMeDate
+          $d_Found=True
+          $d_FoundByMeDate=$Date1
+       CASE $DnfBtn
+          $DNFOldStatus=$d_DNF
+          $DNFOldDate=$d_DNFDate
+          $d_DNF= True
+          $d_DNFDate=$Date1
+    ENDCASE
+
+    IF $FTFCkBx
+        $d_FTF=TRUE
+    ENDIF
+ENDSUB
+
+BEGINSUB Name=PurgeLog
+    WHILE TRUE
+        $FormExit = form($PurgeForm,"")
+        BEGINCASE
+            CASE $FormExit = "SystemExit"
+            RETURN Msg="Macro Cancelled"
+
+            CASE $FormExit = "OK"
+                BEGINCASE
+                CASE $PurgeNote AND $PurgeLog
+                    PURGENOTE Type=Full Range=Current
+                CASE $PurgeNote
+                    PURGENOTE Type=NoteOnly Range=Current
+                CASE $PurgeLog
+                    PURGENOTE Type=LogOnly Range=Current
+                ENDCASE
+            BREAK
+
+            CASE $FormExit = "Cancel"
+                BEGINCASE
+                CASE $FndBtn
+                    $d_Found=FALSE
+                    IF $FoundOldStatus=TRUE
+                        $d_Found=TRUE
+                        $d_FoundByMeDate=$FoundOldDate
+                    ELSE
+                        $d_Found=FALSE
+                        $d_FoundByMeDate=[00000000]
+                    ENDIF
+                    IF $DNFOldStatus=TRUE
+                        $d_DNF=TRUE
+                        $d_DNFDate=$DNFOldDate
+                    ENDIF
+                CASE $DnfBtn=TRUE
+                    IF $DNFOldStatus=TRUE
+                        $d_DNF=TRUE
+                        $d_DNFDate=$DNFOldDate
+                    ELSE
+                        $d_DNF=FALSE
+                        $d_DNFDate=[00000000]
+                    ENDIF
+                ENDCASE
+            RETURN Msg="Macro Cancelled"
+        ENDCASE
+    ENDWHILE
+ENDSUB
+
+BEGINSUB Name=MultiLog
+  SPEEDMODE Status=Off
+  GOTO Position=Next
+  SPEEDMODE Status=On
+  $UserNoteMemo=Extract($d_UserNote,"$~",1)
+  $LogMemo=Extract($d_UserNote,"$~",2)
+ENDSUB
+
+BEGINSUB Name=ResizeForm
+    $ScreenRes = sysinfo("ScreenResolution")
+    IF $ScreenRes<>""
+        $Width=Extract($ScreenRes,",",1)
+        $Height=Extract($ScreenRes,",",2)
+        $Height=NumToStr(Val($Height)-30)
+        $Width=NumToStr(Val($Width)-15)
+        $LogForm = editform($LogForm,"LogForm","Height",$Height)
+        $LogForm = editform($LogForm,"LogForm","Width",$Width)
+        $Height=NumToStr(Val($Height)-38)
+        $Width=NumToStr(Val($Width)-20)
+        $LogForm = editform($LogForm,"Browser1","Height",$Height)
+        $LogForm = editform($LogForm,"Browser1","Width",$Width)
+    ENDIF
+ENDSUB
+
+  <DATA> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sun 08-May-2011 08:26:33
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Log A Cache
+  Height = 566
+  Top = 226
+  Width = 405
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Select a log type:
+  Height = 73
+  Left = 24
+  Top = 224
+  Width = 349
+  Taborder = 0
+
+Name = FndBtn
+  Type = Radiobutton
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 17
+  Left = 17
+  Top = 22
+  Width = 15
+  Taborder = 0
+
+Name = Label2
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 35
+  Top = 24
+  Width = 38
+  Caption = Found it
+
+Name = DnfBtn
+  Type = Radiobutton
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 17
+  Left = 122
+  Top = 22
+  Width = 15
+  Taborder = 1
+
+Name = Label3
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 141
+  Top = 24
+  Width = 85
+  Caption = Did not find (DNF)
+
+Name = OtherBtn
+  Type = Radiobutton
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 17
+  Left = 283
+  Top = 22
+  Width = 15
+  Taborder = 2
+
+Name = Label4
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 303
+  Top = 23
+  Width = 26
+  Caption = Other
+
+Name = Label5
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Top = 313
+  Width = 155
+  Caption = Select the date for this log:
+
+Name = Date1
+  Type = Date
+  Height = 21
+  Left = 186
+  Top = 311
+  Width = 103
+  Taborder = 1
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 101
+  Top = 485
+  Width = 75
+  Taborder = 2
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 221
+  Top = 485
+  Width = 75
+  Taborder = 3
+  Caption = Cancel
+
+Name = MultiLog
+  Type = Checkbox
+  Height = 17
+  Left = 24
+  Top = 368
+  Width = 15
+  Taborder = 4
+
+Name = Label6
+  Type = Label
+  Height = 13
+  Left = 44
+  Top = 370
+  Width = 118
+  Caption = Allow Continuous logging
+
+Name = PurgeLog
+  Type = Checkbox
+  Height = 17
+  Left = 23
+  Top = 418
+  Width = 15
+  Taborder = 5
+
+Name = Label7
+  Type = Label
+  Height = 13
+  Left = 41
+  Top = 420
+  Width = 172
+  Caption = Purge Log section from GSAK Notes
+
+Name = FTFCkBx
+  Type = Checkbox
+  Captionposition = Right
+  Container = Groupbox1
+  Fontsize = 9
+  Height = 17
+  Left = 17
+  Top = 46
+  Visible = Yes
+  Width = 164
+  Taborder = 3
+  Caption = First to Find (optional)
+
+Name = LogInFormCB
+  Type = Checkbox
+  Height = 17
+  Left = 24
+  Top = 443
+  Width = 358
+  Taborder = 6
+  Caption = Open the cache log screen in a GSAK form (vs. your default browser)
+
+Name = TodayBtn
+  Type = Button
+  Height = 21
+  Left = 312
+  Top = 311
+  Width = 60
+  Taborder = 7
+  Caption = Today
+
+Name = UserNoteMemo
+  Type = Memo
+  Height = 41
+  Left = 24
+  Readonly = No
+  Scrollbars = Vertical
+  Top = 20
+  Width = 349
+  Taborder = 8
+
+Name = LogMemo
+  Type = Memo
+  Height = 105
+  Left = 24
+  Readonly = No
+  Scrollbars = Vertical
+  Top = 88
+  Width = 349
+  Taborder = 9
+
+Name = Label1
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 4
+  Width = 162
+  Caption = GSAK User Note for this waypoint:
+
+Name = Label8
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 72
+  Width = 341
+  Caption = GSAK log for this waypoint (will be copied for pasting into online log form)
+
+Name = Label9
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Style = Bold
+  Top = 345
+  Width = 57
+  Caption = Options:
+
+Name = Label10
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Style = bold
+  Top = 204
+  Width = 148
+  Caption = Required Information:
+
+Name = PurgeNote
+  Type = Checkbox
+  Height = 17
+  Left = 24
+  Top = 393
+  Width = 235
+  Taborder = 18
+  Caption = Purge User Notes section from GSAK Notes
+
+<enddata>
+
+
+<Data> VarName=$LogForm
+#********************************************************************
+# Form generated by GSAK form designer on Sat 04-Dec-2010 11:09:45
+#********************************************************************
+
+Name = LogForm
+  Type = Form
+  Caption = Select type and date...Right click>paste comments...Click "Submit log entry".                   Click red "X" when done==>>
+  Color = 8404992
+  Height = 600
+  Left = 1
+  Top = 1
+  Width = 800
+
+Name = Browser1
+  Type = Browser
+  Height = 548
+  Left = 8
+  Top = 5
+  Url = ""
+  Width = 769
+  Taborder = 8
+
+<enddata>
+
+
+
+<Data> VarName=$PurgeForm
+#********************************************************************
+# Form generated by GSAK form designer on Sun 11-Oct-2009 09:05:50
+#********************************************************************
+
+Name = PurgeForm
+  Type = Form
+  Caption = Purge GSAK Log
+  Height = 128
+  Top=100
+  Width = 258
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 30
+  Top = 52
+  Width = 75
+  Taborder = 8
+  Caption = Yes
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 144
+  Top = 52
+  Width = 75
+  Taborder = 9
+  Caption = NO
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 45
+  Size = 10
+  Style = Bold
+  Top = 12
+  Width = 159
+  Caption = Online log entered OK?
+
+<enddata>
+
+

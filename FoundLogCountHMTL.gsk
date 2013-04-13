@@ -1,0 +1,46 @@
+#*******************************************
+# MacDescription = Count all found logs
+# MacFileName = FoundLogCountHMTL.gsk
+# MacAuthor = Kai Team & lignumaqua & Clyde & Eolas
+# MacVersion=1.7
+# MacUrl=http://gsak.net/board/index.php?showtopic=10406&view=findpost&p=67754
+#*******************************************
+VERCHECK Version=7.5.0.173 (Note: this macro requires GSAK 7.5.0.173 or later)
+IF  $_Version < "7.5.2.10"
+ $table = "Caches"
+ $view="CachesAll"
+ELSE
+ $table = "CachesTemp"
+ $View="CachesTempAll"
+ENDIF
+#TIMER Status=On
+SHOWSTATUS Msg="Preparing Database...please wait"
+SQLITECACHES
+
+$Database=$_CurrentDataPath + "\SQlite.db3"
+$Sql=Sqlite("Open",$database,"")
+$AttachDB= $_exePath + "\static.db3"
+$sql = sqlite("sql", "attach '$AttachDB' as static")
+SHOWSTATUS Msg="" Display=Off
+
+SHOWSTATUS Msg="Counting finds...please wait"
+$_sql="SELECT '<a href=http://coord.info/'||code||' target=_BLANK>'||code||'</a>' as code,"
+$_sql=$_sql + "(select vto from lookup where vfrom = $table.CacheType) AS 'Type',Container,Difficulty AS 'Dif',Terrain AS 'Ter',Name,"
+$_sql=$_sql + "'<a href=http://www.geocaching.com/profile/?id='||Ownerid||' target=_BLANK>'||PlacedBy||'</a>' AS 'Placed By',"
+$_sql=$_sql + "PlacedDate AS 'Placed Date',Distance AS 'Dist', Bearing as 'Dir',"
+$_sql = $_sql + "(select count(*) from logs where lparent = $table.code and g_FoundLog(ltype)) as Finds from $table order by finds DESC"
+$SQL=Sqlite("Sql",$_Sql,"Headings=Yes")
+SHOWSTATUS Msg="" Display=Off
+
+SHOWSTATUS Msg="Calculating totals...please wait"
+$TotalFinds=Sqlite("Sql","SELECT Count(*) as Finds FROM $table, (select * from Logs where lType='Found it' OR lType='Attended' OR lType='Webcam Photo Taken') as foundlogs WHERE foundlogs.lParent = $table.code","")
+$TotalCaches=Sqlite("Sql","select Count(code)from $table","")
+$AverageFinds=Round(Val($TotalFinds)/Val($TotalCaches),1)
+SHOWSTATUS Msg="" Display=Off
+
+SHOWSTATUS Msg="Preparing HTML output and cleaning up...please wait" Width=400
+$h=SqlToHtml($SQL,"Summary: &nbsp;&nbsp; Caches=$TotalCaches &nbsp;&nbsp; Finds=$TotalFinds &nbsp;&nbsp; Average=$AverageFinds Finds/Cache<br>Generated:&nbsp;","Y")
+
+$sql = sqlite("sql","DETACH static")
+SHOWSTATUS Msg="" Display=Off
+#TIMER Status=Off

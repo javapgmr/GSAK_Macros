@@ -1,0 +1,1332 @@
+#********************************************************************
+# MacVersion = 1.10
+# MacDescription = Refresh database to update disabled/archived ... trim logs to reduce DB bloating
+# MacAuthor = Tigerz
+# MacFileName = RefreshTrimDB.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=8045
+#********************************************************************
+# This macro will refresh the current database filter.   
+# Among other benefits, this will identify and update the
+# status on caches that have become unavailable or archived.  
+# To reduce the potential for database bloating, the macro will
+# optionally trim a desired number of logs associated with both 
+# Found and Unfound caches.  Comments and requests for support
+# are encouraged at http://gsak.net/board/index.php?showtopic=8044 .
+#********************************************************************
+# Thanks to Clyde, the GSAK development team, and the many contributors
+# to the GSAK macro forum for their insight and top-notch support.  
+# Special thanks to Bushman4 (RefreshAllGPX.gsk) as the gist of his
+# logic and earlier macro have been incorporated in to this macro.
+#********************************************************************
+# Version History
+# 1.10 - 6 Apr 2008
+#   1) Added the ability to optionally update owned caches
+#   2) Corrected issues with deleting unfound archived caches
+#   3) Added "kilometer" compatibility :)
+#   4) Updated and cleaned up the GUI
+#
+# 1.02 - 6 Apr 2008
+#   1) Corrected bug in deleting unfound archived caches
+#   2) Smoothed the transition between operations when multiple
+#      options (filtering, updating, trimming, and deleting) are
+#      chosen
+#   3) Trimming logs and deleting unfound and archived caches now
+#      apply throughout the database (not just the filtered radius
+#      and timeframe)
+#   4) The delete unfound archived caches function is not 
+#      operating consistently and has been temporarily disabled
+#
+# 1.01 - 5 Apr 2008
+#   1) Added logic to indicate a filter has returned 0 records
+#   2) Added logic to indicate an attempt was made to update from
+#      geocaching.com without first entering user ID and password
+#
+# 1.00 - 5 Apr 2008 - Released for initial testing and comments
+#
+#********************************************************************
+#********************************************************************
+#********************************************************************
+# To Do List, Bug List, and Future Enhancements
+#
+# 
+#  
+#    
+#
+#
+#
+#********************************************************************
+#********************************************************************
+#********************************************************************
+
+# Use of some of the functions in this macro require at least version 7.2 of GSAK
+VerCheck Version=7.2.0.0 (To run this macro, please update to the lastest GSAK version at http://gsak.net)
+
+# Troubleshooting
+DEBUG Status=Off
+SPEEDMODE Status=On
+
+
+#********************************************************************
+# Defaults to populate the form if data file is not present
+#********************************************************************
+$DistanceMiles="5"
+$UpdateDays="30"
+$MyUserName="MyUserName"
+$MyPassword="MyPassword"
+$FilterOnly=TRUE
+$CheckEmail=FALSE
+$UpdateOwned=FALSE
+$TrimUnfound=FALSE
+$TrimFound=FALSE
+$DelArchived=FALSE
+
+
+#********************************************************************
+# Check for an existing data file and read it
+#********************************************************************
+# Set the file path for the data file
+$datafile=$_Install + "\Macros\RefreshTrimDB.dat"
+
+IF (FileExists($datafile))
+
+  FILEREAD File=$datafile
+
+    $DistanceMiles=EXTRACT($line, ";", 1)
+    $UpdateDays=EXTRACT($line, ";", 2)
+    $MyUserName=EXTRACT($line, ";", 3)
+    $MyPassword=EXTRACT($line, ";", 4)
+    $FilterOnly=StrToBool(EXTRACT($line, ";", 5))
+    $CheckEmail=StrToBool(EXTRACT($line, ";", 6))
+    $UpdateOwned=StrToBool(EXTRACT($line, ";", 7))
+    $TrimUnfound=StrToBool(EXTRACT($line, ";", 8))
+    $TrimFound=StrToBool(EXTRACT($line, ";", 9))
+    $DelArchived=StrToBool(EXTRACT($line, ";", 10))
+
+  ENDREAD
+
+ENDIF
+
+IF ShowForm($form)
+
+    IF $Continue
+      # User clicked on Continue and all is well
+    ENDIF
+
+    IF $Cancel
+      Cancel Msg="Macro was canceled by user"
+    ENDIF
+
+ELSE
+
+    Cancel Msg="Macro Canceled"
+
+ENDIF
+
+
+#********************************************************************
+# Check for out-of-bounds entries
+GOSUB Name=Condition
+#********************************************************************
+
+#********************************************************************
+# After resetting password, save the data input values for the future
+#********************************************************************
+$SavedPassword="MyPassword"
+$UserChoices="$DistanceMiles;$UpdateDays;$MyUserName;$SavedPassword;$FilterOnly;$CheckEmail;$UpdateOwned;$TrimUnfound;$TrimFound;$DelArchived"
+$SavedFile=PUTFILE($datafile, $UserChoices)
+
+IF Left($SavedFile, 7) = "*Error*"
+
+  CANCEL Msg="Unable to write to $datafile!"
+
+ENDIF
+
+
+#********************************************************************
+# Call GetMail if user wants to update with any new PQ's first
+#********************************************************************
+IF $CheckEmail
+
+  GETMAIL Settings="default" OnError=Prompt "To use GetMail to check for new PQ's, you must first save a 'default' setting."
+
+ENDIF
+
+
+
+#********************************************************************
+# Rotate through the various options calling the appropriate subroutines
+#********************************************************************
+IF $FilterOnly
+   GOSUB Name=FilterOnly
+ELSE
+   GOSUB Name=Update
+ENDIF
+
+
+IF $UpdateOwned
+   GOSUB Name=UpdateOwned
+ENDIF
+
+
+IF $TrimFound .OR. $TrimUnfound .OR. $DelArchived
+   GOSUB Name=TrimDelete
+ENDIF
+
+  ShowStatus Msg="The macro is ending ... "  WIDTH=250
+  DELAY MS=5000
+  CANCELFILTER
+  SPEEDMODE STATUS=Off
+
+CANCEL
+
+#********************************************************************
+#********************************************************************
+#********************************************************************
+# Subroutines
+#********************************************************************
+#********************************************************************
+#********************************************************************
+
+
+BEGINSUB Name=Update
+
+# Provide status and a button for user to cancel the macro
+ShowStatus Msg="Looking for out-of-date waypoints ... " Width=350 Height=150
+
+#********************************************************************
+# Filter from the current center point the chosen distance for 
+# waypoints that haven't been updated in the desired time frame
+#********************************************************************
+
+# Clear any existing filters
+CANCELFILTER
+
+MFILTER IF=$d_LastGPXDate < $_Today - val($UpdateDays) .AND. $d_distance <= val($DistanceMiles) .AND..NOT. $d_Found .AND..NOT. $d_Archived .AND..NOT. $d_CacheType="O"
+
+# End the macro if the filter returns no waypoints in need of refreshing, otherwise call RefreshAllGPX
+IF $_FilterCount = 0
+  Pause Msg="The filter using the selected settings returned 0 records.  If you believe this to be in error, please recheck your settings." 
+ELSE
+ 
+  SORT By="distance"
+  MACROFLAG type=clear range=all
+  MACROFLAG type=set range=filter
+
+ShowStatus Msg="Updating waypoints from geocaching.com ... expect this to be slow! (15 Min per 100)" Width=500
+
+#********************************************************************
+# Refresh out-of-date waypoints with subroutine RefreshAllGPX.  This
+# is a modified form of RefreshGPXAll.gsk (Messages/Pauses were deleted).
+# Before calling RefreshAllGPX, ensure the password has been included.
+# After calling RefreshAllGPX, call UpdateOwned and TrimDelete to check 
+# if user wants to update their owned caches, to trim logs and/or delete 
+# unfound archived caches.
+#********************************************************************
+  IF $MyPassword="MyPassword"
+    Pause Msg="The password has not been updated.  You must enter both your geocaching user ID and password to update automatically from geocaching.com.  For your security, your password is not retained and must be entered each run."
+  ELSE
+    GOSUB Name=RefreshAllGPX
+  ENDIF
+
+ENDIF
+
+ENDSUB
+
+
+BEGINSUB Name=FilterOnly
+    
+  ShowStatus Msg="Searching for caches within the desired range ..." WIDTH=400
+  CANCELFILTER
+  MFILTER IF=$d_LastGPXDate < $_Today - val($UpdateDays) .AND. $d_distance <= val($DistanceMiles) .AND..NOT. $d_Found .AND..NOT. $d_Archived .AND..NOT. $d_CacheType="O"
+  SORT By="distance"
+  SPEEDMODE Status=Off
+
+  IF $_FilterCount > 0
+
+  PAUSE Msg="The following unfound caches are within $DistanceMiles miles and have not been updated in the last $UpdateDays days."
+	
+  ELSE
+	ShowStatus Msg="All waypoints are current ... restoring."
+        DELAY MS=5000
+  ENDIF
+
+ENDSUB
+
+
+
+BEGINSUB Name=TrimDelete
+#********************************************************************
+# If no logs are to be purged or waypoints deleted, end the macro
+#********************************************************************
+IF .NOT. $TrimFound .AND..NOT. $TrimUnfound .AND..NOT. $DelArchived .AND..NOT. $UpdateOwned
+    CANCEL
+ENDIF
+
+
+
+#********************************************************************
+# Check to see if the user has elected to trim the number of logs
+# on Found caches.  
+#********************************************************************
+# From the Database - Purge Logs Dialog, the user must first create a
+# setting called "TrimFound" (without the quotes).  TrimFound defines
+# which specific logs are to be retained.  A warning will be issued
+# before any logs are deleted.
+#********************************************************************
+IF $TrimFound
+   CANCELFILTER
+   PAUSE MSG="CAUTION ... You are about to purge logs from your 'Found' caches.  For a large database, this can be a slow process ... your patience is appreciated.  If trimming your logs is not your intent, press the Stop Macro (Stop Sign) button and no waypoints will be modified.  Please note you must first go to the Database / Purge Logs Dialog and save your desired settings as 'TrimFound' (without the apostrophes) for this portion of the macro to work properly."
+   ShowStatus Msg="Trimming your Found logs ... this can be slow!" WIDTH=300
+   PURGELOGS Settings="TrimFound"
+ENDIF
+
+
+
+#********************************************************************
+# Check to see if the user has elected to trim the number of logs
+# on UnFound caches.  
+#********************************************************************
+# From the Database - Purge Logs Dialog, the user must first create a
+# setting called "TrimUnfound" (without the quotes).  TrimUnfound defines
+# which specific logs are to be retained.  A warning will be issued
+# before any logs are deleted.
+#********************************************************************
+IF $TrimUnfound
+   CANCELFILTER
+   PAUSE MSG="CAUTION ... You are about to trim the number of logs in your 'Unfound' caches.  For a large database, this can be a slow process ... your patience is appreciated.  If trimming your logs is not your intent, press the Stop Macro (Stop Sign) button and no waypoints will be modified.  Please note you must first go to the Database / Purge Logs Dialog and save your desired settings as 'TrimUnfound' (without the apostrophes) for this portion of the macro to work properly."
+   ShowStatus Msg="Trimming your Unfound logs ... this can be slow!" WIDTH=300
+   PURGELOGS Settings="TrimUnfound"
+ENDIF
+
+
+
+#********************************************************************
+# Check to see if the user has elected to delete all caches that meet
+# the distance and update critiria and are also both unfound and 
+# archived ... a warning will be issued before waypoints are deleted
+#********************************************************************
+IF $DelArchived
+
+  # Filter for caches that do not belong to the current user and are both archived and unfound
+
+  ShowStatus Msg="Searching for caches that are both archived and unfound ... " Width=400 
+
+  CANCELFILTER
+  SPEEDMODE Status=Off
+  MFILTER IF=$d_Archived .AND. $MyUserName<>$d_PlacedBy .AND..NOT. $d_Found .AND..NOT. IsOwner() .AND..NOT. regex($MyUserName,$d_OwnerName)
+
+  # End the macro if the filter returns no waypoints that are both archived and unfound
+  IF $_FilterCount = 0
+    Pause Msg="The filter using the selected settings returned 0 records.  This means your database contains no caches that are both archived and unfound.  If you believe this to be in error, please recheck your settings.  The macro will now end." 
+    CANCEL
+    CANCEL
+  ELSE
+
+  PAUSE Msg="Click the Continue button below to delete the waypoints shown behind this window.  These are caches that are both archived and unfound.  Please note if you haven't entered your geocaching user ID, your own caches may be deleted as well.  Patience is encouraged as this may take a few minutes on a large database.  If deleting these caches was not your intent, press the Stop Macro (Stop Sign) button and no waypoints will be deleted."
+
+  # User pressed 'Continue' ... Delete all waypoints in the current filter 
+
+  ShowStatus Msg="Deleting unfound archived caches ... expect this to be slow!" Width=400 
+
+  # Commit and then physically remove the selected caches
+  macrodelete action=delscope
+  macrodelete action=commit
+
+  CANCEL
+
+  ENDIF
+
+ENDIF
+
+ENDSUB
+
+
+
+#********************************************************************
+# Subroutine to update owned caches
+#********************************************************************
+BEGINSUB Name=UpdateOwned
+
+  IF $MyPassword="MyPassword"
+    Pause Msg="The password has not been updated.  You must enter both your geocaching user ID and password to update automatically from geocaching.com.  For your security, your password is not retained and must be entered each run."
+  ELSE
+
+  # Filter for caches that are owned by the user and have not been updated earlier today
+
+  ShowStatus Msg="Searching for caches you own ... " Width=300 
+
+  CANCELFILTER
+  SPEEDMODE Status=On
+  MFILTER IF=IsOwner() .AND..NOT. $d_LastGPXDate=$_Today
+
+  # End the macro if the filter returns no owned waypoints that have not been already updated today
+    IF $_FilterCount = 0
+      Pause Msg="The filter using the selected settings returned 0 records.  This means your database contains no caches that you own that haven't already been updated today.  If you believe this to be in error, please recheck your settings." 
+    ELSE
+
+      ShowStatus Msg="Updating ... expect this to be slow! (15 Min per 100)" Width=400
+      GOSUB Name=RefreshAllGPX
+
+    ENDIF
+
+  ENDIF
+
+ENDSUB
+
+
+
+BEGINSUB Name=Condition
+#********************************************************************
+# Condition any out-of-bounds variables entered by user
+#********************************************************************
+IF Val($DistanceMiles) < 0.1
+   $DistanceMiles="0.1"
+   ShowStatus Msg="Distance must be greater than 0 ... resetting to 0.1" Width=400
+   DELAY MS=3000
+ENDIF
+
+IF Val($DistanceMiles) > 50
+   $DistanceMiles="50"
+   ShowStatus Msg="Distance must be less than 50 miles ... resetting to 50" Width=400
+   DELAY MS=3000
+ENDIF
+
+IF Val($UpdateDays) < 1
+   $UpdateDays="1"
+   ShowStatus Msg="Update timing must be at least a day ... resetting to 1" Width=400
+   DELAY MS=3000
+ENDIF
+
+IF Val($UpdateDays) > 365
+   $UpdateDays="365"
+   ShowStatus Msg="Update timing must be less than 366 days ... resetting to 365" Width=400
+   DELAY MS=3000
+ENDIF
+
+ENDSUB
+
+
+
+BEGINSUB Name=RefreshAllGPX
+#********************************************************************
+# The following is a modified copy of Bushman4's RefreshAllGPX.gsk
+#********************************************************************
+
+Option Explicit=Yes
+
+Declare Var=$ChooseMsg Type=String
+Declare Var=$Completed Type=Numeric
+Declare Var=$error Type=String
+Declare Var=$GetGPX Type=String
+Declare Var=$GetGPXexe Type=String
+Declare Var=$GPXFile Type=String
+Declare Var=$myEXE Type=String
+Declare Var=$myEXEPath Type=String
+Declare Var=$myParms Type=String
+Declare Var=$MyPassword Type=String
+Declare Var=$SavedPassword Type=String
+Declare Var=$MyUserName Type=String
+Declare Var=$status Type=String
+Declare Var=$TextToAdd Type=String
+Declare Var=$TimeToFinish Type=Numeric
+Declare Var=$Count Type=Numeric
+Declare Var=$DistanceMiles Type=String
+Declare Var=$UpdateDays Type=String
+Declare Var=$FilterOnly Type=Boolean
+Declare Var=$CheckEmail Type=Boolean
+Declare Var=$TrimUnfound Type=Boolean
+Declare Var=$TrimFound Type=Boolean
+Declare Var=$DelArchived Type=Boolean
+Declare Var=$RunAt2400 Type=Boolean
+Declare Var=$Form Type=String
+Declare Var=$Mouse Type=String
+Declare Var=$Datafile Type=String
+Declare Var=$UserChoices Type=String
+Declare Var=$DateFile Type=String
+Declare Var=$SavedFile Type=String
+Declare Var=$s1 Type=String
+Declare Var=$s2 Type=String
+Declare Var=$data Type=String
+Declare Var=$UpdateOwned Type=Boolean
+
+$myEXEPath = $_Install + "\temp\"
+
+$Count=0
+MacroFlag Type=Clear Range=All
+GOTO Position=Top
+While .not. $_EOL
+  MacroFlag Type=Set Range=1
+  $Count = $Count + 1
+  If $Count=250
+    Break
+  EndIf  
+  Goto Position=Next
+EndWhile
+MFILTER If=$d_MacroFlag
+
+$myEXE = $myEXEPath + "GetGPX.exe"
+
+$GetGPXexe = MimeDecode($GetGpx)
+$status = PutFile($myExe,$GetGpxExe)
+
+$TextToAdd = "<?xml version=" + $_Quote 
+$TextToAdd = $TextToAdd + "1.0" + $_Quote 
+$TextToAdd = $TextToAdd + " encoding=" + $_Quote 
+$TextToAdd = $TextToAdd + "utf-8" + $_Quote + "?>" 
+$TextToAdd = $TextToAdd + $_newLine
+$TextToAdd = $TextToAdd + "<gpx xmlns:xsd=" 
+$TextToAdd = $TextToAdd + $_Quote + "http://www.w3.org/2001/XMLSchema" 
+$TextToAdd = $TextToAdd + $_Quote + " xmlns:xsi=" 
+$TextToAdd = $TextToAdd + $_Quote +"http://www.w3.org/2001/XMLSchema-instance"
+$TextToAdd = $TextToAdd + $_Quote + " version=" + $_Quote + "1.0" + $_Quote 
+$TextToAdd = $TextToAdd + " creator=" + $_Quote + "GetGPX" + $_Quote 
+$TextToAdd = $TextToAdd + " xsi:schemaLocation=" + $_Quote 
+$TextToAdd = $TextToAdd + "http://www.topografix.com/GPX/1/0 "
+$TextToAdd = $TextToAdd + "http://www.topografix.com/GPX/1/0/gpx.xsd "
+$TextToAdd = $TextToAdd + "http://www.groundspeak.com/cache/1/0 "
+$TextToAdd = $TextToAdd + "http://www.groundspeak.com/cache/1/0/cache.xsd" + $_Quote 
+$TextToAdd = $TextToAdd + " xmlns=" + $_Quote + "http://www.topografix.com/GPX/1/0" 
+$TextToAdd = $TextToAdd + $_Quote + ">" + $_newLine
+$error = Putfile($myEXEPath + "\Batch.gpx", $TextToAdd)
+
+$Completed = 0
+goto position=top
+while .not. $_EOL
+        $Completed = $completed + 1
+        SHOWSTATUS msg="Now retrieving cache $Completed: $d_Code - $d_Name" width=400
+        $myParms = "/u " + $_Quote + $myUserName + $_Quote + " /p " + $_Quote + $myPassword + $_Quote + " /wp " + $d_Code + " /batch Batch.gpx /verbose"
+        RUNPGM pgm=$myEXE parms=$myParms wait=yes
+        goto position=next
+endwhile
+$TextToAdd = "</gpx>" + $_newLine
+$error = AppendFile($myEXEPath + "\Batch.gpx", $TextToAdd)
+$GPXFile = $myEXEPath + "Batch.gpx"
+LOAD File=$GPXFile
+
+<data> VarName=$GetGPX
+TVqQAAMAAAAEAAAA//8AALgAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+gAAAAA4fug4AtAnNIbgBTM0hVGhpcyBwcm9ncmFtIGNhbm5vdCBiZSBydW4gaW4gRE9TIG1vZGUuDQ0K
+JAAAAAAAAABQRQAATAEEAHTdw0YAAAAAAAAAAOAADgELAQYAACQAAAAOAAAAAAAAvkMAAAAgAAAAYAAA
+AAAAEQAgAAAAAgAABAAAAAAAAAAEAAAAAAAAAADAAAAABAAAAAAAAAIAAAQAABAAABAAAAAAEAAAEAAA
+AAAAABAAAAAAAAAAAAAAAGhDAABTAAAAAIAAAFgIAAAAAAAAAAAAAAAAAAAAAAAAAKAAAAwAAAAAYAAA
+HAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAACAAAAAAAAAAAAAAA
+CCAAAEgAAAAAAAAAAAAAAC50ZXh0AAAAxCMAAAAgAAAAJAAAAAQAAAAAAAAAAAAAAAAAACAAAGAuc2Rh
+dGEAAG0AAAAAYAAAAAIAAAAoAAAAAAAAAAAAAAAAAABAAADALnJzcmMAAABYCAAAAIAAAAAKAAAAKgAA
+AAAAAAAAAAAAAAAAQAAAQC5yZWxvYwAADAAAAACgAAAAAgAAADQAAAAAAAAAAAAAAAAAAEAAAEIAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+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
+AQCwKgAAAAARAA4BXgAEAPgqAAAAABEAJAFeAAUAQCsAAAAAEQA3AV4ABgAAAAEA8wAAAAIA/AAAAAMA
+BQEAAAEAGwEAAAEAGwEAAAEAGwEhAGMBYwAhAHgBaAApAIwBbAApAJgBcQAxAK4BdwA5AMcBfAA5ANUB
+fABBAOsBXgBJACMCgQApACoCiAARADECjgBRAEMClAAZAEsCaABZAGcCmQARAHECngBhAJwCogAZAKMC
+qwBJAKsCsQBhALQCtwB5AMgCvwAZANMCqwAZAN4CxQApACoCtwCBAP4CzQApAAQDbAApAAQD0gApAIwB
+0gApACoCVwARADECmQAZAAwDaABhABUD2ACJADECngCpADECngBZAGcCngC5AJUDXgDBAKoD+QCZALED
+/wCZANEDBQGhAN0DCgGRADECDwGRAO8DaACRAHECngCxAHECngChAHECngCZAPkDmQCZAAQEmQCZABQE
+FQGZACIEmQCpAC4EGgHRAD4EIAGpAAwDaADRAEgEJQE5AFEEKwGZAFwELwGZAG4ECgGxAH8ENAGxAIUE
+ngDZAJcEEwDhADECngDpADECngDxADECbgH5ADECmQABATECmQAJATECFQERATECmQAZATECmQAhATEC
+mQApATECmQAxATECmQA5ATECmQAOAAQAGgAuAAsCqwEuACsCqwEuAOsBdAEuAPsBewEuAAMCpQEuADMC
+qwEuABMCqwEuABsCqwEuACMCqwFAAOMBaQFDANsBaQHgADwBYwFjAWMBTQCxAVAAUABQALUBFwAXABcA
+FwAXABcAUwCxAbEBFwBQALkBuQG9ARcAwQHFAckBzQHNAdEB0QEXABcAFwAXABcAzQHFAc0BxQGxARcA
+UABQABcAUABQABcAUABQAASAAAABAAAA3wqHoQAAAAAAAHsAAAABAAAAiBMAAAAAAAABAAoAAAAAAAcA
+AACIEwAAAAAAAAoAEwAAAAAAAQAAAIgTAAAAAAAAAQApAAAAAAABAAAAiBMAAAAAAAABADAAAAAAAAEA
+AACIEwAAAAAAAAoAPAAAAAAAAQAAAIgTAAAAAAAAAQBLAAAAAAABAAAAiBMAAAAAAAABAGAAAAAAAAEA
+AACIEwAAAAAAAAoAawAAAAAAAAAAPE1vZHVsZT4AbXNjb3JsaWIATWljcm9zb2Z0LlZpc3VhbEJhc2lj
+AFN5c3RlbQBTeXN0ZW0uRGF0YQBTeXN0ZW0uRHJhd2luZwBTeXN0ZW0uV2luZG93cy5Gb3JtcwBTeXN0
+ZW0uWG1sAFN5c3RlbS5XZWIATWFpbgBHZXRHUFgAT2JqZWN0AC5jY3RvcgBCT1VOREFSWQBnYm9sQmF0
+Y2gAZ2JvbFZlcmJvc2UAZ2ludEhhbW1lclRpbWUAZ3N0ckRpcmVjdG9yeQBTeXN0ZW0uSU8AU3RyZWFt
+V3JpdGVyAGdzd0xvZwBHZXRHQ0dQWABVc2VybmFtZQBQYXNzd29yZABXYXlQb2ludABHZXRWaWV3U3Rh
+dGUAUmVzcG9uc2UAR2V0RXZlbnRWYWxpZGF0aW9uAEdldEdVSUQARGF0ZVRpbWUAU3lzdGVtLlJlZmxl
+Y3Rpb24AQXNzZW1ibHkAR2V0RXhlY3V0aW5nQXNzZW1ibHkAZ2V0X0xvY2F0aW9uAFN0cmluZwBMYXN0
+SW5kZXhPZgBTdWJzdHJpbmcARW52aXJvbm1lbnQAR2V0Q29tbWFuZExpbmVBcmdzAEFycmF5AEdldFVw
+cGVyQm91bmQAR2V0TG93ZXJCb3VuZABTdHJpbmdzAExDYXNlAE1pY3Jvc29mdC5WaXN1YWxCYXNpYy5D
+b21waWxlclNlcnZpY2VzAFN0cmluZ1R5cGUAU3RyQ21wAENvbmNhdAAuY3RvcgBEYXRlQW5kVGltZQBn
+ZXRfTm93AFRvTG9uZ1RpbWVTdHJpbmcAVGV4dFdyaXRlcgBXcml0ZUxpbmUAQ2xvc2UASW50ZXJhY3Rp
+b24ATXNnQm94UmVzdWx0AE1zZ0JveFN0eWxlAE1zZ0JveABBZGREYXlzAEZyb21EYXRlAEdldFNldHRp
+bmcARGF0ZVR5cGUARnJvbVN0cmluZwBBZGRTZWNvbmRzAENvbXBhcmUAU3lzdGVtLlRocmVhZGluZwBU
+aHJlYWQAU2xlZXAASW5kZXhPZgBUb1N0cmluZwBTYXZlU2V0dGluZwBTeXN0ZW0uTmV0AENvb2tpZUNv
+bnRhaW5lcgBTdHJlYW1SZWFkZXIASHR0cFdlYlJlcXVlc3QASHR0cFdlYlJlc3BvbnNlAFN5c3RlbS5U
+ZXh0AFN0cmluZ0J1aWxkZXIAU3RyZWFtAEh0dHBVdGlsaXR5AFVybEVuY29kZQBXZWJSZXF1ZXN0AENy
+ZWF0ZQBzZXRfQ29va2llQ29udGFpbmVyAFdlYlJlc3BvbnNlAEdldFJlc3BvbnNlAEdldFJlc3BvbnNl
+U3RyZWFtAFJlYWRUb0VuZABzZXRfTWV0aG9kAHNldF9Db250ZW50VHlwZQBzZXRfS2VlcEFsaXZlAHNl
+dF9SZWZlcmVyAEFwcGVuZABFbmNvZGluZwBnZXRfQVNDSUkAR2V0Qnl0ZXMAZ2V0X0xlbmd0aABzZXRf
+Q29udGVudExlbmd0aABHZXRSZXF1ZXN0U3RyZWFtAFdyaXRlAEZsdXNoAFByb2plY3REYXRhAEVuZEFw
+cABTdGFuZGFyZE1vZHVsZUF0dHJpYnV0ZQBTVEFUaHJlYWRBdHRyaWJ1dGUAU3lzdGVtLkRpYWdub3N0
+aWNzAERlYnVnZ2FibGVBdHRyaWJ1dGUAQXNzZW1ibHlWZXJzaW9uQXR0cmlidXRlAFN5c3RlbS5SdW50
+aW1lLkludGVyb3BTZXJ2aWNlcwBHdWlkQXR0cmlidXRlAENMU0NvbXBsaWFudEF0dHJpYnV0ZQBBc3Nl
+bWJseVRyYWRlbWFya0F0dHJpYnV0ZQBBc3NlbWJseUNvcHlyaWdodEF0dHJpYnV0ZQBBc3NlbWJseVBy
+b2R1Y3RBdHRyaWJ1dGUAQXNzZW1ibHlDb21wYW55QXR0cmlidXRlAEFzc2VtYmx5RGVzY3JpcHRpb25B
+dHRyaWJ1dGUAQXNzZW1ibHlUaXRsZUF0dHJpYnV0ZQBHZXRHUFguZXhlAAAAA1wAAAUvAHUAAAUvAHAA
+AAcvAHcAcAAADS8AYgBhAHQAYwBoAAARLwB2AGUAcgBiAG8AcwBlAAAXXABHAGUAdABHAFAAWAAuAGwA
+bwBnAAAZIAAtACAAUwB0AGEAcgB0AGkAbgBnACAAAQEAKVUAcwBhAGcAZQAgAEkAbgBzAHQAcgB1AGMA
+dABpAG8AbgBzAA0ACgAABQ0ACgAAgKtVAHMAYQBnAGUAOgAgAEcAZQB0AEcAUABYACAALwB1ACAAdQBz
+AGUAcgBuAGEAbQBlACAALwBwACAAcABhAHMAcwB3AG8AcgBkACAALwB3AHAAIABXAGEAeQBwAG8AaQBu
+AHQAIABbAC8AdgBlAHIAYgBvAHMAZQBdACAAWwAvAGIAYQB0AGMAaAAgAGYAaQBsAGUAbgBhAG0AZQAu
+AGcAcAB4AF0ADQAKAABDIAAgACAALwB1ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgAEcAQwAg
+AFUAcwBlAHIAbgBhAG0AZQANAAoAAEMgACAAIAAvAHAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
+ACAARwBDACAAUABhAHMAcwB3AG8AcgBkAA0ACgAASSAAIAAgAC8AdwBwACAAIAAgACAAIAAgACAAIAAg
+ACAAIAAgAEcAQwAjACAAbwBmACAAdABoAGUAIABjAGEAYwBoAGUADQAKAABlIAAgACAALwBiAGEAdABj
+AGgAIAAgACAAIAAgACAAIAAgAE8AcAB0AGkAbwBuAGEAbAAgAGYAaQBsAGUAIABuAGEAbQBlACAAdABv
+ACAAYQBwAHAAZQBuAGQAIAB0AG8ADQAKAABRIAAgACAALwB2AGUAcgBiAG8AcwBlACAAIAAgACAATwBw
+AHQAaQBvAG4AYQBsACAAdgBlAHIAYgBvAHMAZQAgAG8AdQB0AHAAdQB0AA0ACgAAgJdFAG4AYwBsAG8A
+cwBlACAAdQBzAGUAcgBuAGEAbQBlACwAIABwAGEAcwBzAHcAbwByAGQALAAgAG8AcgAgAGYAaQBsAGUA
+bgBhAG0AZQAgAGkAbgAgAHEAdQBvAHQAZQBzACAAaQBmACAAdABoAGUAeQAgAGMAbwBuAHQAYQBpAG4A
+IABzAHAAYQBjAGUAcwAuAA0ACgAAgJdOAEIAOgAgAFcAaABlAG4AIAB1AHMAaQBuAGcAIAB0AGgAZQAg
+ACIAYgBhAHQAYwBoACIAIABzAHcAaQB0AGMAaAAsACAAdABoAGUAIABoAGUAYQBkAGUAcgAgAGEAbgBk
+ACAAZgBvAG8AdABlAHIAIABpAG4AZgBvAHIAbQBhAHQAaQBvAG4AIAB3AGkAbABsAA0ACgAAgJUgACAA
+IAAgAG4AZQBlAGQAIAB0AG8AIABiAGUAIABhAGQAZABlAGQAIAB0AG8AIAB0AGgAZQAgAGYAaQBsAGUA
+IABtAGEAbgB1AGEAbABsAHkALgAgACAAVABoAGkAcwAgAGkAbgBjAGwAdQBkAGUAcwAgAHQAaABlACAA
+PABYAE0ATAA+ACAAYQBuAGQAIAANAAoAAFcgACAAIAAgADwARwBQAFgAPgAgAGgAZQBhAGQAZQByAHMA
+LAAgAGEAbgBkACAAdABoAGUAIAA8AC8ARwBQAFgAPgAgAGYAbwBvAHQAZQByAC4ADQAKAAANRwBlAHQA
+RwBQAFgAABFTAGUAdAB0AGkAbgBnAHMAAA9MAGEAcwB0AFIAdQBuAAA1IAAtACAAUABhAHUAcwBpAG4A
+ZwAgAHUAbgB0AGkAbAAgAGEAdAAgAGwAZQBhAHMAdAAgAAFrIAB0AG8AIABhAHYAaQBvAGQAIABoAGEA
+bQBtAGUAcgBpAG4AZwAgAHQAaABlACAARwBDAC4AYwBvAG0AIABzAGUAcgB2AGUAcgBzAC4AIAAgAFAA
+bABlAGEAcwBlACAAdwBhAGkAdAAuAAADPgAACTwAZwBwAHgAAAkvAGcAcAB4AAAJLgBnAHAAeAAAIyAA
+LQAgAFAAcgBvAGMAZQBzAHMAaQBuAGcAIABXAFAAIAABd2gAdAB0AHAAOgAvAC8AdwB3AHcALgBnAGUA
+bwBjAGEAYwBoAGkAbgBnAC4AYwBvAG0ALwBsAG8AZwBpAG4ALwBkAGUAZgBhAHUAbAB0AC4AYQBzAHAA
+eAA/AFIARQBTAEUAVAA9AFkAJgByAGUAZABpAHIAPQAAa2gAdAB0AHAAOgAvAC8AdwB3AHcALgBnAGUA
+bwBjAGEAYwBoAGkAbgBnAC4AYwBvAG0ALwBzAGUAZQBrAC8AYwBhAGMAaABlAF8AZABlAHQAYQBpAGwA
+cwAuAGEAcwBwAHgAPwB3AHAAPQAACVAATwBTAFQAAENhAHAAcABsAGkAYwBhAHQAaQBvAG4ALwB4AC0A
+dwB3AHcALQBmAG8AcgBtAC0AdQByAGwAZQBuAGMAbwBkAGUAZAABGV8AXwBWAEkARQBXAFMAVABBAFQA
+RQA9AAAZJgBtAHkAVQBzAGUAcgBuAGEAbQBlAD0AABkmAG0AeQBQAGEAcwBzAHcAbwByAGQAPQAAMSYA
+YwBvAG8AawBpAGUAPQBvAG4AJgBCAHUAdAB0AG8AbgAxAD0ATABvAGcAaQBuAAAnJgBfAF8ARQBWAEUA
+TgBUAFYAQQBMAEkARABBAFQASQBPAE4APQAAY1kAbwB1AHIAIAB1AHMAZQByAG4AYQBtAGUALwBwAGEA
+cwBzAHcAbwByAGQAIABjAG8AbQBiAGkAbgBhAHQAaQBvAG4AIABkAG8AZQBzACAAbgBvAHQAIABtAGEA
+dABjAGgAACsgAC0AIABMAG8AZwBpAG4AIAB1AG4AcwB1AGMAZQBzAHMAZgB1AGwALgABGyAALQAgAHUA
+cwBlAHIAbgBhAG0AZQA6ACAAARsgAC0AIABwAGEAcwBzAHcAbwByAGQAOgAgAAERYgB0AG4ARwBQAFgA
+RABMAAA9IAAtACAARwBQAFgAIABEAG8AdwBuAGwAbwBhAGQAIABuAG8AdAAgAGEAdgBhAGkAbABhAGIA
+bABlAC4AAWMgAC0AIABUAGgAZQByAGUAIABpAHMAIABlAGkAdABoAGUAcgAgAGEAIABwAHIAbwBiAGwA
+ZQBtACAAdwBpAHQAaAAgAHQAaABlACAAYwBhAGMAaABlACAAcABhAGcAZQAsAAFXIAAtACAAbwByACAA
+cABlAHIAaABhAHAAcwAgAHkAbwB1ACAAYQByAGUAIABuAG8AdAAgAGEAIABwAHIAZQBtAGkAdQBtACAA
+bQBlAG0AYgBlAHIALgABHyAALQAgACAAIAB1AHMAZQByAG4AYQBtAGUAOgAgAAEfIAAtACAAIAAgAHAA
+YQBzAHMAdwBvAHIAZAA6ACAAATcmAGIAdABuAEcAUABYAEQATAA9AEcAUABYACsAZQBYAGMAaABhAG4A
+ZwBlACsARgBpAGwAZQAAAyIAACFpAGQAPQAiAF8AXwBWAEkARQBXAFMAVABBAFQARQAiAAAtaQBkAD0A
+IgBfAF8ARQBWAEUATgBUAFYAQQBMAEkARABBAFQASQBPAE4AIgAAAz0AAAtnAHUAaQBkAD0AAAMnAAEA
+bbkQPnYzOkWEryyf+K0TnQAIt3pcVhk04IkIsD9ffxHVCjoDAAABAgYOMkQAMQA1AHAAfAA0AHkALgBK
+AFAAMwA2AC4AMABuAC4AWQAwAHUAcgAuADcAMQB2ADAAAgYCAgYIAwYSCQYAAw4ODg4EAAEODgQAABIR
+AyAADgQgAQgOBSACDggIBAAAHQ4EIAEICAYAAwgODgIFAAIODg4FIAIBDgIEAAARDQQgAQEOAyAAAQgA
+AxE1HBE5HAUgARENDQUAAQ4RDQcABA4ODg4OBQABEQ0OBwACCBENEQ0EAAEBCAUgAggOCAcABAEODg4O
+GAcRAhENCAgIHQ4ODg4ODg4SCRENEQ0OCAUAARJhDgUgAQESRQQgABJlBCAAElkFIAEBElkEIAEBAgUg
+ARJVDgQAABJpBSABHQUOAyAACAQgAQEKByADAR0FCAgmBxUdBR0FEkUOEkkSTRJRElUSVRJZElkODg4O
+DhJVEk0SVRJNEQ0FBwMOCAgEAQAAAAUgAgECAgYBAAEBAAApAQAkNzE5QzIxODctRDg5NC00NERCLUIy
+ODMtQTJENDNCODVERUREAAAFAQABAAAFAQAAAAADBhENAwYdDgMGHQUDBhJFAwYSSQMGEk0DBhJRAwYS
+VQMGElkAAACQQwAAAAAAAAAAAACuQwAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAoEMAAAAAAAAAAAAA
+AAAAAAAAX0NvckV4ZU1haW4AbXNjb3JlZS5kbGwAAICeF/8lACAAEQAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB03cNGAAAAAAIAAABRAAAA
+HGAAABwoAABSU0RTJS8c8IctSkqcnDgmQJPy4gEAAABDOlx+R01TIERhdGFcTXkgQXBwbGljYXRpb25z
+XEdldEdQWFxvYmpcRGVidWdcR2V0R1BYLnBkYgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAMAAAAoAACADgAAAEgAAIAQAAAAYAAAgAAAAAAAAAAA
+AAAAAAAAAgACAAAAeAAAgAMAAACQAACAAAAAAAAAAAAAAAAAAAABAAB/AACoAACAAAAAAAAAAAAAAAAA
+AAABAAEAAADAAACAAAAAAAAAAAAAAAAAAAABAAAAAADYAAAAAAAAAAAAAAAAAAAAAAABAAAAAADoAAAA
+AAAAAAAAAAAAAAAAAAABAAAAAAD4AAAAAAAAAAAAAAAAAAAAAAABAAAAAAAIAQAAIIQAAOgCAAAAAAAA
+AAAAAAiHAAAoAQAAAAAAAAAAAAAwiAAAIgAAAAAAAAAAAAAAGIEAAAQDAAAAAAAAAAAAAAQDNAAAAFYA
+UwBfAFYARQBSAFMASQBPAE4AXwBJAE4ARgBPAAAAAAC9BO/+AAABAAAAAQCHod8KAAABAIeh3wo/AAAA
+AAAAAAQAAAABAAAAAAAAAAAAAAAAAAAARAAAAAEAVgBhAHIARgBpAGwAZQBJAG4AZgBvAAAAAAAkAAQA
+AABUAHIAYQBuAHMAbABhAHQAaQBvAG4AAAAAAAAAsARkAgAAAQBTAHQAcgBpAG4AZwBGAGkAbABlAEkA
+bgBmAG8AAABAAgAAAQAwADAAMAAwADAANABiADAAAAAcAAIAAQBDAG8AbQBtAGUAbgB0AHMAAAAgAAAA
+JAACAAEAQwBvAG0AcABhAG4AeQBOAGEAbQBlAAAAAAAgAAAALAACAAEARgBpAGwAZQBEAGUAcwBjAHIA
+aQBwAHQAaQBvAG4AAAAAACAAAABAAA8AAQBGAGkAbABlAFYAZQByAHMAaQBvAG4AAAAAADEALgAwAC4A
+MgA3ADgAMwAuADQAMQAzADUAMQAAAAAAOAALAAEASQBuAHQAZQByAG4AYQBsAE4AYQBtAGUAAABHAGUA
+dABHAFAAWAAuAGUAeABlAAAAAAAoAAIAAQBMAGUAZwBhAGwAQwBvAHAAeQByAGkAZwBoAHQAAAAgAAAA
+LAACAAEATABlAGcAYQBsAFQAcgBhAGQAZQBtAGEAcgBrAHMAAAAAACAAAABAAAsAAQBPAHIAaQBnAGkA
+bgBhAGwARgBpAGwAZQBuAGEAbQBlAAAARwBlAHQARwBQAFgALgBlAHgAZQAAAAAAJAACAAEAUAByAG8A
+ZAB1AGMAdABOAGEAbQBlAAAAAAAgAAAARAAPAAEAUAByAG8AZAB1AGMAdABWAGUAcgBzAGkAbwBuAAAA
+MQAuADAALgAyADcAOAAzAC4ANAAxADMANQAxAAAAAABIAA8AAQBBAHMAcwBlAG0AYgBsAHkAIABWAGUA
+cgBzAGkAbwBuAAAAMQAuADAALgAyADcAOAAzAC4ANAAxADMANQAxAAAAAAAAAAAAKAAAACAAAABAAAAA
+AQAEAAAAAACAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAIAAAACAgACAAAAAgACAAICAAACAgIAA
+wMDAAAAA/wAA/wAAAP//AP8AAAD/AP8A//8AAP///wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHd3d3d3d3d3d3d3d3d3cARERERERERE
+RERERERERHAE//////////////////RwBP/////////////////0cAT/////////////////9HAE////
+//////////////RwBP/////////////////0cAT/////////////////9HAE//////////////////Rw
+BP/////////////////0cAT/////////////////9HAE//////////////////RwBP//////////////
+///0cAT/////////////////9HAE//////////////////RwBP/////////////////0cAT/////////
+////////9HAE//////////////////RwBP/////////////////0cAT/////////////////9HAEiIiI
+iIiIiIiIiIiIiIRwBEREREREREREREREREREcARMTExMTExMTExOzs5JdHAEzMzMzMzMzMzMzMzMzMQA
+AERERERERERERERERERAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAP/////////////////////AAAABgAAAAYAAAAGAAAABgAAAAYAAAAGAAAABgAAAAYAAAAGAAAAB
+gAAAAYAAAAGAAAABgAAAAYAAAAGAAAABgAAAAYAAAAGAAAABgAAAAYAAAAGAAAABgAAAAYAAAAPAAAAH
+////////////////KAAAABAAAAAgAAAAAQAEAAAAAADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAA
+AIAAAACAgACAAAAAgACAAICAAACAgIAAwMDAAAAA/wAA/wAAAP//AP8AAAD/AP8A//8AAP///wAAAAAA
+AAAAAAd3d3d3d3d3REREREREREdP///////4R0////////hHT///////+EdP///////4R0////////hH
+T///////+EdP///////4R0////////hHSIiIiIiIiEdMzMzMzMzMR8RERERERETAAAAAAAAAAAAAAAAA
+AAAAAP//AACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA
+//8AAP//AAAAAAEAAgAgIBAAAQAEAOgCAAACABAQEAABAAQAKAEAAAMAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAMAAAA
+wDMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+<enddata>
+
+ENDSUB
+
+
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer ... and then corrected manually :)
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Database Refresh and Update
+  Color = 16777215
+  Height = 530
+  Width = 777
+
+Name = Title
+  Type = Label
+  Color = 255
+  Height = 25
+  Left = 13
+  Size = 15
+  Top = 7
+  Width = 262
+  Caption = Database Refresh and Update
+
+Name = Label001
+  Type = Label
+  Height = 16
+  Left = 13
+  Size = 10
+  Top = 38
+  Width = 722
+  Caption = This macro wll check for out-of-date unfound waypoints a given distance from the current center point.  Optionally, the macro
+
+Name = Label002
+  Type = Label
+  Height = 16
+  Left = 13
+  Size = 10
+  Top = 56
+  Width = 710
+  Caption = will then refresh the waypoints from geocaching.com.  Among other benefits, this will allow you to identify caches that have
+
+Name = Label003
+  Type = Label
+  Height = 16
+  Left = 13
+  Size = 10
+  Top = 74
+  Width = 699
+  Caption = become temporarily unavailable or achived.  The macro can also help keep your database from becoming bloated by
+
+Name = Label004
+  Type = Label
+  Height = 16
+  Left = 13
+  Size = 10
+  Top = 92
+  Width = 128
+  Caption = trimming excess logs.
+
+
+#********************************************************************
+# Enter distance, number of days, and gc.com user info
+#********************************************************************
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Check and refresh ...
+  Height = 100
+  Left = 12
+  Top = 118
+  Width = 500
+  Taborder = 0
+
+Name = Label101
+  Type = Label
+  Container = Groupbox1
+  Height = 15
+  Left = 11
+  Size = 9
+  Top = 20
+  Width = 91
+  Caption = Waypoints within
+
+Name = DistanceMiles
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 106
+  Top = 18
+  Width = 49
+  Taborder = 0
+
+Name = Label102
+  Type = Label
+  Container = Groupbox1
+  Height = 15
+  Left = 159
+  Size = 9
+  Top = 20
+  Width = 206
+  Caption = miles/kilometers (0.1 to 50) of current centerpoint
+
+Name = Label103
+  Type = Label
+  Container = Groupbox1
+  Height = 15
+  Left = 10
+  Size = 9
+  Top = 45
+  Width = 247
+  Caption = Caches that have not been updated in the last
+
+Name = UpdateDays
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 263
+  Top = 43
+  Width = 49
+  Taborder = 1
+
+Name = Label104
+  Type = Label
+  Container = Groupbox1
+  Height = 15
+  Left = 318
+  Size = 9
+  Top = 45
+  Width = 80
+  Caption = days (1 to 365)
+
+Name = Label105
+  Type = Label
+  Container = Groupbox1
+  Height = 15
+  Left = 10
+  Size = 9
+  Top = 70
+  Width = 247
+  Caption = Enter your geocaching.com user name 
+
+Name = MyUserName
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 223
+  Top = 68
+  Width = 80
+  Taborder = 1
+
+Name = Label106
+  Type = Label
+  Container = Groupbox1
+  Height = 15
+  Left = 308
+  Size = 9
+  Top = 70
+  Width = 80
+  Caption = and password 
+
+Name = MyPassword
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 389
+  Top = 68
+  Width = 80
+  Taborder = 1
+
+
+#********************************************************************
+# Notes
+#********************************************************************
+
+Name = GroupBox2
+  Type = Groupbox
+  Caption = Notes
+  Height = 265
+  Left = 12
+  Top = 225
+  Width = 500
+  Taborder = 1
+
+Name = Label201
+  Type = Label
+  Container = GroupBox2
+  Height = 15
+  Left = 4
+  Size = 9
+  Top = 15
+  Width = 471
+  Caption = 1) Only the first 250 waypoints will be refreshed during a given run.  Likewise, to prevent
+
+Name = Label202
+  Type = Label
+  Container = GroupBox2
+  Height = 15
+  Left = 19
+  Size = 9
+  Top = 30
+  Width = 474
+  Caption = hammering the geocaching.com website, updates are intentionaly slowed.  It will take
+
+Name = Label203
+  Type = Label
+  Container = GroupBox2
+  Height = 15
+  Left = 19
+  Size = 9
+  Top = 45
+  Width = 247
+  Caption = about 15 minutes per 100 waypoints to be updated. Please note the slowdown is not a
+
+Name = Label1204
+  Type = Label
+  Container = GroupBox2
+  Height = 15
+  Left = 19
+  Size = 9
+  Top = 60
+  Width = 247
+  Caption = function of this macro.
+
+Name = Label205
+  Type = Label
+  Container = GroupBox2
+  Height = 15
+  Left = 4
+  Size = 9
+  Top = 85
+  Width = 464
+  Caption = 2) For automatic updating of waypoints from geocaching.com, you must enter your
+
+Name = Label206
+  Type = Label
+  Container = GroupBox2
+  Height = 15
+  Left = 19
+  Size = 9
+  Top = 100
+  Width = 340
+  Caption = geocaching ID and password.  For your security, your password is not retained beyond
+
+Name = Label207
+  Type = Label
+  Container = GroupBox2
+  Height = 15
+  Left = 19
+  Size = 9
+  Top = 115
+  Width = 448
+  Caption = the immediate run and is not written to the data file.  
+
+Name = Label208
+  Type = Label
+  Container = GroupBox2
+  Height = 15
+  Left = 4
+  Size = 9
+  Top = 140
+  Width = 82
+  Caption =  3) Be sure to save a 'default' setting for GetMail and a 'TrimFound' and 'TrimUnfound'
+
+Name = Label209
+  Type = Label
+  Container = GroupBox2
+  Height = 15
+  Left = 19
+  Size = 9
+  Top = 155
+  Width = 82
+  Caption = setting (all without the apostrophes) in the Database / Purge Logs dialog.
+
+Name = Label210
+  Type = Label
+  Container = GroupBox2
+  Height = 15
+  Left = 4
+  Size = 9
+  Top = 180
+  Width = 82
+  Caption = 4) A sister version of this macro, NightlyDBUpdate.gsk has similar functionality
+
+Name = Label211
+  Type = Label
+  Container = GroupBox2
+  Height = 15
+  Left = 19
+  Size = 9
+  Top = 195
+  Width = 82
+  Caption = and can be run automatically without any user interaction.
+
+Name = Label213
+  Type = Label
+  Container = GroupBox2
+  Height = 15
+  Left = 4
+  Size = 9
+  Top = 220
+  Width = 485
+  Caption = 5) Feedback and information regarding the latest version of this macro can be found at 
+
+Name = Label214
+  Type = Label
+  Container = GroupBox2
+  Height = 15
+  Left = 19
+  Size = 9
+  Top = 235
+  Width = 485
+  Caption = http://gsak.net/board/index.php?showtopic=8044.
+
+
+
+
+#********************************************************************
+# Options
+#********************************************************************
+Name = Groupbox3
+  Type = Groupbox
+  Caption = Options
+  Height = 275
+  Left = 535
+  Top = 118
+  Width = 225
+  Taborder = 3
+
+Name = FilterOnly
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 8
+  Top = 20
+  Width = 15
+  Taborder = 0
+
+Name = Label301
+  Type = Label
+  Container = Groupbox3
+  Height = 15
+  Left = 26
+  Size = 9
+  Top = 20
+  Width = 154
+  Caption = Filter only and do not refresh from
+
+Name = Label302
+  Type = Label
+  Container = Groupbox3
+  Height = 15
+  Left = 26
+  Size = 9
+  Top = 35
+  Width = 122
+  Caption = geocaching.com
+
+Name = CheckEmail
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 8
+  Top = 60
+  Width = 15
+  Taborder = 6
+
+Name = Label303
+  Type = Label
+  Container = Groupbox3
+  Height = 15
+  Left = 26
+  Size = 9
+  Top = 60
+  Width = 128
+  Caption = Check for new PQ's first using
+
+Name = Label304
+  Type = Label
+  Container = Groupbox3
+  Height = 15
+  Left = 26
+  Size = 9
+  Top = 75
+  Width = 128
+  Caption = the saved 'default' settings
+
+Name = UpdateOwned
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 8
+  Top = 95
+  Width = 15
+  Taborder = 6
+
+Name = Label303B
+  Type = Label
+  Container = Groupbox3
+  Height = 15
+  Left = 26
+  Size = 9
+  Top = 95
+  Width = 128
+  Caption = Updated your owned caches
+
+Name = Label303A
+  Type = Label
+  Container = Groupbox3
+  Height = 15
+  Left = 26
+  Size = 9
+  Top = 110
+  Width = 128
+  Caption = from geocaching.com
+
+Name = TrimUnfound
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 8
+  Top = 135
+  Width = 15
+  Taborder = 4
+
+Name = Label305
+  Type = Label
+  Container = Groupbox3
+  Height = 15
+  Left = 26
+  Size = 9
+  Top = 135
+  Width = 128
+  Caption = Throughout the entire database,
+
+Name = Label305A
+  Type = Label
+  Container = Groupbox3
+  Height = 15
+  Left = 26
+  Size = 9
+  Top = 150
+  Width = 128
+  Caption = trim UNFOUND caches to previ-
+
+Name = Label306
+  Type = Label
+  Container = Groupbox3
+  Height = 15
+  Left = 26
+  Size = 9
+  Top = 165
+  Width = 128
+  Caption = ously saved 'TrimUnfound' settings
+
+Name = TrimFound
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 8
+  Top = 190
+  Width = 15
+  Taborder = 2
+
+Name = Label307
+  Type = Label
+  Container = Groupbox3
+  Height = 15
+  Left = 26
+  Size = 9
+  Top = 190
+  Width = 175
+  Caption = Throughout the entire database,
+
+Name = Label307A
+  Type = Label
+  Container = Groupbox3
+  Height = 15
+  Left = 26
+  Size = 9
+  Top = 205
+  Width = 175
+  Caption = trim FOUND caches to previously
+
+Name = Label308
+  Type = Label
+  Container = Groupbox3
+  Height = 15
+  Left = 26
+  Size = 9
+  Top = 220
+  Width = 175
+  Caption = saved 'TrimFound' settings
+
+Name = DelArchived
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 8
+  Top = 245
+  Width = 15
+  Taborder = 3
+
+Name = Label309
+  Type = Label
+  Container = Groupbox3
+  Height = 15
+  Left = 26
+  Size = 9
+  Top = 245
+  Width = 175
+  Caption = Delete all unfound archived
+
+
+
+#********************************************************************
+# Continue and Cancel Buttons
+#********************************************************************
+Name = Groupbox4
+  Type = Groupbox
+  Color = 16777215
+  Height = 90
+  Left = 535
+  Top = 400
+  Width = 225
+  Taborder = 2
+
+Name = Mouse
+  Type = Image
+  Container = Groupbox4
+  File = mouse.ico
+  Height = 42
+  Left = 5
+  Source = Macro
+  Top = 10
+  Width = 98
+
+Name = Label401
+  Type = Label
+  Container = Groupbox4
+  Height = 15
+  Left = 43
+  Size = 9
+  Top = 19
+  Width = 147
+  Caption = Click on a button to proceed ... 
+
+Name = Continue
+  Type = Button
+  Container = Groupbox4
+  Height = 25
+  Left = 24
+  Top = 50
+  Width = 75
+  Taborder = 1
+  Caption = Continue
+
+Name = Cancel
+  Type = Button
+  Container = Groupbox4
+  Enabled = Yes
+  Height = 25
+  Left = 120
+  Top = 50
+  Visible = Yes
+  Width = 75
+  Taborder = 0
+  Caption = Cancel
+
+
+
+<enddata>
+
+<data> VarName=$Mouse
+
+AAABAAEAICAEAAAAAADoAgAAFgAAACgAAAAgAAAAQAAAAAEABAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAACAAACAAAAAgIAAgAAAAIAAgACAgAAAgICAAMDAwAAAAP8AAP8AAAD//wD/AAAA/wD/AP//
+AAD///8AAAAAAAAHAAAAAAAAAAAAAAAAB4eHgAAAAAAAAAAAAAAAAHAAAAAAAIiIiIgAAAAAAAcAAAAA
+AIiIiIiIiAAAAABwAAAAAAiIgAAACIiAAAAHAAAAAACIiAd3d3AIiAAABwAAAAAIiIB3h4eHcIiAAAgA
+AAAAiIgHeHh4eHcIiAAHAAAACIiAd4eHh4eHcIgAAHAAAIiIB3h4iIiIeHcIgABwAAiIgHeHiIiIiIeH
+cIAABwCIiAd4ePiPj4iIeHeAAAcIiIB3h4+P//j4iIeHAAAHiIgHeHj4////j4iIeHAAcIiAd4ePj///
+//j4iIeAAHCIB3d4+P//////j4iIcAcIgHd3j4////////j4h4AHCAd3CPj/////////j4iAcAB3cICP
+//////////iHAIAAdwj4////////////gABwAACPjw//////////+IAAgAB4+P/w/////////4gAAHAA
+d4///w////////+AAABwAHj////w///////4AAAABwAPj////w//////gAAAAAhwAPj///8AD///+AAA
+AAAAhwAPj//w//AP/4AAAAAAAAhwAPjwD///8AgAAAAAAAAAh3gPD/////+AAAAAAAAAAAAAAAj4///4
+AAAAAAAAAAAAAAAAD4iIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/7///+B////f/AP/v/AA/3/gAH7/w
+AA+/4AAHv8AAA7+AAAPfAAAB3gAAAewAAAHoAAAB4AAAAdAAAAHQAAABoAAAAaAAAAFgAAADYAAAB2AA
+AAdgAAAPcAAAH3AAAD+4AAB/nAAA/84AAf/nAAP/8IAH///gD///+D///////w==
+
+<enddata>
+

@@ -1,0 +1,102 @@
+#*******************************************
+# MacDescription = colorizes the entire row for each distinct cache category/type
+# MacFileName = Colorize.gsk
+# MacAuthor = Pasha Phares (updated to Version 7 by Kai Team)
+# MacVersion=1.2 (Updated to MacVersion=1.2.2 By Rigger64)
+# MacUrl=http://gsak.net/board/index.php?showtopic=1833&view=findpost&p=32719
+#*******************************************
+
+VERCHECK Version=7.1.1.3
+
+# Save current filters
+$currentfilter = SAVEFILTER()
+
+# Set colors by name
+$Red = RGBColor(255,0,0)
+$Green = RGBColor(0,255,0)
+$Blue = RGBColor(0,0,255)
+$LightBlue = RGBColor(128,128,255)
+$PaleBlue = RGBColor(192,192,255)
+$Yellow = RGBColor(255,255,0)
+$PaleYellow = RGBColor(255,255,128)
+$Purple = RGBColor(255,0,255)
+$Pink = RGBColor(255,128,128)
+$Teal = RGBColor(64,128,128)
+$Orange = RGBColor(255,128,0)
+$Steel = RGBColor(128,128,192)
+
+# Clear all colors first
+SETCOLOR Color=clear
+
+# Temporarily disabled
+MFilter Expression=$d_TempDisabled AND NOT ($d_Found)
+IF $_FilterCount > 0   
+    SETCOLOR Color=$Orange Row=All
+ENDIF
+
+# DNFs still unfound
+MFilter Expression=$d_DNF AND NOT ($d_Found)
+IF $_FilterCount > 0
+    SETCOLOR Color=$LightBlue Row=All
+ENDIF
+
+# Temporarily disabled DNFs
+MFilter Expression=$d_DNF AND $d_TempDisabled
+IF $_FilterCount > 0
+    SETCOLOR Color=$PaleBlue Row=All
+ENDIF
+
+# Unfound and archived
+MFilter Expression=$d_Archived AND NOT ($d_Found)
+IF $_FilterCount > 0
+    SETCOLOR Color=$Red Row=All
+ENDIF
+
+# Finds
+MFilter Expression=$d_Found
+IF $_FilterCount > 0
+    SETCOLOR Color=$Green Row=All
+ENDIF
+
+# Finds & Archived 
+MFilter Expression=$d_Found AND ($d_Archived)
+IF $_FilterCount > 0
+    SETCOLOR Color=$Steel Row=All
+ENDIF
+
+# FTFs
+MFilter Expression=$d_FTF
+IF $_FilterCount > 0
+    SETCOLOR Color=$Purple Row=All
+ENDIF
+
+# Owned
+MFilter Expression=IsOwner()
+IF $_FilterCount > 0
+    SETCOLOR Color=$Pink Row=All
+ENDIF
+
+# Owned & TempDisabled
+MFilter Expression=IsOwner() AND ($d_TempDisabled)
+IF $_FilterCount > 0
+    SETCOLOR Color=$PaleYellow Row=All
+ENDIF
+
+# Owned & Archived
+MFilter Expression=IsOwner AND ($d_Archived)
+IF $_FilterCount > 0
+    SETCOLOR Color=$Blue Row=All
+ENDIF
+
+# Corrected Coordinates
+MFilter Expression=$d_HasCorrected
+IF $_FilterCount > 0
+    SETCOLOR Color=$Yellow Row=All
+ENDIF
+
+# Restore previous filters
+IF RESTOREFILTER($currentfilter, True) = 0
+	PAUSE Msg="Previous filters now shows no records. Clearing all filters."
+ENDIF
+CANCEL
+

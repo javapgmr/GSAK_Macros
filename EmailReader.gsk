@@ -1,0 +1,3511 @@
+###############################################################################
+# MacFileName    = EmailReader.gsk
+# MacVersion     = 2.31
+# DevVersion     = 2.31
+# MacDescription = Read and process eNotify emails direct from your mail server.
+# MacAuthor      = Wayne (Red Roo)
+# MacUrl         = http://gsak.net/board/index.php?showtopic=7604
+###############################################################################
+   NOERROR Commands=GCREFRESH;UPDATECHECK
+   UPDATECHECK Frequency=10
+
+   VERCHECK Version=7.7.4.36 (Please update your version of GSAK At http://gsak.net)
+   OPTION Explicit=Yes
+###############################################################################
+#  Recent Changes...
+# ===================
+# 2.03 - If an exit macro is called, it's variables will be Local.
+#        Fixed an exit sort issue for caches created by EmailReader.
+# 2.04 - Improvements when processing Owned and Watchlist emails.
+#        Fixed a sleeper when configured to 'Create a new record for Published caches only'
+#        Running a macro on completion can only occur if emails have been read.
+#        A notification log is now added for caches with coordinate updates, however the update is still not applied.
+#        Minor changes in the exit sorts to make them sort correctly.
+# 2.10 - Option to open new cache Url's in separate browser windows on exit
+#        Pressing <Alt R> on the main form will reset the form position to the center of screen 1.
+#        Coordinate Updates are now handled and a separate log identifying this action is written. (LogId:101)
+#        Fixed a bug when displaying Found logs (introduced inadvertently in v2.04)
+#        Restore of UserSort is now done when the macro finishes properly.
+# 2.20 - Report cleanup for coordinate changes to improve readability.
+#        Cancel added when new cache pages are loaded into the browser at the end of macro.
+#        Added GcRefresh for new caches if Gsak v8.0.0.100 or higher.
+#        New cache records updated via GcRefresh are retained on the grid (added a filter method).
+#        Verbose reporting of email log lines added to appease Eastpak1984
+# 2.25 - Fixed a bug related to a rare condition when starting EmailReader where a error would occur because UserSort could not be Restored.
+#        Removed code for 'SystemExit' (the red X in the top right corner) - possibly related to the error above
+#        Attempts to track down possible bug related to updating newly added records
+#        Gsak v8 options are now hardcoded to respond to V8.0.0.133 or later - I'm not prepared to support Gsak v8 below the 'download' version
+#        $ER_WebCnt Combobox not necessary for Gsak v8.0.0.133 or later.
+# 2.27 - Added Load Summary variable for GCREFRESH
+#        Fixed Load summary not displaying during Unattended Running.
+#        Altered the SaveState routine to use 'Select Code' rather than 'Select *' to release a large amount of memory used by the command.
+# 2.28 - Updated to remove Deprecated Command : Db To SqLite
+# 2.29 - Replace Deprecated System variables  : $_  Install      >>> $_AppData
+#        Replace Deprecated database variables: $d_ Archived     >>> $d_Status
+#                                               $d_ TempDisabled >>> $d_Status
+#        More Status Messages at startup and exit.
+# 2.30 - Fixed 'Coordinates have not been Updated' message displaying when running unattended.
+#        Creates a new custom field ('ErUpdater':Boolean) if the Gsak version is greater than "8.0.0.133"
+#        When the new field is set, the record will be Gc Refresh'ed rather than having a log written and the update applied by EmailReader.
+# 2.30.0 Removed some commented code.
+#        Logs are not written in V8 anymore - instead the cache is flagged for a GC Refresh when finished. The relates to both Notification and Owner log emails.
+#
+#####################################################################################
+#   >>>>>>>>   User changes should not be required below this line ... <<<<<<<<     #
+#####################################################################################
+# Developer Notes: - User4 entries are only written if $DevUser is true
+# ================
+# User4 Log types:
+#		AL - Archive Log
+#   CU - Coordinate Update
+#   DL - Disable Log
+#		EL - Enable Log
+# 	NC - New Cache
+#		OL - Owner Log
+#		WL - Watchlist
+#		UL - Unarchive Log
+#
+###################################################################################
+
+   GOSUB Name=Initialise
+
+   SHOWSTATUS Msg=x Display=Off
+   WHILE TRUE
+     IF $OpenBrowser AND $_Version<"8.0.0.133"
+       $ER_FormA=EditForm($ER_FormA,"ER_WebCnt","Visible","Yes")
+     ELSE 
+       $ER_FormA=EditForm($ER_FormA,"ER_WebCnt","Visible","No")
+     ENDIF 
+     GOSUB Name=ReconfigExitSelect
+     SHOWSTATUS Msg="" Display=off
+     $Fxit = Form($ER_FormA,"")
+     $ER_FormA=EditForm($ER_FormA,"Form1","Top",$_FormTop)
+     $ER_FormA=EditForm($ER_FormA,"Form1","Left",$_FormLeft)
+     BEGINCASE 
+         $ER_Dta=""                                                 # Data
+         $Er_QuietMode=$_CtrlKey                                    # Quiet Mode.
+
+       CASE $Fxit="UncheckESD"
+         $UncheckESD=FALSE
+         $Dl_Fnd=FALSE
+         $Dl_Dnf=FALSE
+         $Dl_Ena=FALSE
+         $Dl_Pub=FALSE
+         $Dl_Upd=FALSE
+         $Dl_Rep=FALSE
+         $Dl_Ret=FALSE
+         $Dl_Una=FALSE
+         $Dl_Arc=FALSE
+         $Dl_Dis=FALSE
+         $ER_Doul=FALSE
+         $ER_Dwul=FALSE
+
+       CASE $Fxit="SystemExit" AND $DevUser
+         CANCEL 
+
+       CASE $Fxit="ExitF1"
+         BREAK 
+
+       CASE $Er_QuietMode AND ($Fxit="Btn_NotRrCf" OR $Fxit="Btn_NotRhf")        # Redisplay the Notify summaries
+         GOSUB Name=DisplayNotifySummaries
+
+       CASE $Er_QuietMode AND ($Fxit="Btn_LogRrCf" OR $Fxit="Btn_LogRhf")        # Redisplay the Log summaries
+         GOSUB Name=DisplayLogSummaries
+
+       CASE $Fxit="FMaint"
+         GOSUB Name=FileMaintenance
+
+       CASE $Fxit="SetConfig"
+         GOSUB Name=SetConfig
+
+       CASE $Fxit="Btn_NotRnm"                                # Notify - New Read
+         $OperatorPresent=TRUE
+         $ER_Rne=TRUE                                               # Read Notify Emails
+         GOSUB Name=NotifyMailProcess                               # NotifyProcess
+
+       CASE $Fxit="Btn_NotRrCf"
+         $ReadNotifyCf=TRUE                                         # Read Notify Current File
+         GOSUB Name=NotifyMailProcess                               # NotifyProcess
+
+       CASE $Fxit="Btn_NotRhf"                                # Read History File
+         $ReadNotifyHf=TRUE
+         GOSUB Name=NotifyMailProcess                               # NotifyProcess
+
+       CASE $Fxit="Btn_LogRnm"                                # Log
+         $ER_Rle=TRUE                                               # Read New Mail
+         GOSUB Name=LogMailProcess
+
+       CASE $Fxit="Btn_LogRrCf"                               # Read Log Current File
+         $ReadLogCf=TRUE                                            # Read Log Current File
+         GOSUB Name=LogMailProcess
+
+       CASE $Fxit="Btn_LogRhf"                                # Read Log History File
+         $ReadLogHf=TRUE                                            # Read Log History File
+         GOSUB Name=LogMailProcess
+
+       CASE $Fxit="DelayExit"                                 # Entry for delayed action (countdown)
+         $OperatorPresent=FALSE
+         $ER_Rne=TRUE                                               # Check Notify Server
+         GOSUB Name=NotifyMailProcess                               # Run the Notify email process.
+         $ER_Rle=TRUE                                               # CheckLogServer
+         GOSUB Name=LogMailProcess                                  # Run the Log email process
+         BREAK 
+
+       CASE $Fxit="Freset"
+         $ER_FormA=EditForm($ER_FormA,"Form1","Top","")
+         $ER_FormA=EditForm($ER_FormA,"Form1","Left","")
+       OTHERWISE 
+         GOSUB Name=ChangeDb
+
+     ENDCASE 
+     IF $ExitCaptionFlag                                              # Change Exit caption flag
+       $ER_FormA=EditForm($ER_FormA,"ExitF1","Caption","Exit and Update")
+       $ExitCaptionFlag=FALSE                                        # Reset the flag
+     ENDIF 
+     GOSUB Name=UpdateRecordCounts                                    # Update FormA record Counts
+     $SePressed=FALSE
+   ENDWHILE 
+
+   SHOWSTATUS Msg="Save Configuration ..." Top=0
+   GOSUB Name=SaveConfiguration                                        # Save Configuration Data
+   SHOWSTATUS Msg="Test And Update ..." Top=0
+   GOSUB Name=TestAndUpdate
+
+# Time to say goodbye...
+   BEGINCASE 
+     CASE $ExitSelectCancel
+       GOSUB Name=RestoreUsort
+     CASE $ExitSelectRestore
+       GOSUB Name=RestoreUsort
+       GOSUB Name=RestoreState
+     CASE $ExitSelectUpdate
+       GOSUB Name=SelectUpdates                                      # Selects on UserSort
+       GOSUB Name=RestoreUsort
+       IF $SsCodeLst <> ""                                           # There is an exit selection
+         MACROFLAG Type=Clear Range=All                             # Clear all macro flags
+         $number = CodeMatch($SsCodeLst,$_NewLine,"M")              # Match the codes and set the macroflag
+         MFILTER Where=MACROFLAG                                    # Set a filter on MacroFlag
+         SQLSORT OrderBy=Distance
+       ENDIF 
+     CASE $ExitSelectNew
+       GOSUB Name=RestoreUsort
+       MFILTER Where=Ownername="Added by EmailReader"
+       IF $_FilterCount > 0 AND $_FilterCount < $_DbCount AND Not($OpenBrowser)
+         SHOWSTATUS Msg="There are $_Filtercount caches added by EmailReader" Width=300
+         DELAY MS=1500
+       ENDIF 
+     CASE $ExitSelectEmails
+       GOSUB Name=RestoreUsort
+       MFILTER Where=USERFLAG
+     OTHERWISE 
+       GOSUB Name=RestoreUsort
+   ENDCASE 
+
+   MACROFLAG Type=Clear Range=All
+   IF $OpenBrowser
+     IF $_Version>="8.0.0.133"
+       SHOWSTATUS Msg="Updating caches ..." Top=0
+       MFILTER Where=Ownername='Added by EmailReader' OR ErUpdater          # Tests indicate that this selects as expected.
+       IF $_FilterCount>0
+         MACROFLAG Type=SET Range=FILTER
+         MFILTER Where=MACROFLAG
+         IF $ER_Crt<>"Normal"
+           $Lsummary=FALSE
+         ENDIF 
+         $DynLoad=$StaticRefresh
+         $UserStr=Replace("*DataFolder*",$SvrFldr,$DynLoad)
+         $DynLoad=$DynLoad+"chkSummary.Checked=$Lsummary"+$_NewLine
+         MACROSET Dialog=LOAD VarName=$DynLoad
+         GCREFRESH Scope=FILTER LogsPerCache=30 LoadSettings=<MACRO>
+       ENDIF 
+     ELSE 
+       SHOWSTATUS Msg="Opening Browser ..." Top=0
+       $UserStr= Replace($_NewLine,";",Sqlite("sql","select code from caches where ownername='Added by EmailReader'"))+ ";"
+       $TempStr1=CodeMatch($UserStr,";","M")
+       MFILTER Where=MACROFLAG
+       $TempNum=RegExCount(";",$UserStr)
+       $Cnt=0
+       SHOWSTATUS Msg="Opening $TempNum Cache Web Pages"
+       WHILE $Cnt<>$TempNum
+         $Cnt=$Cnt+1
+         $CacheId =Extract($UserStr,";",$Cnt)
+         IF $CacheId=""
+           BREAK 
+         ENDIF 
+         IF Seek($CacheId)
+           WEB Url=$d_Url
+           DELAY MS=1200
+         ENDIF 
+         IF $ER_WebCnt<>"All" AND $Cnt <> $TempNum
+           IF Frac($Cnt/Val($ER_WebCnt))=0
+             MSGOK Msg="Press <Enter> to Continue ($Cnt of $TempNum)" Caption="Opening pages in Browser"
+           ENDIF 
+         ENDIF 
+       ENDWHILE 
+     ENDIF 
+   ENDIF 
+   SHOWSTATUS Msg=x Display=Off
+
+   RETURN 
+###################################################################################
+   BEGINSUB Name=RestoreUsort
+     CANCELFILTER # Necessary to ensure ALL data is restored
+     SHOWSTATUS Msg="Restoring UserSort..."
+     DATARESTORE Data=$d_Usersort
+     $ER_UsortRestored=TRUE
+     GOSUB Name=SaveConfiguration                                        # Save Configuration Data
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=LogMailProcess                                           # v7.6 code
+     GOSUB Name=TestInternetConnection
+     GOSUB Name=ClearUserFlags																						 # Only happens if $UfCleared is False
+     IF $OnLine or $Btn_LogRrCf
+       IF $OperatorPresent
+         $ER_FormA=EditForm($ER_FormA,"Form1","Delay","0")
+       ENDIF 
+       GOSUB Name=ClearOwnerReport
+       $ER_ReRun=TRUE
+       BEGINCASE 
+         CASE $ER_Rle
+           $ER_ReRun=FALSE
+           $FileName=$LogCurrentFile
+           IF FileExists($LogCurrentFile)
+             FILEERASE File=$LogCurrentFile
+           ENDIF 
+           GOSUB Name=CheckMailSettings
+           IF NOT($SettingsOk)
+             EXITSUB 
+           ENDIF 
+           $LogMail=TRUE
+           $NotifyMail=FALSE
+           GOSUB Name=GetMailRoutine
+         CASE $ReadLogCf
+           $FileName=$LogCurrentFile
+         CASE $ReadLogHf
+           $FileName=$LogHistoryFile
+       ENDCASE 
+
+       IF FileExists($FileName)
+         $ER_OkMf=FALSE
+         IF NOT($ER_ReRun)
+           IF $ExitDisplayOwned  OR ($ER_ReRun AND $ExitDisplayOwned)
+             $ER_OkMf=TRUE
+           ENDIF 
+         ENDIF 
+         IF $ReReadFlag AND $ER_ReRun AND $ExitDisplayOwned
+           $ER_OkMf=TRUE
+         ENDIF 
+         $ER_Dta = GetFile($FileName)
+         $ER_NumMsgs = RegExCount(RegExEscape("$GSAKMSG$"),$ER_Dta)
+         $MsgCntr = 0
+         WHILE $MsgCntr < $ER_NumMsgs
+           $LogType=""
+           $ER_tmpS="Location:"
+           GOSUB Name=GetNextRecord
+           IF Not($Faulty)
+             $Cntr=$ER_tmpN + 4                                        # The first line of the Author Log
+             $LogLimit=Val(List("bl","RegEx","Visit this log"))        # The last line of the Author Log
+             WHILE $Cntr < $LogLimit                                   # Extract the full Author Log
+               IF Alltrim(Extract($Body,";",$Cntr)) <>""
+                 $AuthorLog=$AuthorLog+Extract($Body,";",$Cntr)
+                 $AuthorLog=$AuthorLog+$_NewLine
+               ENDIF 
+               $Cntr=$Cntr+1
+             ENDWHILE 
+#
+             $Summary=Extract($Body,";",$ER_tmpN+1)+" "                 # Locate and Extract the Summary
+             $ER_tmpN=Val(List("hl","RegEx","DecodedSubject"))          # Locate the DecodedSubjectLine in the Body
+             $Faulty=$ER_tmpN=0                                         # True if not found
+           ENDIF 
+           IF Not($Faulty)
+             $SubjectLine=Extract($Header,"$_NewLine",$ER_tmpN)         # Extract the Subject Line
+             $Cntr=0
+             WHILE $Cntr < $LTcnt                                       # Loop to identify the LogType
+               $Cntr=$Cntr+1
+               $LogStr=Extract($ER_LogTypes,";",$Cntr)                  # Extract the LogStr
+               IF Regex($LogStr,Upper($SubjectLine))                    # If this LogType is in the SubjectLine
+                 $LogType=Extract($ER_LogTypes,";",$Cntr)               # Extract the LogType
+                 $Cntr=$LTcnt                                           # Reset the loop counter
+                 $ER_tmpN=RegexCount(":",$SubjectLine)                  # Count the number of colons in SubjectLine
+                 $ER_tmpS=Extract($SubjectLine,":",3)                   # Extract everything after the 2nd colon
+                 IF $ER_TmpN > 2
+                   $Cntr=2
+                   WHILE $Cntr <> $ER_TmpN
+                     $Cntr=$Cntr+1
+                     $ER_TmpS=$ER_TmpS+":"+Extract($SubjectLine,":",$Cntr+1)
+                   ENDWHILE 
+                 ENDIF 
+
+                 GOSUB Name=ParseSubjectLine                                 	# Now extract Subject data from the SubjectLine
+                 $SubjectLine=$ER_tmpS
+                 $Date=Extract($Summary," ",RegexCount(" ",$Summary))					# Extract the Date from the SummaryLine
+                 $Cntr=0
+                 $CacheName=""
+                 $TempNum=RegExCount(";",$ER_lTypes)
+                 WHILE $Cntr < $TempNum                               					# Pick up the cache name.
+                   $Cntr=$Cntr+1
+                   IF Regex(Extract($ER_lTypes,";",$Cntr),Upper($SubjectLine))
+                     $ER_tmpS=Extract($ER_lTypes,";",$Cntr)
+                     $ER_tmpS=RegExReplace($ER_tmpS, $SubjectLine,"*")
+                     $CacheName=Alltrim(Extract($ER_tmpS,"*",2))
+                     $Cntr=$TempNum
+                   ENDIF 
+                 ENDWHILE 
+               ENDIF 
+             ENDWHILE 
+             SHOWSTATUS Msg="($MsgCntr of $ER_NumMsgs) $SubjectLine" Top=0 Width=550 Left=285
+             MFILTER Where=Name=$CacheName
+             IF $_FilterCount=1
+	             $ResultStr=CustomPut("ErUpdater","1")                          # Flag cache for Gc Refresh     
+               IF $SetUf
+#                 MFILTER Where=Name=$CacheName
+                 GOSUB Name=SetUserFlag                                       # Set User Flag
+               ENDIF 
+             ENDIF 
+           ELSE 
+             $ErrorLog=$ErrorLog+"Msg #$MsgCntr has unknown errors $_NewLine"
+             $ErrorCnt=$ErrorCnt+1
+           ENDIF 
+           GOSUB Name=FixDate
+           $UserStr="Error"
+           BEGINCASE 
+             CASE $LogType="WATCHLIST"
+               GOSUB Name=TestForRot13
+               $ER_WatchCnt=$ER_WatchCnt+1
+               IF $VerboseReporting
+                 $ER_WatchLog=$ER_WatchLog+"$Date ==> $Summary"+$_NewLine
+               ELSE 
+                 $ER_WatchLog=$ER_WatchLog+"$Date ==> $SubjectLine"+$_NewLine
+               ENDIF 
+               IF $ER_Dwul
+                 $ER_WatchLog=$ER_WatchLog+"$AuthorLog"+$_NewLine+$_NewLine
+               ENDIF 
+               $UserStr="WL;"
+             CASE $LogType="OWNER"
+               $OwnerCnt=$OwnerCnt+1
+               IF $VerboseReporting
+                 $OwnerLog=$OwnerLog+"$Date ==> $Summary"+$_NewLine
+               ELSE 
+                 $OwnerLog=$OwnerLog+"$Date ==> $SubjectLine"+$_NewLine
+               ENDIF 
+# Next IF/THEN block is run 'When re-reading files' is checked and slows things down.
+               IF $ER_OkMf
+                 MFILTER Where=Name=$CacheName
+                 GOSUB Name=SetMacroFlag
+               ENDIF 
+               IF $ER_Doul
+                 $OwnerLog=$OwnerLog+"$AuthorLog"+$_NewLine+$_NewLine
+               ENDIF 
+               $UserStr="OL;"
+             OTHERWISE 
+               $ErrorLog=$ErrorLog+"$Date ==> $SubjectLine"+$_NewLine+"$AuthorLog"+$_NewLine+$_NewLine
+           ENDCASE 
+         ENDWHILE 
+       ENDIF 
+       SHOWSTATUS Msg=x Display=Off
+       IF $OperatorPresent                                                   # If the operator is present...
+         GOSUB Name=DisplayLogSummaries                                           # Display the log email summaries
+       ENDIF 
+       GOSUB Name=SqlHistBuild										                      # Add to the Sql and History files
+       $ER_Rle=FALSE
+       $ReadLogCf=FALSE
+       $ReadLogHf=FALSE
+       CANCELFILTER 
+       $Cnt=$_Count
+     ELSE 
+       MSGOK Msg="You are not connected to the Internet" Caption="Unable to read mail"
+     ENDIF # If $Online
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=NotifyMailProcess                                           # v7.6 code
+     GOSUB Name=TestInternetConnection
+     GOSUB Name=ClearUserFlags
+     IF $Online or $Btn_NotRrCf
+       $ER_Dnul=FALSE
+       IF $OperatorPresent
+         $ER_FormA=EditForm($ER_FormA,"Form1","Delay","0")
+       ENDIF 
+       IF $Dl_Fnd OR $DL_Dnf OR $Dl_Ena OR $Dl_Pub OR $Dl_Upd OR $Dl_Rep OR $Dl_Ret OR $Dl_Una OR $Dl_Arc OR $Dl_Dis
+         $ER_Dnul=TRUE                                                # Display Notify User Log
+       ENDIF 
+       GOSUB Name=ClearNotifyReport
+       BEGINCASE 
+         CASE $ER_Rne                                                 # CheckNotifyServer - ReadNotifyEmail
+           $ER_ReRun=FALSE
+           $UseBrowser=True
+           $FileName=$NotifyCurrentFile
+           IF FileExists($NotifyCurrentFile)
+             FILEERASE File=$NotifyCurrentFile
+           ENDIF 
+           GOSUB Name=CheckMailSettings
+           IF NOT($SettingsOk)
+             EXITSUB 
+           ENDIF 
+           $LogMail=FALSE
+           $NotifyMail=TRUE
+           GOSUB Name=GetMailRoutine
+         CASE $ReadNotifyCf
+           $ER_ReRun=TRUE
+           $FileName=$NotifyCurrentFile
+         CASE $ReadNotifyHf
+           $ER_ReRun=TRUE
+           $FileName=$NotifyHistoryFile                                      # Notify History File
+       ENDCASE 
+
+       $FndCnt=0 # 1
+       $DnfCnt=0 # 2
+       $EnaCnt=0 # 3
+       $UpdCnt=0 # 4
+       $UnaCnt=0 # 5
+       $MntCnt=0 # 6
+       $DcCnt =0 # 7
+       $ArcCnt=0 # 8
+       $PubCnt=0 # 9
+       $RetCnt=0 # 10
+
+#   Check variables and set or reset $ER_OkMf (OkToSetMacroFlag)
+       $ER_OkMf=FALSE
+       IF Not($ER_ReRun AND ($ExitDisplayNew OR $ExitDisplayUpd)) OR ($ER_ReRun AND $ReReadFlag AND ($ExitDisplayNew OR $ExitDisplayUpd))
+         $ER_OkMf=TRUE
+       ENDIF 
+       GOSUB Name=NotifyMailProcess2                                               # Process the file
+       SHOWSTATUS Msg="" Display=Off
+       IF $OperatorPresent                                                         # If the operator is present...
+         GOSUB Name=DisplayNotifySummaries                                         # display the notify summaries
+       ENDIF 
+       GOSUB Name=SqlHistBuild
+       $ER_Rne=FALSE                                                               # CheckNotifyServer
+       $ReadNotifyCf=FALSE
+       $ReadNotifyHf=FALSE
+     ELSE 
+       MSGOK Msg="You are not connected to the Internet" Caption="Unable to read mail"
+     ENDIF 
+   ENDSUB 
+##################################################################################
+   BEGINSUB Name=NotifyMailProcess2                                           # v7.6 code
+     IF FileExists($FileName)
+       $ER_Dta = GetFile($FileName)
+       $ER_NumMsgs = RegExCount(RegExEscape("$GSAKMSG$"),$ER_Dta)
+       $MsgCntr = 0
+       $CacheId=""
+       $CacheName=""
+       WHILE $MsgCntr < $ER_NumMsgs
+         $ER_tmpS="For "
+         GOSUB Name=GetNextRecord
+         IF Not($Faulty)
+           $DistanceLine=Extract($Body,":",$ER_tmpN+2)
+           $SummaryLine=Extract($Body,";",$ER_tmpN)                        # Extract the SummaryLine
+           $CacheId=Extract(Extract($SummaryLine," ",2),":",1)             # Extract the CacheId from the SummaryLine.
+           $LogLine=Extract($Body,";",$ER_tmpN+3)+" "                      # The LogLine is the third line after For
+           IF $ER_Dnul                                                     # Display Notify User Logs
+             $AuthorLog=""
+             $Cntr=$ER_tmpN+6                                             # The first line of the Author Log
+             $LogLimit=Val(List("bl","RegEx","Visit this log"))           # The last line of the Author Log
+             WHILE $Cntr < $LogLimit                                      # Extract the full Author Log
+               IF Alltrim(Extract($Body,";",$Cntr)) <>""
+                 $AuthorLog=$AuthorLog+Extract($Body,";",$Cntr)
+                 $AuthorLog=$AuthorLog+$_NewLine
+               ENDIF 
+               $Cntr=$Cntr+1
+             ENDWHILE 
+             $AuthorLog=$AuthorLog+$_NewLine
+             GOSUB Name=TestForRot13
+           ENDIF 
+#  Now extract Subject data from the SubjectLine
+           IF $VerboseReporting                                              # Request from Eastpak1984
+             $Summary=$CacheId +"  -  " + $LogLine
+           ELSE 
+             $ER_tmpS=$LogLine
+             GOSUB Name=ParseSubjectLine
+             $Summary=$CacheId +"  -  " + $ER_tmpS                           # Request from Bronstein
+           ENDIF 
+           $ER_tmpN=RegexCount(" ",$LogLine)                            # Number of spaces in LogLine
+           $Date=Extract($LogLine," ",$ER_tmpN)                         # The last entry on the LogLine
+           $ER_tmpN=Val(List("hl","RegEx","DecodedSubject"))            # Find the line with DecodedSubject in it
+           $SubjectLine=Extract($Header,"$_NewLine",$ER_tmpN)           # Extract the SubjectLine
+           $Faulty=$ER_tmpN=0                                           # True if not found
+         ENDIF 
+         IF Not($Faulty)
+           $Cntr=0
+           WHILE $Cntr < $NTcnt                                                     # A loop to select the correct NotifyType
+             $Cntr=$Cntr+1
+             $LogType=""
+             IF Regex(Extract($ER_nTypes,";",$Cntr),Upper($LogLine))              # If the LogType is in the LogLine
+               $LogType=Extract($ER_nTypes,";",$Cntr)                           # Set the LogType
+               $Cntr=$NTcnt
+               $ER_tmpN=At($LogType,Upper($LogLine))                           # Locate the LogType in the LogLine
+               $Author=Left($LogLine,$ER_tmpN-1)                               # Extract the Authors name
+               $ER_tmpS=Right($LogLine,Len($LogLine)-($ER_tmpN+Len($LogType))) # Extract the remainder of the line
+               $ER_tmpN=At("(",$ER_tmpS)                                       # Locate the leading bracket
+               $CacheName=Left($ER_tmpS,$ER_tmpN-1)                            # Extract the CacheName
+             ELSE 
+             ENDIF 
+           ENDWHILE 
+         ELSE 
+           $ErrorLog=$ErrorLog+"Msg #$MsgCntr has unknown errors $_NewLine"
+           $ErrorCnt=$ErrorCnt+1
+         ENDIF 
+         SHOWSTATUS Msg="($MsgCntr of $ER_NumMsgs)  $Summary " Top=200 Width=450
+
+         IF $DevUser AND $_CtrlKey
+           $MsgCntr = $ER_NumMsgs
+         ENDIF 
+         MFILTER Where=Code=$CacheId
+         IF $_FilterCount=1
+         ELSE 
+           GOSUB Name=AddNewCacheRecord                                       # Add New Cache Record
+         ENDIF 
+         IF $_FilterCount=1 AND $SetUf
+           GOSUB Name=SetUserFlag                                        # Set User Flag
+         ENDIF 
+         IF Upper($LogType)=Extract($ER_nTypes,";",4) OR (Upper($LogType)=Extract($ER_nTypes,";",5) AND $ExitDisplayUpd)
+           IF $ER_OkMf
+             GOSUB Name=SetMacroFlag                                     # Set Macro Flag
+           ENDIF 
+         ENDIF 
+         IF $OperatorPresent                                          # Operator is present, so this is a normal run...
+           GOSUB Name=ProcessNotifyLog
+         ENDIF 
+       ENDWHILE 
+     ENDIF 
+   ENDSUB 
+##################################################################################
+   BEGINSUB Name=ParseSubjectLine                            # v7.6 code
+     $ER_LogTags="(Disabled;(Traditional;(Virtual;(Unknown;(Multi;(Archived;(Letterbox;"
+     $ER_Cntr1=0
+     $ER_Cntr2=RegExCount(";",$ER_LogTags)
+     WHILE $ER_Cntr1 < $ER_Cntr2
+       $ER_Cntr1=$ER_Cntr1+1
+       $ER_tmpS2=Extract($ER_LogTags,";",$ER_Cntr1)
+       $ER_Cntr3=At($ER_tmpS2,$ER_tmpS)
+       IF $ER_Cntr3 > 0
+         $ER_tmpS=Extract($ER_tmpS,$ER_tmpS2,1)
+       ENDIF 
+     ENDWHILE 
+     IF At("> ",$ER_tmpS) > 0
+       $ER_tmpS=Replace("> ","",$ER_tmpS,FALSE)
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=ProcessNotifyLog                            # v7.6 code
+     TRANSACTION Action=Begin
+     GOSUB Name=FixDate
+     $ER_RptEntry="$Date ==> $Summary $_NewLine"
+     BEGINCASE 
+       CASE $LogType=Extract($ER_nTypes,";",12)                     # This a Found notification
+         IF $Dl_Fnd
+           $ER_RptEntry="$Date ==> $Summary $_NewLine$AuthorLog"
+         ENDIF 
+         $FndMsg=$FndMsg+"$ER_RptEntry"
+         $FndCnt=$FndCnt+1
+         IF NOT($ER_ReRun) AND ($d_Status="X" OR $d_Status="T")
+           GOSUB Name=SetMacroFlag
+         ENDIF 
+       CASE $LogType=Extract($ER_nTypes,";",1)                     # This a Dnf notification
+         IF $Dl_Dnf
+           $ER_RptEntry="$Date ==> $Summary $_NewLine$AuthorLog"
+         ENDIF 
+         $DnfCnt=$DnfCnt+1
+         $DnfMsg=$DnfMsg+"$ER_RptEntry"
+       CASE $LogType=Extract($ER_nTypes,";",5)                     # This a Maintenance notification
+         IF $Dl_Rep
+           $ER_RptEntry="$Date ==> $Summary $_NewLine$AuthorLog"
+         ENDIF 
+         $MntCnt=$MntCnt+1
+         $MntLog=$MntLog+"$ER_RptEntry"
+       CASE $LogType=Extract($ER_nTypes,";",9)                    # This a Disable notification
+         IF $Dl_Dis
+           $ER_RptEntry="$Date ==> $Summary $_NewLine$AuthorLog"
+         ENDIF 
+         $DcCnt=$DcCnt+1
+         $DisMsg=$DisMsg+"$ER_RptEntry"
+         IF $_FilterCount=1
+           IF NOT($d_Status="T")
+             $d_Status="T"
+             $TempStr1=Extract($Summary,"- ",2)
+             $Er_LogStr="$CacheId;-100;Temporarily Disable;Notify email received ==> $TempStr1;"
+             $UserStr  = "DL;"
+             GOSUB Name=AddNewLogEntry
+           ENDIF 
+         ENDIF 
+#
+       CASE $LogType=Extract($ER_nTypes,";",4)                     # This a Update notification
+         IF $Dl_Upd
+           $AuthorLog=Left($AuthorLog,Len($AuthorLog)-1)
+           $ER_RptEntry="$_NewLine$Date ==> $Summary $_NewLine$AuthorLog"
+         ENDIF 
+         $UpdCnt=$UpdCnt+1
+         $UpdLog=$UpdLog+"$ER_RptEntry"
+         $UpdatedCaches=$UpdatedCaches+1
+         IF $_FilterCount=1
+           $TempStr1=Extract($Summary,"- ",2)
+           $Er_LogStr="$CacheId;-100;Write note;Notify email received ==> $TempStr1;"
+           $UserStr  = "CU;"
+           GOSUB Name=AddNewLogEntry
+           $d_usersort=$Usort
+           $Usort=$Usort+1
+           GOSUB Name=ChangeCoordinates
+         ENDIF 
+#
+       CASE $LogType=Extract($ER_nTypes,";",2)                     # This a Enable notification
+         IF $Dl_Ena
+           $ER_RptEntry="$Date ==> $Summary $_NewLine$AuthorLog"
+         ENDIF 
+         $EnaCnt=$EnaCnt+1
+         $EnaMsg=$EnaMsg+"$ER_RptEntry"
+         IF $_FilterCount=1
+           IF $d_Status<>"A"
+             $d_Status="A"
+             $TempStr1=Extract($Summary,"- ",2)
+             $Er_LogStr="$CacheId;-100;Enable;Notify email received ==> $TempStr1;"
+             $UserStr  = "EL;"
+             GOSUB Name=AddNewLogEntry
+           ENDIF 
+         ENDIF 
+       CASE $LogType=Extract($ER_nTypes,";",8)                     # This a Archive notification
+         IF $Dl_Arc
+           $ER_RptEntry="$Date ==> $Summary $_NewLine$AuthorLog"
+         ENDIF 
+         $ArcCnt=$ArcCnt+1
+         $ArcMsg=$ArcMsg+"$ER_RptEntry"
+         IF $_FilterCount=1
+           IF NOT($d_Status="T") OR NOT($d_Status="X")
+             $d_Status="X"
+             $TempStr1=Extract($Summary,"- ",2)
+             $Er_LogStr="$CacheId;-100;Archive;Notify email received ==> $TempStr1;"
+             $UserStr  = "AL;"
+             GOSUB Name=AddNewLogEntry
+           ENDIF 
+         ENDIF 
+       CASE $LogType=Extract($ER_nTypes,";",7)                     # This a Un-Archive notification
+         IF $Dl_Una
+           $ER_RptEntry="$Date ==> $Summary $_NewLine$AuthorLog"
+         ENDIF 
+         $UnALog=$UnALog+"$ER_RptEntry"
+         $UnaCnt=$UnaCnt+1
+         IF $_FilterCount=1
+           IF $d_Status="X"
+             $d_Status="T"
+             $TempStr1=Extract($Summary,"- ",2)
+             $Er_LogStr="$CacheId;-100;Unarchive;Notify email received ==> $TempStr1;"
+             $UserStr  = "UL;"
+             GOSUB Name=AddNewLogEntry
+           ENDIF 
+         ENDIF 
+       CASE $LogType=Extract($ER_nTypes,";",6)                     # This a Retraction notification
+         IF $Dl_Ret
+           $ER_RptEntry="$Date ==> $Summary $_NewLine$AuthorLog"
+         ENDIF 
+         $RetCnt=$RetCnt+1
+         $RetLog=$RetLog+"$ER_RptEntry"
+         IF $_FilterCount=1
+           $d_Status="X"
+           $d_UserFlag=True
+         ENDIF 
+       CASE $LogType=Extract($ER_nTypes,";",3)                     # This a Published notification
+         $Distance=Extract($DistanceLine,";",2)
+         IF $ShowKilometers
+           $Distance="  >> "+Extract($Distance,"(",2)
+           $Distance=Replace(")","",$Distance)
+         ELSE 
+           $Distance="  >> "+Extract($Distance,"(",1)
+         ENDIF 
+         $ER_RptEntry="$Date ==> $Summary $Distance$_NewLine"
+         IF $Dl_Pub
+           $ER_RptEntry=$ER_RptEntry+$AuthorLog
+         ENDIF 
+         $PubCnt=$PubCnt+1
+         $DistanceLine=""
+         $Distance=""
+         $PubLog=$PubLog+"$ER_RptEntry"
+       OTHERWISE 
+         $ErrorLog=$ErrorLog+$ER_RptEntry
+     ENDCASE 
+     TRANSACTION Action=End
+   ENDSUB 
+##################################################################################
+   BEGINSUB Name=ChangeCoordinates                     # from an Update log (email)
+     IF $_FilterCount=1
+       $CacheName=Extract($CacheName,"for ",2)
+       $CoordString=Extract($AuthorLog,$_NewLine,4)
+       $CoordString=Replace("°","",$CoordString)               # Remove any occurences of '°' in $CoordString
+       $CoordString=GCalc($CoordString,"FormatDegrees")
+       IF $_Version>="8.0.0.133"
+         $ResultStr=CustomPut("ErUpdater","1")
+       ELSE 
+         IF Left($CoordString,7)="*Error*"
+           IF $ER_Crt="Normal"
+             MSGOK Msg="Coordinates have not been Updated - $CoordString" Caption="*** Update Error ***"
+           ENDIF 
+         ELSE # The Coordinate String is valid and holds 'Latitude;Longitude'
+           $OldCoords=GCalc("$d_Latitude $d_Longitude","FormatMinutes")
+           $d_latitude =Extract($CoordString,";",1)
+           $d_Longitude=Extract($CoordString,";",2)
+           $NewCoords=GCalc("$d_Latitude $d_Longitude","FormatMinutes")
+           $CoordString=Replace($_NewLine,"","$OldCoords  to  $NewCoords")
+           $CoordString=Replace(";"," ","$CoordString")
+           $Er_LogStr="$CacheId;-101;Update Coordinates;Notify email received ==> $TempStr1 from $CoordString $_NewLine Coordinates have been updated;"
+           GOSUB Name=AddNewLogEntry
+           $AppliedUpdates=$AppliedUpdates+1
+           $UpdLog=$UpdLog+"*** This Coordinate Update has been Applied ***$_NewLine $_NewLine"
+         ENDIF 
+       ENDIF 
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=AddNewLogEntry                   # Transaction is active on entry
+     IF $Er_CreateLog # AND NOT($ER_ReRun)           # Must only happen when requested and NOT during re-runs
+       $Em_Date=Extract($Date,"/",3)+Extract($Date,"/",1)+Extract($Date,"/",2)
+       IF Seek(Extract($Er_LogStr,";",1))         # Proceed only if the parent cache exists (it should)
+         IF $_Version>="8.0.0.133"
+           $ResultStr=CustomPut("ErUpdater","1")
+         ELSE 
+           $Er_LogId=Val(Extract($Er_LogStr,";",2))
+           TABLE Active=Logs Scope=Parent
+           IF NOT(Seek(NumToStr($Er_LogId)))                          # If Er_LogId doesn't exist
+             ADDNEW 
+             $d_lLogId = $Er_LogId
+           ENDIF 
+           IF ValidDate($Em_Date)
+             $d_lDate  = StringToDate($Em_Date)
+           ELSE 
+             $d_lDate  = $_Today                                     # Defaults to $_Today
+           ENDIF 
+           $d_lType  = Extract($Er_LogStr,";",3)
+           $d_lText  = Extract($Er_LogStr,";",4)
+           $d_lBy    = "EmailReader"                                  # Defaults to 'GSAK' if not defined
+           GOSUB Name=UpdateUser4
+           TABLE Active=Caches
+         ENDIF 
+       ENDIF 
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=DisplayLogSummaries                         # v7.6 code
+     IF $ER_Doul AND $OwnerLog<>""
+       $ER_FormB=EditForm($ER_FormB,"Form2","Color","13434828")
+       $ER_FormB=EditForm($ER_FormB,"DisplayLabel","Caption","Owner Logs")
+       $MemoBox="Owner Logs in this download - $OwnerCnt logs $_NewLine $_NewLine$OwnerLog"
+       GOSUB Name=DisplayFormB
+     ENDIF 
+     IF $SePressed
+       EXITSUB 
+     ENDIF 
+     IF $ER_Dwul AND $ER_WatchLog<>""
+       $ER_FormB=EditForm($ER_FormB,"Form2","Color","13500157")
+       $ER_FormB=EditForm($ER_FormB,"DisplayLabel","Caption","Watchlist Logs")
+       $MemoBox="Watchlist logs in this download - $ER_WatchCnt logs $_NewLine $_NewLine$ER_WatchLog"
+       GOSUB Name=DisplayFormB
+     ENDIF 
+     IF $SePressed
+       EXITSUB 
+     ENDIF 
+     IF $DevUser AND $ErrorLog<>""
+       $ER_FormB=EditForm($ER_FormB,"Form2","Color","2633471")
+       $ER_FormB=EditForm($ER_FormB,"Form2","Caption","Unknown Error Listing(s)")
+       $MemoBox="$ErrorCnt errors found processing this download $_NewLine$_NewLine$ErrorLog"
+       GOSUB Name=DisplayFormB
+     ENDIF 
+   ENDSUB 
+##################################################################################
+   BEGINSUB Name=DisplayNotifySummaries                      # v7.6 code
+     IF $Dl_Rep AND $MntLog<>""
+       $ER_FormB=EditForm($ER_FormB,"Form2","Color","14014207")			        # Pink
+       $ER_FormB=EditForm($ER_FormB,"DisplayLabel","Caption","1 - Maintenance Request Logs")
+       $MemoBox="Maintenance Requests in this eNotify: $MntCnt logs $_NewLine $_NewLine$Mntlog"
+       GOSUB Name=DisplayFormB
+     ENDIF 
+     IF $SePressed
+       EXITSUB 
+     ENDIF 
+     IF $Dl_Dis AND $DisMsg<>""
+       $ER_FormB=EditForm($ER_FormB,"Form2","Color","14014207")		    	    # Pink
+       $ER_FormB=EditForm($ER_FormB,"DisplayLabel","Caption","2 - Disabled Cache Logs")
+       $MemoBox="Caches Disabled in this eNotify: $DcCnt logs $_NewLine $_NewLine$DisMsg"
+       GOSUB Name=DisplayFormB
+     ENDIF 
+     IF $SePressed
+       EXITSUB 
+     ENDIF 
+     IF $Dl_Upd AND $UpdLog<>""
+       $ER_FormB=EditForm($ER_FormB,"Form2","Color","13500157")		          # Yellow
+       $ER_FormB=EditForm($ER_FormB,"DisplayLabel","Caption","3 - Coordinate Update Logs")
+       $MemoBox="Coordinate Updates in this eNotify: $UpdCnt logs $_NewLine $_NewLine$UpdLog"
+       BEGINCASE 
+         CASE $AppliedUpdates = 0
+           $CoordMsg="$_NewLine$_NewLine Note: Coordinate Updates have NOT been applied."
+         CASE $AppliedUpdates = $UpdatedCaches
+           $CoordMsg="$_NewLine$_NewLine Note: All Coordinate Updates have been applied and logs inserted."
+         CASE $AppliedUpdates < $UpdatedCaches
+           $CoordMsg="$_NewLine Note: Some Coordinate Updates have been applied and logs have been inserted."
+       ENDCASE 
+       $MemoBox=$MemoBox+"$_NewLine$_NewLine $CoordMsg"
+       GOSUB Name=DisplayFormB
+     ENDIF 
+     IF $SePressed
+       EXITSUB 
+     ENDIF 
+     IF $Dl_Arc AND $ArcMsg<>""
+       $ER_FormB=EditForm($ER_FormB,"Form2","Color","14014207")			        # Pink
+       $ER_FormB=EditForm($ER_FormB,"DisplayLabel","Caption","5 - Archive Logs")
+       $MemoBox="Caches Archived in this eNotify: $ArcCnt logs $_NewLine $_NewLine$ArcMsg"
+       GOSUB Name=DisplayFormB
+     ENDIF 
+     IF $SePressed
+       EXITSUB 
+     ENDIF 
+     IF $Dl_Una AND $UnALog<>""
+       $ER_FormB=EditForm($ER_FormB,"Form2","Color","6872801")				        # Brown/Yellow
+       $ER_FormB=EditForm($ER_FormB,"DisplayLabel","Caption","5 - Unarchived Logs")
+       $MemoBox="Caches Unarchived in this eNotify: $UnaCnt logs$_NewLine $_NewLine$UnaLog"
+       GOSUB Name=DisplayFormB
+     ENDIF 
+     IF $SePressed
+       EXITSUB 
+     ENDIF 
+     IF $Dl_Ena AND $EnaMsg<>""
+       $ER_FormB=EditForm($ER_FormB,"Form2","Color","6872801")				        # Brown/Yellow
+       $ER_FormB=EditForm($ER_FormB,"DisplayLabel","Caption","6 - Enabled Cache Logs")
+       $MemoBox="Caches Enabled in this eNotify: $EnaCnt logs $_NewLine $_NewLine$EnaMsg"
+       GOSUB Name=DisplayFormB
+     ENDIF 
+     IF $SePressed
+       EXITSUB 
+     ENDIF 
+     IF $Dl_Fnd AND $FndMsg<>""
+       $ER_FormB=EditForm($ER_FormB,"Form2","Color","13434828")					    # Light Green
+       $ER_FormB=EditForm($ER_FormB,"DisplayLabel","Caption","7 - Found Logs")
+       $MemoBox="Caches Found in this eNotify: $FndCnt logs $_NewLine $_NewLine$FndMsg"
+       GOSUB Name=DisplayFormB
+     ENDIF 
+     IF $SePressed
+       EXITSUB 
+     ENDIF 
+     IF $Dl_Dnf AND $DnfMsg<>""
+       $ER_FormB=EditForm($ER_FormB,"Form2","Color","14014207")    			    # Pink
+       $ER_FormB=EditForm($ER_FormB,"DisplayLabel","Caption","8 - DNF logs")
+       $MemoBox="Dnf's in this eNotify: $DnfCnt logs$_NewLine $_NewLine$DnfMsg"
+       GOSUB Name=DisplayFormB
+     ENDIF 
+     IF $SePressed
+       EXITSUB 
+     ENDIF 
+     IF $Dl_Pub AND $PubLog<>""
+       $ER_FormB=EditForm($ER_FormB,"Form2","Color","13500157")			        # Yellow
+       $ER_FormB=EditForm($ER_FormB,"DisplayLabel","Caption","9 - Published (New) Cache Logs")
+       $Msg0="New Caches Published in this eNotify: $PubCnt logs$_NewLine $_NewLine$PubLog"
+       IF $NewCaches > 0
+         $Msg0=$Msg0+"$_NewLine $_NewLine $NewCaches cache(s) have been added to your database"
+       ELSE 
+         $Msg0=$Msg0+"$_NewLine $_NewLine Note that these cache(s) are already in your database"
+       ENDIF 
+       $MemoBox="$Msg0"
+       GOSUB Name=DisplayFormB
+     ENDIF 
+     IF $SePressed
+       EXITSUB 
+     ENDIF 
+     IF $Dl_Ret AND $RetLog<>""
+       $ER_FormB=EditForm($ER_FormB,"Form2","Color","14014207")			        # Pink
+       $ER_FormB=EditForm($ER_FormB,"DisplayLabel","Caption","10 - Retracted Cache Logs")
+       $MemoBox="Retracted Caches in this eNotify: $RetCnt logs $_NewLine $_NewLine$Retlog"
+       GOSUB Name=DisplayFormB
+     ENDIF 
+     IF $SePressed
+       EXITSUB 
+     ENDIF 
+     IF $DevUser AND $ErrorLog<>""
+       $ER_FormB=EditForm($ER_FormB,"Form2","Color","2633471")				        # Bright Red
+       $ER_FormB=EditForm($ER_FormB,"DisplayLabel","Caption","11 - Error Listing(s) - ErrCnt")
+       $Msg0="Unknown Errors Listing $_NewLine $_NewLine"
+       $Msg0=$Msg0+"The following logs flagged an error - the cache(s) most likely don't exist in this database."
+       $Msg0=$Msg0+"$_NewLine$_NewLine$ErrorLog"
+       $MemoBox="$Msg0"
+       GOSUB Name=DisplayFormB
+     ENDIF 
+   ENDSUB 
+##################################################################################
+   BEGINSUB Name=FixDate                                     # v7.6 code
+     $Dn=""
+     $Er_Cntr1=0
+     WHILE $Er_Cntr1 < 3
+       $Er_Cntr1=$Er_Cntr1+1
+       $Dx=Extract($Date,"/",$Er_Cntr1)
+       IF Len($Dx) = 1
+         $Dx="0"+$Dx
+       ENDIF 
+       $Dn=$Dn+$Dx+"/"
+     ENDWHILE 
+     $Date=Left($Dn,10)
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=DisplayFormB                                #v7.7 Ok
+     $SePressed=FALSE
+     WHILE True
+       $Fxit=Form($ER_FormB,"")
+       BEGINCASE 
+         CASE $Fxit="ExitF2"
+           BREAK 
+         CASE $Fxit="SystemExit"
+           $SePressed=TRUE
+           BREAK 
+       ENDCASE 
+     ENDWHILE 
+   ENDSUB 
+##################################################################################
+   BEGINSUB Name=SetMacroFlag                                # v7.7 Ok
+     TRANSACTION Action=Begin
+     IF $ER_OkMf AND $_FilterCount=1
+       BEGINCASE 
+         CASE Not($d_Found)                                                         # a Unfound cache with a email
+           $d_MacroFlag=TRUE
+           $ExitCaptionFlag=TRUE
+         CASE $OwnerName=$d_OwnerName                                               # a Owned cache with a email
+           $d_MacroFlag=TRUE
+           $ExitCaptionFlag=TRUE
+         CASE $d_Watch                                                              # a Watched cache with a email
+           $d_MacroFlag=TRUE
+           $ExitCaptionFlag=TRUE
+       ENDCASE 
+     ENDIF 
+     TRANSACTION Action=End
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=SetUserFlag                                 # v7.7 Ok
+     TRANSACTION Action=Begin
+     IF $_FilterCount=1
+       $d_UserFlag=TRUE
+     ENDIF 
+     TRANSACTION Action=End
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=AddNewCacheRecord                           # v7.6 code
+     TRANSACTION Action=Begin
+     SPEEDMODE Status=ON
+       $Approved = FALSE
+       IF $ER_Cdr AND $LogType=Extract($ER_nTypes,";",3)                   # CreateDummyRecord AND PUBLISHED
+         $Approved = TRUE
+       ENDIF 
+       IF $ER_Amc                                                          # Add ANY Missing Cache
+         $Approved = TRUE
+       ENDIF 
+       IF $Approved                                                        # Create Dummy Record flag
+         $Url="http://www.geocaching.com/seek/cache_details.aspx?wp="
+         $ER_tmpS=Upper(Left($CacheId,2))
+         BEGINCASE 
+           CASE $ER_tmpS="GC"                                          # AND NOT(RegEx($CacheId,$PermDelList))
+             $OkToUpdate=TRUE
+             IF RegEx($CacheId,$PermDelList)                                 # Permanent Delete List
+               $OkToUpdate=FALSE
+             ENDIF 
+             IF $OkToUpdate
+               TABLE Active=Caches
+               ADDNEW 
+               $d_Code=$CacheId
+               $d_Name=$CacheName
+               $d_UserFlag=TRUE
+               $d_CacheTYPE="O"
+               $d_Url="$Url$CacheId"
+               $d_OwnerName="Added by EmailReader"
+               $EdCnt=1
+               $ER_tmpN=RegExCount(";",$ER_CacheTypes)
+               WHILE $EdCnt < $ER_tmpN
+                 IF RegEx(Extract($ER_CacheTypes,";",$EdCnt),$SubjectLine)
+                   $d_CacheTYPE=Extract($ER_CacheTypes,";",$EdCnt+1)
+                   $EdCnt=$ER_tmpN
+                 ENDIF 
+                 $EdCnt=$EdCnt+2
+               ENDWHILE 
+               MFILTER Where=Code=$CacheId
+               MACROFLAG TYPE=Set Range=1
+               $NewCaches=$NewCaches+1
+               $UserStr  = "NC;"
+               GOSUB Name=UpdateUser4
+             ENDIF 
+         ENDCASE 
+       ENDIF 
+       TRANSACTION Action=End
+     ENDSUB 
+##################################################################################
+     BEGINSUB Name=ClearNotifyReport
+       $FndCnt=0
+       $FndMsg=""
+       $DnfMsg=""
+       $ArcMsg=""
+       $UnAlog=""
+       $DisMsg=""
+       $EnaMsg=""
+       $MntLog=""
+       $UpdLog=""
+       $PubLog=""
+       $Retlog=""
+       $ErrorCnt=0
+       $ErrorLog=""
+     ENDSUB 
+     BEGINSUB Name=ClearOwnerReport
+       $OwnerCnt=0
+       $OwnerLog=""
+       $ER_WatchCnt=0
+       $ER_WatchLog=""
+     ENDSUB 
+##################################################################################
+     BEGINSUB Name=UpdateRecordCounts                          # v7.7 Ok
+       IF FileExists($NotifyCurrentFile)
+         $FileData = GetFile($NotifyCurrentFile)
+         $Cnt = RegExCount(RegExEscape("$GSAKMSG$"),$FileData)
+         $ER_FormA=EditForm($ER_FormA,"NcfCnt","Caption","($Cnt logs)")
+       ELSE 
+         $ER_FormA=EditForm($ER_FormA,"NcfCnt","Caption","None")
+       ENDIF 
+       IF FileExists($NotifyHistoryFile)
+         $FileData = GetFile($NotifyHistoryFile)
+         $Cnt = RegExCount(RegExEscape("$GSAKMSG$"),$FileData)
+         $ER_FormA=EditForm($ER_FormA,"NhfCnt","Caption","($Cnt logs)")
+       ELSE 
+         $ER_FormA=EditForm($ER_FormA,"NhfCnt","Caption","None")
+       ENDIF 
+       IF FileExists($LogCurrentFile)
+         $FileData = GetFile($LogCurrentFile)
+         $Cnt = RegExCount(RegExEscape("$GSAKMSG$"),$FileData)
+         $ER_FormA=EditForm($ER_FormA,"LcfCnt","Caption","($Cnt logs)")
+       ELSE 
+         $ER_FormA=EditForm($ER_FormA,"LcfCnt","Caption","None")
+       ENDIF 
+       IF FileExists($LogHistoryFile)
+         $FileData = GetFile($LogHistoryFile)
+         $Cnt = RegExCount(RegExEscape("$GSAKMSG$"),$FileData)
+         $ER_FormA=EditForm($ER_FormA,"LhfCnt","Caption","($Cnt logs)")
+       ELSE 
+         $ER_FormA=EditForm($ER_FormA,"LhfCnt","Caption","None")
+       ENDIF 
+     ENDSUB 
+##################################################################################
+     BEGINSUB Name=SaveConfiguration                           # v7.7 Ok
+       SHOWSTATUS Msg="Saving Current Configuration"
+       MACSETTINGS Type=S Vars=MacroName,MacroVersion,Ownername,Er_CreateLog,Er_NumLogs,ER_Knh,ER_Klh,ExitDisplayOwned,ExitDisplayNew,ExitDisplayUpd,ReReadFlag,ER_Doul,ER_Dwul,ER_Cdb,ER_Crt,ER_RunDelay,Dl_Fnd,Dl_Dnf,Dl_Ena,Dl_Pub,Dl_Upd,Dl_Rep,Dl_Ret,Dl_Una,Dl_Arc,Dl_Dis,ER_Dn,ER_Cdr,ER_Amc,ShowMiles,ShowKilometers,ExitMacro,EmName,SvrPop,SvrPort,SvrSsl,SvrFldr,iConnTest,ShowGmStats,StorageFolder,SettingsOk,Online,er_AdvanceDP,_FormLeft,_FormTop,SetUF,ExitSelectCancel,ExitSelectUpdate,ExitSelectNew,ExitSelectRestore,OpenBrowser,ER_UsortRestored,ER_UsortCntr,VerboseReporting
+
+       $SvrUname=MimeEncode($SvrUname)                                       # Encrypt the MailServer Username
+       $SvrPword=MimeEncode($SvrPword)                                       # Encrypt the MailServer Password
+       MACSETTINGS Type=S Vars=SvrUname,SvrPword File="$MacroFolder\EmailReaderServerData.Xml"
+       $SvrUname=MimeDecode($SvrUname)                                       # Decrypt the MailServer UserName
+       $SvrPword=MimeDecode($SvrPword)                                       # Decrypt the MailServer Password
+     ENDSUB 
+##################################################################################
+     BEGINSUB Name=FileMaintenance
+       $FMaint=FALSE
+       $ER_FormA=EditForm($ER_FormA,"Form1","Delay","0")
+       $ER_FormD=EditForm($ER_FormD,"Form4","Top",$_FormTop)
+       $ER_FormD=EditForm($ER_FormD,"Form4","Left",$_FormLeft)
+
+       $RenLogHist = FALSE
+       $DelLogHistory = FALSE
+       $RenNotifyHistory = FALSE
+       $DelNotifyHistory = FALSE
+
+##    Update the 2 record count variables on the 'File Maintenance' Form
+       IF FileExists($NotifyHistoryFile)
+         $FileData = GetFile($NotifyHistoryFile)
+         $Cnt = RegExCount(RegExEscape("$GSAKMSG$"),$FileData)
+         $ER_FormD=EditForm($ER_FormD,"NhfCnt","Caption","($Cnt logs)")
+       ELSE 
+         $ER_FormD=EditForm($ER_FormD,"NhfCnt","Caption","None")
+       ENDIF 
+       IF FileExists($LogHistoryFile)
+         $FileData = GetFile($LogHistoryFile)
+         $Cnt = RegExCount(RegExEscape("$GSAKMSG$"),$FileData)
+         $ER_FormD=EditForm($ER_FormD,"LhfCnt","Caption","($Cnt logs)")
+       ELSE 
+         $ER_FormD=EditForm($ER_FormD,"LhfCnt","Caption","None")
+       ENDIF 
+
+       WHILE True
+         $Fxit=Form($ER_FormD,"")
+         BEGINCASE 
+           CASE $Fxit="FmExecute"
+             BREAK 
+           CASE $Fxit="FmExit"
+             EXITSUB 
+           CASE $Fxit="SystemExit"
+             EXITSUB 
+         ENDCASE 
+       ENDWHILE 
+
+       $BatchData=""
+       IF $RenNotifyHistory
+         $Msg0="NotifyHistory.Gpx"
+         $Msg1="Input a new file name for the current Notify History File."
+         INPUT Msg=$Msg1 VarName=$FileName Default=$Msg0
+         $BatchData=$BatchData+"Ren $_Quote$NotifyHistoryFile$_Quote $_Quote$FileName$_Quote"+$_NewLine
+       ENDIF 
+       IF $DelNotifyHistory
+         $BatchData=$BatchData+"Del $_Quote$NotifyHistoryFile$_Quote "+$_NewLine
+       ENDIF 
+
+       IF $RenLogHist
+         $Msg0="LogHistory.Gpx"
+         $Msg1="Input a new file name for the current Log History File."
+         INPUT Msg=$Msg1 VarName=$FileName Default=$Msg0
+         $BatchData=$BatchData+"Ren $_Quote$LogHistoryFile$_Quote $_Quote$FileName$_Quote"+$_NewLine
+       ENDIF 
+       IF $DelLogHistory
+         $BatchData=$BatchData+"Del $_Quote$LogHistoryFile$_Quote "+$_NewLine
+       ENDIF 
+       IF $BatchData <> ""
+         $Msg0="Rename / Delete files - are you sure ?"
+         CHOOSE Msg=$Msg0 Opt1=No Opt2=Yes
+         IF $Result=2
+           $ER_tmpS = PutFile($BatchFile, $BatchData)
+           FILEOPEN File="$BatchFile" Wait=Yes
+         ENDIF 
+       ENDIF 
+       GOSUB Name=UpdateRecordCounts                                         # Update FormA record counts
+     ENDSUB 
+##################################################################################
+     BEGINSUB Name=SqlHistBuild
+       BEGINCASE 
+         CASE $ER_Rne                                     # CheckNotifyServer
+           IF $ER_Knh                                   # Keep Notify History
+             $FileName=$NotifyHistoryFile
+             $NewData = $ER_Dta
+             GOSUB Name=BuildFile
+           ENDIF 
+         CASE $ER_Rle                                   # CheckLogServer
+           IF $ER_Klh                                   # Keep Log History
+             $FileName=$LogHistoryFile
+             $NewData = $ER_Dta
+             GOSUB Name=BuildFile
+           ENDIF 
+       ENDCASE 
+     ENDSUB 
+##################################################################################
+     BEGINSUB Name=BuildFile                                   # v7.7 Ok
+       IF $NewData <> ""
+         IF FileExists($FileName)
+           $ER_tmpS=GetFile($FileName)
+         ELSE 
+           $ER_tmpS=""
+         ENDIF 
+         $FileData=$ER_tmpS + $NewData
+         $ER_tmpS=PutFile($FileName,$FileData)
+         $NewData=""
+         $OldData=""
+         $FileData=""
+       ENDIF 
+     ENDSUB 
+##################################################################################
+     BEGINSUB Name=TestForRot13                                # v7.7 Ok
+       IF RegEx("Note: This log has been Rot13 encrypted.",$AuthorLog)
+         $AuthorLog=Rot13($AuthorLog)
+         $TempStr1="Note: This log was Rot13 encrypted, and has been decrypted for your convienience."
+         $TempStr2="Abgr: Guvf ybt unf orra Ebg13 rapelcgrq. Lbh pna harapelcg vg ba gur ybt cntr."
+         $AuthorLog=Replace($TempStr2,$TempStr1,$AuthorLog,FALSE)
+       ENDIF 
+     ENDSUB 
+###################################################################################
+     BEGINSUB Name=GetNextRecord
+       $AuthorLog=""                                             # Common to both routines.
+       $MsgCntr = $MsgCntr + 1
+       $Message = Extract($ER_Dta,"$GSAKMSG$",$MsgCntr)          # Select the new email record
+       $Header  = Extract($Message,"$GSAKBODY$",1)               # Extract the Header
+       $Header  = EntityDecode($Header)                          # Resolve gc.com entities before further processing.
+       $HdrList = List("hl","replace","$Header")                 # Store the Header
+       $Body    = Extract($Message,"$GSAKBODY$",2)               # Extract the Body
+       IF At("Content-Transfer-Encoding: base64",$Body)>0        # Request from Bronstein for cases where antivirus
+         $Body=MimeDecode($Body)                                 # apps change the content to Base 64.
+       ENDIF 
+       $Body    = EntityDecode($Body)                            # Resolve gc.com entities before further processing.
+       $Body    = Replace(";","",$Body,false)                    # Remove any semicolons present.
+       $Body    = RegExReplace("$_NewLine",$Body,";")            # Replace Cr/Lfs in the Body with a Semicolon
+       $Body    = RegExReplace($Lf,$Body,";")                    # Replace remaining Lfs in the Body with a Semicolon
+       $BodyLst = List("bl","replace","$Body")                   # Store the Body in the bl list
+
+       $ER_tmpN = Val(List("bl","RegEx","$ER_tmpS"))             # Searches for 'For ' or 'Location:' in the Body
+
+       $Faulty=$ER_tmpN=0                                        # True if not found
+     ENDSUB 
+###################################################################################
+     BEGINSUB Name=ClearUserFlags
+     SPEEDMODE Status=Off
+     IF $SetUF
+       IF NOT($UfCleared)
+         MFILTER Where=UserFlag
+         IF ($_FilterCount > 0)
+           $Msg ="You have selected to Set User Flags..."
+           $Msg1="Leave User Flags unchanged for this run"
+           $Msg2="Add to currently set User Flags"
+           $Msg3="Clear ALL currently set User Flags"
+           $Msg4=Extract($Choices,";",5)
+           $Msg5=Extract($Choices,";",6)
+           CHOOSE Msg=$Msg Opt1=$Msg1 Opt2=$Msg2 Opt3=$Msg3 Opt4=$Msg4 Opt5=$Msg5
+           BEGINCASE 
+             CASE $Result=1
+               SHOWSTATUS Msg="User Flags have NOT been altered" Top=0
+               $SetUF=FALSE
+               DELAY MS=1200
+               SPEEDMODE Status=On
+                 EXITSUB 
+               CASE $Result=2
+                 SHOWSTATUS Msg="User Flags have NOT been altered" Top=0
+                 $UfCleared=TRUE
+                 DELAY MS=1200
+               CASE $Result=3
+                 USERFLAG TYPE=Clear Range=All
+                 $UfCleared=TRUE
+             ENDCASE 
+           ENDIF 
+         ENDIF 
+       ENDIF 
+     SPEEDMODE Status=On
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=TestAndUpdate              # Run the ExitMacro if flagged and named
+     MFILTER Where=MACROFLAG
+     IF $_FilterCount > 0                                          # If there are records to update
+       GOTO Position=Top
+       IF NOT($ER_ReRun) OR ($ER_ReRun AND $ReReadFlag)
+         SHOWSTATUS Msg="Checking for an Exit Macro" Width=300
+         IF $ExitMacro AND FileExists($EmName)
+           SPEEDMODE Status=OFF
+             WHILE NOT($_EOL)
+               MACRO File=$EmName VarScope=Local
+               IF $er_AdvanceDP
+                 GOTO Position=Next
+               ENDIF 
+             ENDWHILE 
+           SPEEDMODE Status=ON
+         ENDIF 
+       ENDIF 
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=FindOwnerName                                           # v7.6 code
+     IF $OwnerName=""
+       SHOWSTATUS Msg="Finding Owner name ..." Top=0
+       $TempStr1   = sqlite("open","$_CurrentDataPath\sqlite.db3")
+       $OwnerName = sqlite("sql","select distinct lby from logs where lisowner limit 1")
+       $TempStr1   = sqlite("close","")
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=SaveState                                             # Untested v7.6 code
+     SHOWSTATUS Msg="Saving the Startup Grid"
+     $StartupSplitScreen=$_Splitscreen
+     $StartupDualScreen=$_DualScreen
+     SPLITSCREEN Display=Off
+     DUALSCREEN Display=Off
+
+     $SsSc=$d_Code                                                    # Data pointer
+     $SsSrt = $_OrderBy                                               # Save the current sort column and direction.
+     IF $_FilterActive AND Sysinfo("JoinFilter")="N"                  # IF there's an active filter and not 'Joined'
+       $SsFil=SaveFilter()                                           # Save the filter name and parameters
+     ELSE 
+       $SsFil=""
+#        $SsCodeLst = sqlite("sql","select code from caches")                          # Get the list of saved codes
+       $SsCodeLst = sqlite("sql","SELECT Code FROM CachesAll WHERE $_Where")          # Get the list of saved codes
+#        $TempStr1 = sqlite("close","")                               # Good housekeeping
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=RestoreState
+#  	 CANCELFILTER
+     SHOWSTATUS Msg="Restoring the Startup Grid"
+     IF $StartupSplitScreen
+       SPLITSCREEN Display=On
+     ENDIF 
+     IF $StartupDualScreen
+       DUALSCREEN Display=On
+     ENDIF 
+
+     SQLSORT OrderBy=$SsSrt                                        # Restore the sort column and sequence
+
+     IF $SsFil <> ""                                               # If a filter was active at macro startup
+       $SsNum=RestoreFilter($SsFil,True)                          # Restore that filter
+     ELSE 
+       MACROFLAG Type=Clear Range=All                             # Clear all macro flags
+       $number = CodeMatch($SsCodeLst,$_NewLine,"M")              # Match the codes and set the macroflag
+       MFILTER Where=MACROFLAG                                    # Set a filter on MacroFlag
+     ENDIF 
+     IF Seek($sSsC)
+     ELSE 
+       GOTO Position=Top
+     ENDIF 
+
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=GetMailRoutine                           # v7.6 code
+     DECLARE Var=$GetMailD Type=String
+     $GetMailD=$GetMail
+     $GetMailD=$GetMailD+"chkSSL.Checked=$SvrSsl"+$_NewLine
+     $GetMailD=$GetMailD+"edtHost.Text=$SvrPop"+$_NewLine
+     $GetMailD=$GetMailD+"edtPass.Text=$SvrPword"+$_NewLine
+     $GetMailD=$GetMailD+"edtUser.Text=$SvrUname"+$_NewLine
+     $GetMailD=$GetMailD+"edtFolder.Text=$SvrFldr"+$_NewLine
+     $GetMailD=$GetMailD+"edtPort.Text=$SvrPort"+$_NewLine
+     IF $NotifyMail
+       $TempStr1=$SvrFldr+"\Notify.Gpx"
+       $GetMailD=$GetMailD+"edtMatch.Text=[GEO] Notify:"+$_NewLine
+     ELSE 
+       $TempStr1=$SvrFldr+"\Log.Gpx"
+       $GetMailD=$GetMailD+"edtMatch.Text=[LOG]"+$_NewLine
+     ENDIF 
+     $GetMailD=$GetMailD+"File1.Filename=$TempStr1"+$_NewLine
+     MACROSET Dialog=GETMAIL VarName=$GetMailD
+     GETMAIL Settings=<MACRO>
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=GetConfig                                        # v7.6 code
+#   Set variables to a default value prior to them being used or retrieved.
+     $ER_Knh=FALSE
+     $ER_Klh=FALSE
+     $ExitDisplayNew=FALSE
+     $ExitDisplayUpd=FALSE
+     $ReReadFlag=FALSE
+     $ER_Doul=FALSE
+     $ER_Dwul=FALSE
+     $ER_Cdb=$_CurrentDatabase
+     $ExitDisplayOwned=FALSE
+     $Dl_Fnd=FALSE
+     $Dl_Dnf=FALSE
+     $Dl_Ena=FALSE
+     $Dl_Pub=FALSE
+     $Dl_Upd=FALSE
+     $Dl_Rep=FALSE
+     $Dl_Ret=FALSE
+     $Dl_Una=FALSE
+     $Dl_Arc=FALSE
+     $Dl_Dis=FALSE
+     $ER_RunDelay="0"
+     $ER_Dn =FALSE
+     $ER_Cdr=FALSE
+     $ER_Amc=FALSE
+     $iConnTest=FALSE
+     $ShowGmStats=FALSE
+     $ShowMiles=FALSE
+     $ShowKilometers=TRUE
+     $ExitMacro=FALSE
+     $EmName=""
+     $Er_NumLogs="1"
+     $ExitSelectCancel=FALSE
+     $VerboseReporting=FALSE
+
+     MACSETTINGS Type=R FileCheck=N                                                       # Get main configuration.
+     MACSETTINGS Type=R FileCheck=N File="$MacroFolder\EmailReaderServerData.Xml"         # Get server login data
+
+     $SvrUname=MimeDecode($SvrUname)                                                      # Decrypt the MailServer UserName
+     $SvrPword=MimeDecode($SvrPword)                                                      # Decrypt the MailServer Password
+
+     IF $ER_Crt=""
+       $ER_Crt=Extract($ER_CfgRunTypes,";",1)
+       IF $ER_Crt<>"Normal"
+         $Lsummary=FALSE
+       ENDIF 
+     ENDIF 
+     $ER_FormA=EditForm($ER_FormA,"Form1","Delay","$ER_RunDelay")
+
+     GOSUB Name=ChangeDb     # Checks for a valid change and picks up the current permanent Delete List from that DB
+
+# Reset the form to the last saved position
+     IF $_FormLeft <> "" AND $_FormTop <> ""
+       $ER_FormA=EditForm($ER_FormA,"Form1","Top",$_FormTop)
+       $ER_FormA=EditForm($ER_FormA,"Form1","Left",$_FormLeft)
+     ENDIF 
+     GOSUB Name=ReconfigExitSelect
+   ENDSUB 
+##################################################################################
+   BEGINSUB Name=SetConfig           # Display configuration settings and save them on exit    # v7.6 code
+     $SetConfig=FALSE
+     $ER_FormA=EditForm($ER_FormA,"Form1","Delay","0")
+     $ER_FormC=EditForm($ER_FormC,"Form3","Top",$_FormTop)
+     $ER_FormC=EditForm($ER_FormC,"Form3","Left",$_FormLeft)
+     $ER_Cntr1=Len($SvrPword)
+     $ER_Cntr2=0
+     $HdnPw2=""
+     WHILE $ER_Cntr2 < $ER_Cntr1
+       $ER_Cntr2=$ER_Cntr2+1
+       $HdnPw2=$HdnPw2+"*"
+     ENDWHILE 
+     WHILE TRUE
+       $Fxit=Form($ER_FormC,"")
+       BEGINCASE 
+         CASE $Fxit="SystemExit"
+           CHOOSE Msg="Do you want to CANCEL this Macro?" Opt1="No - Take me back to the Configuration Form" Opt2="Yes - I'll loose any Settings changes I've made"
+           IF $Result=2
+             GOSUB Name=RestoreUsort
+             CANCEL 
+           ENDIF 
+         CASE $ER_Crt=Extract($ER_CfgRunTypes,";",1)
+           $ER_FormC=EditForm($ER_FormC,"Label9","Enabled","No")
+         OTHERWISE 
+           $ER_FormC=EditForm($ER_FormC,"Label9","Enabled","Yes")
+       ENDCASE 
+       BEGINCASE 
+         CASE $Fxit="CfgSave"
+           GOSUB Name=SaveConfiguration
+           BREAK 
+       ENDCASE 
+     ENDWHILE 
+
+     IF $ER_Crt=Extract($ER_CfgRunTypes,";",1)
+       $ER_RunDelay="0"
+     ENDIF 
+     $HdnPw2=Replace("*","",$HdnPw2)
+     $HdnPw2=Replace(" ","",$HdnPw2)
+     IF $HdnPw2<>""
+       $SvrPword=$HdnPw2
+     ENDIF 
+     $HdnPw2=$SvrPword
+
+   ENDSUB 
+##################################################################################
+   BEGINSUB Name=CheckMailSettings                           # v7.7 Ok
+     $SettingsOk = FALSE
+     IF $SvrPop="" OR $SvrFldr="" OR $SvrUname="" OR $SvrPword="" OR $SvrPort="" OR (RegEx("gmail",$SvrPop) AND $SvrSsl=FALSE)
+       $Msg0="*** Your GetMail settings are missing or configured incorrectly ***"+$_NewLine+$_NewLine
+       $Msg0=$Msg0+"EmailReader can now create these settings."+$_NewLine+$_NewLine
+       $Msg0=$Msg0+"Please input the required information into the"+$_NewLine
+       $Msg0=$Msg0+"GetMail Settings section of the Configuration form"+$_NewLine
+       MSGOK Msg=$Msg0 Caption="Please note:"
+     ELSE 
+       $StorageFolder = $SvrFldr
+       $SettingsOk=TRUE
+     ENDIF 
+   ENDSUB 
+##################################################################################
+   BEGINSUB Name=TestInternetConnection                      # v7.7 Ok
+     IF $iConnTest                         # It is configured to ignore the test.
+       $OnLine=TRUE
+     ELSE 
+       $OnLine = StrToBool(SysInfo("Internet"))
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=ReconfigExitSelect
+     IF $SetUF
+       $ER_FormA=EditForm($ER_FormA,"ExitSelectEmails","Visible","Yes")
+     ELSE 
+       $ER_FormA=EditForm($ER_FormA,"ExitSelectEmails","Visible","No")
+     ENDIF 
+     BEGINCASE 
+       CASE $ExitSelectCancel OR $ExitSelectNew OR $ExitSelectRestore
+         $ExitDisplayOwned=FALSE
+         $ExitDisplayNew=FALSE
+         $ExitDisplayUpd=FALSE
+         $ER_FormA=EditForm($ER_FormA,"ExitDisplayOwned","Visible","No")
+         $ER_FormA=EditForm($ER_FormA,"ExitDisplayNew","Visible","No")
+         $ER_FormA=EditForm($ER_FormA,"ExitDisplayUpd","Visible","No")
+       OTHERWISE 
+         $ER_FormA=EditForm($ER_FormA,"ExitDisplayOwned","Visible","Yes")
+         $ER_FormA=EditForm($ER_FormA,"ExitDisplayNew","Visible","Yes")
+         $ER_FormA=EditForm($ER_FormA,"ExitDisplayUpd","Visible","Yes")
+     ENDCASE 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=CheckField
+     DECLARE Var=$TestField Type=String
+     DECLARE Var=$Type Type=String
+     DECLARE Var=$DefValue Type=String
+     DECLARE Var=$Field Type=String
+     DECLARE Var=$ResultStr Type=String
+
+     IF $_Version>="8.0.0.133"
+       $Field=Extract($TestField,";",1)
+       $Type=Extract($TestField,";",2)
+       $DefValue=Extract($TestField,";",3)
+       $ResultStr=CustomGet($Field)
+       IF Left($ResultStr,7)="*Error*"
+#         SHOWSTATUS Msg="Creating Custom Field: $Field"
+         $ResultStr=CustomConfig("Add","$Field,$Type,Local,,$DefValue")
+       ENDIF 
+     ENDIF 
+#     SHOWSTATUS Msg="" Display=N
+
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=Initialise                   # v7.6 code
+
+     INCLUDE File="\DevUser.Gsk" FileCheck=N
+     GOSUB Name=SaveState
+
+     $TestField="ErUpdater;Boolean;0"
+     GOSUB Name=CheckField
+     IF $_Version>="8.0.0.133"
+       $ResultStr=Sqlite("sql","UPDATE Custom SET ErUpdater='0' WHERE ErUpdater")
+     ENDIF 
+     SHOWSTATUS Msg="Initialising Lists ..." Top=0
+     IF NOT($Er_ListsCreated)
+       $BodyLst = List("bl","create",";")
+       $HdrList = List("hl","create","$_NewLine")
+       $CfgList = List("cf","create","$_NewLine")
+       $ER_ListsCreated=TRUE
+     ENDIF 
+
+     SHOWSTATUS Msg="Initialising some Internal Variables ..." Top=0
+     $Lf=Chr(10)
+     $UserStr=""
+     $NewCaches=0
+     $UpdatedCaches=0
+     $AppliedUpdates=0
+     $ER_Dta=""
+     GOSUB Name=ClearNotifyReport
+     $OperatorPresent=TRUE
+     $UseBrowser=FALSE
+     $MacName=""
+     $UfCleared=FALSE
+     $ExitCaptionFlag=FALSE                                          # Change Caption flag
+     $MacroFolder=Sysinfo("macroPath")
+     $OwnerName=""
+     $DbChanged=FALSE
+     $Usort=1
+     $ER_UsortCntr=0
+     $ER_UsortRestored=FALSE
+     $ExitSelectUpdate=FALSE
+     $OpenBrowser=FALSE
+
+     SHOWSTATUS Msg="Getting Email Counts ..." Top=0
+     $NTcnt=RegexCount(";",$ER_nTypes)
+     $LTcnt=RegexCount(";",$ER_LogTypes)
+
+     SHOWSTATUS Msg="Getting Configuration ..." Top=0
+     GOSUB Name=GetConfig
+
+     IF $DevUser
+       SHOWSTATUS Msg="Clearing UserData 4 for Reporting"
+       GOSUB Name=ClearUser4
+     ENDIF 
+
+     SHOWSTATUS Msg="Checking GetMail Settings ..." Top=0
+     GOSUB Name=CheckMailSettings
+
+     SHOWSTATUS Msg="Checking / Creating Directories ..." Top=0
+     IF Not (FolderExists($StorageFolder))
+       $ER_tmpS=PutFile("$_AppData\Temp\Temp.Bat","MD "+ Quote("$StorageFolder"))
+       FILEOPEN File="$_AppData\Temp\Temp.Bat" Wait=yes
+     ENDIF 
+
+     IF $ER_Crt=Extract($ER_CfgRunTypes,";",1)
+       $ER_FormC=EditForm($ER_FormC,"Label9","Enabled","No")
+     ENDIF 
+
+     SHOWSTATUS Msg="Initialising File Names ..." Top=0
+     $BatchFile         = $_AppData      + "\Temp\DosCmd.bat"
+     $NotifyCurrentFile = $StorageFolder + "\Notify.Gpx"
+     $NotifyHistoryFile            = $StorageFolder + "\NotifyHistory.Gpx"
+     $LogCurrentFile    = $StorageFolder    + "\Log.Gpx"
+     $LogHistoryFile    = $StorageFolder    + "\LogHistory.Gpx"
+
+     SHOWSTATUS Msg="Getting Database list ..." Top=0
+     $DbList=Sysinfo("databases")
+     $ER_Cdb=$_CurrentDatabase
+
+     SHOWSTATUS Msg="Installing Mailbox ..." Top=0
+     $FileData=MimeDecode($Mailbox)
+     $ER_tmpS=Putfile ($_AppData+"\Temp\mailbox.png",$FileData)
+     $FileName=$_AppData + "\Temp\mailbox.png"
+     $ER_FormA=EditForm($ER_FormA,"Image1","File","$FileName")
+
+     SHOWSTATUS Msg="Setting Form Macro and Version ..." Top=0
+     $MacroName=Left(SysInfo("Macrofile"),AT(".",SysInfo("Macrofile"))-1)
+     $MacroVersion=Alltrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath") + "\" + SysInfo("Macrofile")),1,1))
+     IF $DevUser
+       $MacroVersion=$MacroVersion+"  >> Development Beta <<"
+     ENDIF 
+     $ER_FormA=EditForm($ER_FormA,"Form1","Caption","$MacroName v$MacroVersion")
+
+     SHOWSTATUS Msg="Updating Form Record Counts ..." Top=0
+     GOSUB Name=UpdateRecordCounts                                         # Update FormA record counts
+
+     SHOWSTATUS Msg="Clearing MacroFlag ..." Top=0
+     MACROFLAG TYPE=Clear Range=All
+
+     CANCELFILTER 
+     $Cntr=0
+
+     SHOWSTATUS Msg="Locating Owner ..." Top=0
+     GOSUB Name=FindOwnerName
+
+     IF $DevUser
+       $ER_FormA=EditForm($ER_FormA,"DevIndicator1","Visible","Yes")
+     ELSE 
+       $ER_FormA=EditForm($ER_FormA,"DevIndicator1","Visible","No")
+     ENDIF 
+
+# Deal with UserSort
+     CANCELFILTER 
+     SHOWSTATUS Msg="Clearing UserSort ..." Top=0
+     IF $ER_UsortCntr>0 AND Not($ER_UsortRestored)                    # Bjorges on 12/11/11 - $ER_UsortRestored=false and no 'DataSave..UserSort'
+       $_sql="PRAGMA table_info(datasave)"
+       IF RegEx("usersort",Sqlite("SQL",$_sql,""))
+         DATARESTORE Data=$d_Usersort
+       ELSE 
+         MSGOK Msg="There is no Usersort data to Restore"
+       ENDIF 
+     ENDIF 
+
+     DATASAVE Data=$d_Usersort
+     $ER_UsortCntr=$ER_UsortCntr+1
+     $ER_UsortRestored=FALSE
+     SHOWSTATUS Msg="Caving current configuration ..." Top=0
+     GOSUB Name=SaveConfiguration                                        # Save Configuration Data
+
+     MACROSET Dialog=Replace VarName=$ClearUsort
+     GLOBALREPLACE Settings=<MACRO>
+
+     IF $_Version>="8.0.0.133"                         # IF $_Version>="8.0.0.100" OR $_Version>"8.0.0.94"
+       $ER_FormA=EditForm($ER_FormA,"OpenBrowser","Caption","Refresh new caches before exit")
+     ENDIF 
+     SHOWSTATUS Msg="End of Initialise ..." Top=0
+
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=ChangeDb                                       # v7.7 Ok
+     IF $Er_Cdb <> "" AND $Er_Cdb <> $_CurrentDatabase
+       IF DataBaseExists($Er_Cdb)                             # If not - the current Db is used
+         DATABASE NAME=$ER_Cdb Action=Select
+         $DbChanged=TRUE                                     # DataBase Changed flag
+         $UfCleared=FALSE                                    # Reset the UserFlags flag
+       ENDIF 
+     ENDIF 
+     $_sql="Select iCode from Ignore"
+     $PermDelList=Sqlite("SQL",$_sql,"")                       # Pickup the Permanent delete list
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=ClearUser4            # User 4 is reserved for Development results
+     IF $DevUser                        # But ONLY on my Development system
+       CANCELFILTER 
+       MACROSET Dialog=Replace VarName=$ClearU4
+       GLOBALREPLACE Settings=<MACRO>
+       SHOWSTATUS Msg="" Display=No
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=UpdateUser4
+     IF $DevUser
+       $d_User4=$d_User4+$UserStr
+       $UserStr=""
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=SelectUpdates
+     CANCELFILTER 
+     SHOWSTATUS Msg="Select Updates ..." Top=0
+     IF $ExitDisplayOwned
+       MFILTER Where=IsOwner AND MACROFLAG
+     ENDIF 
+     IF $ExitDisplayNew
+       IF $_FilterCount = 0
+         MFILTER Where=Ownername="Added by EmailReader"
+       ELSE 
+         MFILTER Where=Ownername="Added by EmailReader" Join=AND
+       ENDIF 
+     ENDIF 
+     IF $ExitDisplayUpd
+       IF $_Count = $_DbCount
+         MFILTER Where=Usersort>0
+       ELSE 
+         MFILTER Where=Usersort>0 Join=OR
+       ENDIF 
+     ENDIF 
+     $SsCodeLst=""
+     IF $_FilterCount > 0
+       GOTO Position=Top
+       WHILE Not($_EOL)
+         $SsCodeLst = $SsCodeLst+"$d_Code;"
+         GOTO Position=Next
+       ENDWHILE 
+     ENDIF 
+
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=TransactionBegin
+     IF Not(InTransaction)
+       TRANSACTION Action=Begin
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=TransactionEnd
+     IF InTransaction
+       TRANSACTION Action=End
+     ENDIF 
+   ENDSUB 
+###################################################################################
+
+# NEW DECLARATIONS...
+   DECLARE Var=$DevUser Type=Boolean
+   DECLARE Var=$aaTestStr Type=String
+   DECLARE Var=$ExitSelectCancel Type=Boolean
+   DECLARE Var=$ExitSelectNew Type=Boolean
+   DECLARE Var=$ExitSelectrestore Type=Boolean
+   DECLARE Var=$ExitSelectEmails Type=Boolean
+   DECLARE Var=$UserStr Type=String
+   DECLARE Var=$TempNum Type=Numeric
+   DECLARE Var=$Usort Type=Numeric
+   DECLARE Var=$CoordString Type=String                      # read and processed from the email
+   DECLARE Var=$OldCoords Type=String
+   DECLARE Var=$NewCoords Type=String
+   DECLARE Var=$CoordMsg Type=String
+   DECLARE Var=$AppliedUpdates Type=Numeric
+   DECLARE Var=$ER_UsortCntr Type=Numeric
+   DECLARE Var=$ER_UsortRestored Type=Boolean
+   DECLARE Var=$ExitSelectUpdate Type=Boolean
+   DECLARE Var=$OpenBrowser Type=Boolean
+   DECLARE Var=$Lsummary Type=Boolean
+   DECLARE Var=$DynLoad Type=String
+   DECLARE Var=$ErUpdater Type=Boolean
+
+# MAIN FORM (1)
+#---------------
+# Exit Sort (Groupbox4)
+   DECLARE Var=$ExitDisplayOwned TYPE=Boolean                        # For Owned caches
+   DECLARE Var=$ExitDisplayNew TYPE=Boolean                       # For New caches
+   DECLARE Var=$ExitDisplayUpd Type=Boolean                       # For Updated caches
+   DECLARE Var=$ReReadFlag TYPE=Boolean                      # When re-reading files
+# Log Display (Groupbox3)
+   DECLARE Var=$ER_Doul TYPE=Boolean                         # Display Owner Logs
+   DECLARE Var=$ER_Dwul TYPE=Boolean                         # Display Watchlist Logs
+   DECLARE Var=$Dl_Fnd TYPE=Boolean                          # Display Found logs
+   DECLARE Var=$Dl_Dnf TYPE=Boolean                          # Display Dnf logs
+   DECLARE Var=$Dl_Ena TYPE=Boolean                          # Display Enabled logs
+   DECLARE Var=$Dl_Pub TYPE=Boolean                          # Display Published logs
+   DECLARE Var=$Dl_Upd TYPE=Boolean                          # Display Updated logs
+   DECLARE Var=$Dl_Rep TYPE=Boolean                          # Display Reported logs
+   DECLARE Var=$Dl_Ret TYPE=Boolean                          # Display Retracted logs
+   DECLARE Var=$Dl_Una TYPE=Boolean                          # Display Unarchived logs
+   DECLARE Var=$Dl_Arc TYPE=Boolean                          # Display Archived logs
+   DECLARE Var=$Dl_Dis TYPE=Boolean                          # Display Disabled logs
+
+# CONFIGURATION FORM (3)
+#------------------------
+# [Notify] Emails (Groupbox1)
+   DECLARE Var=$ER_Knh TYPE=Boolean                          # Keep a Notify History file
+   DECLARE Var=$Er_CreateLog Type=Boolean                    # Write a log when the status changes
+   DECLARE Var=$Er_NumLogs Type=String
+# [Log} Emails (Groupbox2)
+   DECLARE Var=$ER_Klh TYPE=Boolean                          # Keep a Log History file
+# GetMail Settings (Groupbox3)
+   DECLARE Var=$SvrPop TYPE=String                           # Pop server name
+   DECLARE Var=$SvrUname TYPE=String                         # User name for server
+   DECLARE Var=$HdnPw2 Type=String                           # A string of asterisks the length of the password
+   DECLARE Var=$SvrPword TYPE=String                         # Server password (Mime decrypted)
+   DECLARE Var=$SvrPort Type=String                          # Server port number
+   DECLARE Var=$SvrSsl TYPE=Boolean                          # Ssl logon flag
+   DECLARE Var=$SvrFldr TYPE=String                          # Local folder for file storage
+   DECLARE Var=$iConnTest Type=Boolean                       # Internet Connection Test
+   DECLARE Var=$ShowGmStats Type=Boolean                     # Getmail Statistics flag
+   DECLARE Var=$ShowMiles Type=Boolean                       # Display Miles flag
+   DECLARE Var=$ShowKilometers Type=Boolean                  # Display Kilometers flag
+# New / Missing Caches (Groupbox4)
+   DECLARE Var=$ER_Dn Type=Boolean                           # Do Nothing
+   DECLARE Var=$ER_Cdr TYPE=Boolean                          # Create a new record for Published caches only
+   DECLARE Var=$ER_Amc Type=Boolean                          # Create a new record for ANY cache reported...
+# Run Type (Groupbox5)
+   DECLARE Var=$ER_Crt Type=String                           # Configured Run Type (Attended/Unattended)
+   DECLARE Var=$ER_RunDelay Type=String                      # Main form run delay in seconds
+   DECLARE Var=$ExitSelectRestore Type=Boolean               # Restore Screen state and Filter on Exit
+# Update Macro Settings (Groupbox6)
+   DECLARE Var=$ExitMacro Type=Boolean                       # Run the Update Macro flag
+   DECLARE Var=$EmName Type=String                           # Update macro name (filebox)
+   DECLARE Var=$er_AdvanceDP Type=Boolean                    # Advance the data pointer after the macro is run
+   DECLARE Var=$VerboseReporting Type=Boolean                # Verbose reporting variable
+
+# FILE MAINTENANCE FORM (4)
+#---------------------------
+# Notify log history (Groupbox1)
+   DECLARE Var=$RenNotifyHistory TYPE=Boolean                   # Rename Notify History file
+   DECLARE Var=$DelLogHistory TYPE=Boolean                          # Delete Log History file
+# Log owner history (Groupbox2
+   DECLARE Var=$RenLogHist TYPE=Boolean                      # Rename Log History file
+   DECLARE Var=$DelNotifyHistory TYPE=Boolean                          # Delete Notify History file
+
+# INTERNAL USAGE
+#----------------
+   DECLARE Var=$DnfCnt Type=Numeric
+   DECLARE Var=$EnaCnt Type=Numeric
+   DECLARE Var=$DcCnt Type=Numeric
+   DECLARE Var=$ArcCnt Type=Numeric
+   DECLARE Var=$PubCnt Type=Numeric
+   DECLARE Var=$MntCnt Type=Numeric
+   DECLARE Var=$UpdCnt Type=Numeric
+   DECLARE Var=$UnaCnt Type=Numeric
+   DECLARE Var=$RetCnt Type=Numeric
+   DECLARE Var=$SePressed Type=Boolean
+
+   DECLARE Var=$TempStr1 Type=String                          # For temporary use within a subroutine only
+   DECLARE Var=$TempStr2 Type=String                          # For temporary use within a subroutine only
+   DECLARE Var=$MacroFolder Type=String
+   DECLARE Var=$StorageFolder TYPE=String
+#  DECLARE Var=$LogSetting Type=String
+   DECLARE Var=$DbChanged Type=Boolean
+   DECLARE Var=$Number Type=String
+   DECLARE Var=$SsNum Type=Numeric
+   DECLARE Var=$Em_Date Type=String
+   DECLARE Var=$Dx Type=String
+   DECLARE Var=$Dn Type=String
+   DECLARE Var=$ER_Cntr1 TYPE=Numeric
+   DECLARE Var=$ER_Cntr2 TYPE=Numeric
+   DECLARE Var=$ER_Cntr3 TYPE=Numeric
+   DECLARE Var=$ER_tmpS2 TYPE=String
+   DECLARE Var=$Approved TYPE=Boolean
+   DECLARE Var=$ArcMsg TYPE=String
+   DECLARE Var=$Author TYPE=String
+   DECLARE Var=$AuthorLog TYPE=String
+   DECLARE Var=$BatchData TYPE=String
+   DECLARE Var=$BatchFile TYPE=String
+   DECLARE Var=$Body TYPE=String
+   DECLARE Var=$BodyLst TYPE=String
+   DECLARE Var=$CacheId TYPE=String
+   DECLARE Var=$CacheName TYPE=String
+   DECLARE Var=$CfgList TYPE=String
+   DECLARE Var=$Cnt TYPE=Numeric
+   DECLARE Var=$Cntr TYPE=Numeric
+   DECLARE Var=$ER_Cdb TYPE=String
+   DECLARE Var=$ER_Dta TYPE=String
+   DECLARE Var=$Date TYPE=String
+   DECLARE Var=$DbList TYPE=String
+   DECLARE Var=$DistanceLine Type=String                          # The Distance line in a notify email
+   DECLARE Var=$Distance Type=String                              # The distance in Miles and Klms
+   DECLARE Var=$DisMsg TYPE=String                                # Disabled email messages
+   DECLARE Var=$ER_DnUl TYPE=Boolean                              # Display Notify user Logs
+   DECLARE Var=$DnfMsg TYPE=String
+   DECLARE Var=$EnaMsg TYPE=String
+   DECLARE Var=$EdCnt TYPE=Numeric
+   DECLARE Var=$ErrorCnt TYPE=Numeric
+   DECLARE Var=$ErrorLog TYPE=String
+   DECLARE Var=$ER_CacheTypes TYPE=String
+   DECLARE Var=$ER_LogTypes TYPE=String
+   DECLARE Var=$ER_Rle TYPE=Boolean                          # CheckLogServer
+   DECLARE Var=$ER_Rne TYPE=Boolean                          # CheckNotifyServer
+   DECLARE Var=$ER_tmpN TYPE=Numeric                         # Temp variable
+   DECLARE Var=$ER_tmpS TYPE=String                          # Temp Variable
+   DECLARE Var=$ExitCaptionFlag TYPE=Boolean                          # Change Caption flag
+   DECLARE Var=$ER_FormA TYPE=String                         # Main form.
+   DECLARE Var=$ER_FormB TYPE=String                         # Summary form.
+   DECLARE Var=$ER_FormC TYPE=String                         # Configuration form.
+   DECLARE Var=$ER_FormD TYPE=String                         # File maintenance form.
+   DECLARE Var=$Fxit TYPE=String                      # Main form action variable
+   DECLARE Var=$ER_LogTags Type=String                       # Variable containing email log types
+   DECLARE Var=$NotifyHistoryFile TYPE=String                           # Notify History file.
+   DECLARE Var=$ER_nTypes TYPE=String                        # Notify types.
+   DECLARE Var=$NTcnt TYPE=Numeric                           # Notify type count.
+   DECLARE Var=$ER_NumMsgs TYPE=Numeric                      # Number of messages.
+   DECLARE Var=$Er_QuietMode TYPE=Boolean                           # Quiet Mode
+   DECLARE Var=$Er_LogStr Type=String
+   DECLARE Var=$OperatorPresent TYPE=Boolean                       # Operator Present
+   DECLARE Var=$Faulty TYPE=Boolean
+   DECLARE Var=$FileData TYPE=String
+   DECLARE Var=$FileName TYPE=String
+   DECLARE Var=$FMaint TYPE=Boolean
+   DECLARE Var=$FndCnt TYPE=Numeric
+   DECLARE Var=$FndMsg TYPE=String
+   DECLARE Var=$HdrList TYPE=String
+   DECLARE Var=$Header TYPE=String
+   DECLARE Var=$Lf TYPE=String
+   DECLARE Var=$LogCurrentFile TYPE=String
+   DECLARE Var=$LogHistoryFile TYPE=String
+   DECLARE Var=$LogLimit TYPE=Numeric
+   DECLARE Var=$LogLine TYPE=String
+   DECLARE Var=$LogStr TYPE=String
+   DECLARE Var=$LogType TYPE=String
+   DECLARE Var=$Er_LogId Type=Numeric
+   DECLARE Var=$LTcnt TYPE=Numeric
+   DECLARE Var=$MacName TYPE=String
+   DECLARE Var=$MacroName TYPE=String
+   DECLARE Var=$MacroVersion Type=String
+   DECLARE Var=$Mailbox TYPE=String
+   DECLARE Var=$MemoBox TYPE=String
+   DECLARE Var=$Message TYPE=String
+   DECLARE Var=$MntLog TYPE=String
+   DECLARE Var=$Msg TYPE=String
+   DECLARE Var=$Msg0 TYPE=String
+   DECLARE Var=$Msg1 TYPE=String
+   DECLARE Var=$Msg2 TYPE=String
+   DECLARE Var=$Msg3 TYPE=String
+   DECLARE Var=$Msg4 TYPE=String
+   DECLARE Var=$Msg5 TYPE=String
+   DECLARE Var=$MsgCntr TYPE=Numeric
+   DECLARE Var=$NewCaches TYPE=Numeric
+   DECLARE Var=$NewData TYPE=String
+   DECLARE Var=$NotifyCurrentFile TYPE=String
+#  DECLARE Var=$Ok TYPE=Boolean
+   DECLARE Var=$OkToUpdate TYPE=Boolean
+   DECLARE Var=$ER_OkMf TYPE=Boolean
+   DECLARE Var=$OldData TYPE=String
+   DECLARE Var=$Online Type=Boolean
+   DECLARE Var=$OwnerCnt TYPE=Numeric
+   DECLARE Var=$OwnerLog TYPE=String
+   DECLARE Var=$OwnerName Type=String
+   DECLARE Var=$PermDelList TYPE=String
+   DECLARE Var=$PubLog TYPE=String
+   DECLARE Var=$ReadLogCf TYPE=Boolean
+   DECLARE Var=$ReadLogHf TYPE=Boolean
+   DECLARE Var=$ReadNotifyCf TYPE=Boolean
+   DECLARE Var=$ReadNotifyHf TYPE=Boolean
+   DECLARE Var=$ER_ReRun TYPE=Boolean                      # Set when re-running a previously downloaded file.
+   DECLARE Var=$Retlog TYPE=String
+   DECLARE Var=$ER_RptEntry TYPE=String
+   DECLARE Var=$SetConfig TYPE=Boolean
+   DECLARE Var=$SetUf TYPE=Boolean                                  # Set User Flags Flag
+   DECLARE Var=$SubjectLine TYPE=String
+   DECLARE Var=$Summary TYPE=String
+   DECLARE Var=$SummaryLine TYPE=String
+   DECLARE Var=$ER_tmpN TYPE=Numeric
+   DECLARE Var=$UfCleared TYPE=Boolean
+   DECLARE Var=$UnAlog TYPE=String
+   DECLARE Var=$UpdatedCaches TYPE=Numeric
+   DECLARE Var=$UpdLog TYPE=String
+   DECLARE Var=$Url TYPE=String
+   DECLARE Var=$UseBrowser TYPE=Boolean
+   DECLARE Var=$ER_WatchCnt TYPE=Numeric                     # Watchlist Count
+   DECLARE Var=$ER_WatchLog TYPE=String                      # Watchlist Log
+   DECLARE Var=$Choices TYPE=String
+#  DECLARE Var=$Uc_Delay TYPE=Numeric
+   DECLARE Var=$ER_ListsCreated Type=Boolean
+   DECLARE Var=$SsCodeLst Type=String                       # List of codes in the startup filter
+   DECLARE Var=$StartupSplitScreen Type=Boolean                           # Splitscreen
+   DECLARE Var=$StartupDualScreen Type=Boolean                           # DualScreen
+   DECLARE Var=$SsFil Type=String                           # Startup Filter name
+   DECLARE Var=$SsSc Type=String                            # Cache code at startup (datapointer)
+   DECLARE Var=$SsSrt Type=String                           # Sort by variable
+#  DECLARE Var=$Spraypaint Type=Boolean
+
+# Variable declarations for CheckMailSettings routines
+   DECLARE Var=$LogMail Type=Boolean
+   DECLARE Var=$NotifyMail Type=Boolean
+   DECLARE Var=$SettingsOk Type=Boolean
+
+###################################################################################
+<DATA> VarName=$GetMail
+[TfmMail]
+cbxMatch.Text=Contains
+chkIgnore.Checked=True
+rbtDelete.Checked=True
+rbtLeave.Checked=False
+rbtOver.Checked=False
+rbtRenumber.Checked=True
+chkNewMsg.Checked=False
+chkLoadYes.Checked=False
+cbxLoadSettings.Text=... Last active
+chkRename.Checked=False
+chkForceRead.Checked=False
+RbtOnlyAttach.Checked=False
+rbtHeaderBody.Checked=True
+<ENDDATA>
+###################################################################################
+<data> VarName=$ClearU4
+[TfmReplace]
+cbxFields.Text=User Data 4
+cbxWith.Text=
+edtDate.Text=/  /
+edtString.Text=
+rbtAdd.Checked=False
+rbtRemove.Checked=False
+rbtReplace.Checked=True
+rbtSwap.Checked=False
+chkClose.Checked=False
+rbtAddBefore.Checked=False
+<enddata>
+<data> VarName=$ClearUsort
+[TfmReplace]
+cbxFields.Text=User Sort
+cbxWith.Text=
+edtDate.Text=/  /
+edtString.Text=
+rbtAdd.Checked=False
+rbtRemove.Checked=False
+rbtReplace.Checked=True
+rbtSwap.Checked=False
+chkClose.Checked=False
+rbtAddBefore.Checked=False
+<enddata>
+###################################################################################
+<data> VarName=$StaticRefresh
+[General]
+cbxlock.Text=
+chkSaveFile.Checked=True
+chkSaveDatabase.Checked=False
+[TfmGpxLoad]
+chkGpx.Checked=True
+chkLoc.Checked=False
+chkZip.Checked=False
+cbxZap.Checked=False
+chkClearUser.Checked=False
+chkDefault.Checked=False
+chkSetUser.Checked=False
+chkUserOnly.Checked=False
+rbtAddOnly.Checked=False
+rbtAlways.Checked=False
+rbtExists.Checked=False
+rbtExtraChild.Checked=True
+rbtExtraExclude.Checked=False
+rbtExtraParent.Checked=False
+rbtFoundAlways.Checked=False
+rbtFoundNever.Checked=True
+rbtFoundOnly.Checked=False
+rbtNewer.Checked=True
+rbtLoadFile.Checked=False
+rbtLoadFolder.Checked=True
+edtFoundSymbol.Text=Geocache Found
+chkUpdateSymbol.Checked=True
+cbxDataBases.Text=Default
+edtCounty.Text=
+cbxFileType.Text=GPX/LOC (including inside zip)
+edtState.Text=
+chkKeepFocus.Checked=False
+chkDecodeEntity.Checked=True
+edtFolder.Text=*DataFolder*
+<enddata>
+###################################################################################
+<DATA> VarName=$ER_CfgRunTypes                           # Don't change this order
+Normal;Unattended Running
+<ENDDATA>
+###################################################################################
+<DATA> VarName=$ER_Numbers
+1;2;3;4;5;6;7;8;9;10;
+<ENDDATA>
+##################################################################################
+<DATA> Varname=$ER_LogTypes                              # Don't change this order
+WATCHLIST;OWNER; 
+<ENDDATA>
+##################################################################################
+<DATA> Varname=$ER_lTypes                                # Don't change this order
+COULDN'T FIND;ENABLED;PUBLISHED;UPDATED;REPORTED;RETRACTED;UNARCHIVED;ARCHIVED;DISABLED;REQUESTED;MAINTENANCE FOR;FOUND;IN;FROM;NOTE FOR;
+<ENDDATA>
+##################################################################################
+<DATA> Varname=$ER_nTypes                                # Don't change this order
+COULDN'T FIND;ENABLED;PUBLISHED;UPDATED;REPORTED;RETRACTED;UNARCHIVED;ARCHIVED;DISABLED;REQUESTED;MAINTENANCE FOR;FOUND;
+<ENDDATA>
+##################################################################################
+<DATA> Varname=$ER_CacheTypes                            # Don't change this order
+ape;A;letterbox;B;cito;C;event;E;benchmark;G;locationless;L;multi;M;other;O;earth;R;traditional;T;unknown;U;virtual;V;webcam;W;maze;X;mega;Z;
+<ENDDATA>
+##################################################################################
+<DATA> VarName=$ER_CdD
+0;5;10;15;20;25;30;45;60;
+<ENDDATA>
+###################################################################################
+<DATA> VarName=$mailbox
+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
+/GMzLdsAAAAEZ0FNQQAAsY58+1GTAAAAIGNIUk0AAHolAACAgwAA+f8AAIDpAAB1MAAA6mAAADqYAAAX
+b5JfxUYAAAMAUExURf////X5+vP3+PT19vv59e7y9Oju8eXt8ezt7eLp7uTl5uzq5fDy7//82vr10f36
+1/Ltzdzl7Nbg6d/l5dLe6NHd587a48nX4N7e3dXW1dHa3cnV3sXS3MXR1sLM1MTP1szNzcTFxcnIxdza
+wO7iv+3lturfvObbuufatuPXpdXLq83HrtrLl9TEh97RmuHUmvShmPOclPCKhsO8o9CSiMe3jb/O2L3L
+1LbG0LvFzLLDzLfAx67Ayqy+yKm7xqa5xKS3wrS9w729vbW1tbi4ta21u6S0vqmxtqSuta2traSkpKWp
+qry0nbSxnK2nlJGwup+wupK0qpittpWjq5qhpo+uuIyrtoamsYunsIKirYqlqo6wpo6bop6enpWVlZKY
+nYyVm4uRlIeSmY2OjoSEhIKIjJCTjZafjtC+c827dMa1dMW0a8GseMGvYcCuX72sc7ajdb6tYrelVqeX
+aK6XcqmXQKeVRauZT5mLZ42HcpmKV5KBSo6CW9PCfe1yeelEZ+tUccx4cuUsWeQdU+IAT+MPUcwoUNwp
+WYl8WIt8TJJ4bawkS4wGMZUhPYB0PHyeqXGWo3iapG+VoXqFimSLmWqOmmyPklqEk16BjlyPg1+RhX2h
+pEaBdE2FeFaLf3d+gWh8hFx7h35+fXR0dHJ4e2txdGVzemlzeWJudGlvdG5ubmVlZGNobHd2bnVqSWlm
+WnFnSGtSRl1rcVRsdFBmcFtlalpkaUZ+cUxxcFNeY1tfYk5cY15eXlVaXFNUVFdYV0lYXUtVWkhRVkNN
+UklPUUtLS0NJTEJHSUNDQ0tKQ1dPRlRNOlRKNUxFNUVDPUtFNltUPGZbOkQ8NEwwKmcOJzRkVz5JTjxF
+SjxBRDVERy9bTjVNTj5zZjU+Qjg+QS88Qzw8PTQ6PDI2ODIzNDg2MjczKi0yNCw2OCsuMSwsLCwqJCok
+ISUpLCMkJCMmKC8vKTIgHigjHR4hIh0rJx81Lx4fIBsbGx0aFxkWFBMTExYZGQsLCwAAAA8PECMeGi5F
+PrOVxckAAAABdFJOUwBA5thmAAASf0lEQVR42syceXxU1b3Av+fem5nJRgJJgJAggQQFxE8roogLIAGR
+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
+<ENDDATA>
+##################################################################################
+## Main form
+
+<DATA> VarName=$ER_FormA
+#********************************************************************
+# Form generated by GSAK form designer on Sun 26-Jun-2011 11:55:54
+#********************************************************************
+Name = Form1
+  Type = Form
+  Color = 14412274
+  Height = 554
+  Top = 107
+  Width = 559
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = [GEO] Notify Emails
+  Height = 130
+  Left = 275
+  Top = 20
+  Width = 249
+  Taborder = 0
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = [LOG] Owner and Watchlist Emails
+  Height = 146
+  Left = 275
+  Top = 160
+  Width = 252
+  Taborder = 2
+
+Name = Groupbox4
+  Type = Groupbox
+  Height = 306
+  Left = 13
+  Top = 145
+  Width = 245
+  Taborder = 4
+
+Name = Groupbox3
+  Type = Groupbox
+  Caption = Email Summary Display
+  Height = 134
+  Left = 274
+  Top = 317
+  Width = 255
+  Taborder = 7
+
+Name = Label1
+  Type = Label
+  Color = 16744576
+  Font = Comic Sans MS
+  Height = 27
+  Left = 134
+  Size = 14
+  Style = bold
+  Top = 37
+  Width = 101
+  Caption = Geocaching
+
+Name = ExitF1
+  Type = Button
+  Escape = Yes
+  Height = 30
+  Left = 213
+  Top = 467
+  Width = 160
+  Taborder = 1
+  Caption = Exit
+
+Name = NcfCnt
+  Type = Label
+  Color = 16711680
+  Container = Groupbox1
+  Height = 13
+  Left = 160
+  Top = 60
+  Width = 33
+
+Name = NhfCnt
+  Type = Label
+  Color = 16711680
+  Container = Groupbox1
+  Height = 13
+  Left = 160
+  Top = 94
+  Width = 33
+
+Name = LcfCnt
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 159
+  Top = 61
+  Width = 31
+
+Name = LhfCnt
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 160
+  Top = 96
+  Width = 31
+
+Name = ER_Cdb
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 82
+  Top = 127
+  Values = $DbList
+  Width = 174
+  Taborder = 3
+
+Name = Label12
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 12
+  Style = bold
+  Top = 131
+  Width = 55
+  Caption = DataBase
+
+Name = Image1
+  Type = Image
+  File = C:\User Programs\Gsak\temp\mailbox.png
+  Height = 79
+  Left = 23
+  Resize = Yes
+  Source = File
+  Top = 20
+  Width = 83
+
+Name = Label13
+  Type = Label
+  Color = 16744576
+  Font = Comic Sans MS
+  Height = 27
+  Left = 121
+  Size = 14
+  Style = bold
+  Top = 62
+  Width = 122
+  Caption = eMail Reader
+
+Name = ER_Doul
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 32768
+  Height = 17
+  Left = 182
+  Top = 17
+  Width = 59
+  Taborder = 5
+  Caption = Owner
+
+Name = ER_Dwul
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 32768
+  Height = 17
+  Left = 182
+  Top = 37
+  Width = 68
+  Taborder = 6
+  Caption = Watchlist
+
+Name = ExitDisplayOwned
+  Type = Checkbox
+  Container = Groupbox4
+  Fontcolor = 128
+  Height = 17
+  Left = 10
+  Top = 214
+  Width = 222
+  Taborder = 0
+  Caption = Display Owned caches with Emails
+
+Name = ExitDisplayNew
+  Type = Checkbox
+  Container = Groupbox4
+  Fontcolor = 128
+  Height = 17
+  Left = 10
+  Top = 234
+  Width = 223
+  Taborder = 1
+  Caption = Display New caches with Emails
+
+Name = FMaint
+  Type = Radiobutton
+  Exitonchange = Yes
+  Fontcolor = 32768
+  Height = 21
+  Left = 417
+  Top = 483
+  Width = 100
+  Taborder = 5
+  Caption = File Maintenance
+
+Name = SetConfig
+  Type = Radiobutton
+  Exitonchange = Yes
+  Fontcolor = 32768
+  Height = 21
+  Left = 417
+  Top = 460
+  Width = 100
+  Taborder = 6
+  Caption = Set Configuration
+
+Name = ReReadFlag
+  Type = Checkbox
+  Container = Groupbox4
+  Fontcolor = 3487231
+  Height = 17
+  Left = 10
+  Top = 36
+  Width = 150
+  Taborder = 2
+  Caption = Flag when re-reading files
+
+Name = Dl_Fnd
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 16512
+  Height = 17
+  Left = 13
+  Top = 20
+  Width = 72
+  Taborder = 0
+  Caption = Found
+
+Name = Dl_Dnf
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 16512
+  Height = 17
+  Left = 13
+  Top = 40
+  Width = 94
+  Taborder = 1
+  Caption = Couldn't find
+
+Name = Dl_Ena
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 16512
+  Height = 17
+  Left = 13
+  Top = 60
+  Width = 92
+  Taborder = 2
+  Caption = Enabled
+
+Name = Dl_Pub
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 16512
+  Height = 17
+  Left = 99
+  Top = 79
+  Width = 121
+  Taborder = 3
+  Caption = Published
+
+Name = Dl_Upd
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 16512
+  Height = 17
+  Left = 13
+  Top = 80
+  Width = 81
+  Taborder = 4
+  Caption = Updated
+
+Name = Dl_Rep
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 16512
+  Height = 17
+  Left = 99
+  Top = 19
+  Width = 75
+  Taborder = 7
+  Caption = Reported
+
+Name = DL_Ret
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 16512
+  Height = 17
+  Left = 99
+  Top = 99
+  Width = 75
+  Taborder = 8
+  Caption = Retracted
+
+Name = DL_Una
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 16512
+  Height = 17
+  Left = 13
+  Top = 100
+  Width = 75
+  Taborder = 9
+  Caption = Unarchive
+
+Name = DL_Arc
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 16512
+  Height = 17
+  Left = 99
+  Top = 59
+  Width = 75
+  Taborder = 10
+  Caption = Archived
+
+Name = DL_Dis
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 16512
+  Height = 17
+  Left = 99
+  Top = 39
+  Width = 75
+  Taborder = 11
+  Caption = Disabled
+
+Name = Btn_LogRnm
+  Type = Button
+  Container = Groupbox2
+  Height = 25
+  Left = 24
+  Top = 20
+  Width = 120
+  Taborder = 0
+  Caption = Read New Mail
+
+Name = Btn_LogRrCf
+  Type = Button
+  Container = Groupbox2
+  Height = 25
+  Left = 24
+  Top = 55
+  Width = 120
+  Taborder = 1
+  Caption = Re-read Current File
+
+Name = Btn_LogRhf
+  Type = Button
+  Container = Groupbox2
+  Height = 25
+  Left = 24
+  Top = 90
+  Width = 120
+  Taborder = 2
+  Caption = Read the History File
+
+Name = Btn_NotRnm
+  Type = Button
+  Container = Groupbox1
+  Height = 25
+  Left = 24
+  Top = 20
+  Width = 120
+  Taborder = 0
+  Caption = Read New Mail
+
+Name = Btn_NotRrCf
+  Type = Button
+  Container = Groupbox1
+  Height = 25
+  Left = 24
+  Top = 55
+  Width = 120
+  Taborder = 1
+  Caption = Re-Read Current File
+
+Name = Btn_NotRhf
+  Type = Button
+  Container = Groupbox1
+  Height = 25
+  Left = 25
+  Top = 90
+  Width = 120
+  Taborder = 2
+  Caption = Read the History File
+
+Name = ExitDisplayUpd
+  Type = Checkbox
+  Container = Groupbox4
+  Fontcolor = 128
+  Height = 17
+  Left = 10
+  Top = 254
+  Width = 220
+  Taborder = 3
+  Caption = Display Updated caches with Emails
+
+Name = SetUF
+  Type = Checkbox
+  Container = Groupbox4
+  Exitonchange = Yes
+  Fontcolor = 32768
+  Height = 17
+  Left = 10
+  Top = 54
+  Width = 225
+  Taborder = 4
+  Caption = Set the User flag for all caches with Emails
+
+Name = ExitSelectUpdate
+  Type = Radiobutton
+  Container = Groupbox4
+  Exitonchange = Yes
+  Fontcolor = 16711680
+  Height = 17
+  Left = 10
+  Top = 149
+  Width = 223
+  Taborder = 5
+  Caption = Select caches with Updates on Exit
+
+Name = ExitSelectNew
+  Type = Radiobutton
+  Container = Groupbox4
+  Exitonchange = Yes
+  Fontcolor = 16711680
+  Height = 17
+  Left = 10
+  Top = 167
+  Width = 196
+  Taborder = 6
+  Caption = Select New caches only on Exit
+
+Name = ExitSelectCancel
+  Type = Radiobutton
+  Container = Groupbox4
+  Exitonchange = Yes
+  Fontcolor = 16711680
+  Height = 17
+  Left = 10
+  Top = 113
+  Width = 154
+  Taborder = 7
+  Caption = None
+
+Name = Label2
+  Type = Label
+  Color = 16711680
+  Container = Groupbox4
+  Height = 13
+  Left = 10
+  Style = bold;underline
+  Top = 92
+  Width = 78
+  Caption = Exit Selection
+
+Name = Label3
+  Type = Label
+  Color = 16711680
+  Container = Groupbox4
+  Height = 13
+  Left = 10
+  Style = bold;underline
+  Top = 16
+  Width = 30
+  Caption = Flags
+
+Name = ExitSelectRestore
+  Type = Radiobutton
+  Container = Groupbox4
+  Exitonchange = Yes
+  Fontcolor = 16711680
+  Height = 17
+  Left = 10
+  Top = 131
+  Width = 221
+  Taborder = 8
+  Caption = Restore Screen state and Filter on Exit
+
+Name = ExitSelectEmails
+  Type = Radiobutton
+  Container = Groupbox4
+  Fontcolor = 16711680
+  Height = 17
+  Left = 10
+  Top = 185
+  Width = 193
+  Taborder = 9
+  Caption = Select ALL caches with Emails
+
+Name = DevIndicator1
+  Type = Label
+  Color = 255
+  Height = 25
+  Left = 21
+  Size = 15
+  Style = bold;underline
+  Top = 468
+  Width = 176
+  Caption = Development Beta
+
+Name = UncheckESD
+  Type = Radiobutton
+  Container = Groupbox3
+  Exitonchange = Yes
+  Fontcolor = 4342527
+  Height = 17
+  Left = 167
+  Top = 114
+  Width = 85
+  Taborder = 12
+  Caption = Uncheck All
+
+Name = OpenBrowser
+  Type = Checkbox
+  Container = Groupbox4
+  Exitonchange = Yes
+  Fontcolor = 32896
+  Height = 17
+  Left = 10
+  Top = 281
+  Width = 179
+  Taborder = 10
+  Caption = Open Browser with New Caches
+
+Name = Freset
+  Type = Button
+  Height = 25
+  Left = 580
+  Top = 3
+  Visible = Yes
+  Width = 75
+  Taborder = 8
+  Caption = &Reset
+
+Name = ER_WebCnt
+  Type = Combobox
+  Container = Groupbox4
+  Height = 21
+  Left = 193
+  Top = 279
+  Values = 5;10;15;20;25;All
+  Visible = No
+  Width = 44
+  Taborder = 11
+
+<enddata>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##################################################################################
+## Results Display Form
+<DATA> VarName=$ER_FormB
+#********************************************************************
+# Form generated by GSAK form designer on Sat 03-Sep-2011 17:49:08
+#********************************************************************
+Name = Form2
+  Type = Form
+  Caption = eMail Reader - Results
+  Color = 12577476
+  Height = 570
+  Top = 10
+  Width = 770
+
+Name = MemoBox
+  Type = Memo
+  Height = 436
+  Left = 39
+  Scrollbars = Vertical
+  Top = 50
+  Width = 677
+  Taborder = 8
+
+Name = ExitF2
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 261
+  Top = 493
+  Width = 247
+  Taborder = 9
+  Caption = Continue
+
+Name = DisplayLabel
+  Type = Label
+  Color = 16711680
+  Height = 20
+  Left = 42
+  Size = 12
+  Style = bold
+  Top = 18
+  Width = 69
+  Caption = Results
+
+<enddata>
+
+
+
+
+
+##################################################################################
+## Configuration form
+<DATA> VarName=$ER_FormC
+#********************************************************************
+# Form generated by GSAK form designer on Wed 01-Feb-2012 08:28:39
+#********************************************************************
+Name = Form3
+  Type = Form
+  Caption = EmailReader Configuration
+  Color = 16642768
+  Height = 554
+  Top = 107
+  Width = 600
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Notification Emails
+  Height = 142
+  Left = 19
+  Top = 305
+  Width = 241
+  Taborder = 0
+
+Name = Groupbox4
+  Type = Groupbox
+  Caption = New / Missing Caches
+  Height = 142
+  Left = 281
+  Top = 305
+  Width = 279
+  Taborder = 1
+
+Name = Groupbox5
+  Type = Groupbox
+  Caption = Run Type
+  Height = 97
+  Left = 23
+  Top = 202
+  Width = 238
+  Taborder = 3
+
+Name = Groupbox6
+  Type = Groupbox
+  Caption = Exit Macro Settings
+  Height = 97
+  Left = 281
+  Top = 202
+  Width = 280
+  Taborder = 4
+
+Name = Groupbox3
+  Type = Groupbox
+  Caption = GetMail Settings
+  Height = 137
+  Left = 22
+  Top = 52
+  Width = 542
+  Taborder = 5
+
+Name = CfgSave
+  Type = Button
+  Height = 25
+  Left = 212
+  Top = 464
+  Width = 160
+  Taborder = 2
+  Caption = Save and Exit
+
+Name = Label2
+  Type = Label
+  Color = 255
+  Font = Arial
+  Height = 24
+  Left = 185
+  Size = 16
+  Style = bold
+  Top = 19
+  Width = 230
+  Caption = Configuration Options
+
+Name = ER_Klh
+  Type = Checkbox
+  Container = Groupbox1
+  Fontcolor = 32896
+  Height = 17
+  Left = 15
+  Top = 41
+  Width = 155
+  Taborder = 3
+  Caption = Keep a Log History file
+
+Name = Label1
+  Type = Label
+  Color = 32896
+  Container = Groupbox4
+  Height = 13
+  Left = 40
+  Size = 8
+  Top = 45
+  Width = 228
+  Caption = Create a new record for Published caches only
+
+Name = ER_RunDelay
+  Type = Combobox
+  Container = Groupbox5
+  Height = 21
+  Left = 170
+  Top = 32
+  Values = $ER_CdD
+  Width = 56
+  Taborder = 0
+
+Name = Label9
+  Type = Label
+  Container = Groupbox5
+  Height = 13
+  Left = 182
+  Top = 17
+  Width = 35
+  Caption = Delay
+
+Name = ER_Crt
+  Type = Combobox
+  Container = Groupbox5
+  Exitonchange = Yes
+  Height = 21
+  Left = 7
+  Top = 32
+  Values = $ER_CfgRunTypes
+  Width = 145
+  Taborder = 1
+
+Name = ER_Cdr
+  Type = Radiobutton
+  Container = Groupbox4
+  Height = 17
+  Left = 18
+  Top = 44
+  Width = 15
+  Taborder = 0
+
+Name = ER_Amc
+  Type = Radiobutton
+  Container = Groupbox4
+  Height = 17
+  Left = 18
+  Top = 67
+  Width = 15
+  Taborder = 1
+
+Name = Label11
+  Type = Label
+  Color = 32896
+  Container = Groupbox4
+  Height = 13
+  Left = 40
+  Top = 63
+  Width = 219
+  Caption = Create a new record for ANY cache reported
+
+Name = Label12
+  Type = Label
+  Color = 32896
+  Container = Groupbox4
+  Height = 13
+  Left = 40
+  Top = 76
+  Width = 151
+  Caption = but not found in this DataBase
+
+Name = ER_Dn
+  Type = Radiobutton
+  Container = Groupbox4
+  Height = 17
+  Left = 18
+  Top = 22
+  Width = 15
+  Taborder = 2
+
+Name = Label15
+  Type = Label
+  Color = 32896
+  Container = Groupbox4
+  Height = 13
+  Left = 40
+  Top = 22
+  Width = 60
+  Caption = Do nothing
+
+Name = Label19
+  Type = Label
+  Color = 32896
+  Container = Groupbox3
+  Height = 13
+  Left = 15
+  Top = 28
+  Width = 61
+  Caption = Pop Server
+
+Name = SvrPop
+  Type = Edit
+  Container = Groupbox3
+  Height = 21
+  Left = 88
+  Top = 24
+  Width = 121
+  Taborder = 0
+
+Name = Label20
+  Type = Label
+  Color = 32896
+  Container = Groupbox3
+  Height = 13
+  Left = 15
+  Top = 52
+  Width = 61
+  Caption = User Name
+
+Name = SvrUname
+  Type = Edit
+  Container = Groupbox3
+  Height = 21
+  Left = 88
+  Top = 48
+  Width = 121
+  Taborder = 1
+
+Name = Label21
+  Type = Label
+  Color = 32896
+  Container = Groupbox3
+  Height = 13
+  Left = 15
+  Top = 75
+  Width = 54
+  Caption = Password
+
+Name = HdnPw2
+  Type = Edit
+  Container = Groupbox3
+  Height = 21
+  Left = 88
+  Top = 72
+  Width = 121
+  Taborder = 2
+
+Name = Label22
+  Type = Label
+  Color = 32896
+  Container = Groupbox3
+  Height = 13
+  Left = 256
+  Top = 28
+  Width = 27
+  Caption = Port
+
+Name = SvrPort
+  Type = Edit
+  Container = Groupbox3
+  Height = 21
+  Left = 320
+  Top = 24
+  Width = 49
+  Taborder = 3
+
+Name = Label23
+  Type = Label
+  Color = 32896
+  Container = Groupbox3
+  Height = 13
+  Left = 376
+  Top = 28
+  Width = 105
+  Caption = (995 for Google mail)
+
+Name = Label24
+  Type = Label
+  Color = 32896
+  Container = Groupbox3
+  Height = 13
+  Left = 256
+  Top = 52
+  Width = 57
+  Caption = SSL Login
+
+Name = SvrSsl
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 320
+  Top = 48
+  Width = 15
+  Taborder = 4
+
+Name = Label25
+  Type = Label
+  Color = 32896
+  Container = Groupbox3
+  Height = 13
+  Left = 344
+  Top = 52
+  Width = 130
+  Caption = (Required for Google mail)
+
+Name = Label26
+  Type = Label
+  Color = 32896
+  Container = Groupbox3
+  Height = 13
+  Left = 256
+  Top = 75
+  Width = 66
+  Caption = Folder name
+
+Name = SvrFldr
+  Type = Folder
+  Container = Groupbox3
+  Height = 21
+  Left = 320
+  Top = 72
+  Width = 208
+  Taborder = 5
+
+Name = iConnTest
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 195
+  Top = 100
+  Width = 15
+  Taborder = 6
+
+Name = Label27
+  Type = Label
+  Color = 32896
+  Container = Groupbox3
+  Height = 13
+  Left = 15
+  Top = 101
+  Width = 172
+  Caption = Ignore the Internet Connection test
+
+Name = ShowGmStats
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox3
+  Fontcolor = 32896
+  Height = 17
+  Left = 256
+  Top = 99
+  Width = 133
+  Taborder = 7
+  Caption = Show GetMail stats
+
+Name = ShowMiles
+  Type = Radiobutton
+  Captionposition = Left
+  Container = Groupbox3
+  Fontcolor = 32896
+  Height = 17
+  Left = 256
+  Top = 115
+  Width = 132
+  Taborder = 8
+  Caption = Show distance in Miles
+
+Name = ShowKilometers
+  Type = Radiobutton
+  Captionposition = Left
+  Container = Groupbox3
+  Fontcolor = 32896
+  Height = 17
+  Left = 401
+  Top = 114
+  Width = 91
+  Taborder = 9
+  Caption = or Kilometers
+
+Name = ExitMacro
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox6
+  Fontcolor = 32896
+  Height = 17
+  Left = 10
+  Top = 27
+  Width = 86
+  Taborder = 0
+  Caption = Exit Macro
+
+Name = EmName
+  Type = File
+  Container = Groupbox6
+  Height = 21
+  Left = 114
+  Top = 24
+  Width = 157
+  Taborder = 1
+
+Name = Er_CreateLog
+  Type = Checkbox
+  Container = Groupbox1
+  Fontcolor = 32896
+  Height = 17
+  Left = 15
+  Top = 71
+  Width = 195
+  Taborder = 0
+  Caption = Write a log when the status changes
+
+Name = Label14
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 35
+  Top = 92
+  Visible = No
+  Width = 139
+  Caption = Limit number of extra logs to
+
+Name = Er_NuMLogs
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 172
+  Top = 89
+  Values = $Er_Numbers
+  Visible = No
+  Width = 44
+  Taborder = 1
+
+Name = ER_Knh
+  Type = Checkbox
+  Container = Groupbox1
+  Fontcolor = 32896
+  Height = 17
+  Left = 15
+  Top = 19
+  Width = 183
+  Taborder = 2
+  Caption = Keep a Notify History file
+
+Name = er_AdvanceDP
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox6
+  Fontcolor = 32896
+  Height = 17
+  Left = 10
+  Top = 57
+  Width = 258
+  Taborder = 2
+  Caption = Allow EmailReader to advance the data pointer
+
+Name = VerboseReporting
+  Type = Checkbox
+  Container = Groupbox1
+  Fontcolor = 32896
+  Height = 20
+  Left = 15
+  Top = 110
+  Width = 217
+  Taborder = 4
+  Caption = Verbose reporting of email subject lines
+
+Name = Lsummary
+  Type = Checkbox
+  Container = Groupbox5
+  Fontcolor = 32768
+  Height = 20
+  Left = 7
+  Top = 62
+  Width = 187
+  Taborder = 2
+  Caption = Display the Log Summary
+
+<enddata>
+
+
+
+
+
+
+
+
+
+
+
+
+##################################################################################
+## File Maintenance form ##
+<DATA> VarName=$ER_FormD
+#********************************************************************
+# Form generated by GSAK form designer on Fri 17-Dec-2010 14:02:04
+#********************************************************************
+Name = Form4
+  Type = Form
+  Caption = EmailReader File Maintenance
+  Color = 14087134
+  Height = 353
+  Top = 10
+  Width = 545
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Notify log history
+  Height = 70
+  Left = 32
+  Top = 49
+  Width = 472
+  Taborder = 0
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = Log Owner history
+  Height = 70
+  Left = 31
+  Top = 148
+  Width = 472
+  Taborder = 1
+
+Name = Label1
+  Type = Label
+  Color = 16744576
+  Font = Comic Sans MS
+  Height = 23
+  Left = 200
+  Size = 12
+  Style = bold
+  Top = 8
+  Width = 128
+  Caption = File Maintenance
+
+Name = FmExecute
+  Type = Button
+  Height = 25
+  Left = 79
+  Top = 260
+  Width = 111
+  Taborder = 2
+  Caption = Execute
+
+Name = FmExit
+  Type = Button
+  Height = 25
+  Left = 341
+  Top = 260
+  Width = 99
+  Taborder = 3
+  Caption = Exit
+
+Name = Label2
+  Type = Label
+  Color = 8421631
+  Container = Groupbox1
+  Height = 13
+  Left = 15
+  Style = bold
+  Top = 32
+  Width = 98
+  Caption = NotifyHistory.Gpx
+
+Name = Label5
+  Type = Label
+  Color = 8421631
+  Container = Groupbox2
+  Height = 13
+  Left = 15
+  Style = bold
+  Top = 32
+  Width = 86
+  Caption = LogHistory.Gpx
+
+Name = NhfCnt
+  Type = Label
+  Color = 16711680
+  Container = Groupbox1
+  Height = 13
+  Left = 140
+  Top = 32
+  Width = 60
+
+Name = LhfCnt
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 140
+  Top = 32
+  Width = 38
+
+Name = RenNotifyHistory
+  Type = Radiobutton
+  Container = Groupbox1
+  Fontcolor = 32896
+  Height = 17
+  Left = 235
+  Top = 30
+  Width = 81
+  Taborder = 0
+  Caption = Rename
+
+Name = DelNotifyHistory
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 350
+  Top = 30
+  Width = 86
+  Taborder = 1
+  Caption = Delete
+
+Name = RenLogHist
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 17
+  Left = 235
+  Top = 30
+  Width = 73
+  Taborder = 0
+  Caption = Rename
+
+Name = DelLogHistory
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 17
+  Left = 350
+  Top = 30
+  Width = 74
+  Taborder = 1
+  Caption = Delete
+
+<enddata>
+
+

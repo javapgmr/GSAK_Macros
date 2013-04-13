@@ -1,0 +1,788 @@
+#***********************
+# MacDescription = Generate a report for entogeek's "Icon +/x" Challenge Caches
+# MacFileName = Iconx+Challenge.gsk
+# MacAuthor = ky.m.guy
+# MacVersion=1.2
+# MacURL=http://gsak.net/board/index.php?act=ST&f=37&t=16749
+#***********************
+#
+#
+#Changes:
+#1.01 > 1.2:  Added "Any Type" option to calculate grid for any cache type (does not apply to entogeek's caches)
+
+
+GOSUB name=Declare
+GOSUB name=RESETColour
+
+
+
+
+## FORM DISPLAY
+WHILE TRUE 
+  $FormExit = form($form,"")
+  BEGINCASE
+    CASE $FormExit = "TypeBox"
+      GOSUB name="RUN"
+      BREAK
+    CASE $FormExit = "ShowAll"
+    	GOSUB name="ShowAll"
+    	BREAK
+    CASE $FormExit = "SystemExit"
+      RETURN
+   ENDCASE 
+ENDWHILE 
+
+
+
+
+
+
+BEGINSUB name=RUN
+	
+BEGINCASE
+CASE $TypeBox="Traditional"
+	$type="T"
+	$typeimage="http://www.geocaching.com/images/WptTypes/2.gif"
+CASE $TypeBox="Multi"
+	$type="M"
+	$typeimage="http://www.geocaching.com/images/WptTypes/3.gif"
+CASE $TypeBox="Mystery/Unknown"
+	$type="U"
+	$typeimage="http://www.geocaching.com/images/WptTypes/8.gif"
+CASE $TypeBox="Earthcache"
+	$type="R"
+	$typeimage="http://www.geocaching.com/images/WptTypes/earthcache.gif"
+CASE $TypeBox="Virtual"
+	$type="V"
+	$typeimage="http://www.geocaching.com/images/WptTypes/4.gif"
+CASE $TypeBox="Generate chart for all 5 cache types"
+	GOSUB name="ShowAll"
+ENDCASE
+
+IF $TypeBox="Any Type"
+	$typeimage="http://www.law.columbia.edu/ipimages/Information_technology/images/checkmark.png"
+	$type="All Types"
+	GOSUB name="CalculateAnyTypes"
+ELSE	
+	GOSUB name=Calculate
+ENDIF
+
+$tabledata = "<p align='center'>&nbsp; <h2 align='center' class='NoSpacing' style='font-size: 20px; font-weight: bold; margin: 0px; padding-left: 0px; padding-right: 0px; padding-top: 0px; padding-bottom: 0.25em'><a target='_blank' title='About Cache Types' style='color: rgb(0, 51, 153); ' href='http://coord.info/GC28JMK'><span class='Apple-style-span' style='color: rgb(66, 66, 66); font-family: Verdana, sans-serif; font-size: 13px; line-height: 16px; text-align: left; -webkit-border-horizontal-spacing: 5px; -webkit-border-vertical-spacing: 5px; '><span class='Apple-style-span' style='border-collapse: separate; color: rgb(0, 0, 0); font-family: 'Times New Roman'; font-style: normal; font-variant: normal; font-weight: normal; letter-spacing: normal; line-height: normal; orphans: 2; text-align: -webkit-auto; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-border-horizontal-spacing: 0px; -webkit-border-vertical-spacing: 0px; -webkit-text-decorations-in-effect: none; -webkit-text-size-adjust: auto; -webkit-text-stroke-width: 0px; font-size: medium; '><img src='http://www.geocaching.com/images/WptTypes/8.gif' alt='Unknown Cache' width='32' height='32' style='border-top-width: 0px; border-right-width: 0px; border-bottom-width: 0px; border-left-width: 0px; border-style: initial; border-color: initial; '></span></span></a><span style='border-collapse: separate; color: rgb(0, 0, 0); font-family: Times New Roman; font-style: normal; font-variant: normal; letter-spacing: normal; line-height: normal; orphans: 2; text-align: -webkit-auto; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-border-horizontal-spacing: 0px; -webkit-border-vertical-spacing: 0px; -webkit-text-decorations-in-effect: none; -webkit-text-size-adjust: auto; -webkit-text-stroke-width: 0px; font-size: medium'><span style='color: rgb(0, 0, 0); font-family: Times New Roman; font-size: medium; line-height: normal; text-align: -webkit-auto; -webkit-border-horizontal-spacing: 0px; -webkit-border-vertical-spacing: 0px; border-collapse: separate; font-style: normal; font-variant: normal; letter-spacing: normal; orphans: 2; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-decorations-in-effect: none; -webkit-text-size-adjust: auto; -webkit-text-stroke-width: 0px' id='ctl00_ContentBody_CacheName'><a target='_blank' title='About Cache Types' style='font-family: Verdana; font-size: medium; line-height: normal; text-align: -webkit-auto; -webkit-border-horizontal-spacing: 0px; -webkit-border-vertical-spacing: 0px; border-collapse: separate; font-style: normal; font-variant: normal; letter-spacing: normal; orphans: 2; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-decorations-in-effect: none; -webkit-text-size-adjust: auto; -webkit-text-stroke-width: 0px' href='http://coord.info/GC2EK9J'>&quot;Icon +&quot; Challenge Cache</a></span></span><font face='Verdana'><span style='border-collapse: separate; color: rgb(0, 0, 0); font-style: normal; font-variant: normal; letter-spacing: normal; line-height: normal; orphans: 2; text-align: -webkit-auto; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-border-horizontal-spacing: 0px; -webkit-border-vertical-spacing: 0px; -webkit-text-decorations-in-effect: none; -webkit-text-size-adjust: auto; -webkit-text-stroke-width: 0px; font-size: medium'><span style='color: #0000FF; font-size: medium; line-height: normal; text-align: -webkit-auto; -webkit-border-horizontal-spacing: 0px; -webkit-border-vertical-spacing: 0px; border-collapse: separate; font-style: normal; font-variant: normal; letter-spacing: normal; orphans: 2; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-decorations-in-effect: none; -webkit-text-size-adjust: auto; -webkit-text-stroke-width: 0px' id='ctl00_ContentBody_CacheName'> </span></span></font><span class='Apple-style-span' style='color: rgb(66, 66, 66); font-family: Verdana, sans-serif; font-size: 13px; line-height: 16px; text-align: left; -webkit-border-horizontal-spacing: 5px; -webkit-border-vertical-spacing: 5px; '><span class='Apple-style-span' style='border-collapse: separate; color: rgb(0, 0, 0); font-family: 'Times New Roman'; font-style: normal; font-variant: normal; font-weight: normal; letter-spacing: normal; line-height: normal; orphans: 2; text-align: -webkit-auto; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-border-horizontal-spacing: 0px; -webkit-border-vertical-spacing: 0px; -webkit-text-decorations-in-effect: none; -webkit-text-size-adjust: auto; -webkit-text-stroke-width: 0px; font-size: medium; '><a target='_blank' title='About Cache Types' style='color: rgb(0, 51, 153); ' href='http://coord.info/GC28JMK'><img src='http://www.geocaching.com/images/WptTypes/8.gif' alt='Unknown Cache' width='32' height='32' style='border-top-width: 0px; border-right-width: 0px; border-bottom-width: 0px; border-left-width: 0px; border-style: initial; border-color: initial; '></a></span></span></h2><p align='center' class='NoSpacing' style='font-size: 20px; font-weight: bold; margin: 0px; padding-left: 0px; padding-right: 0px; padding-top: 0px; padding-bottom: 0.25em'>&nbsp;</p><p align='center'><table border='1' width='100'><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>D/T</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>1</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>1.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>2</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>2.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>3</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>3.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>4</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>4.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>5</p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>1</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color32'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data31'>$data31</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>1.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color315'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data315'>$data315</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>2</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color32'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data32'>$data32</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>2.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color325'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data325'>$data325</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>3</p></td><td width='1000' align='center' bgcolor='$color13'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data13'>$data13</a></p></td><td width='1000' align='center' bgcolor='$color153'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data153'>$data153</a></p></td><td width='1000' align='center' bgcolor='$color23'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data23'>$data23</a></p></td><td width='1000' align='center' bgcolor='$color253'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data253'>$data253</a></p></td><td width='1000' align='center' bgcolor='$color33'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data33'>$data33</a></p></td><td width='1000' align='center' bgcolor='$color353'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data353'>$data353</a></p></td><td width='1000' align='center' bgcolor='$color43'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data43'>$data43</a></p></td><td width='1000' align='center' bgcolor='$color453'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data453'>$data453</a></p></td><td width='1000' align='center' bgcolor='$color53'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data53'>$data53</a></p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>3.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color335'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data335'>$data335</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>4</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color34'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data34'>$data34</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>4.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color345'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data345'>$data345</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color35'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data35'>$data35</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td></tr></table></p><p style='margin-top: 0; margin-bottom: 0' align='center'>&nbsp;</p><p style='margin-top: 0; margin-bottom: 0' align='center'>&nbsp;</p><span class='Apple-style-span' style='border-collapse: separate; color: rgb(0, 0, 0); font-family: 'Times New Roman'; font-style: normal; font-variant: normal; font-weight: normal; letter-spacing: normal; line-height: normal; orphans: 2; text-align: -webkit-auto; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-border-horizontal-spacing: 0px; -webkit-border-vertical-spacing: 0px; -webkit-text-decorations-in-effect: none; -webkit-text-size-adjust: auto; -webkit-text-stroke-width: 0px; font-size: medium; '><span class='Apple-style-span' style='color: rgb(66, 66, 66); font-family: Verdana, sans-serif; font-size: 13px; line-height: 16px; text-align: left; -webkit-border-horizontal-spacing: 5px; -webkit-border-vertical-spacing: 5px; '><h2 class='NoSpacing' style='font-size: 20px; font-weight: bold; text-align: center; margin: 0px; padding-left: 0px; padding-right: 0px; padding-top: 0px; padding-bottom: 0.25em'><a target='_blank' title='About Cache Types' style='color: rgb(0, 51, 153); ' href='http://coord.info/GC28JMK'><img src='http://www.geocaching.com/images/WptTypes/8.gif' alt='Unknown Cache' width='32' height='32' style='border-top-width: 0px; border-right-width: 0px; border-bottom-width: 0px; border-left-width: 0px; border-style: initial; border-color: initial; '></a><a target='_blank' title='About Cache Types' href='http://coord.info/GC28JMK'><span id='ctl00_ContentBody_CacheName'>&quot;Icon x&quot; Challenge Cache</span></a></span></span><span class='Apple-style-span' style='font-family: Verdana, sans-serif; font-size: 13px; line-height: 16px; text-align: left; -webkit-border-horizontal-spacing: 5px; -webkit-border-vertical-spacing: 5px'><font color='#0000FF'><span class='Apple-style-span' style='border-collapse: separate; font-family: 'Times New Roman'; font-style: normal; font-variant: normal; font-weight: normal; letter-spacing: normal; line-height: normal; orphans: 2; text-align: -webkit-auto; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-border-horizontal-spacing: 0px; -webkit-border-vertical-spacing: 0px; -webkit-text-decorations-in-effect: none; -webkit-text-size-adjust: auto; -webkit-text-stroke-width: 0px; font-size: medium'><span id='ctl00_ContentBody_CacheName'> </span></span></font></span><span class='Apple-style-span' style='color: rgb(66, 66, 66); font-family: Verdana, sans-serif; font-size: 13px; line-height: 16px; text-align: left; -webkit-border-horizontal-spacing: 5px; -webkit-border-vertical-spacing: 5px; '><span class='Apple-style-span' style='border-collapse: separate; color: rgb(0, 0, 0); font-family: 'Times New Roman'; font-style: normal; font-variant: normal; font-weight: normal; letter-spacing: normal; line-height: normal; orphans: 2; text-align: -webkit-auto; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-border-horizontal-spacing: 0px; -webkit-border-vertical-spacing: 0px; -webkit-text-decorations-in-effect: none; -webkit-text-size-adjust: auto; -webkit-text-stroke-width: 0px; font-size: medium; '><a target='_blank' title='About Cache Types' style='color: rgb(0, 51, 153); ' href='http://coord.info/GC28JMK'><img src='http://www.geocaching.com/images/WptTypes/8.gif' alt='Unknown Cache' width='32' height='32' style='border-top-width: 0px; border-right-width: 0px; border-bottom-width: 0px; border-left-width: 0px; border-style: initial; border-color: initial; '></a></h2></span></span><p style='margin-top: 0; margin-bottom: 0' align='center'>&nbsp;</p><p align='center'><table border='1' width='100'><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>D/T</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>1</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>1.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>2</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>2.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>3</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>3.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>4</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>4.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>5</p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>1</p></td><td width='1000' align='center' bgcolor='$color11'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data11'>$data11</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color51'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data51'>$data51</a></p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>1.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color1515'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data1515'>$data1515</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color4515'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data4515'>$data4515</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>2</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color22'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data22'>$data22</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color42'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data42'>$data42</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>2.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color2525'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data2525'>$data2525</a></p></td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td><td width='1000' align='center' bgcolor='$color3525'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data3525'>$data3525</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>3</p></td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td><td width='1000' align='center' bgcolor='$color33'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='32'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data33'>$data33</a></p></td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>3.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color2535'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data2535'>$data2535</a></p></td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td><td width='1000' align='center' bgcolor='$color3535'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data3535'>$data3535</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>4</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color24'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data24'>$data24</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color44'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data44'>$data44</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>4.5</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color1545'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data1545'>$data1545</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color4545'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data4545'>$data4545</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td></tr><tr><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>5</p></td><td width='1000' align='center' bgcolor='$color15'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data15'>$data15</a></p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'>&nbsp;</td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color'><p style='margin-top: 0; margin-bottom: 0'>&nbsp;</p></td><td width='1000' align='center' bgcolor='$color55'><p style='margin-top: 0; margin-bottom: 0'><img border='0' src='$typeimage' width='32' height='31'></p><p style='margin-top: 0; margin-bottom: 0'><a href='http://coord.info/$data55'>$data55</a></p></td></tr></table></p></p>"
+
+
+$file = $_AppData + "\macros\Icon+x($type) Output.html"
+$putfile = PutFile("$file","$tabledata")
+DELAY ms=1000
+FILEOPEN file=$file 
+
+ENDSUB
+
+
+
+
+
+
+
+BEGINSUB name=Calculate
+	$data31 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='1' and found order by foundbymedate limit 1")
+IF $data31=""
+	$color31="RED"
+	$data31=""
+ENDIF
+$data315 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='1.5' and found order by foundbymedate limit 1")
+IF $data315=""
+	$color315="RED"
+	$data315=""
+ENDIF
+$data32 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='2' and found order by foundbymedate limit 1")
+IF $data32=""
+	$color32="RED"
+	$data32=""
+ENDIF
+$data325 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='2.5' and found order by foundbymedate limit 1")
+IF $data325=""
+	$color325="RED"
+	$data325=""
+ENDIF
+$data33 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data33=""
+	$color33="RED"
+	$data33=""
+ENDIF
+$data335 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='3.5' and found order by foundbymedate limit 1")
+IF $data335=""
+	$color335="RED"
+	$data335=""
+ENDIF
+$data34 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='4' and found order by foundbymedate limit 1")
+IF $data34=""
+	$color34="RED"
+	$data34=""
+ENDIF
+$data345 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='4.5' and found order by foundbymedate limit 1")
+IF $data345=""
+	$color345="RED"
+	$data345=""
+ENDIF
+$data35 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='5' and found order by foundbymedate limit 1")
+IF $data35=""
+	$color35="RED"
+	$data35=""
+ENDIF
+$data13 = Sqlite("sql","Select code from caches where difficulty='1' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data13=""
+	$color13="RED"
+	$data13=""
+ENDIF
+$data153 = Sqlite("sql","Select code from caches where difficulty='1.5' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data153=""
+	$color153="RED"
+	$data153=""
+ENDIF
+$data23 = Sqlite("sql","Select code from caches where difficulty='2' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data23=""
+	$color23="RED"
+	$data23=""
+ENDIF
+$data253 = Sqlite("sql","Select code from caches where difficulty='2.5' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data253=""
+	$color253="RED"
+	$data253=""
+ENDIF
+$data353 = Sqlite("sql","Select code from caches where difficulty='3.5' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data353=""
+	$color353="RED"
+	$data353=""
+ENDIF
+$data43 = Sqlite("sql","Select code from caches where difficulty='4' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data43=""
+	$color43="RED"
+	$data43=""
+ENDIF
+$data453 = Sqlite("sql","Select code from caches where difficulty='4.5' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data453=""
+	$color453="RED"
+	$data453=""
+ENDIF
+$data53 = Sqlite("sql","Select code from caches where difficulty='5' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data53=""
+	$color53="RED"
+	$data53=""
+ENDIF
+$data31 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='1' and found order by foundbymedate limit 1")
+IF $data31=""
+	$color31="RED"
+	$data31=""
+ENDIF
+$data315 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='1.5' and found order by foundbymedate limit 1")
+IF $data315=""
+	$color315="RED"
+	$data315=""
+ENDIF
+$data32 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='2' and found order by foundbymedate limit 1")
+IF $data32=""
+	$color32="RED"
+	$data32=""
+ENDIF
+$data325 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='2.5' and found order by foundbymedate limit 1")
+IF $data325=""
+	$color325="RED"
+	$data325=""
+ENDIF
+$data33 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data33=""
+	$color33="RED"
+	$data33=""
+ENDIF
+$data335 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='3.5' and found order by foundbymedate limit 1")
+IF $data335=""
+	$color335="RED"
+	$data335=""
+ENDIF
+$data34 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='4' and found order by foundbymedate limit 1")
+IF $data34=""
+	$color34="RED"
+	$data34=""
+ENDIF
+$data345 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='4.5' and found order by foundbymedate limit 1")
+IF $data345=""
+	$color345="RED"
+	$data345=""
+ENDIF
+$data35 = Sqlite("sql","Select code from caches where difficulty='3' AND CacheType='$type' AND terrain='5' and found order by foundbymedate limit 1")
+IF $data35=""
+	$color35="RED"
+	$data35=""
+ENDIF
+$data13 = Sqlite("sql","Select code from caches where difficulty='1' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data13=""
+	$color13="RED"
+	$data13=""
+ENDIF
+$data153 = Sqlite("sql","Select code from caches where difficulty='1.5' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data153=""
+	$color153="RED"
+	$data153=""
+ENDIF
+$data23 = Sqlite("sql","Select code from caches where difficulty='2' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data23=""
+	$color23="RED"
+	$data23=""
+ENDIF
+$data253 = Sqlite("sql","Select code from caches where difficulty='2.5' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data253=""
+	$color253="RED"
+	$data253=""
+ENDIF
+$data353 = Sqlite("sql","Select code from caches where difficulty='3.5' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data353=""
+	$color353="RED"
+	$data353=""
+ENDIF
+$data43 = Sqlite("sql","Select code from caches where difficulty='4' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data43=""
+	$color43="RED"
+	$data43=""
+ENDIF
+$data453 = Sqlite("sql","Select code from caches where difficulty='4.5' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data453=""
+	$color453="RED"
+	$data453=""
+ENDIF
+$data53 = Sqlite("sql","Select code from caches where difficulty='5' AND CacheType='$type' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data53=""
+	$color53="RED"
+	$data53=""
+ENDIF
+$data11 = Sqlite("sql","Select code from caches where difficulty='1' AND CacheType='$type' AND terrain='1' and found order by foundbymedate limit 1")
+IF $data11=""
+	$color11="RED"
+	$data11=""
+ENDIF
+$data1515 = Sqlite("sql","Select code from caches where difficulty='1.5' AND CacheType='$type' AND terrain='1.5' and found order by foundbymedate limit 1")
+IF $data1515=""
+	$color1515="RED"
+	$data1515=""
+ENDIF
+$data22 = Sqlite("sql","Select code from caches where difficulty='2' AND CacheType='$type' AND terrain='2' and found order by foundbymedate limit 1")
+IF $data22=""
+	$color22="RED"
+	$data22=""
+ENDIF
+$data2525 = Sqlite("sql","Select code from caches where difficulty='2.5' AND CacheType='$type' AND terrain='2.5' and found order by foundbymedate limit 1")
+IF $data2525=""
+	$color2525="RED"
+	$data2525=""
+ENDIF
+$data3535 = Sqlite("sql","Select code from caches where difficulty='3.5' AND CacheType='$type' AND terrain='3.5' and found order by foundbymedate limit 1")
+IF $data3535=""
+	$color3535="RED"
+	$data3535=""
+ENDIF
+$data44 = Sqlite("sql","Select code from caches where difficulty='4' AND CacheType='$type' AND terrain='4' and found order by foundbymedate limit 1")
+IF $data44=""
+	$color44="RED"
+	$data44=""
+ENDIF
+$data4545 = Sqlite("sql","Select code from caches where difficulty='4.5' AND CacheType='$type' AND terrain='4.5' and found order by foundbymedate limit 1")
+IF $data4545=""
+	$color4545="RED"
+	$data4545=""
+ENDIF
+$data55 = Sqlite("sql","Select code from caches where difficulty='5' AND CacheType='$type' AND terrain='5' and found order by foundbymedate limit 1")
+IF $data55=""
+	$color55="RED"
+	$data55=""
+ENDIF
+$data51 = Sqlite("sql","Select code from caches where difficulty='5' AND CacheType='$type' AND terrain='1' and found order by foundbymedate limit 1")
+IF $data51=""
+	$color51="RED"
+	$data51=""
+ENDIF
+$data4515 = Sqlite("sql","Select code from caches where difficulty='4.5' AND CacheType='$type' AND terrain='1.5' and found order by foundbymedate limit 1")
+IF $data4515=""
+	$color4515="RED"
+	$data4515=""
+ENDIF
+$data42 = Sqlite("sql","Select code from caches where difficulty='4' AND CacheType='$type' AND terrain='2' and found order by foundbymedate limit 1")
+IF $data42=""
+	$color42="RED"
+	$data42=""
+ENDIF
+$data3525 = Sqlite("sql","Select code from caches where difficulty='3.5' AND CacheType='$type' AND terrain='2.5' and found order by foundbymedate limit 1")
+IF $data3525=""
+	$color3525="RED"
+	$data3525=""
+ENDIF
+$data2535 = Sqlite("sql","Select code from caches where difficulty='2.5' AND CacheType='$type' AND terrain='3.5' and found order by foundbymedate limit 1")
+IF $data2535=""
+	$color2535="RED"
+	$data2535=""
+ENDIF
+$data24 = Sqlite("sql","Select code from caches where difficulty='2' AND CacheType='$type' AND terrain='4' and found order by foundbymedate limit 1")
+IF $data24=""
+	$color24="RED"
+	$data24=""
+ENDIF
+$data1545 = Sqlite("sql","Select code from caches where difficulty='1.5' AND CacheType='$type' AND terrain='4.5' and found order by foundbymedate limit 1")
+IF $data1545=""
+	$color1545="RED"
+	$data1545=""
+ENDIF
+$data15 = Sqlite("sql","Select code from caches where difficulty='1' AND CacheType='$type' AND terrain='5' and found order by foundbymedate limit 1")
+IF $data15=""
+	$color15="RED"
+	$data15=""
+ENDIF
+
+
+ENDSUB
+
+
+
+BEGINSUB name=ShowAll
+$TypeBox="Traditional"
+GOSUB name="RUN"
+GOSUB name=RESETColour
+$TypeBox="Multi"
+GOSUB name="RUN"
+GOSUB name=RESETColour
+$TypeBox="Mystery/Unknown"
+GOSUB name="RUN"
+GOSUB name=RESETColour
+$TypeBox="Earthcache"
+GOSUB name="RUN"
+GOSUB name=RESETColour
+$TypeBox="Virtual"
+GOSUB name="RUN"
+RETURN
+ENDSUB
+
+
+
+
+
+BEGINSUB name=CalculateAnyTypes
+	$data31 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='1' and found order by foundbymedate limit 1")
+IF $data31=""
+	$color31="RED"
+	$data31=""
+ENDIF
+$data315 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='1.5' and found order by foundbymedate limit 1")
+IF $data315=""
+	$color315="RED"
+	$data315=""
+ENDIF
+$data32 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='2' and found order by foundbymedate limit 1")
+IF $data32=""
+	$color32="RED"
+	$data32=""
+ENDIF
+$data325 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='2.5' and found order by foundbymedate limit 1")
+IF $data325=""
+	$color325="RED"
+	$data325=""
+ENDIF
+$data33 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data33=""
+	$color33="RED"
+	$data33=""
+ENDIF
+$data335 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='3.5' and found order by foundbymedate limit 1")
+IF $data335=""
+	$color335="RED"
+	$data335=""
+ENDIF
+$data34 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='4' and found order by foundbymedate limit 1")
+IF $data34=""
+	$color34="RED"
+	$data34=""
+ENDIF
+$data345 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='4.5' and found order by foundbymedate limit 1")
+IF $data345=""
+	$color345="RED"
+	$data345=""
+ENDIF
+$data35 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='5' and found order by foundbymedate limit 1")
+IF $data35=""
+	$color35="RED"
+	$data35=""
+ENDIF
+$data13 = Sqlite("sql","Select code from caches where difficulty='1' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data13=""
+	$color13="RED"
+	$data13=""
+ENDIF
+$data153 = Sqlite("sql","Select code from caches where difficulty='1.5' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data153=""
+	$color153="RED"
+	$data153=""
+ENDIF
+$data23 = Sqlite("sql","Select code from caches where difficulty='2' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data23=""
+	$color23="RED"
+	$data23=""
+ENDIF
+$data253 = Sqlite("sql","Select code from caches where difficulty='2.5' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data253=""
+	$color253="RED"
+	$data253=""
+ENDIF
+$data353 = Sqlite("sql","Select code from caches where difficulty='3.5' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data353=""
+	$color353="RED"
+	$data353=""
+ENDIF
+$data43 = Sqlite("sql","Select code from caches where difficulty='4' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data43=""
+	$color43="RED"
+	$data43=""
+ENDIF
+$data453 = Sqlite("sql","Select code from caches where difficulty='4.5' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data453=""
+	$color453="RED"
+	$data453=""
+ENDIF
+$data53 = Sqlite("sql","Select code from caches where difficulty='5' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data53=""
+	$color53="RED"
+	$data53=""
+ENDIF
+$data31 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='1' and found order by foundbymedate limit 1")
+IF $data31=""
+	$color31="RED"
+	$data31=""
+ENDIF
+$data315 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='1.5' and found order by foundbymedate limit 1")
+IF $data315=""
+	$color315="RED"
+	$data315=""
+ENDIF
+$data32 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='2' and found order by foundbymedate limit 1")
+IF $data32=""
+	$color32="RED"
+	$data32=""
+ENDIF
+$data325 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='2.5' and found order by foundbymedate limit 1")
+IF $data325=""
+	$color325="RED"
+	$data325=""
+ENDIF
+$data33 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data33=""
+	$color33="RED"
+	$data33=""
+ENDIF
+$data335 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='3.5' and found order by foundbymedate limit 1")
+IF $data335=""
+	$color335="RED"
+	$data335=""
+ENDIF
+$data34 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='4' and found order by foundbymedate limit 1")
+IF $data34=""
+	$color34="RED"
+	$data34=""
+ENDIF
+$data345 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='4.5' and found order by foundbymedate limit 1")
+IF $data345=""
+	$color345="RED"
+	$data345=""
+ENDIF
+$data35 = Sqlite("sql","Select code from caches where difficulty='3' AND terrain='5' and found order by foundbymedate limit 1")
+IF $data35=""
+	$color35="RED"
+	$data35=""
+ENDIF
+$data13 = Sqlite("sql","Select code from caches where difficulty='1' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data13=""
+	$color13="RED"
+	$data13=""
+ENDIF
+$data153 = Sqlite("sql","Select code from caches where difficulty='1.5' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data153=""
+	$color153="RED"
+	$data153=""
+ENDIF
+$data23 = Sqlite("sql","Select code from caches where difficulty='2' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data23=""
+	$color23="RED"
+	$data23=""
+ENDIF
+$data253 = Sqlite("sql","Select code from caches where difficulty='2.5' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data253=""
+	$color253="RED"
+	$data253=""
+ENDIF
+$data353 = Sqlite("sql","Select code from caches where difficulty='3.5' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data353=""
+	$color353="RED"
+	$data353=""
+ENDIF
+$data43 = Sqlite("sql","Select code from caches where difficulty='4' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data43=""
+	$color43="RED"
+	$data43=""
+ENDIF
+$data453 = Sqlite("sql","Select code from caches where difficulty='4.5' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data453=""
+	$color453="RED"
+	$data453=""
+ENDIF
+$data53 = Sqlite("sql","Select code from caches where difficulty='5' AND terrain='3' and found order by foundbymedate limit 1")
+IF $data53=""
+	$color53="RED"
+	$data53=""
+ENDIF
+$data11 = Sqlite("sql","Select code from caches where difficulty='1' AND terrain='1' and found order by foundbymedate limit 1")
+IF $data11=""
+	$color11="RED"
+	$data11=""
+ENDIF
+$data1515 = Sqlite("sql","Select code from caches where difficulty='1.5' AND terrain='1.5' and found order by foundbymedate limit 1")
+IF $data1515=""
+	$color1515="RED"
+	$data1515=""
+ENDIF
+$data22 = Sqlite("sql","Select code from caches where difficulty='2' AND terrain='2' and found order by foundbymedate limit 1")
+IF $data22=""
+	$color22="RED"
+	$data22=""
+ENDIF
+$data2525 = Sqlite("sql","Select code from caches where difficulty='2.5' AND terrain='2.5' and found order by foundbymedate limit 1")
+IF $data2525=""
+	$color2525="RED"
+	$data2525=""
+ENDIF
+$data3535 = Sqlite("sql","Select code from caches where difficulty='3.5' AND terrain='3.5' and found order by foundbymedate limit 1")
+IF $data3535=""
+	$color3535="RED"
+	$data3535=""
+ENDIF
+$data44 = Sqlite("sql","Select code from caches where difficulty='4' AND terrain='4' and found order by foundbymedate limit 1")
+IF $data44=""
+	$color44="RED"
+	$data44=""
+ENDIF
+$data4545 = Sqlite("sql","Select code from caches where difficulty='4.5' AND terrain='4.5' and found order by foundbymedate limit 1")
+IF $data4545=""
+	$color4545="RED"
+	$data4545=""
+ENDIF
+$data55 = Sqlite("sql","Select code from caches where difficulty='5' AND terrain='5' and found order by foundbymedate limit 1")
+IF $data55=""
+	$color55="RED"
+	$data55=""
+ENDIF
+$data51 = Sqlite("sql","Select code from caches where difficulty='5' AND terrain='1' and found order by foundbymedate limit 1")
+IF $data51=""
+	$color51="RED"
+	$data51=""
+ENDIF
+$data4515 = Sqlite("sql","Select code from caches where difficulty='4.5' AND terrain='1.5' and found order by foundbymedate limit 1")
+IF $data4515=""
+	$color4515="RED"
+	$data4515=""
+ENDIF
+$data42 = Sqlite("sql","Select code from caches where difficulty='4' AND terrain='2' and found order by foundbymedate limit 1")
+IF $data42=""
+	$color42="RED"
+	$data42=""
+ENDIF
+$data3525 = Sqlite("sql","Select code from caches where difficulty='3.5' AND terrain='2.5' and found order by foundbymedate limit 1")
+IF $data3525=""
+	$color3525="RED"
+	$data3525=""
+ENDIF
+$data2535 = Sqlite("sql","Select code from caches where difficulty='2.5' AND terrain='3.5' and found order by foundbymedate limit 1")
+IF $data2535=""
+	$color2535="RED"
+	$data2535=""
+ENDIF
+$data24 = Sqlite("sql","Select code from caches where difficulty='2' AND terrain='4' and found order by foundbymedate limit 1")
+IF $data24=""
+	$color24="RED"
+	$data24=""
+ENDIF
+$data1545 = Sqlite("sql","Select code from caches where difficulty='1.5' AND terrain='4.5' and found order by foundbymedate limit 1")
+IF $data1545=""
+	$color1545="RED"
+	$data1545=""
+ENDIF
+$data15 = Sqlite("sql","Select code from caches where difficulty='1' AND terrain='5' and found order by foundbymedate limit 1")
+IF $data15=""
+	$color15="RED"
+	$data15=""
+ENDIF
+
+
+ENDSUB
+
+
+
+
+
+
+
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sun 10-Oct-2010 20:16:10
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 152
+  Width = 500
+
+Name = Label1
+  Type = Label
+  Font = Arial Black
+  Height = 33
+  Left = 24
+  Size = 18
+  Top = 8
+  Width = 434
+  Caption = Entogeek Icon Challenge Caches
+
+Name = TypeBox
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 168
+  Top = 64
+  Values = Select Type;Any Type;Traditional;Multi;Mystery/Unknown;Earthcache;Virtual;Generate chart for all 5 cache types
+  Width = 257
+  Taborder = 8
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 48
+  Top = 66
+  Width = 111
+  Caption = Cache Type to look for:
+
+<enddata>
+
+
+BEGINSUB name=DECLARE
+	OPTION Explicit=Yes
+
+DECLARE var=$color type=String
+DECLARE var=$color31 type=String
+DECLARE var=$color315 type=String
+DECLARE var=$color32 type=String
+DECLARE var=$color325 type=String
+DECLARE var=$color33 type=String
+DECLARE var=$color335 type=String
+DECLARE var=$color34 type=String
+DECLARE var=$color345 type=String
+DECLARE var=$color35 type=String
+DECLARE var=$color13 type=String
+DECLARE var=$color153 type=String
+DECLARE var=$color23 type=String
+DECLARE var=$color253 type=String
+DECLARE var=$color353 type=String
+DECLARE var=$color43 type=String
+DECLARE var=$color453 type=String
+DECLARE var=$color53 type=String
+DECLARE var=$type type=string
+DECLARE var=$FormExit type=string
+DECLARE var=$data31 type=String
+DECLARE var=$data315 type=String
+DECLARE var=$data32 type=String
+DECLARE var=$data325 type=String
+DECLARE var=$data33 type=String
+DECLARE var=$data335 type=String
+DECLARE var=$data34 type=String
+DECLARE var=$data345 type=String
+DECLARE var=$data35 type=String
+DECLARE var=$data13 type=String
+DECLARE var=$data153 type=String
+DECLARE var=$data23 type=String
+DECLARE var=$data253 type=String
+DECLARE var=$data353 type=String
+DECLARE var=$data43 type=String
+DECLARE var=$data453 type=String
+DECLARE var=$data53 type=String
+DECLARE var=$data11 type=String
+DECLARE var=$data1515 type=String
+DECLARE var=$data22 type=String
+DECLARE var=$data2525 type=String
+DECLARE var=$data3535 type=String
+DECLARE var=$data44 type=String
+DECLARE var=$data4545 type=String
+DECLARE var=$data55 type=String
+DECLARE var=$data51 type=String
+DECLARE var=$data4515 type=String
+DECLARE var=$data42 type=String
+DECLARE var=$data3525 type=String
+DECLARE var=$data2535 type=String
+DECLARE var=$data24 type=String
+DECLARE var=$data1545 type=String
+DECLARE var=$data15 type=String
+DECLARE var=$color11 type=String
+DECLARE var=$color1515 type=String
+DECLARE var=$color22 type=String
+DECLARE var=$color2525 type=String
+DECLARE var=$color3535 type=String
+DECLARE var=$color44 type=String
+DECLARE var=$color4545 type=String
+DECLARE var=$color55 type=String
+DECLARE var=$color51 type=String
+DECLARE var=$color4515 type=String
+DECLARE var=$color42 type=String
+DECLARE var=$color3525 type=String
+DECLARE var=$color2535 type=String
+DECLARE var=$color24 type=String
+DECLARE var=$color1545 type=String
+DECLARE var=$color15 type=String
+
+OPTION Explicit=No
+
+
+
+
+
+
+ENDSUB
+
+BEGINSUB name=RESETColour
+	$color = "#FFFFFF"
+$color31 = "#CCFF99"
+$color315="#CCFF99"
+$color32="#CCFF99"
+$color325="#CCFF99"
+$color33="#CCFF99"
+$color335="#CCFF99"
+$color34="#CCFF99"
+$color345="#CCFF99"
+$color35="#CCFF99"
+$color13="#CCFF99"
+$color153="#CCFF99"
+$color23="#CCFF99"
+$color253="#CCFF99"
+$color353="#CCFF99"
+$color43="#CCFF99"
+$color453="#CCFF99"
+$color53="#CCFF99"
+
+
+
+$color11 ="#CCFF99"
+$color1515 ="#CCFF99"
+$color22 ="#CCFF99"
+$color2525 ="#CCFF99"
+$color3535 ="#CCFF99"
+$color44 ="#CCFF99"
+$color4545 ="#CCFF99"
+$color55 ="#CCFF99"
+$color51 ="#CCFF99"
+$color4515 ="#CCFF99"
+$color42 ="#CCFF99"
+$color3525 ="#CCFF99"
+$color2535 ="#CCFF99"
+$color24 ="#CCFF99"
+$color1545 ="#CCFF99"
+$color15 ="#CCFF99"
+ENDSUB

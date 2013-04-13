@@ -1,0 +1,42 @@
+#*******************************************
+# MacDescription = Update (add if not exist) custom field "FavoriteByMe" indicating caches I awarded a favorite point
+# MacFileName = FavoriteByMe.gsk
+# MacAuthor = The CEO
+# MacVersion=1.02
+# MacUrl=
+#*******************************************
+
+UpdateCheck Frequency=10
+VERCHECK Version=8.2.1.24 (please update GSAK to version 8.2.1.24 or later to run this macro)
+
+$_sql="PRAGMA table_info(Custom)"
+$Status=Sqlite("sql",$_sql)
+IF At("FavoriteByMe",$Status)=0
+    $Create = CustomConfig("Add","FavoriteByMe,Boolean,Global,,0")
+ENDIF
+
+$data = gcapi("GetCachesFavoritedByUser")
+
+if $_GcApiError
+	# Error running api, so show the error message
+	msgok msg=$data
+ELSE
+	$_sql = "UPDATE Custom SET FavoriteByMe = 0 WHERE cCode not in (select data from GcApi where g_Contains('a:CacheCode',key)) "
+	$result = Sqlite("sql", $_sql, "")
+	
+	$_sql = "UPDATE Custom SET FavoriteByMe = 1 WHERE cCode in (select data from GcApi where g_Contains('a:CacheCode',key)) "
+	$result = Sqlite("sql", $_sql, "")
+
+	ReSync # redraw the grid		
+	
+	CANCELFILTER
+	MFILTER WHERE=FavoriteByMe  	
+	
+ENDIF
+
+
+
+
+
+
+

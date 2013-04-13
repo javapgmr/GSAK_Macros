@@ -1,0 +1,2101 @@
+# MacVersion = 1.3
+# MacDescription = Grab caches from series of route boxes
+# MacAuthor = Lignumaqua
+# MacFileName = GetCachesOnRoute.gsk
+#***************************************
+# Version History:
+#
+# 0.3 7-2-12 First Beta release
+# 0.4 7-3-12 Automatically split large boxes
+# 0.5 7-4-12 Fix comma as decimal separator problem
+# 0.6 7-4-12 New opening form, option to clear user flags, save/load/delete sets of boxes.
+# 0.7 7-5-12 Fix for empty database, sort locations alphabetically, use PHP POST for box data
+# 0.8 7-7-12 If last run failed to complete, offers to pick up where it left off. Support for editing boxes on map
+# 0.9 7-7-12 Initialized all variables
+# 0.91 7-8-12 Fix typo, clean up any bad settings. 
+# 1.0 7-14-12 First release
+# 1.1 7-22-12 Add cycling/driving options, option to set filter
+# 1.2 7-23-12 Fix for obscure bug when lat or long is an exact number of degrees. Api doesn't like it...
+# 1.3 3-3-13  Option to combine savwed boxes. Route used is that of first
+
+#*******************************************
+
+OPTION Explicit=Yes
+
+VERCHECK Version=8.1.1.77
+
+$Version = MacHeader("MacVersion")
+
+GOSUB name=DefaultValues
+MACSETTINGS Type=R File=GetCachesOnRoute.xml FileCheck=N
+
+# Check if last run finished properly
+IF $count <= $numberboxes AND Len($_MacroParms) = 0 AND $TriedToGet
+	$result = Form($form5,"")
+ENDIF
+
+IF $RestartYes
+	GOSUB name=GetCaches
+	CANCEL
+ELSE
+	$count = 1
+	$numberboxes = 0
+	$skippedcount = 0
+	$TriedToGet = FALSE
+	GOSUB name=SaveSettings
+ENDIF
+
+$form = $form + $form2
+
+IF Len($_MacroParms) > 0
+	$routedata = TRUE
+	$mappage = "http://gsak.net/stats/route/gsakcachesonroute.php" + "?command=fetch&id=" + $_MacroParms
+	$boxlist = GetUrl($mappage)
+	$mappage = "http://gsak.net/stats/route/gsakcachesonroute.php" + "?command=fetchroute&id=" + $_MacroParms
+	$savedroute = GetUrl($mappage)
+	
+	$numberboxes = RegExCount(";",$boxlist)
+	$form = EditForm($form,"Routelabel", "visible", "Yes")
+	$form = EditForm($form,"Routelabel", "caption", "Google Map - Route Loaded - $numberboxes boxes")
+	$form = EditForm($form,"GetCaches", "enabled", "Yes")
+	$form = EditForm($form,"SetFilter", "enabled", "Yes")
+	$form = EditForm($form,"Groupbox5", "visible", "Yes")
+	$form = EditForm($form,"Groupbox6", "visible", "No")
+ELSE
+	$routedata = FALSE
+	$form = EditForm($form,"Routelabel", "visible", "No")
+	$form = EditForm($form,"GetCaches", "enabled", "No")
+	$form = EditForm($form,"SetFilter", "enabled", "No")
+	$form = EditForm($form,"Groupbox5", "visible", "No")
+	$form = EditForm($form,"Groupbox6", "visible", "Yes")
+ENDIF
+
+IF $Full
+	$form = EditForm($form,"LogsPerCache", "enabled", "Yes")
+	ELSE
+	$form = EditForm($form,"LogsPerCache", "enabled", "No")
+ENDIF
+
+
+$form = EditForm($form,"LoadSettings", "values", SysInfo("S_Load"))
+$form = EditForm($form,"VersionLabel", "caption", "V"+$Version)
+
+# Locations
+$Locations = SysInfo("locations")
+$Locations = Replace(";",$_NewLine,$locations)
+$Locations = RegExReplace("(?m)^([^,]*),",$Locations,"$1 -> ","$")
+$Locations = Replace($_NewLine,";",$locations)
+
+$temp = List("locations","create",";")
+$temp = List("locations","replace",$locations)
+$locations = List("locations","sort","")
+
+IF $_DbCount > 0
+	# Current cache
+	$lat = $d_Latitude
+	$lon = $d_Longitude
+	$Locations = "Current Cache: $d_name -> $lat,$lon;" + $Locations
+ENDIF
+
+# Current center
+$lat = SysInfo("gsakini;LastCenter;Lat")
+$lon = SysInfo("gsakini;LastCenter;Lon")
+$Locations = "Current Center -> $lat,$lon;" + $Locations
+
+# Blank
+$Locations = "Select on map;" + $Locations
+
+$form = EditForm($form,"startpoint", "values", $Locations)
+$form = EditForm($form,"endpoint", "values", $Locations)
+
+WHILE TRUE
+	$result = Form($form,"")
+	BEGINCASE
+	CASE $result = "ContSet"
+		$cLarge = TRUE
+		$cRegular = TRUE
+		$cSmall = TRUE
+		$cMicro = TRUE
+		$cOther = TRUE
+		$cVirtual = TRUE
+		$cNotChosen = TRUE
+	CASE $result = "ContClear"
+		$cLarge = FALSE
+		$cRegular = FALSE
+		$cSmall = FALSE
+		$cMicro = FALSE
+		$cOther = FALSE
+		$cVirtual = FALSE
+		$cNotChosen = FALSE
+	CASE $result = "TypeSet"
+		$tTraditional = TRUE
+		$tLocationless = TRUE
+		$tProjectAPE = TRUE
+		$tGroundspeakHQ = TRUE
+		$tMulti = TRUE
+		$tVirtual = TRUE
+		$tMegaEvent = TRUE
+		$tLFCelebration = TRUE
+		$tLetterbox = TRUE
+		$tWebCam = TRUE
+		$tMazeExhibit = TRUE
+		$tCITO = TRUE
+		$tMystery = TRUE
+		$tWherigo = TRUE
+		$tEvent = TRUE
+		$tEarth = TRUE
+		$tLFEvent = TRUE
+	CASE $result = "TypeClear"
+		$tTraditional = FALSE
+		$tLocationless = FALSE
+		$tProjectAPE = FALSE
+		$tGroundspeakHQ = FALSE
+		$tMulti = FALSE
+		$tVirtual = FALSE
+		$tMegaEvent = FALSE
+		$tLFCelebration = FALSE
+		$tLetterbox = FALSE
+		$tWebCam = FALSE
+		$tMazeExhibit = FALSE
+		$tCITO = FALSE
+		$tMystery = FALSE
+		$tWherigo = FALSE
+		$tEvent = FALSE
+		$tEarth = FALSE
+		$tLFEvent = FALSE
+	CASE $result = "Lite" OR $result = "Full"
+		IF $Full
+				$form = EditForm($form,"LogsPerCache", "enabled", "Yes")
+		ELSE
+				$form = EditForm($form,"LogsPerCache", "enabled", "No")
+		ENDIF
+	CASE $result="ChooseRoute"
+		GOSUB name=Validate
+		GOSUB name=SaveSettings
+		IF $routedata AND Len($savedroute) > 1
+			GOSUB name=EditMap
+		ELSE
+			GOSUB name=OpenMap
+		ENDIF
+		CANCEL
+	CASE $result="GetCaches"
+		GOSUB name=Validate
+		GOSUB name=SaveSettings
+		GOSUB name=GetCaches
+		BREAK
+	CASE $result="SetFilter"
+		GOSUB name=Validate
+		GOSUB name=SaveSettings
+		GOSUB name=SetFilter
+		BREAK
+	CASE $result="Cancel" OR $result = "SystemExit"
+		BREAK
+	CASE $SaveCombine
+		GOSUB name=CombineRoutes
+	CASE $Save
+		GOSUB name=Save
+	CASE $Delete
+		GOSUB name=Delete
+	CASE $result="SaveBox"
+		GOSUB name=SaveBox
+	ENDCASE
+	GOSUB name=Validate
+ENDWHILE
+
+CANCEL
+
+BEGINSUB name=EditMap
+	$id = Random(10000000000)
+	$URL = "http://gsak.net/stats/route/gsakcachesonroute.php"
+	$PostData = "'command','save','id','$id','boxdata','$boxlist','routedata','$savedroute'"
+	
+	#CLIP data=$PostData
+	#CANCEL
+	
+	$result = PostUrl($url,$PostData)
+	
+	$distunits = Lower(SysInfo("distance"))
+	
+	IF $modecycling
+		$mode = "c"
+	ELSE
+		$mode = "d"
+	ENDIF
+	
+	$mappage = "http://gsak.net/stats/route/gsakcachesonroute.html" + "?units=" + $distunits
+	$mappage = $mappage + "&dist=" + $distancefromroute + "&h=" + BoolToStr($avoidhighways,"1","0") + "&t=" + BoolToStr($avoidtollroads,"1","0")
+	$mappage = $mappage + "&edit=1&id=" + "$id" + "&mode=" + $mode
+	WEB url=$mappage
+ENDSUB
+
+
+BEGINSUB name=OpenMap
+	#?lat=30.0&lon=-97.0&units=m&slat=30.0&slon=-97.0&elat=30.0&elon=-97.0&dist=3&h=1&t=1&mode=d(or b)
+	
+	IF $startpoint <> "Select on map"
+		$slat = Extract(Extract($startpoint,"-> ",2),",",1)
+		$slon = Extract(Extract($startpoint,"-> ",2),",",2)
+	
+		$temp = GCalc("$slat $slon","FormatDegrees")
+		$slat = Extract($temp,";",1)
+		$slon = Extract($temp,";",2)
+	ELSE
+		$slat = ""
+		$slon = ""
+	ENDIF
+	
+	IF $endpoint <> "Select on map"
+		$elat = Extract(Extract($endpoint,"-> ",2),",",1)
+		$elon = Extract(Extract($endpoint,"-> ",2),",",2)
+	
+		$temp = GCalc("$elat $elon","FormatDegrees")
+		$elat = Extract($temp,";",1)
+		$elon = Extract($temp,";",2)
+	ELSE
+		$elat = ""
+		$elon = ""
+	ENDIF
+		
+	$lat = SysInfo("gsakini;LastCenter;Lat")
+	$lon = SysInfo("gsakini;LastCenter;Lon")
+	$distunits = Lower(SysInfo("distance"))
+	
+	IF $modecycling
+		$mode = "c"
+	ELSE
+		$mode = "d"
+	ENDIF
+	
+	$mappage = "http://gsak.net/stats/route/gsakcachesonroute.html" + "?lat=" + $lat + "&lon=" + $lon + "&units=" + $distunits
+	$mappage = $mappage + "&slat=" + $slat + "&slon=" + $slon + "&elat=" + $elat + "&elon=" + $elon
+	$mappage = $mappage + "&dist=" + $distancefromroute + "&h=" + BoolToStr($avoidhighways,"1","0") + "&t=" + BoolToStr($avoidtollroads,"1","0")
+	$mappage = $mappage + "&mode=" + $mode
+	WEB url=$mappage
+ENDSUB
+
+BEGINSUB name=SaveSettings
+	MACSETTINGS Type=S Vars=disabled,foundbyme,maxgeocaches,logspercache,cLarge,cRegular,cSmall,cMicro,cOther,cVirtual,cNotChosen,tTraditional,tLocationless,tProjectAPE,tGroundspeakHQ,tMulti,tVirtual,tMegaEvent,tLFCelebration,tLetterbox,tWebCam,tMazeExhibit,tCITO,tMystery,tWherigo,tEvent,tEarth,tLFEvent,difmin,difmax,termin,termax,favmin,favmax,full,lite,ownedby,excludeownedby,notfoundby,Loadsettings,Startpoint,endpoint,distancefromroute,avoidhighways,avoidtollroads,clearflags,count,numberboxes,skippedcount,triedtoget,modedriving,modecycling,boxlist File=GetCachesOnRoute.xml FileCheck=N
+ENDSUB
+
+
+BEGINSUB name=Validate
+	$maxgeocaches = NumToStr(Int(Abs(Val($maxgeocaches))))
+	$logspercache = NumToStr(Int(Abs(Val($logspercache))))
+	$favmin = NumToStr(Int(Abs(Val($favmin))))
+	$favmax = NumToStr(Int(Abs(Val($favmax))))
+	$distancefromroute = Replace(",",".",NumToStr(Abs(Val($distancefromroute))))
+ENDSUB
+
+# Save values
+BEGINSUB name=Save
+	IF $SaveBox = $PromptSaveText
+		$Name = ""
+	ELSE
+		$Name = $SaveBox
+	ENDIF
+	$result = Form($form3,"")
+	IF $NameOK
+		$NameSQL = Replace("'","''",$Name)
+		GOSUB name=UpdateDataFile
+		$_sql = "SELECT SaveName FROM SavedSettings ORDER BY SaveName"
+		#$SaveNameValues = $PromptSaveText + ";" +  Sqlite("sql",$_sql)
+		$SaveNameValues = Sqlite("sql",$_sql)
+		$SaveNameValues = Replace($_NewLine,";",$SaveNameValues)
+		$SaveBoxList = $SaveNameValues
+		$SaveBox = $Name
+		$form = EditForm($form,"Routelabel", "caption", "$NameSQL - Route Loaded - $numberboxes boxes")
+	ENDIF
+ENDSUB
+
+# Delete values
+BEGINSUB name=DELETE
+	IF $SaveBox = $PromptSaveText
+		EXITSUB
+	ENDIF
+	$Name = $SaveBox
+	$Form4 = EditForm($Form4,"FilterLabel","Caption",$Name)
+	$result = Form($form4,"")
+	IF $DeleteOK
+		$NameSQL = Replace("'","''",$Name)
+		$_sql = "DELETE FROM SavedSettings WHERE SaveName = '$NameSQL'"
+		$status = Sqlite("sql",$_sql)
+		$_sql = "SELECT SaveName FROM SavedSettings ORDER BY SaveName"
+		#$SaveNameValues = $PromptSaveText + ";" +  Sqlite("sql",$_sql)
+		$SaveNameValues = Sqlite("sql",$_sql)
+		$SaveNameValues = Replace($_NewLine,";",$SaveNameValues)
+		$SaveBoxList = $SaveNameValues
+		$NameSQL = "... Last active"
+		$SaveBox = $NameSQL
+		GOSUB name=SaveBox
+	ENDIF
+ENDSUB
+
+# Retrieve Saved value
+BEGINSUB Name=SaveBox
+	$SaveBoxSQL = Replace("'","''",$SaveBox)
+	$_sql = "SELECT SaveText FROM SavedSettings WHERE SaveName = '$SaveBoxSQL'"
+	$result = Sqlite("sql",$_sql,"delim=%%")
+	IF Len($result) > 0
+		$_sql = "SELECT RouteText FROM SavedSettings WHERE SaveName = '$SaveBoxSQL'"
+		$savedroute = Sqlite("sql",$_sql,"delim=%%")
+		$boxlist = $result
+		$routedata = TRUE
+		$numberboxes = RegExCount(";",$boxlist)
+		$form = EditForm($form,"Routelabel", "visible", "Yes")
+		$form = EditForm($form,"Routelabel", "caption", "$SaveBox - Route Loaded - $numberboxes boxes")
+		$form = EditForm($form,"GetCaches", "enabled", "Yes")
+		$form = EditForm($form,"SetFilter", "enabled", "Yes")
+		$form = EditForm($form,"Groupbox5", "visible", "Yes")
+		$form = EditForm($form,"Groupbox6", "visible", "No")
+	ENDIF
+ENDSUB
+
+#Subroutine to update datafile
+BEGINSUB name=UpdateDataFile
+	$variables = $boxlist
+	$variablesSQL = Replace("'","''",$variables)
+	$_sql = "REPLACE INTO SavedSettings VALUES ('$NameSQL','$variablesSQL','$SavedRoute')"
+	$status = Sqlite("sql",$_sql)
+ENDSUB Name=UpdateDataFile
+
+
+BEGINSUB name=CombineRoutes
+	$_sql = "SELECT SaveName FROM SavedSettings ORDER BY SaveName"
+	$SaveNameValues = Sqlite("sql",$_sql)
+	$SaveNameValues = Replace($_NewLine,";",$SaveNameValues)
+	$SaveBoxList = $SaveNameValues
+	$form6 = EditForm($form6,"SavedRoutes", "values", $SaveBoxList)
+	$result = Form($form6,"")
+	
+	IF $CombineOK
+		$Name = $SaveBoxCombine
+		$count = RegExCount(";",$SavedRoutes) + 1
+		$boxlist = ""
+		$SavedRoute = ""
+		WHILE $count > 0
+			$SaveBox = Extract($SavedRoutes,";",$count)
+			$SaveBoxSQL = Replace("'","''",$SaveBox)
+			$_sql = "SELECT SaveText FROM SavedSettings WHERE SaveName = '$SaveBoxSQL'"
+			$boxlist = $boxlist + Sqlite("sql",$_sql,"delim=%%")
+			$_sql = "SELECT RouteText FROM SavedSettings WHERE SaveName = '$SaveBoxSQL'"
+			$SavedRoute = Sqlite("sql",$_sql,"delim=%%")
+			$count = $count - 1
+		ENDWHILE
+
+		$NameSQL = Replace("'","''",$Name)
+		GOSUB name=UpdateDataFile
+		$_sql = "SELECT SaveName FROM SavedSettings ORDER BY SaveName"
+		$SaveNameValues = Sqlite("sql",$_sql)
+		$SaveNameValues = Replace($_NewLine,";",$SaveNameValues)
+		$SaveBoxList = $SaveNameValues
+		$SaveBox = $Name
+		GOSUB Name=SaveBox
+		$form = EditForm($form,"Routelabel", "caption", "$NameSQL - Route Loaded - $numberboxes boxes")
+	ENDIF
+ENDSUB
+
+
+BEGINSUB name=DefaultValues
+	
+	$datafile = $_AppData + "\macros\GetCachesOnRoute.db3"
+	
+	# Set up the SQL table
+
+	IF NOT(FileExists($datafile))
+		$status = Sqlite("create",$datafile)
+	ENDIF
+
+	$status = Sqlite("open",$datafile)
+
+	$Data="SaveName text UNIQUE, SaveText text, RouteText text"
+	$_sql = "CREATE TABLE IF NOT EXISTS SavedSettings ($Data)"
+	$status = Sqlite("sql",$_sql)
+	
+	# Add the RouteText field if not already present
+	$_sql = "select lower(sql) from sqlite_master where name='SavedSettings'"
+	$status = Sqlite("sql",$_sql)
+	IF At("routetext",$status) = 0
+		$Data = "RouteText text DEFAULT ''"
+		$_sql = "ALTER TABLE SavedSettings ADD COLUMN $Data"
+		$status = Sqlite("sql",$_sql)
+	ENDIF
+	
+	# Clear up any bad entries
+	$_sql = "update savedsettings set SaveText = replace(savetext,'0,NaN,0,NaN;','')"
+	$status = Sqlite("sql",$_sql)
+
+	$_sql = "SELECT SaveName FROM SavedSettings ORDER BY SaveName"
+	
+	$SaveNameValues = Sqlite("sql",$_sql)
+	$SaveNameValues = ";" + Replace($_NewLine,";",$SaveNameValues)
+	$SaveBoxList = $SaveNameValues
+	
+	$PromptSaveText = "... Last active"
+
+	# Default values
+	$disabled = FALSE
+	$foundbyme = FALSE
+	
+	
+	$maxgeocaches = "1000"
+	$logspercache = "5"
+
+	$cLarge = TRUE
+	$cRegular = TRUE
+	$cSmall = TRUE
+	$cMicro = TRUE
+	$cOther = TRUE
+	$cVirtual = TRUE
+	$cNotChosen = TRUE
+
+	$tTraditional = TRUE
+	$tLocationless = TRUE
+	$tProjectAPE = TRUE
+	$tGroundspeakHQ = TRUE
+	$tMulti = TRUE
+	$tVirtual = TRUE
+	$tMegaEvent = TRUE
+	$tLFCelebration = TRUE
+	$tLetterbox = TRUE
+	$tWebCam = TRUE
+	$tMazeExhibit = TRUE
+	$tCITO = TRUE
+	$tMystery = TRUE
+	$tWherigo = TRUE
+	$tEvent = TRUE
+	$tEarth = TRUE
+	$tLFEvent = TRUE
+
+	$difmin = "1.0"
+	$difmax = "5.0"
+	$termin = "1.0"
+	$termax = "5.0"
+	$favmin = "0"
+	$favmax = "99999"
+
+	$full = TRUE
+	$lite = FALSE
+	
+	$startpoint = ""
+	$endpoint = ""
+	
+	$ownedby = ""
+	$excludeownedby = ""
+	$notfoundby = ""
+	$Loadsettings = ""
+	$distancefromroute = ""
+	$avoidhighways = FALSE
+	$avoidtollroads = FALSE
+	$clearflags = FALSE
+	
+	$count = 1
+	$numberboxes = 0
+	$skippedcount = 0
+	$boxlist = ""
+	$RestartYes = FALSE
+	$RestartNo = FALSE
+	
+	$TriedToGet = FALSE
+	
+ENDSUB
+
+BEGINSUB name=CreateQuery
+$GcGeocachesStatic = "[GcGeocaches]" + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "cbxDifMax.Text=" + $difmax + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "cbxDifMin.Text=" + $difmin + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "cbxLoadSettings.Text=" + $LoadSettings + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "cbxTerMax.Text=" + $termax + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "cbxTerMin.Text=" + $termin + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "chkArchived.Checked=" + "$disabled" + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "chkFoundByMe.Checked=" + "$Foundbyme" + $_NewLine
+
+$GcGeocachesStatic = $GcGeocachesStatic + "chkLarge.Checked=" + "$cLarge" + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "chkMicro.Checked=" + "$cMicro" + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "chkNotChosen.Checked=" + "$cNotChosen" + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "chkOther.Checked=" + "$cOther" + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "chkPremium.Checked=" + "TRUE" + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "chkRegular.Checked=" + "$cRegular" + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "chkSmall.Checked=" + "$cSmall" + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "chkVirtual.Checked=" + "$cVirtual" + $_NewLine
+
+$GcGeocachesStatic = $GcGeocachesStatic + "edtHiddenBy.Text=" + $ownedby + $_NewLine
+
+$GcGeocachesStatic = $GcGeocachesStatic + "edtLogsPerCache.Text=" + $logspercache + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "edtMax.Text=" + $maxgeocaches + $_NewLine
+
+$GcGeocachesStatic = $GcGeocachesStatic + "edtNotFoundBy.Text=" + $notfoundby + $_NewLine
+
+$GcGeocachesStatic = $GcGeocachesStatic + "rbtFull.Checked=" + "$Full" + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "rbtLite.Checked=" + "$Lite" + $_NewLine
+
+$GcGeocachesStatic = $GcGeocachesStatic + "cbxref.Text=" + "0,0" + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "edtDistance.Text=" + "1" + $_NewLine
+
+$GcGeocachesStatic = $GcGeocachesStatic + "d1.Checked=" + "TRUE" + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "d2.Checked=" + "FALSE" + $_NewLine
+
+$GcGeocachesStatic = $GcGeocachesStatic + "edtNotHiddenBy.Text=" + $excludeownedby + $_NewLine
+
+$GcGeocachesStatic = $GcGeocachesStatic + "edtbbBottom.Text=" + "!!se!!" + $_NewLine
+
+$GcGeocachesStatic = $GcGeocachesStatic + "rbtRectangle.Checked=" + "TRUE" + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "rbtCircle.Checked=" + "FALSE" + $_NewLine
+
+$GcGeocachesStatic = $GcGeocachesStatic + "edtbbtop.Text=" + "!!nw!!" + $_NewLine
+
+$GcGeocachesStatic = $GcGeocachesStatic + "edtFavmin.Text=" + $favmin + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "edtFavmax.Text=" + $favmax + $_NewLine
+
+$GcGeocachesStatic = $GcGeocachesStatic + "rbtCode.Checked=" + "FALSE" + $_NewLine
+$GcGeocachesStatic = $GcGeocachesStatic + "edtCodes.Text=" + "" + $_NewLine
+
+
+$GcGeocachesStatic = $GcGeocachesStatic + "NotCacheTypes=" + "~"
+
+IF Not($tTraditional)
+	$GcGeocachesStatic = $GcGeocachesStatic + "Traditional~"
+ENDIF
+IF Not($tMulti)
+	$GcGeocachesStatic = $GcGeocachesStatic + "Multi~"
+ENDIF
+IF Not($tLetterbox)
+	$GcGeocachesStatic = $GcGeocachesStatic + "Letterbox~"
+ENDIF
+IF Not($tCITO)
+	$GcGeocachesStatic = $GcGeocachesStatic + "CITO~"
+ENDIF
+IF Not($tEvent)
+	$GcGeocachesStatic = $GcGeocachesStatic + "Event~"
+ENDIF
+IF Not($tLocationless)
+	$GcGeocachesStatic = $GcGeocachesStatic + "Locationless~"
+ENDIF
+IF Not($tVirtual)
+	$GcGeocachesStatic = $GcGeocachesStatic + "Virtual~"
+ENDIF
+IF Not($tWebCam)
+	$GcGeocachesStatic = $GcGeocachesStatic + "Web Cam~"
+ENDIF
+IF Not($tMystery)
+	$GcGeocachesStatic = $GcGeocachesStatic + "Mystery~"
+ENDIF
+IF Not($tEarth)
+	$GcGeocachesStatic = $GcGeocachesStatic + "Earth~"
+ENDIF
+IF Not($tProjectAPE)
+	$GcGeocachesStatic = $GcGeocachesStatic + "Project APE~"
+ENDIF
+IF Not($tMegaEvent)
+	$GcGeocachesStatic = $GcGeocachesStatic + "Mega Event~"
+ENDIF
+IF Not($tMazeExhibit)
+	$GcGeocachesStatic = $GcGeocachesStatic + "Maze Exhibit~"
+ENDIF
+IF Not($tWherigo)
+	$GcGeocachesStatic = $GcGeocachesStatic + "Wherigo~"
+ENDIF
+IF Not($tLFEvent)
+	$GcGeocachesStatic = $GcGeocachesStatic + "L&F Event~"
+ENDIF
+IF Not($tGroundspeakHQ)
+	$GcGeocachesStatic = $GcGeocachesStatic + "Groundspeak HQ~"
+ENDIF
+IF Not($tLFCelebration)
+	$GcGeocachesStatic = $GcGeocachesStatic + "L&F Celebration~"
+ENDIF
+
+$GcGeocachesStatic = $GcGeocachesStatic + $_NewLine
+ENDSUB
+
+
+
+BEGINSUB name=GetCaches
+	
+	$TriedToGet = TRUE
+	IF Not($RestartYes)
+		$numberboxes = RegExCount(";",$boxlist)
+		$count = 1
+		$skippedcount = 0
+		$NameSQL = "... Last active"
+		GOSUB name=UpdateDataFile
+	ENDIF
+	
+	IF $clearflags
+		USERFLAG type=clear range=all
+	ENDIF
+	
+	$filepath = $_AppData + "\temp"
+	GOSUB name=CreateQuery
+		
+	$test = ""
+	
+	WHILE $count <= $numberboxes
+		$actualtotal = $numberboxes - $skippedcount
+		$actualcount = $count - $skippedcount
+		SHOWSTATUS msg="Getting caches for box $actualcount of $actualtotal, $skippedcount boxes split." Width=350
+		$box = Extract($boxlist,";",$count)
+
+		$boxnw = Extract($box,",",3) + "," + Extract($box,",",2)
+		$boxse = Extract($box,",",1) + "," + Extract($box,",",4)
+		
+		$distdata = Extract($box,",",3) + " " + Extract($box,",",2) + ";" + Extract($box,",",1) + " " + Extract($box,",",4)
+		$distance = Val(GCalc($distdata,"CalcDistance"))
+		IF Lower(SysInfo("distance")) = "m"
+			$distance = $distance * 1.609344
+		ENDIF
+		
+		IF $distance > 100
+			# Box is too big so halve the longer side and try again
+
+			# Find if lat or lon is the longest side
+			$distdata = Extract($box,",",3) + " " + Extract($box,",",4) + ";" + Extract($box,",",1) + " " + Extract($box,",",4)
+			$distlat = Val(GCalc($distdata,"CalcDistance"))
+			$distdata = Extract($box,",",1) + " " + Extract($box,",",2) + ";" + Extract($box,",",1) + " " + Extract($box,",",4)
+			$distlon = Val(GCalc($distdata,"CalcDistance"))
+			
+			IF $distlat >= $distlon
+				# Halve the latitude
+				$boxa1 = Extract($box,",",1)
+				$boxa2 = Extract($box,",",2)
+				$boxa3 = Replace(",",".",NumToStr((Val(Extract($box,",",1)) + Val(Extract($box,",",3)))/2))
+				$boxa4 = Extract($box,",",4)
+				
+				$boxb1 = Replace(",",".",NumToStr((Val(Extract($box,",",1)) + Val(Extract($box,",",3)))/2))
+				$boxb2 = Extract($box,",",2)
+				$boxb3 = Extract($box,",",3)
+				$boxb4 = Extract($box,",",4)
+			ELSE
+				# Halve the longitude
+				$boxa1 = Extract($box,",",1)
+				$boxa2 = Extract($box,",",2)
+				$boxa3 = Extract($box,",",3)
+				$boxa4 = Replace(",",".",NumToStr((Val(Extract($box,",",2)) + Val(Extract($box,",",4)))/2))
+				
+				$boxb1 = Extract($box,",",1)
+				$boxb2 = Replace(",",".",NumToStr((Val(Extract($box,",",2)) + Val(Extract($box,",",4)))/2))
+				$boxb3 = Extract($box,",",3)
+				$boxb4 = Extract($box,",",4)
+			ENDIF
+			
+			# Add the two new boxes to end of queue
+			$boxlist = $boxlist + $boxa1 + "," + $boxa2 + "," + $boxa3 + "," + $boxa4 + ";" 
+			$boxlist = $boxlist + $boxb1 + "," + $boxb2 + "," + $boxb3 + "," + $boxb4 + ";" 
+			$numberboxes = $numberboxes + 2
+			$skippedcount = $skippedcount + 1
+			
+			#$test = $boxa1 + "," + $boxa2 + "," + $boxa3 + "," + $boxa4 + ";"  + $boxb1 + "," + $boxb2 + "," + $boxb3 + "," + $boxb4 + ";" 
+			#MSGOK msg=$test
+
+		ELSE
+			#$test = $test + "$count: $boxnw $boxse" + $_NewLine
+			
+			# Add decimal point to string if exact integer
+			IF At(".",$boxnw) = 0
+				$boxnw = $boxnw + ".0"
+			ENDIF
+			IF At(".",$boxse) = 0
+				$boxse = $boxse + ".0"
+			ENDIF
+
+			$GcGeocachesDynamic = Replace("!!se!!",$boxse,$GcGeocachesStatic)
+			$GcGeocachesDynamic = Replace("!!nw!!",$boxnw,$GcGeocachesDynamic)
+			MACROSET Dialog=GcGeocaches VarName=$GcGeocachesDynamic
+			#CLIP data=$GcGeocachesDynamic
+			GCGETCACHES Settings=<MACRO> LOAD=Y
+		ENDIF
+		$count = $count + 1
+		GOSUB name=SaveSettings
+	ENDWHILE
+	SHOWSTATUS msg="End" Width=350 Display=Off
+	$TriedToGet = FALSE
+	GOSUB name=SaveSettings
+ENDSUB
+
+
+
+
+BEGINSUB name=SetFilter
+	$numberboxes = RegExCount(";",$boxlist)
+	$count = 1
+	$skippedcount = 0
+	$NameSQL = "... Last active"
+	GOSUB name=UpdateDataFile
+	
+	$polygon = ""
+	WHILE $count <= $numberboxes
+#		SHOWSTATUS msg="Getting caches for box $actualcount of $actualtotal, $skippedcount boxes split." Width=350
+		$box = Extract($boxlist,";",$count)
+		$boxnw = Extract($box,",",3) + " " + Extract($box,",",2)
+		$boxne = Extract($box,",",3) + " " + Extract($box,",",4)
+		$boxse = Extract($box,",",1) + " " + Extract($box,",",4)
+		$boxsw = Extract($box,",",1) + " " + Extract($box,",",2)
+		$polygon = $polygon + $boxnw + $_NewLine + $boxne + $_NewLine + $boxse + $_NewLine + $boxsw + $_NewLine + $boxnw + $_NewLine
+		$count = $count + 1
+	ENDWHILE
+	SHOWSTATUS msg="End" Width=350 Display=Off
+	
+	$temp = GetPolygon("M",$polygon)
+	
+	IF $temp = "0"
+		MSGOK msg="No caches in route boxes, no filter set"
+	ELSE
+		$temp = GetPolygon("K",$polygon)
+	ENDIF
+	
+ENDSUB
+
+
+
+
+#
+#
+#[GcGeocaches]
+#cbxDifMax.Text=5.0
+#cbxDifMin.Text=1.0
+#cbxLoadSettings.Text=PQ Downloads Silent
+#cbxTerMax.Text=5.0
+#cbxTerMin.Text=1.0
+#chkArchived.Checked=False
+#chkFoundByMe.Checked=False
+#chkLarge.Checked=True
+#chkMicro.Checked=True
+#chkNotChosen.Checked=True
+#chkOther.Checked=True
+#chkPremium.Checked=True
+#chkRegular.Checked=True
+#chkSmall.Checked=True
+#chkVirtual.Checked=True
+#edtHiddenBy.Text=
+#edtLogsPerCache.Text=5
+#edtMax.Text=1000
+#edtNotFoundBy.Text=
+#rbtFull.Checked=True
+#rbtLite.Checked=False
+#cbxref.Text=38.895112,-77.036366
+#edtDistance.Text=4.3
+#d1.Checked=True
+#d2.Checked=False
+#edtNotHiddenBy.Text=
+#edtbbBottom.Text=!!se!!
+#rbtRectangle.Checked=True
+#rbtCircle.Checked=False
+#edtbbtop.Text=!!nw!!
+#edtFavmin.Text=0
+#edtFavMax.Text=99999
+#rbtCode.Checked=False
+#edtCodes.Text=
+#NotCacheTypes=~Traditional~Virtual~Maze Exhibit~
+
+
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sat 02-Mar-2013 18:12:09
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Geocaches Along a Route
+  Height = 592
+  Width = 659
+
+Name = Groupbox6
+  Type = Groupbox
+  Height = 412
+  Left = 10
+  Top = 25
+  Width = 631
+  Taborder = 5
+
+Name = Groupbox5
+  Type = Groupbox
+  Height = 412
+  Left = 10
+  Top = 25
+  Width = 631
+  Taborder = 6
+
+Name = Groupbox4
+  Type = Groupbox
+  Container = Groupbox5
+  Height = 31
+  Left = 398
+  Top = 274
+  Width = 221
+  Taborder = 16
+
+Name = GroupBox3
+  Type = Groupbox
+  Container = Groupbox5
+  Height = 111
+  Left = 108
+  Top = 133
+  Width = 511
+  Taborder = 17
+
+Name = Groupbox2
+  Type = Groupbox
+  Container = Groupbox5
+  Height = 60
+  Left = 108
+  Top = 73
+  Width = 401
+  Taborder = 18
+
+Name = Groupbox1
+  Type = Groupbox
+  Container = Groupbox5
+  Height = 41
+  Left = 108
+  Top = 32
+  Width = 241
+  Taborder = 19
+
+Name = Groupbox7
+  Type = Groupbox
+  Container = Groupbox5
+  Height = 41
+  Left = 438
+  Top = 32
+  Width = 182
+  Taborder = 20
+
+Name = GroupBox10
+  Type = Groupbox
+  Caption = Saved Boxes
+  Height = 53
+  Left = 42
+  Top = 443
+  Width = 570
+  Taborder = 0
+
+Name = GetCaches
+  Type = Button
+  Height = 27
+  Left = 210
+  Top = 531
+  Width = 120
+  Taborder = 2
+  Caption = <img src="idx:19" align="middle"> Get Caches
+
+Name = Cancel
+  Type = Button
+  Height = 27
+  Left = 490
+  Top = 531
+  Width = 120
+  Taborder = 3
+  Caption = <img src="idx:1" align="middle"> Cancel
+
+Name = Label8
+  Type = Label
+  Color = 16744448
+  Height = 25
+  Left = 180
+  Size = 14
+  Style = bold
+  Top = 1
+  Width = 291
+  Caption = Get Geocaches Along a Route
+
+Name = ChooseRoute
+  Type = Button
+  Height = 27
+  Left = 23
+  Top = 531
+  Width = 162
+  Taborder = 4
+  Caption = <img src="idx:3" align="middle"> Choose Route on Map <img src="idx:3" align="middle">
+
+Name = RouteLabel
+  Type = Label
+  Color = 4227072
+  Height = 22
+  Left = 180
+  Size = 12
+  Style = bold
+  Top = 502
+  Width = 122
+  Caption = Route Loaded
+
+Name = Notfoundby
+  Type = Edit
+  Container = Groupbox5
+  Height = 21
+  Left = 110
+  Top = 359
+  Width = 509
+  Taborder = 0
+
+Name = VersionLabel
+  Type = Label
+  Height = 17
+  Left = 615
+  Size = 7
+  Top = 546
+  Width = 28
+  Caption = V0.1
+
+Name = LoadSettings
+  Type = Combobox
+  Container = Groupbox5
+  Height = 21
+  Left = 110
+  Top = 384
+  Width = 509
+  Taborder = 1
+
+Name = favmin
+  Type = Edit
+  Container = Groupbox5
+  Height = 21
+  Left = 409
+  Top = 252
+  Width = 60
+  Taborder = 2
+
+Name = favmax
+  Type = Edit
+  Container = Groupbox5
+  Height = 21
+  Left = 508
+  Top = 252
+  Width = 60
+  Taborder = 3
+
+Name = ExcludeOwnedBy
+  Type = Edit
+  Container = Groupbox5
+  Height = 21
+  Left = 110
+  Top = 335
+  Width = 509
+  Taborder = 4
+
+Name = OwnedBy
+  Type = Edit
+  Container = Groupbox5
+  Height = 21
+  Left = 110
+  Top = 310
+  Width = 509
+  Taborder = 5
+
+Name = TerMin
+  Type = Combobox
+  Container = Groupbox5
+  Height = 21
+  Left = 120
+  Top = 278
+  Values = 1.0;1.5;2.0;2.5;3.0;3.5;4.0;4.5;5.0
+  Width = 51
+  Taborder = 6
+
+Name = TerMax
+  Type = Combobox
+  Container = Groupbox5
+  Height = 21
+  Left = 193
+  Top = 278
+  Values = 1.0;1.5;2.0;2.5;3.0;3.5;4.0;4.5;5.0
+  Width = 51
+  Taborder = 7
+
+Name = DifMax
+  Type = Combobox
+  Container = Groupbox5
+  Height = 21
+  Left = 193
+  Top = 249
+  Values = 1.0;1.5;2.0;2.5;3.0;3.5;4.0;4.5;5.0
+  Width = 51
+  Taborder = 8
+
+Name = DifMin
+  Type = Combobox
+  Container = Groupbox5
+  Height = 21
+  Left = 120
+  Top = 249
+  Values = 1.0;1.5;2.0;2.5;3.0;3.5;4.0;4.5;5.0
+  Width = 51
+  Taborder = 9
+
+Name = TypeClear
+  Type = Button
+  Container = Groupbox5
+  Height = 22
+  Left = 20
+  Top = 155
+  Width = 70
+  Taborder = 10
+  Caption = Clear all
+
+Name = TypeSet
+  Type = Button
+  Container = Groupbox5
+  Height = 22
+  Left = 20
+  Top = 179
+  Width = 70
+  Taborder = 11
+  Caption = Set all
+
+Name = ContSet
+  Type = Button
+  Container = Groupbox5
+  Height = 22
+  Left = 20
+  Top = 109
+  Width = 70
+  Taborder = 12
+  Caption = Set all
+
+Name = ContClear
+  Type = Button
+  Container = Groupbox5
+  Height = 22
+  Left = 20
+  Top = 85
+  Width = 70
+  Taborder = 13
+  Caption = Clear all
+
+Name = LogsPerCache
+  Type = Edit
+  Container = Groupbox5
+  Height = 21
+  Left = 274
+  Top = 11
+  Width = 60
+  Taborder = 14
+
+Name = MaxGeocaches
+  Type = Edit
+  Container = Groupbox5
+  Height = 21
+  Left = 108
+  Top = 11
+  Width = 60
+  Taborder = 15
+
+Name = Full
+  Type = Radiobutton
+  Container = Groupbox4
+  Exitonchange = Yes
+  Height = 20
+  Left = 15
+  Top = 7
+  Width = 80
+  Taborder = 0
+  Caption = Full (slower)
+
+Name = Lite
+  Type = Radiobutton
+  Container = Groupbox4
+  Exitonchange = Yes
+  Height = 20
+  Left = 115
+  Top = 7
+  Width = 90
+  Taborder = 1
+  Caption = Light (quicker)
+
+Name = tTraditional
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 10
+  Top = 10
+  Width = 98
+  Taborder = 0
+  Caption = Traditional
+
+Name = tMulti
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 10
+  Top = 28
+  Width = 98
+  Taborder = 1
+  Caption = Multi
+
+Name = tLocationless
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 130
+  Top = 10
+  Width = 98
+  Taborder = 2
+  Caption = Locationless
+
+Name = tVirtual
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 130
+  Top = 28
+  Width = 98
+  Taborder = 3
+  Caption = Virtual
+
+Name = tProjectApe
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 250
+  Top = 10
+  Width = 98
+  Taborder = 4
+  Caption = Project APE
+
+Name = tMegaEvent
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 250
+  Top = 28
+  Width = 98
+  Taborder = 5
+  Caption = Mega Event
+
+Name = tGroundspeakHQ
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 370
+  Top = 10
+  Width = 110
+  Taborder = 6
+  Caption = Groundspeak HQ
+
+Name = tMazeExhibit
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 250
+  Top = 46
+  Width = 98
+  Taborder = 7
+  Caption = Maze Exhibit
+
+Name = tWebCam
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 130
+  Top = 46
+  Width = 98
+  Taborder = 8
+  Caption = Web Cam
+
+Name = tLetterbox
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 10
+  Top = 46
+  Width = 98
+  Taborder = 9
+  Caption = Letterbox
+
+Name = tWherigo
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 250
+  Top = 64
+  Width = 98
+  Taborder = 10
+  Caption = Wherigo
+
+Name = tMystery
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 130
+  Top = 64
+  Width = 98
+  Taborder = 11
+  Caption = Mystery
+
+Name = tCITO
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 10
+  Top = 64
+  Width = 98
+  Taborder = 12
+  Caption = CITO
+
+Name = tLFEvent
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 250
+  Top = 82
+  Width = 98
+  Taborder = 13
+  Caption = L&&F Event
+
+Name = tEarth
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 130
+  Top = 82
+  Width = 98
+  Taborder = 14
+  Caption = Earth
+
+Name = tEvent
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 10
+  Top = 82
+  Width = 98
+  Taborder = 15
+  Caption = Event
+
+Name = tLFCelebration
+  Type = Checkbox
+  Container = GroupBox3
+  Height = 20
+  Left = 370
+  Top = 28
+  Width = 110
+  Taborder = 16
+  Caption = L&&F Celebration
+
+Name = cLarge
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 20
+  Left = 10
+  Top = 10
+  Width = 98
+  Taborder = 0
+  Caption = Large
+
+Name = cOther
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 20
+  Left = 10
+  Top = 34
+  Width = 98
+  Taborder = 1
+  Caption = Other
+
+Name = cRegular
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 20
+  Left = 110
+  Top = 10
+  Width = 98
+  Taborder = 2
+  Caption = Regular
+
+Name = cVirtual
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 20
+  Left = 110
+  Top = 34
+  Width = 98
+  Taborder = 3
+  Caption = Virtual
+
+Name = cSmall
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 20
+  Left = 210
+  Top = 10
+  Width = 98
+  Taborder = 4
+  Caption = Small
+
+Name = cNotChosen
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 20
+  Left = 210
+  Top = 34
+  Width = 98
+  Taborder = 5
+  Caption = Not chosen
+
+Name = cMicro
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 20
+  Left = 310
+  Top = 10
+  Width = 60
+  Taborder = 6
+  Caption = Micro
+
+Name = FoundByMe
+  Type = Checkbox
+  Container = Groupbox1
+  Height = 20
+  Left = 13
+  Top = 12
+  Width = 98
+  Taborder = 0
+  Caption = Found by me
+
+Name = Disabled
+  Type = Checkbox
+  Container = Groupbox1
+  Height = 20
+  Left = 124
+  Top = 12
+  Width = 98
+  Taborder = 1
+  Caption = Disabled
+
+Name = HTMLabel8
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 20
+  Top = 365
+  Width = 69
+  Caption = Not found by
+
+Name = Label12
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 20
+  Top = 388
+  Width = 71
+  Caption = Load settings
+
+Name = HTMLabel7
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 319
+  Top = 263
+  Width = 49
+  Caption = between
+
+Name = Label11
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 319
+  Top = 284
+  Width = 63
+  Caption = Data format
+
+Name = HTMLabel6
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 486
+  Top = 255
+  Width = 14
+  Caption = --
+
+Name = Label10
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 319
+  Top = 251
+  Width = 77
+  Caption = Favorite points
+
+Name = HTMLabel5
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 20
+  Top = 339
+  Width = 95
+  Caption = Exclude owned by
+
+Name = Label9
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 20
+  Top = 313
+  Width = 56
+  Caption = Owned by
+
+Name = HTMLabel4
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 20
+  Top = 284
+  Width = 85
+  Caption = Terrain between
+
+Name = HTMLabel3
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 177
+  Top = 280
+  Width = 14
+  Caption = --
+
+Name = Label7
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 177
+  Top = 251
+  Width = 14
+  Caption = --
+
+Name = Label6
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 20
+  Top = 255
+  Width = 92
+  Caption = Difficulty between
+
+Name = HTMLabel2
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 20
+  Top = 142
+  Width = 67
+  Caption = Cache types
+
+Name = Label5
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 20
+  Top = 72
+  Width = 74
+  Caption = Container size
+
+Name = Label4
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 20
+  Top = 48
+  Width = 43
+  Caption = Include
+
+Name = Label3
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 346
+  Top = 14
+  Width = 88
+  Caption = (Max 30 allowed)
+
+Name = Label2
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 187
+  Top = 14
+  Width = 82
+  Caption = Logs per cache
+
+Name = Label1
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 20
+  Top = 14
+  Width = 84
+  Caption = Max geocaches
+
+Name = ClearFlags
+  Type = Checkbox
+  Container = Groupbox7
+  Height = 20
+  Left = 12
+  Top = 12
+  Width = 168
+  Taborder = 0
+  Caption = Clear User Flags before loading
+
+Name = Label13
+  Type = Label
+  Container = Groupbox5
+  Height = 17
+  Left = 374
+  Top = 47
+  Width = 58
+  Caption = User Flags
+
+Name = SaveBox
+  Type = Combobox
+  Container = GroupBox10
+  Exitonchange = Yes
+  Height = 21
+  Left = 10
+  Top = 18
+  Values = $SaveBoxList
+  Width = 220
+  Taborder = 2
+
+Name = Save
+  Type = Button
+  Container = GroupBox10
+  Height = 28
+  Left = 266
+  Top = 14
+  Width = 75
+  Taborder = 0
+  Caption = <img src="idx:4" align="middle"> Save
+
+Name = Delete
+  Type = Button
+  Container = GroupBox10
+  Height = 28
+  Left = 369
+  Top = 14
+  Width = 75
+  Taborder = 1
+  Caption = <img src="idx:5" align="middle"> Delete
+
+Name = SetFilter
+  Type = Button
+  Height = 27
+  Left = 350
+  Top = 531
+  Width = 120
+  Taborder = 8
+  Caption = <img src="idx:15" align="middle"> Set Filter
+
+Name = SaveCombine
+  Type = Button
+  Container = GroupBox10
+  Height = 25
+  Left = 472
+  Top = 15
+  Width = 75
+  Taborder = 3
+  Caption = Combine
+
+<enddata>
+
+
+
+
+
+
+
+
+
+
+
+#Name = Form2
+#  Type = Form
+#  Caption = Geocaches Along a Route
+#  Height = 592
+#  Width = 659
+
+<Data> VarName=$form2
+#********************************************************************
+# Form generated by GSAK form designer on Sun 22-Jul-2012 17:02:11
+#********************************************************************
+
+
+Name = Groupbox17
+  Type = Groupbox
+  Container = Groupbox6
+  Height = 120
+  Left = 360
+  Top = 230
+  Width = 230
+  Taborder = 4
+
+Name = Groupbox18
+  Type = Groupbox
+  Container = Groupbox6
+  Height = 120
+  Left = 40
+  Top = 230
+  Width = 230
+  Taborder = 5
+
+Name = Label101
+  Type = Label
+  Container = Groupbox6
+  Height = 17
+  Left = 40
+  Top = 160
+  Width = 56
+  Caption = Start point
+
+Name = startpoint
+  Type = Combobox
+  Container = Groupbox6
+  Height = 21
+  Left = 160
+  Top = 158
+  Width = 430
+  Taborder = 0
+
+Name = endpoint
+  Type = Combobox
+  Container = Groupbox6
+  Height = 21
+  Left = 160
+  Top = 188
+  Width = 430
+  Taborder = 1
+
+Name = HTMLabel102
+  Type = Label
+  Container = Groupbox6
+  Height = 17
+  Left = 40
+  Top = 190
+  Width = 53
+  Caption = End point
+
+Name = Label103
+  Type = Label
+  Container = Groupbox18
+  Height = 17
+  Left = 40
+  Top = 30
+  Width = 100
+  Caption = Distance from route
+
+Name = distancefromroute
+  Type = Edit
+  Container = Groupbox18
+  Height = 21
+  Left = 160
+  Top = 25
+  Width = 31
+  Taborder = 0
+
+Name = avoidhighways
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox18
+  Height = 20
+  Left = 40
+  Top = 60
+  Width = 150
+  Taborder = 1
+  Caption = Avoid Highways
+
+Name = avoidtollroads
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox18
+  Height = 20
+  Left = 40
+  Top = 80
+  Width = 150
+  Taborder = 2
+  Caption = Avoid Toll Roads
+
+Name = Label104
+  Type = Label
+  Container = Groupbox6
+  Height = 20
+  Left = 100
+  Size = 12
+  Top = 70
+  Width = 438
+  Caption = Select options for map (can also be changed on map directly)
+
+Name = ModeCycling
+  Type = Radiobutton
+  Captionposition = Left
+  Container = Groupbox17
+  Height = 20
+  Left = 40
+  Top = 80
+  Width = 150
+  Taborder = 0
+  Caption = Cycling
+
+Name = ModeDriving
+  Type = Radiobutton
+  Captionposition = Left
+  Container = Groupbox17
+  Height = 20
+  Left = 40
+  Top = 60
+  Width = 150
+  Taborder = 1
+  Caption = Driving
+
+Name = Label105
+  Type = Label
+  Container = Groupbox17
+  Height = 18
+  Left = 81
+  Top = 30
+  Width = 68
+  Caption = Travel Mode
+
+<enddata>
+
+
+<Data> VarName=$form3
+#********************************************************************
+# Form generated by GSAK form designer on Fri 26-Dec-2008 17:07:47
+#********************************************************************
+
+Name = Form3
+Type = Form
+Caption = Route Name to Save ...
+Height = 163
+Width = 300
+
+Name = Name
+Type = Edit
+Height = 21
+Left = 16
+Top = 28
+Width = 260
+Taborder = 8
+
+Name = NameOK
+Type = Button
+Height = 30
+Left = 33
+Top = 80
+Width = 75
+Taborder = 9
+Caption = OK
+
+Name = Cancel
+Type = Button
+Height = 30
+Left = 183
+Top = 80
+Width = 75
+Taborder = 10
+Caption = Cancel
+
+<enddata>
+
+<Data> VarName=$form4
+Name = form4
+  Type = Form
+  Caption = Confirm deletion
+  Height = 166
+  Width = 322
+
+Name = DeleteOK
+  Type = Button
+  Height = 30
+  Left = 33
+  Top = 80
+  Width = 75
+  Taborder = 8
+  Caption = Delete
+
+Name = Cancel
+  Type = Button
+  Height = 30
+  Left = 183
+  Top = 80
+  Width = 75
+  Taborder = 9
+  Caption = Cancel
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 5
+  Size = 10
+  Top = 10
+  Width = 300
+  Caption = Confirm that you wish to delete the saved settings:
+
+Name = FilterLabel
+  Type = Label
+  Color = 255
+  Height = 16
+  Left = 20
+  Size = 10
+  Top = 40
+  Width = 66
+  Caption = %name%
+
+<enddata>
+
+<Data> VarName=$form5
+#********************************************************************
+# Form generated by GSAK form designer on Sat 07-Jul-2012 14:15:35
+#********************************************************************
+
+Name = form5
+  Type = Form
+  Caption = Continue run
+  Height = 177
+  Width = 427
+
+Name = Label201
+  Type = Label
+  Height = 17
+  Left = 93
+  Size = 10
+  Top = 50
+  Width = 233
+  Caption = Your last run failed to finish completely
+
+Name = Label202
+  Type = Label
+  Height = 17
+  Left = 89
+  Size = 10
+  Top = 70
+  Width = 241
+  Caption = Would you like to restart where it failed?
+
+Name = Label203
+  Type = Label
+  Color = 16744448
+  Height = 22
+  Left = 142
+  Size = 12
+  Style = bold
+  Top = 10
+  Width = 135
+  Caption = Last Run Failed
+
+Name = RestartNo
+  Type = Button
+  Height = 25
+  Left = 82
+  Top = 110
+  Width = 75
+  Taborder = 10
+  Caption = No
+
+Name = RestartYes
+  Type = Button
+  Height = 25
+  Left = 262
+  Top = 110
+  Width = 75
+  Taborder = 11
+  Caption = Yes
+
+<enddata>
+
+
+<Data> VarName=$form6
+#********************************************************************
+# Form generated by GSAK form designer on Sat 02-Mar-2013 18:24:47
+#********************************************************************
+
+Name = Form6
+  Type = Form
+  Caption = Combine Routes
+  Height = 300
+  Width = 500
+
+Name = SaveBoxCombine
+  Type = Edit
+  Height = 21
+  Left = 175
+  Top = 205
+  Width = 260
+  Taborder = 10
+
+Name = Label1
+  Type = Label
+  Height = 17
+  Left = 61
+  Top = 209
+  Width = 110
+  Caption = Combined Route name
+
+Name = CombineOK
+  Type = Button
+  Height = 25
+  Left = 330
+  Top = 240
+  Width = 75
+  Taborder = 11
+  Caption = Combine
+
+Name = CombineCancel
+  Type = Button
+  Height = 25
+  Left = 90
+  Top = 240
+  Width = 75
+  Taborder = 12
+  Caption = Cancel
+
+Name = Label2
+  Type = Label
+  Color = 16744448
+  Height = 17
+  Left = 140
+  Size = 12
+  Style = bold
+  Top = 10
+  Width = 215
+  Caption = Select Routes to combine
+
+Name = SavedRoutes
+  Type = Checklistbox
+  Columns = 2
+  Height = 151
+  Left = 40
+  Top = 40
+  Values = $SaveBoxList
+  Width = 421
+  Taborder = 13
+
+<enddata>
+
+
+
+
+
+
+#*******************************************************
+#   Variable declarations for
+#   C:\Users\Mike\AppData\Roaming\gsak\Macros\GetCachesOnRoute.gsk
+#
+#   Generated 7/7/2012 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$actualcount Type=Numeric
+Declare Var=$actualtotal Type=Numeric
+Declare Var=$avoidhighways Type=Boolean
+Declare Var=$avoidtollroads Type=Boolean
+Declare Var=$box Type=String
+Declare Var=$boxa1 Type=String
+Declare Var=$boxa2 Type=String
+Declare Var=$boxa3 Type=String
+Declare Var=$boxa4 Type=String
+Declare Var=$boxb1 Type=String
+Declare Var=$boxb2 Type=String
+Declare Var=$boxb3 Type=String
+Declare Var=$boxb4 Type=String
+Declare Var=$boxlist Type=String
+Declare Var=$boxnw Type=String
+Declare Var=$boxne Type=String
+Declare Var=$boxse Type=String
+Declare Var=$boxsw Type=String
+Declare Var=$cLarge Type=Boolean
+Declare Var=$clearflags Type=Boolean
+Declare Var=$cMicro Type=Boolean
+Declare Var=$cNotChosen Type=Boolean
+Declare Var=$cOther Type=Boolean
+Declare Var=$count Type=Numeric
+Declare Var=$cRegular Type=Boolean
+Declare Var=$cSmall Type=Boolean
+Declare Var=$cVirtual Type=Boolean
+Declare Var=$Data Type=String
+Declare Var=$datafile Type=String
+Declare Var=$difmax Type=String
+Declare Var=$difmin Type=String
+Declare Var=$disabled Type=Boolean
+Declare Var=$distance Type=Numeric
+Declare Var=$distancefromroute Type=String
+Declare Var=$distdata Type=String
+Declare Var=$distlat Type=Numeric
+Declare Var=$distlon Type=Numeric
+Declare Var=$distunits Type=String
+Declare Var=$elat Type=String
+Declare Var=$elon Type=String
+Declare Var=$endpoint Type=String
+Declare Var=$excludeownedby Type=String
+Declare Var=$favmax Type=String
+Declare Var=$favmin Type=String
+Declare Var=$filepath Type=String
+Declare Var=$form Type=String
+Declare Var=$form2 Type=String
+Declare Var=$form3 Type=String
+Declare Var=$Form4 Type=String
+Declare Var=$form5 Type=String
+Declare Var=$foundbyme Type=Boolean
+Declare Var=$full Type=Boolean
+Declare Var=$GcGeocachesDynamic Type=String
+Declare Var=$GcGeocachesStatic Type=String
+Declare Var=$id Type=Numeric
+Declare Var=$lat Type=String
+Declare Var=$lite Type=Boolean
+Declare Var=$Loadsettings Type=String
+Declare Var=$Locations Type=String
+Declare Var=$logspercache Type=String
+Declare Var=$lon Type=String
+Declare Var=$mappage Type=String
+Declare Var=$maxgeocaches Type=String
+Declare Var=$mode Type=String
+Declare Var=$modecycling Type=Boolean
+Declare Var=$modedriving Type=Boolean
+Declare Var=$Name Type=String
+Declare Var=$NameSQL Type=String
+Declare Var=$notfoundby Type=String
+Declare Var=$numberboxes Type=Numeric
+Declare Var=$ownedby Type=String
+Declare Var=$Polygon Type=String
+Declare Var=$PostData Type=String
+Declare Var=$PromptSaveText Type=String
+Declare Var=$RestartNo Type=Boolean
+Declare Var=$RestartYes Type=Boolean
+Declare Var=$result Type=String
+Declare Var=$routedata Type=Boolean
+Declare Var=$SaveBox Type=String
+Declare Var=$SaveBoxList Type=String
+Declare Var=$SaveBoxSQL Type=String
+Declare Var=$savedroute Type=String
+Declare Var=$SaveNameValues Type=String
+Declare Var=$skippedcount Type=Numeric
+Declare Var=$slat Type=String
+Declare Var=$slon Type=String
+Declare Var=$startpoint Type=String
+Declare Var=$status Type=String
+Declare Var=$tCITO Type=Boolean
+Declare Var=$tEarth Type=Boolean
+Declare Var=$temp Type=String
+Declare Var=$termax Type=String
+Declare Var=$termin Type=String
+Declare Var=$test Type=String
+Declare Var=$tEvent Type=Boolean
+Declare Var=$tGroundspeakHQ Type=Boolean
+Declare Var=$tLetterbox Type=Boolean
+Declare Var=$tLFCelebration Type=Boolean
+Declare Var=$tLFEvent Type=Boolean
+Declare Var=$tLocationless Type=Boolean
+Declare Var=$tMazeExhibit Type=Boolean
+Declare Var=$tMegaEvent Type=Boolean
+Declare Var=$tMulti Type=Boolean
+Declare Var=$tMystery Type=Boolean
+Declare Var=$tProjectAPE Type=Boolean
+Declare Var=$TriedToGet Type=Boolean
+Declare Var=$tTraditional Type=Boolean
+Declare Var=$tVirtual Type=Boolean
+Declare Var=$tWebCam Type=Boolean
+Declare Var=$tWherigo Type=Boolean
+Declare Var=$URL Type=String
+Declare Var=$variables Type=String
+Declare Var=$variablesSQL Type=String
+Declare Var=$Version Type=String
+

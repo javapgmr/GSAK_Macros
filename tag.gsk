@@ -1,0 +1,63 @@
+# MacVersion = 0.1
+# MacDescription = Universal %tag
+# MacAuthor = Lignumaqua
+# MacFileName = tag.gsk
+# 7-25-2010
+#
+# Syntax example %macro="tag?elevation;lastfoundate"
+# Names are standard database field names without the $d_
+# Separator is semi-colon ;
+# Any unrecognised string is passed through verbatim
+
+
+$count = RegExCount(";",$_MacroParms) + 1
+
+IF Len($_MacroParms) = 0
+	RETURN
+ENDIF
+$_Special = ""
+$i = 1
+
+IF NOT(VarExists("p_TagLookup"))
+	$status = Sqlite("open",$_ExePath + "\static.db3")
+	$_Sql = "Select '~' || vFrom || '~' || d2 from lookup where type = 'dbv'"
+	$p_TagLookup = Sqlite("sql",$_sql)
+	$status = Sqlite("close","")
+ENDIF
+
+WHILE $i <= $count
+	$var = Extract($_MacroParms,";",$i)
+	$out = ""
+	$d2 = RegExData("~\$d_" + $var +"~.",$p_TagLookup,1)
+	$d2 = Extract($d2,"~",3)
+
+	$_sql = "SELECT $var FROM cachesall WHERE code = '$d_code' LIMIT 1"
+
+	BEGINCASE
+	CASE $d2 = "N"
+		$num = Val(Sqlite("sql",$_sql))
+		IF $var = "elevation"
+			IF NOT(IsEmpty($d_resolution))
+				$out = NumToStr(elevation($num))
+			ENDIF
+		ELSE
+			$out = NumToStr($num)
+		ENDIF
+	CASE $d2 = "L"
+		IF Sqlite("sql",$_sql) = "1"
+			$out = "T"
+		ELSE
+			$out = "F"
+		ENDIF
+	CASE $d2 = "D"
+		IF Len(Sqlite("sql",$_sql)) = 10
+			$out = DateFormat(SqlToDate(Sqlite("sql",$_sql)))
+		ENDIF
+	CASE $d2 = "C"
+		$out = Sqlite("sql",$_sql)
+	OTHERWISE
+		$out = $var
+	ENDCASE
+	$_Special = $_Special + $out
+	$i = $i + 1
+ENDWHILE

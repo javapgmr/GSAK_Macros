@@ -1,0 +1,50 @@
+#################################################################################
+# orig_waypoint.txt - Used to add a Note to an unknown cache record with the    #
+#                     Original  posted Cache coordinates                        #
+#                                                                               #
+# This GSAK macro will run against your current database.                       #
+# It will perform the following:                                                #
+#                                                                               #
+# 1 - Start at the 1st record                                                   #
+# 2 - Check to see if the record is an Unknown Cache, has never been found, and #
+#     does not already contain a Note from this macro                           #
+# 3 - If Step 2 passes, then it will add a Note to the cache with the Original  #
+#     posted coords. It will not change your corrected coords.                  #
+# 4 - If Step 2 fails, it will go to the next record and repeat Step 2          #
+#                                                                               #
+#################################################################################
+# MacVersion = 1.0
+# MacDescription = Add original coordinates to log for caches with updated coordinates.
+# MacAuthor = 
+# MacFileName = logorigincoords.gsk
+#################################################################################
+#*******************************************************
+#   Variable declarations for
+#   logorigincoords.gsk
+#
+#   Generated 06/08/2007 5:11:50 PM on GSAKVariables.gsk Rev V0.20 B4
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$coords Type=String
+Declare Var=$savedCoords Type=String
+Declare Var=$status Type=String
+Declare Var=$ThisRecord Type=Numeric
+
+
+$ThisRecord = 0
+Goto Position=Top
+While not($_Eol)
+  $ThisRecord = $ThisRecord + 1
+  $status = "Cache: " + "$ThisRecord" + " of " + "$_Count"
+  ShowStatus msg="$status"
+	if $d_HasCorrected and $d_FoundCount = 0 and at("Original Coords",$d_UserNote) = 0
+	$coords=$d_LatOriginal + "  " + $d_LonOriginal
+	$savedCoords=gCalc($coords, "FormatMinutes")
+	$d_UserNote = "Original Coords: " + $savedCoords + $_NewLine + $_NewLine  + $d_UserNote
+	endIf
+  GOTO Position=Next
+EndWHILE	

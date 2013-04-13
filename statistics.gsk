@@ -1,0 +1,174 @@
+#########################################
+# Macro to show the number and percent of found caches by
+# types, and DNF's, whether kept in the same or two
+# different GSAK databases.
+#
+# The first time it's run, the macro will ask you to
+# specify the name of your database for found caches and
+# the name of your database for DNF caches. It will
+# store this information in a file called "FDNFData.dat"
+# in the GSAK\Macros folder so that you don't have to
+# specify your databases again. Should you need to reset
+# these database names, delete the FDNFData.dat file and
+# run the macro again.
+#
+# Thanks to "Vater und Sohn" and "Pasha" from whose work
+# this macro is derived!
+##########################################
+
+# Set the file path
+$datafile=$_Install + "\Macros\FDNFData.dat"
+
+# Does it already exist?
+IF (FileExists($datafile))
+
+# Yes? Read config values and assign to our vars
+FILEREAD File=$datafile
+$FoundDatabase=EXTRACT($line, ";", 1)
+$DNFDatabase=EXTRACT($line, ";", 2)
+ENDREAD
+
+ELSE
+
+# No? Then we have to ask for the names of your databases and check to see if they're valid.
+
+# Database with finds
+$FoundDatabase="Default"
+$inputmsg="Enter the name of the datase where your FOUND caches are located."
+INPUT Msg="$inputmsg" Default="Default" Varname=$FoundDatabase
+WHILE .NOT. (DataBaseExists($FoundDatabase))
+$inputmsg="That database doesn't exist! Please enter a valid database name:"
+INPUT Msg="$inputmsg" Default="$FoundDatabase" Varname=$FoundDatabase
+ENDWHILE
+
+# Database with DNF's
+$database="Default"
+$inputmsg="Enter the name of the database where your DNF caches are located."
+INPUT Msg="$inputmsg" Default="Default" Varname=$DNFDatabase
+WHILE .NOT. (DataBaseExists($DNFDatabase))
+$inputmsg="That database doesn't exist! Enter a valid database name:"
+INPUT Msg="$inputmsg" Default="$DNFDatabase" Varname=$DNFDatabase
+ENDWHILE
+ENDIF
+
+# Now save those database values for next time into $datafile, separated by;
+$vars=$FoundDatabase + ";" + $DNFDatabase + ";"
+$result=PUTFILE($datafile, $vars)
+IF Left($result, 7) = "*Error*"
+CANCEL Msg="Unable to write to $datafile!"
+ENDIF
+
+# Determine the total number of finds in database where finds are stored
+Database Name=$FoundDatabase
+mfilter if=$d_found
+$Total=$_Count
+$temp = $_Install + "\temp"
+
+# Set date format
+Set $date = DateFormat($_Today)
+
+# Determine number of finds of each type
+mfilter if=$d_CacheType="B".and.$d_found
+$LetterboxCount = $_FilterCount
+$LetterboxPercent = ($_FilterCount/$Total) * 100
+$LetterboxPercentString = left("$LetterboxPercent",4)
+
+mfilter if=$d_CacheType="C".and.$d_found
+$CitoCount = $_FilterCount
+$CitoPercent = ($_FilterCount/$Total) * 100
+$CitoPercentString = left("$CitoPercent",4)
+
+mfilter if=$d_CacheType="E".and.$d_found
+$EventCount = $_FilterCount
+$EventPercent = ($_FilterCount/$Total) * 100
+$EventPercentString = left("$EventPercent",4)
+
+mfilter if=$d_CacheType="G".and.$d_found
+$BenchmarkCount = $_FilterCount
+$BenchmarkPercent= ($_FilterCount/$Total) * 100
+$BenchMarkPercentString = left("$BenchMarkPercent",4)
+
+mfilter if=$d_CacheType="L".and.$d_found
+$LocationlessCount = $_FilterCount
+$LocationlessPercent = ($_FilterCount/$Total) * 100
+$LocationLessPercentString = left("$LocationlessPercent",4)
+
+mfilter if=$d_CacheType="M".and.$d_found
+$MultiCount = $_FilterCount
+$MultiPercent = ($_FilterCount/$Total) * 100
+$MultiPercentString = left("$MultiPercent",4)
+
+mfilter if=$d_CacheType="O".and.$d_found
+$OtherCount = $_FilterCount
+$OtherPercent = ($_FilterCount/$Total) * 100
+$OtherPercentString = left("$OtherPercent",4)
+
+mfilter if=$d_CacheType="R".and.$d_found
+$EarthCount = $_FilterCount
+$EarthPercent = ($_FilterCount/$Total) * 100
+$EarthPercentString = left("$EarthPercent",4)
+
+mfilter if=$d_CacheType="T".and.$d_found
+$TradCount = $_FilterCount
+$TradPercent = ($_FilterCount/$Total) * 100
+$TradPercentString = left("$TradPercent",4)
+
+mfilter if=$d_CacheType="U".and.$d_found
+$UnknownCount = $_FilterCount
+$UnknownPercent = ($_FilterCount/$Total) * 100
+$UnknownPercentString = left("$UnknownPercent",4)
+
+mfilter if=$d_CacheType="V".and.$d_found
+$VirtCount = $_FilterCount
+$VirtPercent = ($_FilterCount/$Total) * 100
+$VirtPercentString = left("$VirtPercent",4)
+
+mfilter if=$d_CacheType="W".and.$d_found
+$WebcamCount = $_FilterCount
+$WebcamPercent = ($_FilterCount/$Total) * 100
+$WebCamPercentString = left("$WebCamPercent",4)
+CancelFilter
+
+$TotalFinds = $Total
+
+#add DNF's from Database where DNF's are stored
+Database Name=$DNFDatabase
+mfilter if=$d_DNF
+$DNFCount = $_Count
+$TotalHunts = $TotalFinds + $_Count
+$DNFPercent = ($DNFCount/$TotalHunts) * 100
+$DNFPercentString = left("$DNFPercent",4)
+CancelFilter
+
+$out = "<html>" + $_NewLine
+$out = $out + "<style type='text/css'>" + $_NewLine
+$out = $out + "<!---" + $_NewLine
+$out = $out + ".Body{font-family:'Arial'}" + $_NewLine
+$out = $out + ".TableHeader{background-color:#CCCCFF;text-align: center}" + $_NewLine
+$out = $out + ".Item{color:blue;font-weight:bold}" + $_NewLine
+$out = $out + ".row{background-color: #FEF4D8;vertical-align:top}" + $_NewLine
+$out = $out + "-->" + $_NewLine
+$out = $out + "</style>" + $_NewLine
+$out = $out + "<body class=body>" + $_NewLine
+$out = $out + "<table border='1' summary=''>"
+$out = $out + "<tr class=TableHeader><td align='center' colspan=3><b>My Found & DNF Stats for " + "$Date</b></td></tr>" + $_NewLine
+
+$out = $out + "<tr class=row><td><b>Found Type</b></td><td>" + "<b> Number </b></td>" + "<td><b> Percent </b></td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Traditional:</td><td>" + "$TradCount</td>" + "<td>$TradPercentString %</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Multi:</td><td>" + "$Multicount</td>" + "<td>$MultiPercentString %</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Virtual:</td><td>" + "$VirtCount</td>" + "<td>$VirtPercentString % </td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Letterbox:</td><td>" + "$LetterboxCount</td>" + "<td>$LetterboxPercentString %</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Event:</td><td>" + "$EventCount</td>" + "<td>$EventPercentString %</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Unknown:</td><td>" + "$UnknownCount</td>" + "<td>$UnknownPercentString %</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Webcam:</td><td>" + "$WebcamCount</td>" + "<td>$WebcamPercentString % </td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Locationless:</td><td> " + "$LocationlessCount</td>" + "<td>$LocationlessPercentString %" + "</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Earth:</td><td>" + "$EarthCount</td>" + "<td>$EarthPercentString %</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>CITO:</td><td>" + "$CITOCount</td>" + "<td>$CITOPercentString %</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td>Other:</td><td>" + "$OtherCount</td>" + "<td>$OtherPercentString %</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td><b>Total Found:</b></td><td>" + "<b>$Total</b></td>" + "<td><b>100 %</b></td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td><b>DNF:</b></td><td>" + "$DNFCount</td>" + "<td>$DNFPercentString %</td></tr>" + $_NewLine
+$out = $out + "<tr class=row><td><b>Total Found & DNF</b>:</td><td>" + "$TotalHunts</td>" + "<td> NA </td>" + $_NewLine
+$out = $out + "</table></body></html>"
+$FileName = $temp + "\MyFoundStats.htm"
+$Error = PutFile($FileName,$out)
+OpenFile file="$FileName"

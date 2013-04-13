@@ -1,0 +1,140 @@
+BEGINSUB name=WriteCacheFile
+# Called to write the data about the cache to the file
+# The data must be in $csvOut
+
+# Default filename
+# Any waypoint not in the list of geocaching.com cache-types will be put in the "Unknown" file
+  $FileName = "Unknown"
+
+# Native cache types
+  $Index = At($d_CacheType,$CacheType)
+  IF $Index > 0
+    $FileName = Extract($CacheTypeFull,"~",$Index)
+  ENDIF 
+
+  IF $d_CacheType = "T" AND $d_Container = "Micro"
+    $Filename = "Micro"
+  ENDIF 
+
+# Found status takes precedence over cachetype
+  IF $d_Found
+    $FileName = "Found"
+    IF $d_CacheType = "C"
+      $FileName = "Attended"
+    ENDIF 
+    IF $d_CacheType = "E"
+      $FileName = "Attended"
+    ENDIF 
+    IF $d_CacheType = "G"
+      $FileName = "Benchmark Found"
+    ENDIF 
+    IF $d_CacheType = "W"
+      $FileName = "Picture Taken"
+    ENDIF 
+    IF $d_CacheType = "X"
+      $FileName = "Attended"
+    ENDIF 
+    IF $d_CacheType = "Z"
+      $FileName = "Attended"
+    ENDIF 
+  ENDIF 
+
+# Corrected coordinates will be indicated with a green check-mark, only meaningfull for multi's and mystery's
+  IF $d_HasCorrected
+    $FileName = $FileName + " Solved"
+  ENDIF 
+  
+# Disabled status takes precedence over cachetype, found-status and corrected coordinates
+  IF $d_TempDisabled
+    	$FileName = $FileName + " Disabled"
+  ENDIF 
+
+# Has Final
+  IF $d_CacheType = "M"
+    TABLE active=waypoints scope=parent
+    $HasFinal = false
+    WHILE not($_eol)
+      IF $d_cType = "Final Location"
+        $HasFinal = true
+        BREAK 
+      ENDIF 
+      GOTO Position=Next
+    ENDWHILE 
+    TABLE active=caches
+    IF $HasFinal
+      $FileName = "Multi Solved"
+      IF $d_TempDisabled
+      	$FileName = "Multi Disabled"
+      ENDIF
+      IF $d_Found
+      	$FileName = "Found Solved"
+      	IF $d_TempDisabled
+      		$FileName = "Found Disabled"
+      	ENDIF
+      ENDIF
+    ENDIF 
+  ENDIF 
+
+  IF $d_CacheType = "U"
+    TABLE active=waypoints scope=parent
+    $HasFinal = false
+    WHILE not($_eol)
+      IF $d_cType = "Final Location"
+        $HasFinal = true
+        BREAK 
+      ENDIF 
+      GOTO Position=Next
+    ENDWHILE 
+    TABLE active=caches
+    IF $HasFinal
+      $FileName = "Mystery Solved"
+      IF $d_TempDisabled
+      	$FileName = "Mystery Disabled"
+      ENDIF
+      IF $d_Found
+      	$FileName = "Found Solved"
+      	IF $d_TempDisabled
+      		$FileName = "Found Disabled"
+      	ENDIF
+      ENDIF
+    ENDIF 
+  ENDIF 
+
+# Archived status takes precedence over cachetype, found-status, corrected coordinates and disabled-ness
+  IF $d_Archived
+    $FileName = "Archived"
+  	IF $d_CacheType = "A"
+      $FileName = "Project APE Disabled"
+    ENDIF 
+    IF $d_CacheType = "C"
+      $FileName = "CITO Disabled"
+    ENDIF 
+    IF $d_CacheType = "E"
+      $FileName = "Event Disabled"
+    ENDIF 
+    IF $d_CacheType = "G"
+      $FileName = "Benchmark Disabled"
+    ENDIF 
+    IF $d_CacheType = "X"
+      $FileName = "Maze Exhibit Disabled"
+    ENDIF 
+    IF $d_CacheType = "Z"
+      $FileName = "Mega Event Disabled"
+    ENDIF
+  ENDIF
+
+# Any cache that I have placed will be indicated as such, independent of type
+# Will only match if your name is part of the OwnerName
+  $Index = At($Me,$d_OwnerName)
+  IF $Index > 0
+    $FileName = "Placed"
+    IF $d_TempDisabled OR $d_Archived
+  	  $FileName = "Placed Disabled"
+    ENDIF
+  ENDIF 
+
+
+  $FileName = "\" + $FileName + ".csv"
+  $error = Appendfile($csvFolder + $FileName, $csvOut)
+  $csvLines = $csvLines + 1
+ENDSUB 

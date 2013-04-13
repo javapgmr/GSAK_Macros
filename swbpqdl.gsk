@@ -1,0 +1,58 @@
+	############################################
+# MacVersion = 1.00
+# MacDescription = Download Pocket Queries 
+# MacFileName = SWBPQLD.gsk
+# MacAuthor = javapgmr
+############################################
+DEBUG Status=OFF
+$PGM="pqdl.exe"
+$Parm1="-u javapgmr -p s39066  -o l:\staging  -e -s "	
+	
+	# To calculate the day on which a particular date falls,
+	# Input  $datetoconv
+	# Output $daynum - Integer 1 = Sunday...
+	#        $dayname - full day name, e.g. "Sunday"
+	#        $dayshort - three letter day name e.g. "Sun"
+
+	$daynum = DateDiff([19991226],$_Today)
+	$daynum   = 1 + $daynum - Int($daynum/7) * 7	
+
+BEGINCASE
+CASE $daynum=1
+$Parm2="Default-PQ01 Default-PQ02 Default-PQ03 Default-Daily1"
+$Parms=$Parm1+ " " + $Parm2
+RUNPGM pgm=$PGM  parms=$Parms
+
+CASE $daynum=2
+$Parm2="Default-PQ04 Default-PQ05 Default-PQ06 Default-Daily2"
+$Parms=$Parm1+ " " + $Parm2
+RUNPGM pgm=$PGM  parms=$Parms
+
+CASE $daynum=3
+$Parm2="Default-PQ07 Default-Daily3"
+$Parms=$Parm1+ " " + $Parm2
+RUNPGM pgm=$PGM  parms=$Parms
+
+CASE $daynum=4
+$Parm2="Default-Daily1"
+$Parms=$Parm1+ " " + $Parm2
+RUNPGM pgm=$PGM  parms=$Parms
+
+CASE $daynum=5
+$Parm2="Default-Daily2"
+$Parms=$Parm1+ " " + $Parm2
+RUNPGM pgm=$PGM  parms=$Parms
+
+CASE $daynum=6
+$Parm2="Default-Daily3"
+$Parms=$Parm1+ " " + $Parm2
+RUNPGM pgm=$PGM  parms=$Parms
+
+CASE $daynum=7
+$Parm2="Default-Daily2"
+$Parms=$Parm1+ " " + $Parm2
+RUNPGM pgm=$PGM  parms=$Parms
+OTHERWISE
+ENDCASE
+
+#  RUNPGM <pgm="ProgramName.exe" [<parms=Parameters>] [<Wait=No|Yes>] [<Hide=No|Yes>]

@@ -1,0 +1,76 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Move found caches to Found DATABASE
+# MacAuthor = javapgmr
+# MacFileName = moveToSolvedNotFound.gsk
+#*******************************************
+
+GOSUB Name=Declare
+SpeedMode Status=on
+$ownerID = NumToStr($p_ownerid)
+$macrohome=Sysinfo("MacroPath")
+$homeID = $p_homeid
+$currentDB = $_CurrentDatabase 
+$SolvedDB = "SolvedNotFound"
+
+
+$MoveCopy = Replace("@SolvedDB@",$SolvedDB, $Movecopy, TRUE)
+
+
+MFILTER IF= ($d_HasCorrected) OR ($d_HasUserNote)
+	IF $_FilterCount < 1
+		RETURN
+	ENDIF
+
+#Clear existing User Flags
+DATABASE Name=$SolvedDB Action=Select
+USERFLAG Type=Clear Range=All
+
+DATABASE Name=$currentDB Action=Select
+
+MFILTER IF=($d_HasCorrected) OR ($d_HasUserNote)
+If $_FilterCount > 0
+MacroSet Dialog=MoveCopy VarName=$MoveCopy
+MoveCopy Settings=<Macro>
+ENDIF
+
+DATABASE Name=$currentDB Action=Select
+
+<data> VarName=$MoveCopy
+[TfmMove]
+cbxDestination.Text=@SolvedDB@
+rbtAdd.Checked=False
+rbtAddFlag.Checked=True
+rbtAddIgnore.Checked=False
+rbtCopy.Checked=True
+rbtExistIgnore.Checked=False
+rbtFlagOnly.Checked=False
+rbtMove.Checked=False
+rbtReplace.Checked=False
+rbtReplaceFlag.Checked=True
+chkDisplay.Checked=False
+<enddata>
+
+
+#*******************************************************
+#   Variable declarations for
+#   moveToFound.gsk
+#
+#   Generated 02/09/2008 4:37:33 PM on GSAKVariables.gsk Rev V0.20 B11
+#
+#*******************************************************
+
+
+
+BEGINSUB Name=Declare
+Option Explicit=Yes
+
+Declare Var=$currentDB Type=String
+DECLARE Var=$homeID Type=String
+Declare Var=$macrohome Type=String
+Declare Var=$MoveCopy Type=String
+Declare Var=$ownerID Type=String
+Declare Var=$SolvedDB Type=String
+ENDSUB
+
+

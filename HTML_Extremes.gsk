@@ -1,0 +1,140 @@
+#***************************************
+# HTMLName=Extremes
+# SplitScreen=Yes
+# Export=No
+# Offline=No
+# Condensed=No
+#***************************************
+
+#***************************************
+#   Extreme Caches Split Screen
+#   v1.0 04/11/09
+#   Lignumaqua
+#***************************************
+
+# MacVersion = 1.0
+# MacDescription = Extremes Split Screen macro
+# MacAuthor = Lignumaqua
+# MacFileName = HTML_Extremes.gsk
+
+# Displays Most Northerly, Southerly, Easterly and Westerly caches in the current Filter
+
+VERCHECK Version=7.5.0.172 (Note: this macro requires the latest 7.5 GSAK release)
+
+IF $_Version < "7.5.2.10"
+ 		$SQLiteTable = "CachesAll"
+ELSE
+ 		$SQLiteTable = "CachesTempAll"
+ENDIF
+
+$CR = $_NewLine
+
+# Create the List variable used for the SQL
+$list = List("sql","create",$_NewLine)
+
+$Lang112 = "Most Northerly cache"
+$Lang113 = "Most Southerly cache"
+$Lang114 = "Most Westerly cache"
+$Lang115 = "Most Easterly cache"
+
+$stMainDiv     = "width:800px;  background: #EDEDED; font-family: Verdana, Arial, sans-serif; font-size: 11px; color: black; margin: 1px; border: outset;"
+$st2c1         = "background: #CCCCCC;"
+$st2c2         = "background: #BABABA;"
+
+# SQLite
+SQLITECACHES
+# Open our current database that now contains the "caches" table
+$status = Sqlite("open","$_CurrentDataPath\sqlite.db3")
+
+$out = "<center><div align='center' style='$stMainDiv'>" + $cr
+$out = $out + "<table width='790' style='text-align: left;  font-size: 12px;'>" + $CR
+
+$out = $out + "<tr><td colspan='2' align='center'><b>Extremes of Latitude and Longitude in Current Filter</b></td></tr>"
+
+GOSUB name=numLatitude
+GOSUB name=numLongitude
+
+$out = $out + "</table>" + $CR + "</div></center>"
+
+#Generate HTML to view in split screen
+$_HTML = $out
+
+
+
+BEGINSUB name=numLatitude
+	$_sql = "SELECT Code, Name, Latitude, URL from $SQLiteTable ORDER BY cast(Latitude as real) DESC"
+	$work = Sqlite("sql",$_sql)
+	$list = list("sql","replace",$work)
+	$count = $_SqlRows
+	$text1 = $Lang112
+	$tmpN = 1
+	GOSUB name=numLatitudeLine
+	$tmpN = $count
+	$text1 = $Lang113
+	GOSUB name=numLatitudeLine
+ENDSUB #numExtremes
+
+BEGINSUB name=numLatitudeLine
+	$tmpS = list("sql","item","$tmpN")
+	$Code = Extract($tmpS,";",1)
+	$Name = Extract($tmpS,";",2)
+	$latitude = Extract($tmpS,";",3)
+	$URL = Extract($tmpS,";",4)
+
+	
+	IF Len($Name) > 60
+		$ShrunkName = Left($Name,58) + "..."
+	ELSE
+		$ShrunkName = $Name
+	ENDIF
+	$tmpS = GCalc("$latitude 0","FormatMinutes")
+	$tmpS = Extract($tmpS,";",1)
+	$text2 = "<b>$tmpS</b>, $ShrunkName <a href='$Url'>$Code</a>"
+	GOSUB Name=NumbersLine
+ENDSUB #numLatitudeLine
+
+BEGINSUB name=numLongitude
+	$_sql = "SELECT Code, Name, Longitude, URL from $SQLiteTable ORDER BY cast(Longitude as real) DESC"
+	$work = Sqlite("sql",$_sql)
+	$list = list("sql","replace",$work)
+	$count = $_SqlRows
+	$text1 = $Lang115
+	$tmpN = 1
+	GOSUB name=numLongitudeLine
+	$tmpN = $count
+	$text1 = $Lang114
+	GOSUB name=numLongitudeLine
+ENDSUB #numExtremes
+
+BEGINSUB name=numLongitudeLine
+	$tmpS = list("sql","item","$tmpN")
+	$Code = Extract($tmpS,";",1)
+	$Name = Extract($tmpS,";",2)
+	$longitude = Extract($tmpS,";",3)
+	$URL = Extract($tmpS,";",4)
+
+	IF Len($Name) > 60
+		$ShrunkName = Left($Name,58) + "..."
+	ELSE
+		$ShrunkName = $Name
+	ENDIF
+	$tmpS = GCalc("0 $longitude","FormatMinutes")
+	$tmpS = Extract($tmpS,";",2)
+	$text2 = "<b>$tmpS</b>, $ShrunkName <a href='$Url'>$Code</a>"
+	GOSUB Name=NumbersLine
+ENDSUB #numLongitudeLine
+
+BEGINSUB Name=NumbersLine
+	# Add a line to the 'Some Number section, inputs are:
+	# $text1 : Description of the data
+	# $text2 : The data itself
+	$out = $out + "<tr>" + "$CR" + "<td style='$st2c1'>" + $CR
+	$out = $out + "$text1: </td>" + $CR
+	$out = $out + "<td style='$st2c2'>$text2</td>" + $CR + "</tr>" + $CR
+ENDSUB #NumbersLine
+
+
+
+
+
+

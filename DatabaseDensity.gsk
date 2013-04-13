@@ -1,0 +1,54 @@
+#*******************************************
+# MacVersion = 1.1
+# MacDescription = Cache density distribution of the database
+# MacAuthor = Hynr
+# MacFileName = DatabaseDensity.gsk
+# MacUrl =
+#*******************************************
+
+ $SQLtable_Name="cachex"
+ $SQLfile = "$_Install\macros\$SQLtable_Name.txt"
+ $status = dbtosql("caches","Code,Latitude,Longitude",$SQLfile,"")
+
+#STEP1: Create SQL table of the current database and add two column for
+#       Categories of latitude and longitude
+#       Categorize by 1/100th of a degree (~ half minute)
+#       also shift to not mess with negative numbers so that sorting works right
+ $Query = "ALTER TABLE $SQLtable_Name ADD COLUMN Latcat; "
+ $Query = $Query + "ALTER TABLE $SQLtable_Name ADD COLUMN Loncat; "
+ $Query = $Query + "UPDATE $SQLtable_Name "
+ $Query = $Query + "SET Latcat = Floor(100*(90+latitude))"
+ $Query = $Query +   ", Loncat = Floor(100*(180+longitude))"
+   $QueryResult= SQL($Query,"")
+
+ $Query = "Release Table SQLtemp"
+   $QueryResult= SQL($Query,"")
+
+#STEP 2: This query finds the number of caches in each Lat/Lon category containing
+#        a cache; the resulting table (SQLtemp) also has a field for the count
+#        Note that the units of Density are Count/(1/100 degree * 1/100 degree)
+ $Query = "ASSIGN TO SQLtemp "
+ $Query = $Query + "SELECT Latcat, Loncat, count(code) as Density"
+ $Query = $Query + " FROM $SQLtable_Name "
+ $Query = $Query + " GROUP BY Latcat, Loncat ORDER BY #Latcat ASC #Loncat ASC "  
+#  $Query = $Query + "; Select * from SQLtemp"
+   $QueryResult= SQL($Query,"H")
+
+#STEP 3: Now we need to let each code have this number depending on which
+#        Lat/Lon category it is in.
+ $Query = "Select $SQLtable_Name.code, "
+#  $Query = $Query + " $SQLtable_Name.latitude, $SQLtable_Name.Longitude, "
+ $Query = $Query + " SQLtemp.Density "
+ $Query = $Query + " From $SQLtable_Name, SQLtemp "
+ $Query = $Query + " WHERE $SQLtable_Name.Latcat=SQLtemp.LatCat"
+ $Query = $Query + " AND $SQLtable_Name.Loncat=SQLtemp.LonCat "
+ $Query = $Query + " ORDER BY #SQLtemp.Density DESC"  
+   $QueryResult= SQL($Query,"H")
+
+#STEP 4: Generate output:
+ CLIP Data=$QueryResult
+ $Message="Density at each geocache in the region "
+ $Message=$Message+" (these data are also on the clipboard)"
+ $html = sqltohtml($QueryResult,$Message,"y")
+
+CANCEL

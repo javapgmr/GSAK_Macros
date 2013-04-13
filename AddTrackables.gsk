@@ -1,0 +1,1032 @@
+#*******************************************
+# MacDescription = Add Trackables to a GSAK database
+# MacFileName = AddTrackables.gsk
+# MacAuthor = Kai Team
+# MacVersion=2.85
+# MacUrl=http://gsak.net/board/index.php?showtopic=12125&view=findpost&p=81169
+#*******************************************
+VERCHECK Version=7.6.1.13 (please update GSAK to version 7.6.1.13 or later to run this MACRO)
+#Initialize variables
+$TBString=""
+$TBName=""
+$TBRef=""
+$TBTrackNum=""
+$CurrentDB=$_CurrentDatabase
+$SplitScreen=$_Splitscreen
+$OwnerNameCkBx=FALSE
+$OwnersName=""
+$Duplicate=FALSE
+$NoRefNum=FALSE
+$TrackableTypes="Travel Bug Dog Tag;Geocoin;White Jeep;Red Jeep;Green Jeep;Unite For Diabetes;Other"
+$FormWidth="800"
+$FormHeight="600"
+$Form2Top="210"
+$Form2Left="400"
+$FoundCkBx=FALSE
+$Latitude=$d_Latitude
+$Longitude=$d_Longitude
+$DecLat=""
+$DecLon=""
+
+#Check for saved settings
+MACSETTINGS Type=R Filecheck=N
+$Form2 = editform($Form2,"TBType","values",$TrackableTypes)
+$Form2 = editform($Form2,"Form2","Width",$FormWidth)
+$Form2 = editform($Form2,"Form2","Height",$FormHeight)
+$BrowserWidth=NumToStr(Val($FormWidth)-31)
+$BrowserHeight=NumToStr(Val($FormHeight)-233)
+$Form2 = editform($Form2,"Browser1","Width",$BrowserWidth)
+$Form2 = editform($Form2,"Browser1","Height",$BrowserHeight)
+$Form2 = editform($Form2,"Form2","Top",$Form2Top)
+$Form2 = editform($Form2,"Form2","Left",$Form2Left)
+
+#Check for Trackables in the currently selected cache
+IF $_Count>0
+    $Code=$d_Code
+    $Data=$d_TravelBugs
+    $Count=RegExCount($_NewLine,$Data)
+    $x=1
+    WHILE $X<=$Count
+        $Data=Replace($_NewLine," ",$Data,TRUE)
+        $TBName=RegExData("(>.*?\()??",$Data,$x)
+        $TBName=Replace(">","",$TBName,TRUE)
+        $TBName=Replace("(","",$TBName,TRUE)
+        $TBName=AllTrim($TBName)
+
+        $TBRef=RegExData("(ref\s=\s.*?\))??",$Data,$x)
+        $TBRef=Replace("Ref = ","",$TBRef,TRUE)
+        $TBRef=Replace(")","",$TBRef,TRUE)
+        $TBString=$TBString + $TBRef + " - " + $TBName + ";"
+        $x=$x+1
+    ENDWHILE
+ENDIF
+
+#Append add from scratch option to list of trackable, if any
+$TBString=$TBString + "Add from scratch" + ";"
+#Assign list of trackables and scratch option to combo box.
+$Form1 = editform($Form1,"TBSelected","values",$TBString)
+
+#Display first user input form
+WHILE TRUE
+    $FormExit = form($Form1,"")
+    BEGINCASE
+        CASE $FormExit = "SystemExit"
+            CANCEL Msg="Macro Cancelled"
+
+        CASE $FormExit = "OwnerNameCkBx"
+            IF $OwnerNameCkBx=TRUE
+                $Form1 = editform($Form1,"OwnerNameLabel","visible","Yes")
+                $Form1 = editform($Form1,"OwnerNameEdit","visible","Yes")
+                $Form1 = editform($Form1,"OwnerIDLabel","visible","Yes")
+                $Form1 = editform($Form1,"OwnerIDEdit","visible","Yes")
+                $OwnersName=$OwnerNameEdit
+                $OwnerID=Val($OwnerIDEdit)
+            ELSE
+                $Form1 = editform($Form1,"OwnerNameLabel","visible","No")
+                $Form1 = editform($Form1,"OwnerNameEdit","visible","No")
+                $Form1 = editform($Form1,"OwnerIDLabel","visible","No")
+                $Form1 = editform($Form1,"OwnerIDEdit","visible","No")
+                $OwnersName=""
+            ENDIF
+
+        CASE $FormExit = "OK"
+            GOSUB Name=SaveSettings
+            GOSUB Name=Run
+            BREAK
+
+        CASE $FormExit = "Cancel"
+            CANCEL Msg="Macro Cancelled"
+    ENDCASE
+ENDWHILE
+
+BEGINSUB Name=Run
+    #Create the database if it doesn't exist, switch to it if it does.
+    IF Not(DataBaseExists("My Trackables"))
+        DATABASE Name="My Trackables" Action=Create
+    ELSE
+        IF $_CurrentDatabase<>"My Trackables"
+            DATABASE Name="My Trackables" Action=Select
+        ELSE
+            IF $_FilterActive
+                CANCELFILTER
+            ENDIF
+        ENDIF
+    ENDIF
+
+    #Extract known information, if selected
+    IF $TBSelected<>"Add from scratch"
+        $TBRefNum=Extract($TBSelected," ",1)
+        $TBName=Extract($TBSelected," - ",2)
+    ELSE #Display form3 to get from scratch TB Reference Number from user
+        $TBRefNum=""
+        $TBName=""
+        WHILE TRUE
+        $FormExit = form($Form3,"")
+            BEGINCASE
+                CASE $FormExit = "SystemExit"
+                    GOSUB Name=CANCEL
+
+                CASE $FormExit = "OK"
+                    $TBRefNum=Upper($TBRefNum)
+                    IF Seek($TBRefNum)
+                        $Duplicate=TRUE
+                        GOSUB Name=CANCEL
+                    ELSE
+                        BREAK
+                    ENDIF
+
+                CASE $FormExit = "Cancel"
+                    GOSUB Name=CANCEL
+            ENDCASE
+        ENDWHILE
+    ENDIF
+
+    IF $TBRefNum<>""
+        $URL="http://www.geocaching.com/track/details.aspx?tracker=" + $TBRefNum
+    ELSE
+        $URL="http://www.geocaching.com/track/details.aspx?tracker=" + $TBTrackNum
+    ENDIF
+
+    #Show TB in Macro form
+    $Form2 = Editform($Form2,"Browser1","url",$URL)
+    #Display found be me date box based on starting state of found check box
+    IF $FoundCkBx=TRUE
+        $Form2 = editform($Form2,"FoundLabel","visible","Yes")
+        $Form2 = editform($Form2,"FoundDate","visible","Yes")
+        $Form2 = editform($Form2,"Form2","top","25")
+    ELSE
+        $Form2 = editform($Form2,"FoundLabel","visible","No")
+        $Form2 = editform($Form2,"FoundDate","visible","No")
+        $Form2 = editform($Form2,"Form2","top","25")
+    ENDIF
+
+    #Show form2 to Prompt User for additional TB information
+    IF Not(Seek($TBRefNum))
+        WHILE TRUE
+            $FormExit = form($Form2,"")
+            BEGINCASE
+                CASE $FormExit = "SystemExit"
+                    GOSUB Name=CANCEL
+
+                CASE $FormExit = "EditBtn"
+                    GOSUB Name=EditTypes
+
+                CASE $FormExit = "ResizeBtn"
+                    GOSUB Name=ResizeForm
+
+                CASE $FormExit = "CoordsBtn"
+                    GOSUB Name=EnterCoordinates
+
+                CASE $FormExit = "FoundCkBx"
+                    IF $FoundCkBx=TRUE
+                        $Form2 = editform($Form2,"FoundLabel","visible","Yes")
+                        $Form2 = editform($Form2,"FoundDate","visible","Yes")
+                        $Form2 = editform($Form2,"Form2","top","25")
+                    ELSE
+                        $Form2 = editform($Form2,"FoundLabel","visible","No")
+                        $Form2 = editform($Form2,"FoundDate","visible","No")
+                        $Form2 = editform($Form2,"Form2","top","25")
+                    ENDIF
+
+                CASE $FormExit = "ShowDate"
+                    IF $ShowDate="Yes"
+                        $ReleaseDate=$_Today
+                    ELSE
+                        $ReleaseDate=[20000101]
+                    ENDIF
+
+                CASE $FormExit = "OK"
+                    $Form2Left=$_FormLeft
+                    $Form2Top=$_FormTop
+                    GOSUB Name=SaveSettings
+                    BEGINCASE
+                    CASE Not(Seek($TBRefNum)) AND $TBRefNum<>""
+                        GOSUB Name=AddTB
+                    CASE Seek($TBRefNum)
+                        $Duplicate=TRUE
+                        GOSUB Name=CANCEL
+                    CASE $TBRefNum=""
+                        $NoRefNum=TRUE
+                        GOSUB Name=CANCEL
+                    ENDCASE
+                    BREAK
+
+                CASE $FormExit = "Cancel"
+                    GOSUB Name=CANCEL
+            ENDCASE
+        ENDWHILE
+    ELSE
+        $Duplicate=TRUE
+        GOSUB Name=CANCEL
+    ENDIF
+ENDSUB
+
+BEGINSUB Name=AddTB
+    ADDNEW
+    $d_Code=$TBRefNum
+    $d_Name=$TBName
+    $d_Url=$URL
+    $d_OwnerName=$OwnersName
+    $d_PlacedBy=$OwnersName
+    $d_UserNote=$Goal
+
+    IF $OwnerNameCkBx=TRUE
+        $d_OwnerId=$OwnerIDEdit
+    ENDIF
+
+    IF $FoundCkBx=TRUE
+        $d_Found=TRUE
+        $d_FoundByMeDate=$FoundDate
+    ENDIF
+
+    $d_UserData=$TBType
+    $TBTrackNum=Upper($TBTrackNum)
+    $d_User2=$TBTrackNum
+    IF $ShowDate="Yes"
+        $d_PlacedDate=$ReleaseDate
+    ELSE
+        $d_PlacedDate=[20000101]
+    ENDIF
+
+    IF $UserFlag
+        $d_UserFlag=TRUE
+    ENDIF
+
+    IF $DecLat<>"" AND $DecLon<>""
+        $d_Latitude=$DecLat
+        $d_Longitude=$DecLon
+    ENDIF
+
+    $tmp=Seek($TBRefNum)
+
+    CLIP Data=$TBTrackNum
+
+    IF $ReturnCkBx
+        IF $SplitScreen=TRUE
+            SPLITSCREEN Display=On
+        ELSE
+            SPLITSCREEN Display=Off
+        ENDIF
+    DATABASE Name=$CurrentDB Action=Select
+        IF $Code<>""
+            $Tmp=Seek($Code)
+        ENDIF
+    ENDIF
+
+ENDSUB
+
+BEGINSUB Name=CANCEL
+    GOSUB Name=SaveSettings
+    IF $ReturnCkBx
+        IF $SplitScreen=TRUE
+            SPLITSCREEN Display=On
+        ELSE
+            SPLITSCREEN Display=Off
+        ENDIF
+        DATABASE Name=$CurrentDB Action=Select
+        IF $Code<>""
+            $Tmp=Seek($Code)
+        ENDIF
+    ENDIF
+    BEGINCASE
+        CASE $Duplicate=FALSE AND $NoRefNum=FALSE
+            CANCEL Msg="Macro Cancelled"
+        CASE $Duplicate=TRUE
+            CANCEL Msg=That trackable is already in your 'My Trackables' database.  Macro cancelled.
+        CASE $NoRefNum=TRUE
+            CANCEL Msg=The Reference Number cannot be blank.  Macro cancelled.
+    ENDCASE
+ENDSUB
+
+BEGINSUB Name=EditTypes
+    $TrackableTypes=Replace(";",$_NewLine,$TrackableTypes)
+
+    WHILE TRUE
+        $FormExit = form($Form4,"")
+        BEGINCASE
+            CASE $FormExit = "SystemExit"
+            $TrackableTypes=Replace($_NewLine,";",$TrackableTypes)
+            BREAK
+
+            CASE $FormExit = "Save"
+            $TrackableTypes=Replace($_NewLine,";",$TrackableTypes)
+            GOSUB Name=SaveSettings
+            $Form2 = editform($Form2,"TBType","values",$TrackableTypes)
+            BREAK
+
+            CASE $FormExit = "Cancel"
+            $TrackableTypes=Replace($_NewLine,";",$TrackableTypes)
+            BREAK
+        ENDCASE
+    ENDWHILE
+ENDSUB
+
+BEGINSUB Name=ResizeForm
+    WHILE TRUE
+    $FormExit = form($Form5,"")
+    BEGINCASE
+        CASE $FormExit = "SystemExit"
+        BREAK
+
+        CASE $FormExit = "OK"
+            BEGINCASE
+                CASE Val($FormHeight)>1000
+                   $FormHeight="1000"
+                CASE Val($FormHeight)<600
+                   $FormHeight="600"
+            ENDCASE
+
+            BEGINCASE
+                CASE Val($FormWidth)>1600
+                   $FormWidth="1600"
+                CASE Val($FormWidth)<800
+                   $FormWidth="800"
+            ENDCASE
+        GOSUB Name=SaveSettings
+        $Form2 = editform($Form2,"Form2","Width",$FormWidth)
+        $Form2 = editform($Form2,"Form2","Height",$FormHeight)
+        $BrowserWidth=NumToStr(Val($FormWidth)-31)
+        $BrowserHeight=NumToStr(Val($FormHeight)-233)
+        $Form2 = editform($Form2,"Browser1","Width",$BrowserWidth)
+        $Form2 = editform($Form2,"Browser1","Height",$BrowserHeight)
+        BREAK
+
+        CASE $FormExit = "Cancel"
+        BREAK
+    ENDCASE
+ENDWHILE
+ENDSUB
+
+BEGINSUB Name=EnterCoordinates
+    WHILE TRUE
+    $FormExit = form($Form6,"")
+    BEGINCASE
+        CASE $FormExit = "SystemExit"
+        EXITSUB
+
+        CASE $FormExit = "OK"
+        $Coordinates=$Latitude  + " " + $Longitude
+        $Coordinates=GCalc($Coordinates,"FormatDegrees")
+        $DecLat=Extract($Coordinates,";",1)
+        $DecLon=Extract($Coordinates,";",2)
+        BREAK
+
+        CASE $FormExit = "Cancel"
+        EXITSUB
+    ENDCASE
+ENDWHILE
+
+ENDSUB
+
+BEGINSUB Name=SaveSettings
+    MACSETTINGS Type=S Vars=ReturnCkBx,OwnerNameEdit,OwnerIDEdit,USERFLAG,TrackableTypes,FormWidth,FormHeight,Form2Left,Form2Top,FoundCkBx
+ENDSUB
+
+<Data> VarName=$form1
+#********************************************************************
+# Form generated by GSAK form designer on Sat 07-Aug-2010 12:35:19
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Trackables Listed in this Cache
+  Height = 290
+  Width = 442
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Options
+  Height = 73
+  Left = 20
+  Top = 118
+  Width = 391
+  Taborder = 6
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 98
+  Top = 214
+  Width = 75
+  Taborder = 0
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 260
+  Top = 214
+  Width = 75
+  Taborder = 1
+  Caption = Cancel
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Top = 20
+  Width = 177
+  Caption = Select the trackable to record:
+
+Name = TBSelected
+  Type = Combobox
+  Height = 21
+  Left = 212
+  Top = 18
+  Values = $DBs
+  Width = 197
+  Taborder = 2
+
+Name = OwnerNameCkBx
+  Type = Checkbox
+  Exitonchange = Yes
+  Height = 17
+  Left = 24
+  Top = 59
+  Width = 15
+  Taborder = 3
+
+Name = Label3
+  Type = Label
+  Height = 16
+  Left = 41
+  Size = 10
+  Top = 59
+  Width = 112
+  Caption = I own this trackable
+
+Name = OwnerNameLabel
+  Type = Label
+  Height = 16
+  Left = 167
+  Size = 10
+  Top = 59
+  Visible = No
+  Width = 115
+  Caption = My Owner Name is:
+
+Name = OwnerNameEdit
+  Type = Edit
+  Height = 21
+  Left = 288
+  Top = 57
+  Visible = No
+  Width = 121
+  Taborder = 4
+
+Name = OwnerIDLabel
+  Type = Label
+  Height = 16
+  Left = 140
+  Size = 10
+  Top = 89
+  Visible = No
+  Width = 142
+  Caption = My Owner ID Number is:
+
+Name = OwnerIDEdit
+  Type = Edit
+  Height = 21
+  Left = 288
+  Top = 86
+  Visible = No
+  Width = 121
+  Taborder = 5
+
+Name = ReturnCkBx
+  Type = Checkbox
+  Container = Groupbox1
+  Height = 17
+  Left = 11
+  Top = 46
+  Width = 15
+  Taborder = 1
+
+Name = UserFlag
+  Type = Checkbox
+  Container = Groupbox1
+  Fontsize = 10
+  Height = 17
+  Left = 11
+  Top = 22
+  Width = 109
+  Taborder = 0
+  Caption = Set User Flag
+
+Name = Label2
+  Type = Label
+  Container = Groupbox1
+  Height = 16
+  Left = 30
+  Size = 10
+  Top = 46
+  Width = 306
+  Caption = Return to current database and cache when finished
+
+<enddata>
+
+
+<Data> VarName=$form2
+#********************************************************************
+# Form generated by GSAK form designer on Sat 19-Mar-2011 13:47:31
+#********************************************************************
+
+Name = Form2
+  Type = Form
+  Caption = Record Trackables - Enter the information for this trackable item:
+  Height = 600
+  Top = 210
+  Width = 800
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Found
+  Height = 91
+  Left = 648
+  Top = 6
+  Width = 139
+  Taborder = 10
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 274
+  Top = 148
+  Width = 75
+  Taborder = 5
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 442
+  Top = 148
+  Width = 75
+  Taborder = 6
+  Caption = Cancel
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 93
+  Size = 10
+  Top = 75
+  Width = 115
+  Caption = Trackable's Name:
+
+Name = Label2
+  Type = Label
+  Height = 16
+  Left = 9
+  Size = 10
+  Top = 9
+  Width = 199
+  Caption = Reference Number (e.g. TB1234):
+
+Name = Label3
+  Type = Label
+  Height = 16
+  Left = 383
+  Size = 10
+  Top = 9
+  Width = 91
+  Caption = Owner's Name:
+
+Name = Label4
+  Type = Label
+  Height = 16
+  Left = 344
+  Size = 10
+  Top = 74
+  Width = 130
+  Caption = Type (select or enter):
+
+Name = TBRefNum
+  Type = Edit
+  Color = 16777170
+  Height = 21
+  Left = 213
+  Top = 7
+  Width = 121
+  Taborder = 7
+
+Name = TBName
+  Type = Edit
+  Height = 21
+  Left = 213
+  Top = 73
+  Width = 121
+  Taborder = 1
+
+Name = OwnersName
+  Type = Edit
+  Height = 21
+  Left = 477
+  Top = 7
+  Width = 123
+  Taborder = 12
+
+Name = TBType
+  Type = Combobox
+  Directinput = Yes
+  Height = 21
+  Left = 477
+  Top = 72
+  Width = 123
+  Taborder = 4
+
+Name = Label6
+  Type = Label
+  Height = 16
+  Left = 42
+  Size = 10
+  Top = 41
+  Width = 166
+  Caption = Tracking Number (optional):
+
+Name = TBTrackNum
+  Type = Edit
+  Height = 21
+  Left = 213
+  Top = 39
+  Width = 121
+  Taborder = 0
+
+Name = Label7
+  Type = Label
+  Height = 16
+  Left = 379
+  Size = 10
+  Top = 41
+  Width = 95
+  Caption = Date Released:
+
+Name = ReleaseDate
+  Type = Date
+  Height = 21
+  Left = 477
+  Top = 39
+  Width = 123
+  Taborder = 3
+
+Name = FoundLabel
+  Type = Label
+  Container = Groupbox1
+  Height = 16
+  Left = 9
+  Size = 10
+  Top = 40
+  Visible = No
+  Width = 32
+  Caption = Date:
+
+Name = FoundDate
+  Type = Date
+  Container = Groupbox1
+  Height = 21
+  Left = 9
+  Top = 62
+  Visible = No
+  Width = 121
+  Taborder = 1
+
+Name = FoundCkBx
+  Type = Checkbox
+  Container = Groupbox1
+  Exitonchange = Yes
+  Fontsize = 10
+  Height = 19
+  Left = 9
+  Top = 15
+  Width = 65
+  Taborder = 0
+  Caption = Yes
+
+Name = Browser1
+  Type = Browser
+  Height = 373
+  Left = 12
+  Silent = Yes
+  Top = 180
+  Width = 769
+  Taborder = 8
+
+Name = Label8
+  Type = Label
+  Height = 16
+  Left = 9
+  Size = 10
+  Top = 112
+  Width = 77
+  Caption = Current Goal:
+
+Name = Goal
+  Type = Memo
+  Height = 34
+  Left = 88
+  Scrollbars = Vertical
+  Size = 9
+  Top = 103
+  Width = 694
+  Taborder = 9
+
+Name = ShowDate
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 601
+  Top = 39
+  Values = Yes;No
+  Width = 43
+  Taborder = 11
+
+Name = EditBtn
+  Type = Button
+  Height = 21
+  Left = 604
+  Top = 72
+  Width = 31
+  Taborder = 20
+  Caption = Edit
+
+Name = ResizeBtn
+  Type = Button
+  Height = 25
+  Left = 699
+  Top = 148
+  Width = 75
+  Taborder = 2
+  Caption = Resize Form
+
+Name = CoordsBtn
+  Type = Button
+  Height = 25
+  Left = 12
+  Top = 148
+  Width = 75
+  Taborder = 22
+  Caption = Coordinates
+
+<enddata>
+
+
+<Data> VarName=$form3
+#********************************************************************
+# Form generated by GSAK form designer on Fri 25-Sep-2009 20:07:24
+#********************************************************************
+
+Name = Form3
+  Type = Form
+  Caption = Trackable Reference Number
+  Height = 212
+  Width = 500
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 112
+  Top = 131
+  Width = 75
+  Taborder = 8
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 304
+  Top = 131
+  Width = 75
+  Taborder = 9
+  Caption = Cancel
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 54
+  Size = 10
+  Top = 21
+  Width = 254
+  Caption = Enter the Reference Number (e.g. TB1234):
+
+Name = TBRefNum
+  Type = Edit
+  Height = 21
+  Left = 315
+  Top = 19
+  Width = 121
+  Taborder = 10
+
+Name = Label2
+  Type = Label
+  Height = 20
+  Left = 222
+  Size = 12
+  Style = bold
+  Top = 53
+  Width = 48
+  Caption = - OR -
+
+Name = Label3
+  Type = Label
+  Height = 16
+  Left = 54
+  Size = 10
+  Top = 87
+  Width = 242
+  Caption = Enter the Tracking Number (from the tag):
+
+Name = TBTrackNum
+  Type = Edit
+  Height = 21
+  Left = 315
+  Top = 83
+  Width = 121
+  Taborder = 11
+
+<enddata>
+
+<Data> VarName=$form4
+#********************************************************************
+# Form generated by GSAK form designer on Tue 03-Nov-2009 18:44:56
+#********************************************************************
+
+Name = Form4
+  Type = Form
+  Caption = Edit the Trackable Types
+  Height = 212
+  Top = 100
+  Width = 500
+
+Name = Save
+  Type = Button
+  Height = 25
+  Left = 90
+  Top = 131
+  Width = 75
+  Taborder = 8
+  Caption = Save
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 312
+  Top = 131
+  Width = 75
+  Taborder = 9
+  Caption = Cancel
+
+Name = TrackableTypes
+  Type = Memo
+  Height = 89
+  Left = 30
+  Scrollbars = Vertical
+  Top = 18
+  Width = 439
+  Taborder = 10
+
+<enddata>
+
+<Data> VarName=$form5
+#********************************************************************
+# Form generated by GSAK form designer on Sat 07-Aug-2010 13:39:29
+#********************************************************************
+
+Name = Form5
+  Type = Form
+  Caption = Resize Form
+  Height = 158
+  Top = 360
+  Width = 434
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 114
+  Top = 78
+  Width = 75
+  Taborder = 8
+  Caption = Resize Form
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 228
+  Top = 78
+  Width = 75
+  Taborder = 9
+  Caption = Cancel
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 10
+  Size = 10
+  Top = 38
+  Width = 336
+  Caption = Enter the new form height in pixels (Min: 600 to Max: 1000):
+
+Name = Label2
+  Type = Label
+  Height = 16
+  Left = 10
+  Size = 10
+  Top = 8
+  Width = 333
+  Caption = Enter the new form width in pixels (Min: 800  to Max: 1600):
+
+Name = FormWidth
+  Type = Edit
+  Height = 21
+  Left = 349
+  Top = 6
+  Width = 60
+  Taborder = 10
+
+Name = FormHeight
+  Type = Edit
+  Height = 21
+  Left = 349
+  Top = 36
+  Width = 60
+  Taborder = 11
+
+<enddata>
+
+<Data> VarName=$form6
+#********************************************************************
+# Form generated by GSAK form designer on Sat 19-Mar-2011 13:57:28
+#********************************************************************
+
+Name = Form6
+  Type = Form
+  Caption = Coordinates to Enter
+  Height = 181
+  Top = 100
+  Width = 461
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 95
+  Top = 99
+  Width = 75
+  Taborder = 3
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 275
+  Top = 99
+  Width = 75
+  Taborder = 5
+  Caption = Cancel
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Top = 18
+  Width = 293
+  Caption = Enter the Coordinates to Save with this Trackable:
+
+Name = Latitude
+  Type = Edit
+  Height = 21
+  Left = 78
+  Top = 49
+  Width = 121
+  Taborder = 0
+
+Name = Longitude
+  Type = Edit
+  Height = 21
+  Left = 305
+  Top = 49
+  Width = 121
+  Taborder = 1
+
+Name = Label2
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Top = 51
+  Width = 50
+  Caption = Latitude:
+
+Name = Label3
+  Type = Label
+  Height = 16
+  Left = 242
+  Size = 10
+  Top = 51
+  Width = 59
+  Caption = Longitude
+
+<enddata>
+
+
+

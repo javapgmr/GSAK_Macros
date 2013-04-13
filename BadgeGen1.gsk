@@ -1,0 +1,1447 @@
+#*******************************************
+# MacVersion = 2.0.0
+# MacDescription = Generates badges based on your finds
+# MacAuthor = ky.m.guy
+# MacFileName = BadgeGen1.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=13541
+#*******************************************
+
+$Current=$_CurrentDatabase
+$DBs=SysInfo("databases")
+$Form = editform($Form,"EditBox","values",$DBs)
+$iYou="I"
+
+#---------------------------------------------------
+GOSUB name=Declaration
+GOSUB name=MainForm
+#---------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+#--------------
+# SubRoutines
+#--------------
+
+
+BEGINSUB name=MainForm
+	WHILE TRUE
+	 $FormExit = form($form,"")
+	   BeginCase 
+		 CASE $FormExit = "SystemExit"
+		    CANCEL
+		 CASE $FormExit = "Button1"
+		    GOSUB name=Run
+		    RETURN
+		 CASE $FormExit = "Forum"
+	  	    WEB Url=$MacURL
+		 CASE $FormExit = "ShowRanges"
+		     GOSUB name=Assignment
+	 	     GOSUB name=ShowLimits
+	   EndCase
+	ENDWHILE
+ENDSUB #name=MainForm
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=ShowLimits
+$Memo1=$LimitSummary
+  WHILE TRUE
+    $FormExit = form($form2,"")
+      BeginCase 
+   	 CASE $FormExit = "System Exit"
+   	    BREAK
+   	 CASE $FormExit = "Back"
+   	    BREAK
+      EndCase
+   ENDWHILE
+ENDSUB #name=ShowLimits
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=RUN
+  MacSettings Type=S Vars=Editbox,Hidd1,FirstPerson,ThirdPerson,Username,Size,ShowType,ShowSize,ShowFTF,ShowDiff,ShowCoun,ShowHidd File="BadgeGenSavedSettings.data"
+ SHOWSTATUS msg="Preparing Databases"
+  $Hidd=Val($Hidd1)
+    IF $FirstPerson=TRUE
+       $iYou="I"
+       $hh="have"
+     ELSE
+    $iYOU=$Username
+    $hh="has"
+    ENDIF
+ GOSUB name=Counter
+ GOSUB name=Assignment
+ GOSUB name=PrepareHTML
+ GOSUB name=Output
+  DATABASE Name=$Current
+ENDSUB #name=run
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=Counter
+ 	   #Selects the desired database:
+	        IF not(DatabaseExists($Editbox))
+		 MsgOK msg="That database does not exist.  Please try again"
+		  GOSUB name=MainForm
+		ENDIF
+
+		IF not($_CurrentDatabase=$Editbox)
+	         DATABASE name=$Editbox
+       	        ENDIF
+
+	  #Count finds by cache type
+	SHOWSTATUS msg="Counting Traditionals"
+	   MFILTER Expression=$d_Found AND $d_CacheType="T"
+	    IF $_FilterCount>0
+		$Trad=$_FilterCount  
+	    ENDIF
+	SHOWSTATUS msg="Counting Multis"
+	   MFILTER Expression=$d_Found AND $d_CacheType="M"
+	    IF $_FilterCount>0
+	     $Mult=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting Virtuals"
+	   MFILTER Expression=$d_Found AND $d_CacheType="V"
+	    IF $_FilterCount>0
+	     $Virt=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting Mysteries"
+	   MFILTER Expression=$d_Found AND $d_CacheType="U"
+	    IF $_FilterCount>0
+	     $Myst=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting Letterboxes"
+	   MFILTER Expression=$d_Found AND $d_CacheType="B"
+	    IF $_FilterCount>0
+	     $Lett=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting Wherigos"
+	   MFILTER Expression=$d_Found AND $d_CacheType="I"
+	    IF $_FilterCount>0
+	     $Wher=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting Earthcaches"
+	   MFILTER Expression=$d_Found AND $d_CacheType="R"
+	    IF $_FilterCount>0
+	     $Eart=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting Mega Events"
+	   MFILTER Expression=$d_Found AND $d_CacheType="Z"
+	    IF $_FilterCount>0
+	     $Mega=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting Events"
+	   MFILTER Expression=$d_Found AND $d_CacheType="E"
+	    IF $_FilterCount>0
+	     $Even=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting CITO Events"
+	   MFILTER Expression=$d_Found AND $d_CacheType="C"
+	    IF $_FilterCount>0
+	     $Cito=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting Micros"
+	   MFILTER Expression=$d_Found AND $d_Container="Micro"
+	    IF $_FilterCount>0
+	     $Micr=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting Smalls"
+	   MFILTER Expression=$d_Found AND $d_Container="Small"
+	    IF $_FilterCount>0
+	     $Smal=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting Regulars"
+	   MFILTER Expression=$d_Found AND $d_Container="Regular"
+	    IF $_FilterCount>0
+	     $Regu=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting Larges"
+	   MFILTER Expression=$d_Found AND $d_Container="Large"
+	    IF $_FilterCount>0
+	     $Larg=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting FTFs"
+	     MFILTER Expression=$d_Found AND $d_FTF=TRUE
+	    IF $_FilterCount>0
+	     $FTF=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting Benchmarks"
+	   MFILTER Expression=$d_Found AND $d_CacheType="G"
+	    IF $_FilterCount>0
+	     $Benc=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting 5-5s"
+	   MFILTER Expression=$d_Found AND ($d_Difficulty=5 AND $d_Terrain=5)
+	    IF $_FilterCount>0
+	     $Five=$_FilterCount
+	    ENDIF
+	SHOWSTATUS msg="Counting Countries"
+	 CANCELFILTER
+	  #Count Countries
+	        SQLITECACHES Scope=FILTER
+		$_sql="Select Count(Distinct Country) from CachesTempAll Where Found"
+		$NumCountries = Sqlite("sql",$_sql)
+		$Coun=Val($NumCountries)
+  SHOWSTATUS msg="Count Complete"
+ENDSUB #name=Counter
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=Assignment
+ SHOWSTATUS msg="Determining Badges."
+   $tradB1 = $tradLIMIT
+   $tradB2 = ($tradLIMIT * 1.5) - 1
+   $tradS1 = $tradLIMIT * 1.5
+   $tradS2 = ($tradLIMIT * 3) - 1
+   $tradG1 = $tradLIMIT * 3
+   $tradG2 = ($tradLIMIT * 5) - 1
+   $tradP1 = $tradLIMIT * 5
+   $tradP2 = ($tradLIMIT * 10) - 1
+   $tradR1 = $tradLIMIT * 10
+   $tradR2 = ($tradR1 * 1.5) - 1
+   $tradSa1 = $tradR1 * 1.5
+   $tradSa2 = ($tradR1 * 3) - 1
+   $tradE1 = $tradR1 * 3
+   $tradE2 = ($tradR1 * 5) - 1
+   $tradD  = $tradR1 * 5
+   BEGINCASE #trad
+	CASE $trad>=$tradB1 AND $trad<=$tradB2
+	   $tradHTML="http://imgboot.com/images/geocacher/tradb.png"
+	CASE $trad>=$tradS1 AND $trad<=$tradS2
+	   $tradHTML="http://imgboot.com/images/geocacher/trads.png"
+	CASE $trad>=$tradG1 AND $trad<=$tradG2
+	   $tradHTML="http://imgboot.com/images/geocacher/tradg.png"
+	CASE $trad>=$tradP1 AND $trad<=$tradP2
+	   $tradHTML="http://imgboot.com/images/geocacher/tradp.png"
+	CASE $trad>=$tradR1 AND $trad<=$tradR2
+	   $tradHTML="http://imgboot.com/images/geocacher/tradr.png"
+	CASE $trad>=$tradSa1 AND $trad<=$tradSa2
+	   $tradHTML="http://imgboot.com/images/geocacher/tradsa.png"
+	CASE $trad>=$tradE1 AND $trad<=$tradE2
+	   $tradHTML="http://imgboot.com/images/geocacher/trade.png"
+	CASE $trad>=$tradD
+	   $tradHTML="http://imgboot.com/images/geocacher/tradd.png"
+	CASE $trad=0
+	   $tradHTML=""
+   ENDCASE #trad
+ SHOWSTATUS msg="Determining Badges.."
+   $multB1 = $multLIMIT
+   $multB2 = ($multLIMIT * 1.5) - 1
+   $multS1 = $multLIMIT * 1.5
+   $multS2 = ($multLIMIT * 3) - 1
+   $multG1 = $multLIMIT * 3
+   $multG2 = ($multLIMIT * 5) - 1
+   $multP1 = $multLIMIT * 5
+   $multP2 = ($multLIMIT * 10) - 1
+   $multR1 = $multLIMIT * 10
+   $multR2 = ($multR1 * 1.5) - 1
+   $multSa1 = $multR1 * 1.5
+   $multSa2 = ($multR1 * 3) - 1
+   $multE1 = $multR1 * 3
+   $multE2 = ($multR1 * 5) - 1
+   $multD  = $multR1 * 5
+   BEGINCASE #mult
+	CASE $mult>=$multB1 AND $mult<=$multB2
+	   $multHTML="http://imgboot.com/images/geocacher/multb.png"
+	CASE $mult>=$multS1 AND $mult<=$multS2
+	   $multHTML="http://imgboot.com/images/geocacher/mults.png"
+	CASE $mult>=$multG1 AND $mult<=$multG2
+	   $multHTML="http://imgboot.com/images/geocacher/multg.png"
+	CASE $mult>=$multP1 AND $mult<=$multP2
+	   $multHTML="http://imgboot.com/images/geocacher/multp.png"
+	CASE $mult>=$multR1 AND $mult<=$multR2
+	   $multHTML="http://imgboot.com/images/geocacher/multr.png"
+	CASE $mult>=$multSa1 AND $mult<=$multSa2
+	   $multHTML="http://imgboot.com/images/geocacher/multsa.png"
+	CASE $mult>=$multE1 AND $mult<=$multE2
+	   $multHTML="http://imgboot.com/images/geocacher/multe.png"
+	CASE $mult>=$multD
+	   $multHTML="http://imgboot.com/images/geocacher/multd.png"
+	CASE $mult=0
+	   $multHTML=""
+   ENDCASE #mult
+ SHOWSTATUS msg="Determining Badges..." 
+   $virtB1 = $virtLIMIT
+   $virtB2 = ($virtLIMIT * 1.5) - 1
+   $virtS1 = $virtLIMIT * 1.5
+   $virtS2 = ($virtLIMIT * 3) - 1
+   $virtG1 = $virtLIMIT * 3
+   $virtG2 = ($virtLIMIT * 5) - 1
+   $virtP1 = $virtLIMIT * 5
+   $virtP2 = ($virtLIMIT * 10) - 1
+   $virtR1 = $virtLIMIT * 10
+   $virtR2 = ($virtR1 * 1.5) - 1
+   $virtSa1 = $virtR1 * 1.5
+   $virtSa2 = ($virtR1 * 3) - 1
+   $virtE1 = $virtR1 * 3
+   $virtE2 = ($virtR1 * 5) - 1
+   $virtD  = $virtR1 * 5
+   BEGINCASE #virt
+	CASE $virt>=$virtB1 AND $virt<=$virtB2
+	   $virtHTML="http://imgboot.com/images/geocacher/virtb.png"
+	CASE $virt>=$virtS1 AND $virt<=$virtS2
+	   $virtHTML="http://imgboot.com/images/geocacher/virts.png"
+	CASE $virt>=$virtG1 AND $virt<=$virtG2
+	   $virtHTML="http://imgboot.com/images/geocacher/virtg.png"
+	CASE $virt>=$virtP1 AND $virt<=$virtP2
+	   $virtHTML="http://imgboot.com/images/geocacher/virtp.png"
+	CASE $virt>=$virtR1 AND $virt<=$virtR2
+	   $virtHTML="http://imgboot.com/images/geocacher/virtr.png"
+	CASE $virt>=$virtSa1 AND $virt<=$virtSa2
+	   $virtHTML="http://imgboot.com/images/geocacher/virtsa.png"
+	CASE $virt>=$virtE1 AND $virt<=$virtE2
+	   $virtHTML="http://imgboot.com/images/geocacher/virte.png"
+	CASE $virt>=$virtD
+	   $virtHTML="http://imgboot.com/images/geocacher/virtd.png"
+	CASE $virt=0
+	   $virtHTML=""
+   ENDCASE #virt
+ SHOWSTATUS msg="Determining Badges...." 
+   $mystB1 = $mystLIMIT
+   $mystB2 = ($mystLIMIT * 1.5) - 1
+   $mystS1 = $mystLIMIT * 1.5
+   $mystS2 = ($mystLIMIT * 3) - 1
+   $mystG1 = $mystLIMIT * 3
+   $mystG2 = ($mystLIMIT * 5) - 1
+   $mystP1 = $mystLIMIT * 5
+   $mystP2 = ($mystLIMIT * 10) - 1
+   $mystR1 = $mystLIMIT * 10
+   $mystR2 = ($mystR1 * 1.5) - 1
+   $mystSa1 = $mystR1 * 1.5
+   $mystSa2 = ($mystR1 * 3) - 1
+   $mystE1 = $mystR1 * 3
+   $mystE2 = ($mystR1 * 5) - 1
+   $mystD  = $mystR1 * 5
+   BEGINCASE #myst
+	CASE $myst>=$mystB1 AND $myst<=$mystB2
+	   $mystHTML="http://imgboot.com/images/geocacher/mystb.png"
+	CASE $myst>=$mystS1 AND $myst<=$mystS2
+	   $mystHTML="http://imgboot.com/images/geocacher/mysts.png"
+	CASE $myst>=$mystG1 AND $myst<=$mystG2
+	   $mystHTML="http://imgboot.com/images/geocacher/mystg.png"
+	CASE $myst>=$mystP1 AND $myst<=$mystP2
+	   $mystHTML="http://imgboot.com/images/geocacher/mystp.png"
+	CASE $myst>=$mystR1 AND $myst<=$mystR2
+	   $mystHTML="http://imgboot.com/images/geocacher/mystr.png"
+	CASE $myst>=$mystSa1 AND $myst<=$mystSa2
+	   $mystHTML="http://imgboot.com/images/geocacher/mystsa.png"
+	CASE $myst>=$mystE1 AND $myst<=$mystE2
+	   $mystHTML="http://imgboot.com/images/geocacher/myste.png"
+	CASE $myst>=$mystD
+	   $mystHTML="http://imgboot.com/images/geocacher/mystd.png"
+	CASE $myst=0
+	   $mystHTML=""
+   ENDCASE #myst
+ SHOWSTATUS msg="Determining Badges."
+   $eartB1 = $eartLIMIT
+   $eartB2 = ($eartLIMIT * 1.5) - 1
+   $eartS1 = $eartLIMIT * 1.5
+   $eartS2 = ($eartLIMIT * 3) - 1
+   $eartG1 = $eartLIMIT * 3
+   $eartG2 = ($eartLIMIT * 5) - 1
+   $eartP1 = $eartLIMIT * 5
+   $eartP2 = ($eartLIMIT * 10) - 1
+   $eartR1 = $eartLIMIT * 10
+   $eartR2 = ($eartR1 * 1.5) - 1
+   $eartSa1 = $eartR1 * 1.5
+   $eartSa2 = ($eartR1 * 3) - 1
+   $eartE1 = $eartR1 * 3
+   $eartE2 = ($eartR1 * 5) - 1
+   $eartD  = $eartR1 * 5
+   BEGINCASE #eart
+	CASE $eart>=$eartB1 AND $eart<=$eartB2
+	   $eartHTML="http://imgboot.com/images/geocacher/eartb.png"
+	CASE $eart>=$eartS1 AND $eart<=$eartS2
+	   $eartHTML="http://imgboot.com/images/geocacher/earts.png"
+	CASE $eart>=$eartG1 AND $eart<=$eartG2
+	   $eartHTML="http://imgboot.com/images/geocacher/eartg.png"
+	CASE $eart>=$eartP1 AND $eart<=$eartP2
+	   $eartHTML="http://imgboot.com/images/geocacher/eartp.png"
+	CASE $eart>=$eartR1 AND $eart<=$eartR2
+	   $eartHTML="http://imgboot.com/images/geocacher/eartr.png"
+	CASE $eart>=$eartSa1 AND $eart<=$eartSa2
+	   $eartHTML="http://imgboot.com/images/geocacher/eartsa.png"
+	CASE $eart>=$eartE1 AND $eart<=$eartE2
+	   $eartHTML="http://imgboot.com/images/geocacher/earte.png"
+	CASE $eart>=$eartD
+	   $eartHTML="http://imgboot.com/images/geocacher/eartd.png"
+	CASE $eart=0
+	   $eartHTML=""
+   ENDCASE #eart
+ SHOWSTATUS msg="Determining Badges.." 
+   $lettB1 = $lettLIMIT
+   $lettB2 = ($lettLIMIT * 1.5) - 1
+   $lettS1 = $lettLIMIT * 1.5
+   $lettS2 = ($lettLIMIT * 3) - 1
+   $lettG1 = $lettLIMIT * 3
+   $lettG2 = ($lettLIMIT * 5) - 1
+   $lettP1 = $lettLIMIT * 5
+   $lettP2 = ($lettLIMIT * 10) - 1
+   $lettR1 = $lettLIMIT * 10
+   $lettR2 = ($lettR1 * 1.5) - 1
+   $lettSa1 = $lettR1 * 1.5
+   $lettSa2 = ($lettR1 * 3) - 1
+   $lettE1 = $lettR1 * 3
+   $lettE2 = ($lettR1 * 5) - 1
+   $lettD  = $lettR1 * 5
+   BEGINCASE #lett
+	CASE $lett>=$lettB1 AND $lett<=$lettB2
+	   $lettHTML="http://imgboot.com/images/geocacher/lettb.png"
+	CASE $lett>=$lettS1 AND $lett<=$lettS2
+	   $lettHTML="http://imgboot.com/images/geocacher/letts.png"
+	CASE $lett>=$lettG1 AND $lett<=$lettG2
+	   $lettHTML="http://imgboot.com/images/geocacher/lettg.png"
+	CASE $lett>=$lettP1 AND $lett<=$lettP2
+	   $lettHTML="http://imgboot.com/images/geocacher/lettp.png"
+	CASE $lett>=$lettR1 AND $lett<=$lettR2
+	   $lettHTML="http://imgboot.com/images/geocacher/lettr.png"
+	CASE $lett>=$lettSa1 AND $lett<=$lettSa2
+	   $lettHTML="http://imgboot.com/images/geocacher/lettsa.png"
+	CASE $lett>=$lettE1 AND $lett<=$lettE2
+	   $lettHTML="http://imgboot.com/images/geocacher/lette.png"
+	CASE $lett>=$lettD
+	   $lettHTML="http://imgboot.com/images/geocacher/lettd.png"
+	CASE $lett=0
+	   $lettHTML=""
+   ENDCASE #lett
+ SHOWSTATUS msg="Determining Badges..." 
+   $wherB1 = $wherLIMIT
+   $wherB2 = ($wherLIMIT * 1.5) - 1
+   $wherS1 = $wherLIMIT * 1.5
+   $wherS2 = ($wherLIMIT * 3) - 1
+   $wherG1 = $wherLIMIT * 3
+   $wherG2 = ($wherLIMIT * 5) - 1
+   $wherP1 = $wherLIMIT * 5
+   $wherP2 = ($wherLIMIT * 10) - 1
+   $wherR1 = $wherLIMIT * 10
+   $wherR2 = ($wherR1 * 1.5) - 1
+   $wherSa1 = $wherR1 * 1.5
+   $wherSa2 = ($wherR1 * 3) - 1
+   $wherE1 = $wherR1 * 3
+   $wherE2 = ($wherR1 * 5) - 1
+   $wherD  = $wherR1 * 5
+   BEGINCASE #wher
+	CASE $wher>=$wherB1 AND $wher<=$wherB2
+	   $wherHTML="http://imgboot.com/images/geocacher/wherb.png"
+	CASE $wher>=$wherS1 AND $wher<=$wherS2
+	   $wherHTML="http://imgboot.com/images/geocacher/whers.png"
+	CASE $wher>=$wherG1 AND $wher<=$wherG2
+	   $wherHTML="http://imgboot.com/images/geocacher/wherg.png"
+	CASE $wher>=$wherP1 AND $wher<=$wherP2
+	   $wherHTML="http://imgboot.com/images/geocacher/wherp.png"
+	CASE $wher>=$wherR1 AND $wher<=$wherR2
+	   $wherHTML="http://imgboot.com/images/geocacher/wherr.png"
+	CASE $wher>=$wherSa1 AND $wher<=$wherSa2
+	   $wherHTML="http://imgboot.com/images/geocacher/whersa.png"
+	CASE $wher>=$wherE1 AND $wher<=$wherE2
+	   $wherHTML="http://imgboot.com/images/geocacher/where.png"
+	CASE $wher>=$wherD
+	   $wherHTML="http://imgboot.com/images/geocacher/wherd.png"
+	CASE $wher=0
+	   $wherHTML=""
+   ENDCASE #wher
+ SHOWSTATUS msg="Determining Badges...." 
+   $megaB1 = $megaLIMIT
+   $megaB2 = ($megaLIMIT * 1.5) - 1
+   $megaS1 = $megaLIMIT * 1.5
+   $megaS2 = ($megaLIMIT * 3) - 1
+   $megaG1 = $megaLIMIT * 3
+   $megaG2 = ($megaLIMIT * 5) - 1
+   $megaP1 = $megaLIMIT * 5
+   $megaP2 = ($megaLIMIT * 10) - 1
+   $megaR1 = $megaLIMIT * 10
+   $megaR2 = ($megaR1 * 1.5) - 1
+   $megaSa1 = $megaR1 * 1.5
+   $megaSa2 = ($megaR1 * 3) - 1
+   $megaE1 = $megaR1 * 3
+   $megaE2 = ($megaR1 * 5) - 1
+   $megaD  = $megaR1 * 5
+   BEGINCASE #mega
+	CASE $mega>=$megaB1 AND $mega<=$megaB2
+	   $megaHTML="http://imgboot.com/images/geocacher/megab.png"
+	CASE $mega>=$megaS1 AND $mega<=$megaS2
+	   $megaHTML="http://imgboot.com/images/geocacher/megas.png"
+	CASE $mega>=$megaG1 AND $mega<=$megaG2
+	   $megaHTML="http://imgboot.com/images/geocacher/megag.png"
+	CASE $mega>=$megaP1 AND $mega<=$megaP2
+	   $megaHTML="http://imgboot.com/images/geocacher/megap.png"
+	CASE $mega>=$megaR1 AND $mega<=$megaR2
+	   $megaHTML="http://imgboot.com/images/geocacher/megar.png"
+	CASE $mega>=$megaSa1 AND $mega<=$megaSa2
+	   $megaHTML="http://imgboot.com/images/geocacher/megasa.png"
+	CASE $mega>=$megaE1 AND $mega<=$megaE2
+	   $megaHTML="http://imgboot.com/images/geocacher/megae.png"
+	CASE $mega>=$megaD
+	   $megaHTML="http://imgboot.com/images/geocacher/megad.png"
+	CASE $mega=0
+	   $megaHTML=""
+   ENDCASE #mega
+ SHOWSTATUS msg="Determining Badges." 
+   $evenB1 = $evenLIMIT
+   $evenB2 = ($evenLIMIT * 1.5) - 1
+   $evenS1 = $evenLIMIT * 1.5
+   $evenS2 = ($evenLIMIT * 3) - 1
+   $evenG1 = $evenLIMIT * 3
+   $evenG2 = ($evenLIMIT * 5) - 1
+   $evenP1 = $evenLIMIT * 5
+   $evenP2 = ($evenLIMIT * 10) - 1
+   $evenR1 = $evenLIMIT * 10
+   $evenR2 = ($evenR1 * 1.5) - 1
+   $evenSa1 = $evenR1 * 1.5
+   $evenSa2 = ($evenR1 * 3) - 1
+   $evenE1 = $evenR1 * 3
+   $evenE2 = ($evenR1 * 5) - 1
+   $evenD  = $evenR1 * 5
+   BEGINCASE #even
+	CASE $even>=$evenB1 AND $even<=$evenB2
+	   $evenHTML="http://imgboot.com/images/geocacher/evenb.png"
+	CASE $even>=$evenS1 AND $even<=$evenS2
+	   $evenHTML="http://imgboot.com/images/geocacher/evens.png"
+	CASE $even>=$evenG1 AND $even<=$evenG2
+	   $evenHTML="http://imgboot.com/images/geocacher/eveng.png"
+	CASE $even>=$evenP1 AND $even<=$evenP2
+	   $evenHTML="http://imgboot.com/images/geocacher/evenp.png"
+	CASE $even>=$evenR1 AND $even<=$evenR2
+	   $evenHTML="http://imgboot.com/images/geocacher/evenr.png"
+	CASE $even>=$evenSa1 AND $even<=$evenSa2
+	   $evenHTML="http://imgboot.com/images/geocacher/evensa.png"
+	CASE $even>=$evenE1 AND $even<=$evenE2
+	   $evenHTML="http://imgboot.com/images/geocacher/evene.png"
+	CASE $even>=$evenD
+	   $evenHTML="http://imgboot.com/images/geocacher/evend.png"
+	CASE $even=0
+	   $evenHTML=""
+   ENDCASE #even
+ SHOWSTATUS msg="Determining Badges.." 
+   $citoB1 = $citoLIMIT
+   $citoB2 = ($citoLIMIT * 1.5) - 1
+   $citoS1 = $citoLIMIT * 1.5
+   $citoS2 = ($citoLIMIT * 3) - 1
+   $citoG1 = $citoLIMIT * 3
+   $citoG2 = ($citoLIMIT * 5) - 1
+   $citoP1 = $citoLIMIT * 5
+   $citoP2 = ($citoLIMIT * 10) - 1
+   $citoR1 = $citoLIMIT * 10
+   $citoR2 = ($citoR1 * 1.5) - 1
+   $citoSa1 = $citoR1 * 1.5
+   $citoSa2 = ($citoR1 * 3) - 1
+   $citoE1 = $citoR1 * 3
+   $citoE2 = ($citoR1 * 5) - 1
+   $citoD  = $citoR1 * 5
+   BEGINCASE #cito
+	CASE $cito>=$citoB1 AND $cito<=$citoB2
+	   $citoHTML="http://imgboot.com/images/geocacher/citob.png"
+	CASE $cito>=$citoS1 AND $cito<=$citoS2
+	   $citoHTML="http://imgboot.com/images/geocacher/citos.png"
+	CASE $cito>=$citoG1 AND $cito<=$citoG2
+	   $citoHTML="http://imgboot.com/images/geocacher/citog.png"
+	CASE $cito>=$citoP1 AND $cito<=$citoP2
+	   $citoHTML="http://imgboot.com/images/geocacher/citop.png"
+	CASE $cito>=$citoR1 AND $cito<=$citoR2
+	   $citoHTML="http://imgboot.com/images/geocacher/citor.png"
+	CASE $cito>=$citoSa1 AND $cito<=$citoSa2
+	   $citoHTML="http://imgboot.com/images/geocacher/citosa.png"
+	CASE $cito>=$citoE1 AND $cito<=$citoE2
+	   $citoHTML="http://imgboot.com/images/geocacher/citoe.png"
+	CASE $cito>=$citoD
+	   $citoHTML="http://imgboot.com/images/geocacher/citod.png"
+	CASE $cito=0
+	   $citoHTML=""
+   ENDCASE #cito
+ SHOWSTATUS msg="Determining Badges..." 
+   $bencB1 = $bencLIMIT
+   $bencB2 = ($bencLIMIT * 1.5) - 1
+   $bencS1 = $bencLIMIT * 1.5
+   $bencS2 = ($bencLIMIT * 3) - 1
+   $bencG1 = $bencLIMIT * 3
+   $bencG2 = ($bencLIMIT * 5) - 1
+   $bencP1 = $bencLIMIT * 5
+   $bencP2 = ($bencLIMIT * 10) - 1
+   $bencR1 = $bencLIMIT * 10
+   $bencR2 = ($bencR1 * 1.5) - 1
+   $bencSa1 = $bencR1 * 1.5
+   $bencSa2 = ($bencR1 * 3) - 1
+   $bencE1 = $bencR1 * 3
+   $bencE2 = ($bencR1 * 5) - 1
+   $bencD  = $bencR1 * 5
+   BEGINCASE #benc
+	CASE $benc>=$bencB1 AND $benc<=$bencB2
+	   $bencHTML="http://imgboot.com/images/geocacher/bencb.png"
+	CASE $benc>=$bencS1 AND $benc<=$bencS2
+	   $bencHTML="http://imgboot.com/images/geocacher/bencs.png"
+	CASE $benc>=$bencG1 AND $benc<=$bencG2
+	   $bencHTML="http://imgboot.com/images/geocacher/bencg.png"
+	CASE $benc>=$bencP1 AND $benc<=$bencP2
+	   $bencHTML="http://imgboot.com/images/geocacher/bencp.png"
+	CASE $benc>=$bencR1 AND $benc<=$bencR2
+	   $bencHTML="http://imgboot.com/images/geocacher/bencr.png"
+	CASE $benc>=$bencSa1 AND $benc<=$bencSa2
+	   $bencHTML="http://imgboot.com/images/geocacher/bencsa.png"
+	CASE $benc>=$bencE1 AND $benc<=$bencE2
+	   $bencHTML="http://imgboot.com/images/geocacher/bence.png"
+	CASE $benc>=$bencD
+	   $bencHTML="http://imgboot.com/images/geocacher/bencd.png"
+	CASE $benc=0
+	   $bencHTML=""
+   ENDCASE #benc
+ SHOWSTATUS msg="Determining Badges...." 
+   $micrB1 = $micrLIMIT
+   $micrB2 = ($micrLIMIT * 1.5) - 1
+   $micrS1 = $micrLIMIT * 1.5
+   $micrS2 = ($micrLIMIT * 3) - 1
+   $micrG1 = $micrLIMIT * 3
+   $micrG2 = ($micrLIMIT * 5) - 1
+   $micrP1 = $micrLIMIT * 5
+   $micrP2 = ($micrLIMIT * 10) - 1
+   $micrR1 = $micrLIMIT * 10
+   $micrR2 = ($micrR1 * 1.5) - 1
+   $micrSa1 = $micrR1 * 1.5
+   $micrSa2 = ($micrR1 * 3) - 1
+   $micrE1 = $micrR1 * 3
+   $micrE2 = ($micrR1 * 5) - 1
+   $micrD  = $micrR1 * 5
+   BEGINCASE #micr
+	CASE $micr>=$micrB1 AND $micr<=$micrB2
+	   $micrHTML="http://imgboot.com/images/geocacher/micrb.png"
+	CASE $micr>=$micrS1 AND $micr<=$micrS2
+	   $micrHTML="http://imgboot.com/images/geocacher/micrs.png"
+	CASE $micr>=$micrG1 AND $micr<=$micrG2
+	   $micrHTML="http://imgboot.com/images/geocacher/micrg.png"
+	CASE $micr>=$micrP1 AND $micr<=$micrP2
+	   $micrHTML="http://imgboot.com/images/geocacher/micrp.png"
+	CASE $micr>=$micrR1 AND $micr<=$micrR2
+	   $micrHTML="http://imgboot.com/images/geocacher/micrr.png"
+	CASE $micr>=$micrSa1 AND $micr<=$micrSa2
+	   $micrHTML="http://imgboot.com/images/geocacher/micrsa.png"
+	CASE $micr>=$micrE1 AND $micr<=$micrE2
+	   $micrHTML="http://imgboot.com/images/geocacher/micre.png"
+	CASE $micr>=$micrD
+	   $micrHTML="http://imgboot.com/images/geocacher/micrd.png"
+	CASE $micr=0
+	   $micrHTML=""
+   ENDCASE #micr
+ SHOWSTATUS msg="Determining Badges." 
+   $smalB1 = $smalLIMIT
+   $smalB2 = ($smalLIMIT * 1.5) - 1
+   $smalS1 = $smalLIMIT * 1.5
+   $smalS2 = ($smalLIMIT * 3) - 1
+   $smalG1 = $smalLIMIT * 3
+   $smalG2 = ($smalLIMIT * 5) - 1
+   $smalP1 = $smalLIMIT * 5
+   $smalP2 = ($smalLIMIT * 10) - 1
+   $smalR1 = $smalLIMIT * 10
+   $smalR2 = ($smalR1 * 1.5) - 1
+   $smalSa1 = $smalR1 * 1.5
+   $smalSa2 = ($smalR1 * 3) - 1
+   $smalE1 = $smalR1 * 3
+   $smalE2 = ($smalR1 * 5) - 1
+   $smalD  = $smalR1 * 5
+   BEGINCASE #smal
+	CASE $smal>=$smalB1 AND $smal<=$smalB2
+	   $smalHTML="http://imgboot.com/images/geocacher/smalb.png"
+	CASE $smal>=$smalS1 AND $smal<=$smalS2
+	   $smalHTML="http://imgboot.com/images/geocacher/smals.png"
+	CASE $smal>=$smalG1 AND $smal<=$smalG2
+	   $smalHTML="http://imgboot.com/images/geocacher/smalg.png"
+	CASE $smal>=$smalP1 AND $smal<=$smalP2
+	   $smalHTML="http://imgboot.com/images/geocacher/smalp.png"
+	CASE $smal>=$smalR1 AND $smal<=$smalR2
+	   $smalHTML="http://imgboot.com/images/geocacher/smalr.png"
+	CASE $smal>=$smalSa1 AND $smal<=$smalSa2
+	   $smalHTML="http://imgboot.com/images/geocacher/smalsa.png"
+	CASE $smal>=$smalE1 AND $smal<=$smalE2
+	   $smalHTML="http://imgboot.com/images/geocacher/smale.png"
+	CASE $smal>=$smalD
+	   $smalHTML="http://imgboot.com/images/geocacher/smald.png"
+	CASE $smal=0
+	   $smalHTML=""
+   ENDCASE #smal
+ SHOWSTATUS msg="Determining Badges.." 
+   $reguB1 = $reguLIMIT
+   $reguB2 = ($reguLIMIT * 1.5) - 1
+   $reguS1 = $reguLIMIT * 1.5
+   $reguS2 = ($reguLIMIT * 3) - 1
+   $reguG1 = $reguLIMIT * 3
+   $reguG2 = ($reguLIMIT * 5) - 1
+   $reguP1 = $reguLIMIT * 5
+   $reguP2 = ($reguLIMIT * 10) - 1
+   $reguR1 = $reguLIMIT * 10
+   $reguR2 = ($reguR1 * 1.5) - 1
+   $reguSa1 = $reguR1 * 1.5
+   $reguSa2 = ($reguR1 * 3) - 1
+   $reguE1 = $reguR1 * 3
+   $reguE2 = ($reguR1 * 5) - 1
+   $reguD  = $reguR1 * 5
+   BEGINCASE #regu
+	CASE $regu>=$reguB1 AND $regu<=$reguB2
+	   $reguHTML="http://imgboot.com/images/geocacher/regub.png"
+	CASE $regu>=$reguS1 AND $regu<=$reguS2
+	   $reguHTML="http://imgboot.com/images/geocacher/regus.png"
+	CASE $regu>=$reguG1 AND $regu<=$reguG2
+	   $reguHTML="http://imgboot.com/images/geocacher/regug.png"
+	CASE $regu>=$reguP1 AND $regu<=$reguP2
+	   $reguHTML="http://imgboot.com/images/geocacher/regup.png"
+	CASE $regu>=$reguR1 AND $regu<=$reguR2
+	   $reguHTML="http://imgboot.com/images/geocacher/regur.png"
+	CASE $regu>=$reguSa1 AND $regu<=$reguSa2
+	   $reguHTML="http://imgboot.com/images/geocacher/regusa.png"
+	CASE $regu>=$reguE1 AND $regu<=$reguE2
+	   $reguHTML="http://imgboot.com/images/geocacher/regue.png"
+	CASE $regu>=$reguD
+	   $reguHTML="http://imgboot.com/images/geocacher/regud.png"
+	CASE $regu=0
+	   $reguHTML=""
+   ENDCASE #regu
+ SHOWSTATUS msg="Determining Badges..." 
+   $largB1 = $largLIMIT
+   $largB2 = ($largLIMIT * 1.5) - 1
+   $largS1 = $largLIMIT * 1.5
+   $largS2 = ($largLIMIT * 3) - 1
+   $largG1 = $largLIMIT * 3
+   $largG2 = ($largLIMIT * 5) - 1
+   $largP1 = $largLIMIT * 5
+   $largP2 = ($largLIMIT * 10) - 1
+   $largR1 = $largLIMIT * 10
+   $largR2 = ($largR1 * 1.5) - 1
+   $largSa1 = $largR1 * 1.5
+   $largSa2 = ($largR1 * 3) - 1
+   $largE1 = $largR1 * 3
+   $largE2 = ($largR1 * 5) - 1
+   $largD  = $largR1 * 5
+   BEGINCASE #larg
+	CASE $larg>=$largB1 AND $larg<=$largB2
+	   $largHTML="http://imgboot.com/images/geocacher/largb.png"
+	CASE $larg>=$largS1 AND $larg<=$largS2
+	   $largHTML="http://imgboot.com/images/geocacher/largs.png"
+	CASE $larg>=$largG1 AND $larg<=$largG2
+	   $largHTML="http://imgboot.com/images/geocacher/largg.png"
+	CASE $larg>=$largP1 AND $larg<=$largP2
+	   $largHTML="http://imgboot.com/images/geocacher/largp.png"
+	CASE $larg>=$largR1 AND $larg<=$largR2
+	   $largHTML="http://imgboot.com/images/geocacher/largr.png"
+	CASE $larg>=$largSa1 AND $larg<=$largSa2
+	   $largHTML="http://imgboot.com/images/geocacher/largsa.png"
+	CASE $larg>=$largE1 AND $larg<=$largE2
+	   $largHTML="http://imgboot.com/images/geocacher/large.png"
+	CASE $larg>=$largD
+	   $largHTML="http://imgboot.com/images/geocacher/largd.png"
+	CASE $larg=0
+	   $largHTML=""
+   ENDCASE #larg
+ SHOWSTATUS msg="Determining Badges...." 
+   $fiveB1 = $fiveLIMIT
+   $fiveB2 = ($fiveLIMIT * 1.5) - 1
+   $fiveS1 = $fiveLIMIT * 1.5
+   $fiveS2 = ($fiveLIMIT * 3) - 1
+   $fiveG1 = $fiveLIMIT * 3
+   $fiveG2 = ($fiveLIMIT * 5) - 1
+   $fiveP1 = $fiveLIMIT * 5
+   $fiveP2 = ($fiveLIMIT * 10) - 1
+   $fiveR1 = $fiveLIMIT * 10
+   $fiveR2 = ($fiveR1 * 1.5) - 1
+   $fiveSa1 = $fiveR1 * 1.5
+   $fiveSa2 = ($fiveR1 * 3) - 1
+   $fiveE1 = $fiveR1 * 3
+   $fiveE2 = ($fiveR1 * 5) - 1
+   $fiveD  = $fiveR1 * 5
+   BEGINCASE #five
+	CASE $five>=$fiveB1 AND $five<=$fiveB2
+	   $fiveHTML="http://imgboot.com/images/geocacher/fiveb.png"
+	CASE $five>=$fiveS1 AND $five<=$fiveS2
+	   $fiveHTML="http://imgboot.com/images/geocacher/fives.png"
+	CASE $five>=$fiveG1 AND $five<=$fiveG2
+	   $fiveHTML="http://imgboot.com/images/geocacher/fiveg.png"
+	CASE $five>=$fiveP1 AND $five<=$fiveP2
+	   $fiveHTML="http://imgboot.com/images/geocacher/fivep.png"
+	CASE $five>=$fiveR1 AND $five<=$fiveR2
+	   $fiveHTML="http://imgboot.com/images/geocacher/fiver.png"
+	CASE $five>=$fiveSa1 AND $five<=$fiveSa2
+	   $fiveHTML="http://imgboot.com/images/geocacher/fivesa.png"
+	CASE $five>=$fiveE1 AND $five<=$fiveE2
+	   $fiveHTML="http://imgboot.com/images/geocacher/fivee.png"
+	CASE $five>=$fiveD
+	   $fiveHTML="http://imgboot.com/images/geocacher/fived.png"
+	CASE $five=0
+	   $fiveHTML=""
+   ENDCASE #five
+ SHOWSTATUS msg="Determining Badges." 
+   $counB1 = $counLIMIT
+   $counB2 = ($counLIMIT * 1.5) - 1
+   $counS1 = $counLIMIT * 1.5
+   $counS2 = ($counLIMIT * 3) - 1
+   $counG1 = $counLIMIT * 3
+   $counG2 = ($counLIMIT * 5) - 1
+   $counP1 = $counLIMIT * 5
+   $counP2 = ($counLIMIT * 10) - 1
+   $counR1 = $counLIMIT * 10
+   $counR2 = ($counR1 * 1.5) - 1
+   $counSa1 = $counR1 * 1.5
+   $counSa2 = ($counR1 * 3) - 1
+   $counE1 = $counR1 * 3
+   $counE2 = ($counR1 * 5) - 1
+   $counD  = $counR1 * 5
+   BEGINCASE #coun
+	CASE $coun>=$counB1 AND $coun<=$counB2
+	   $counHTML="http://imgboot.com/images/geocacher/counb.png"
+	CASE $coun>=$counS1 AND $coun<=$counS2
+	   $counHTML="http://imgboot.com/images/geocacher/couns.png"
+	CASE $coun>=$counG1 AND $coun<=$counG2
+	   $counHTML="http://imgboot.com/images/geocacher/coung.png"
+	CASE $coun>=$counP1 AND $coun<=$counP2
+	   $counHTML="http://imgboot.com/images/geocacher/counp.png"
+	CASE $coun>=$counR1 AND $coun<=$counR2
+	   $counHTML="http://imgboot.com/images/geocacher/counr.png"
+	CASE $coun>=$counSa1 AND $coun<=$counSa2
+	   $counHTML="http://imgboot.com/images/geocacher/counsa.png"
+	CASE $coun>=$counE1 AND $coun<=$counE2
+	   $counHTML="http://imgboot.com/images/geocacher/coune.png"
+	CASE $coun>=$counD
+	   $counHTML="http://imgboot.com/images/geocacher/cound.png"
+	CASE $coun=0
+	   $counHTML=""
+   ENDCASE #coun
+ SHOWSTATUS msg="Determining Badges.." 
+   $ftfB1 = $ftfLIMIT
+   $ftfB2 = ($ftfLIMIT * 1.5) - 1
+   $ftfS1 = $ftfLIMIT * 1.5
+   $ftfS2 = ($ftfLIMIT * 3) - 1
+   $ftfG1 = $ftfLIMIT * 3
+   $ftfG2 = ($ftfLIMIT * 5) - 1
+   $ftfP1 = $ftfLIMIT * 5
+   $ftfP2 = ($ftfLIMIT * 10) - 1
+   $ftfR1 = $ftfLIMIT * 10
+   $ftfR2 = ($ftfR1 * 1.5) - 1
+   $ftfSa1 = $ftfR1 * 1.5
+   $ftfSa2 = ($ftfR1 * 3) - 1
+   $ftfE1 = $ftfR1 * 3
+   $ftfE2 = ($ftfR1 * 5) - 1
+   $ftfD  = $ftfR1 * 5
+   BEGINCASE #ftf
+	CASE $ftf>=$ftfB1 AND $ftf<=$ftfB2
+	   $ftfHTML="http://imgboot.com/images/geocacher/ftfb.png"
+	CASE $ftf>=$ftfS1 AND $ftf<=$ftfS2
+	   $ftfHTML="http://imgboot.com/images/geocacher/ftfs.png"
+	CASE $ftf>=$ftfG1 AND $ftf<=$ftfG2
+	   $ftfHTML="http://imgboot.com/images/geocacher/ftfg.png"
+	CASE $ftf>=$ftfP1 AND $ftf<=$ftfP2
+	   $ftfHTML="http://imgboot.com/images/geocacher/ftfp.png"
+	CASE $ftf>=$ftfR1 AND $ftf<=$ftfR2
+	   $ftfHTML="http://imgboot.com/images/geocacher/ftfr.png"
+	CASE $ftf>=$ftfSa1 AND $ftf<=$ftfSa2
+	   $ftfHTML="http://imgboot.com/images/geocacher/ftfsa.png"
+	CASE $ftf>=$ftfE1 AND $ftf<=$ftfE2
+	   $ftfHTML="http://imgboot.com/images/geocacher/ftfe.png"
+	CASE $ftf>=$ftfD
+	   $ftfHTML="http://imgboot.com/images/geocacher/ftfd.png"
+	CASE $ftf=0
+	   $ftfHTML=""
+   ENDCASE #ftf
+ SHOWSTATUS msg="Determining Badges..." 
+   $hiddB1 = $hiddLIMIT
+   $hiddB2 = ($hiddLIMIT * 1.5) - 1
+   $hiddS1 = $hiddLIMIT * 1.5
+   $hiddS2 = ($hiddLIMIT * 3) - 1
+   $hiddG1 = $hiddLIMIT * 3
+   $hiddG2 = ($hiddLIMIT * 5) - 1
+   $hiddP1 = $hiddLIMIT * 5
+   $hiddP2 = ($hiddLIMIT * 10) - 1
+   $hiddR1 = $hiddLIMIT * 10
+   $hiddR2 = ($hiddR1 * 1.5) - 1
+   $hiddSa1 = $hiddR1 * 1.5
+   $hiddSa2 = ($hiddR1 * 3) - 1
+   $hiddE1 = $hiddR1 * 3
+   $hiddE2 = ($hiddR1 * 5) - 1
+   $hiddD  = $hiddR1 * 5
+   BEGINCASE #hidd
+	CASE $hidd>=$hiddB1 AND $hidd<=$hiddB2
+	   $hiddHTML="http://imgboot.com/images/geocacher/hiddb.png"
+	CASE $hidd>=$hiddS1 AND $hidd<=$hiddS2
+	   $hiddHTML="http://imgboot.com/images/geocacher/hidds.png"
+	CASE $hidd>=$hiddG1 AND $hidd<=$hiddG2
+	   $hiddHTML="http://imgboot.com/images/geocacher/hiddg.png"
+	CASE $hidd>=$hiddP1 AND $hidd<=$hiddP2
+	   $hiddHTML="http://imgboot.com/images/geocacher/hiddp.png"
+	CASE $hidd>=$hiddR1 AND $hidd<=$hiddR2
+	   $hiddHTML="http://imgboot.com/images/geocacher/hiddr.png"
+	CASE $hidd>=$hiddSa1 AND $hidd<=$hiddSa2
+	   $hiddHTML="http://imgboot.com/images/geocacher/hiddsa.png"
+	CASE $hidd>=$hiddE1 AND $hidd<=$hiddE2
+	   $hiddHTML="http://imgboot.com/images/geocacher/hidde.png"
+	CASE $hidd>=$hiddD
+	   $hiddHTML="http://imgboot.com/images/geocacher/hiddd.png"
+	CASE $hidd=0
+	   $hiddHTML=""
+   ENDCASE #hidd
+ SHOWSTATUS msg=""
+ENDSUB name=Assignment
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=PrepareHTML
+   SHOWSTATUS msg="Preparing HTML Code"
+	GOSUB name=HoverText
+		IF not($TradHTML="") AND $ShowType=TRUE
+		   $TradCode=" $1$2$3$2$5$6$2$TradHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$TradAlt$2$5$28$2$20$TradAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($MultHTML="") AND $ShowType=TRUE
+		   $MultCode=" $1$2$3$2$5$6$2$MultHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$MultAlt$2$5$28$2$20$MultAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($MystHTML="") AND $ShowType=TRUE
+		   $MystCode=" $1$2$3$2$5$6$2$MystHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$MystAlt$2$5$28$2$20$MystAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($VirtHTML="") AND $ShowType=TRUE
+		   $VirtCode=" $1$2$3$2$5$6$2$VirtHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$VirtAlt$2$5$28$2$20$VirtAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($EartHTML="") AND $ShowType=TRUE
+		   $EartCode=" $1$2$3$2$5$6$2$EartHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$EartAlt$2$5$28$2$20$EartAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($LettHTML="") AND $ShowType=TRUE
+		   $LettCode=" $1$2$3$2$5$6$2$LettHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$LettAlt$2$5$28$2$20$LettAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($WherHTML="") AND $ShowType=TRUE
+		   $WherCode=" $1$2$3$2$5$6$2$WherHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$WherAlt$2$5$28$2$20$WherAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($MegaHTML="") AND $ShowType=TRUE
+		   $MegaCode=" $1$2$3$2$5$6$2$MegaHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$MegaAlt$2$5$28$2$20$MegaAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($EvenHTML="") AND $ShowType=TRUE
+		   $EvenCode=" $1$2$3$2$5$6$2$EvenHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$EvenAlt$2$5$28$2$20$EvenAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($CitoHTML="") AND $ShowType=TRUE
+		   $CitoCode=" $1$2$3$2$5$6$2$CitoHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$CitoAlt$2$5$28$2$20$CitoAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($BencHTML="") AND $ShowType=TRUE
+		   $BencCode=" $1$2$3$2$5$6$2$BencHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$BencAlt$2$5$28$2$20$BencAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($MicrHTML="") AND $ShowSize=TRUE
+		   $MicrCode=" $1$2$3$2$5$6$2$MicrHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$MicrAlt$2$5$28$2$20$MicrAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($SmalHTML="") AND $ShowSize=TRUE
+		   $SmalCode=" $1$2$3$2$5$6$2$SmalHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$SmalAlt$2$5$28$2$20$SmalAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($ReguHTML="") AND $ShowSize=TRUE
+		   $ReguCode=" $1$2$3$2$5$6$2$ReguHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$ReguAlt$2$5$28$2$20$ReguAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($LargHTML="") AND $ShowSize=TRUE
+		   $LargCode=" $1$2$3$2$5$6$2$LargHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$LargAlt$2$5$28$2$20$LargAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($FiveHTML="") AND $ShowDiff=TRUE
+		   $FiveCode=" $1$2$3$2$5$6$2$FiveHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$FiveAlt$2$5$28$2$20$FiveAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($CounHTML="") AND $ShowCoun=TRUE
+		   $CounCode=" $1$2$3$2$5$6$2$CounHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$CounAlt$2$5$28$2$20$CounAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($FTFHTML="") AND $ShowFTF=TRUE
+		   $FTFCode=" $1$2$3$2$5$6$2$FTFHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$FTFAlt$2$5$28$2$20$FTFAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+		IF not($HIDDHTML="") AND $ShowHidd=TRUE
+		   $HiddCode=" $1$2$3$2$5$6$2$HiddHTML$2$5$10$2$Size$2$5$15$2$Size$2$5$20$2$HiddAlt$2$5$28$2$20$HiddAlt$2$5$23$_NewLine"
+		   $BADGENUMBER=$BADGENUMBER+1
+		ENDIF
+ENDSUB #name=PrepareHTML
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=Output
+   SHOWSTATUS msg="Outputting HTML Code"	
+	$HTMLCode="$Centre$_NewLine$TradCode$MultCode$MystCode$VirtCode$EartCode$WherCode$LettCode$EvenCode$CitoCode$MegaCode$BencCode$MicrCode$SmalCode$ReguCode$LargCode$FTFCode$CounCode$FiveCode$HiddCode<br>$_NewLine $Link $_NewLine$endcentre"
+    CLIP data=$HTMLCode
+   SET $Data = PutFile($SaveLocation,"$HTMLCode")
+  MSGOK msg="Your badges have been generated.  You have been awarded $BADGENUMBER badges.  The HTML code to display your badges has been copied to your clipboard. Press OK to view badges."
+ FILEOPEN File=$SaveLocation wait=no
+ENDSUB #name=output
+
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+
+BEGINSUB name=Declaration
+      GOSUB name=BreakDec
+   SHOWSTATUS msg="Declaring Variables..."
+      GOSUB name=VarDec
+      GOSUB name=HoverText
+      MacSettings Type=R File="BadgeGenSavedSettings.data" FileCheck=N
+   SHOWSTATUS msg="" display=off
+ENDSUB #name=Declaration
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=BreakDec
+  SHOWSTATUS msg="Preparing...may take a few seconds" 
+     $TradLIMIT = 250
+     $MultLIMIT = 35
+     $VirtLIMIT = 35
+     $MystLIMIT = 35
+     $EartLIMIT = 20
+     $LettLIMIT = 25
+     $WherLIMIT = 20
+     $MegaLIMIT = 1
+     $EvenLIMIT = 10
+     $CitoLIMIT = 2
+     $BencLIMIT = 10
+     $MicrLIMIT = 250
+     $SmalLIMIT = 200
+     $ReguLIMIT = 150
+     $LargLIMIT = 50
+     $FiveLIMIT = 2
+     $CounLIMIT = 2
+     $FTFLIMIT =  20
+     $HiddLIMIT = 10
+ENDSUB #name=BreakDec
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=VarDec
+ $BADGENUMBER=0
+ $SaveLocation=$_Install + "\BadgeTemp.htm"
+ $MacUrl = "http://gsak.net/board/index.php?showtopic=13541"
+ $Hidd1=""
+ $Trad=0
+ $Smal=0
+ $Micr=0
+ $Regu=0
+ $Larg=0
+ $Mult=0
+ $Virt=0
+ $Myst=0
+ $Lett=0
+ $Wher=0
+ $Eart=0
+ $Mega=0
+ $Even=0
+ $Cito=0
+ $Benc=0
+ $FTF=0
+ $Coun=0
+ $Five=0
+ $Hidd=0
+ $TradHTML=""
+ $SmalHTML=""
+ $MicrHTML=""
+ $ReguHTML=""
+ $LargHTML=""
+ $MultHTML=""
+ $VirtHTML=""
+ $MystHTML=""
+ $LettHTML=""
+ $WherHTML=""
+ $EartHTML=""
+ $MegaHTML=""
+ $EvenHTML=""
+ $CitoHTML=""
+ $BencHTML=""
+ $CounHTML=""
+ $FTFHTML=""
+ $FiveHTML=""
+ $HiddHTML=""
+ $TradCode=""
+ $MultCode=""
+ $VirtCode=""
+ $SmalCode=""
+ $MicrCode=""
+ $ReguCode=""
+ $LargCode=""
+ $MystCode=""
+ $LettCode=""
+ $WherCode=""
+ $EartCode=""
+ $MegaCode=""
+ $BencCode=""
+ $EvenCode=""
+ $CitoCode=""
+ $FTFCode=""
+ $CounCode=""
+ $FiveCode=""
+ $HiddCode=""
+ $1="<img border="
+ $2="$_Quote"
+ $3="0"
+ $5=" "
+ $6="src="
+ $10="width="
+ $15="height="
+ $20="title="
+ $23=">"
+ $24="<p align="
+ $26="center"
+ $28="alt="
+ $centre="$24$2$26$2$23"
+ $endcentre="</p>"
+ $newline="<br>"
+ $01="<font face="
+ $02="Verdana"
+ $03=" size="
+ $04="1"
+ $05="Badges generated by <a href="
+ $06="http://gsak.net/board/index.php?showtopic=13541"
+ $07=">BadgeGen</a>.</font>"
+ $Link="$01$2$02$2$03$2$04$2$23$05$2$06$2$07"
+ENDSUB #name=VarDec
+
+#------------------------------------------------------------------------------------------------------------------------------------------
+
+BEGINSUB name=HoverText
+ SHOWSTATUS msg="Creating Hover Text..."
+      $TradName = "The Traditional Cacher"
+      $MultName = "The Multi Cacher"
+      $MystName = "The Mysterious Cacher"
+      $VirtName = "The Virtual Cacher"
+      $EartName = "The Earth Cacher"
+      $LettName = "The Letterboxer"
+      $WherName = "The Wherigo Cacher"
+      $MegaName = "The Mega Social Cacher"
+      $EvenName = "The Social Cacher"
+      $CITOName = "The Environmental Cacher"
+      $BencName = "The Benchmarker"
+      $MicrName = "The Micro Cacher"
+      $SmalName = "The Small Cacher"
+      $ReguName = "The Regular Cacher"
+      $LargName = "The Large Cacher"
+      $FiveName = "The Adventurous Cacher"
+      $FTFName = "The FTF Addict"
+      $CounName = "The Travelling Cacher"
+      $HiddName = "The Cache Hider"
+      $TradAlt="$TradName:  Bronze ($TradB1-$TradB2) | Silver ($TradS1-$TradS2) | Gold ($TradG1-$TradG2) | Platinum ($TradP1-$TradP2) | Ruby ($TradR1-$TradR2) | Sapphire ($TradSa1-$TradSa2) | Emerald ($TradE1-$TradE2) | Diamond ($TradD+) ***$iYou $hh found $Trad***"
+      $MultAlt="$MultName:  Bronze ($MultB1-$MultB2) | Silver ($MultS1-$MultS2) | Gold ($MultG1-$MultG2) | Platinum ($MultP1-$MultP2) | Ruby ($MultR1-$MultR2) | Sapphire ($MultSa1-$MultSa2) | Emerald ($MultE1-$MultE2) | Diamond ($MultD+) ***$iYou $hh found $Mult***"
+      $MystAlt="$MystName:  Bronze ($MystB1-$MystB2) | Silver ($MystS1-$MystS2) | Gold ($MystG1-$MystG2) | Platinum ($MystP1-$MystP2) | Ruby ($MystR1-$MystR2) | Sapphire ($MystSa1-$MystSa2) | Emerald ($MystE1-$MystE2) | Diamond ($MystD+) ***$iYou $hh found $Myst***"
+      $VirtAlt="$VirtName:  Bronze ($VirtB1-$VirtB2) | Silver ($VirtS1-$VirtS2) | Gold ($VirtG1-$VirtG2) | Platinum ($VirtP1-$VirtP2) | Ruby ($VirtR1-$VirtR2) | Sapphire ($VirtSa1-$VirtSa2) | Emerald ($VirtE1-$VirtE2) | Diamond ($VirtD+) ***$iYou $hh found $Virt***"
+      $EartAlt="$EartName:  Bronze ($EartB1-$EartB2) | Silver ($EartS1-$EartS2) | Gold ($EartG1-$EartG2) | Platinum ($EartP1-$EartP2) | Ruby ($EartR1-$EartR2) | Sapphire ($EartSa1-$EartSa2) | Emerald ($EartE1-$EartE2) | Diamond ($EartD+) ***$iYou $hh found $Eart***"
+      $LettAlt="$LettName:  Bronze ($LettB1-$LettB2) | Silver ($LettS1-$LettS2) | Gold ($LettG1-$LettG2) | Platinum ($LettP1-$LettP2) | Ruby ($LettR1-$LettR2) | Sapphire ($LettSa1-$LettSa2) | Emerald ($LettE1-$LettE2) | Diamond ($LettD+) ***$iYou $hh found $Lett***"
+      $WherAlt="$WherName:  Bronze ($WherB1-$WherB2) | Silver ($WherS1-$WherS2) | Gold ($WherG1-$WherG2) | Platinum ($WherP1-$WherP2) | Ruby ($WherR1-$WherR2) | Sapphire ($WherSa1-$WherSa2) | Emerald ($WherE1-$WherE2) | Diamond ($WherD+) ***$iYou $hh found $Wher***"
+      $MegaAlt="$MegaName:  Bronze ($MegaB1-$MegaB2) | Silver ($MegaS1-$MegaS2) | Gold ($MegaG1-$MegaG2) | Platinum ($MegaP1-$MegaP2) | Ruby ($MegaR1-$MegaR2) | Sapphire ($MegaSa1-$MegaSa2) | Emerald ($MegaE1-$MegaE2) | Diamond ($MegaD+) ***$iYou $hh attended $Mega***"
+      $EvenAlt="$EvenName:  Bronze ($EvenB1-$EvenB2) | Silver ($EvenS1-$EvenS2) | Gold ($EvenG1-$EvenG2) | Platinum ($EvenP1-$EvenP2) | Ruby ($EvenR1-$EvenR2) | Sapphire ($EvenSa1-$EvenSa2) | Emerald ($EvenE1-$EvenE2) | Diamond ($EvenD+) ***$iYou $hh attended $Even***"
+      $CITOAlt="$CITOName:  Bronze ($CITOB1-$CITOB2) | Silver ($CITOS1-$CITOS2) | Gold ($CITOG1-$CITOG2) | Platinum ($CITOP1-$CITOP2) | Ruby ($CITOR1-$CITOR2) | Sapphire ($CITOSa1-$CITOSa2) | Emerald ($CITOE1-$CITOE2) | Diamond ($CITOD+) ***$iYou $hh attended $CITO***"
+      $BencAlt="$BencName:  Bronze ($BencB1-$BencB2) | Silver ($BencS1-$BencS2) | Gold ($BencG1-$BencG2) | Platinum ($BencP1-$BencP2) | Ruby ($BencR1-$BencR2) | Sapphire ($BencSa1-$BencSa2) | Emerald ($BencE1-$BencE2) | Diamond ($BencD+) ***$iYou $hh found $Benc***"
+      $MicrAlt="$MicrName:  Bronze ($MicrB1-$MicrB2) | Silver ($MicrS1-$MicrS2) | Gold ($MicrG1-$MicrG2) | Platinum ($MicrP1-$MicrP2) | Ruby ($MicrR1-$MicrR2) | Sapphire ($MicrSa1-$MicrSa2) | Emerald ($MicrE1-$MicrE2) | Diamond ($MicrD+) ***$iYou $hh found $Micr***"
+      $SmalAlt="$SmalName:  Bronze ($SmalB1-$SmalB2) | Silver ($SmalS1-$SmalS2) | Gold ($SmalG1-$SmalG2) | Platinum ($SmalP1-$SmalP2) | Ruby ($SmalR1-$SmalR2) | Sapphire ($SmalSa1-$SmalSa2) | Emerald ($SmalE1-$SmalE2) | Diamond ($SmalD+) ***$iYou $hh found $Smal***"
+      $ReguAlt="$ReguName:  Bronze ($ReguB1-$ReguB2) | Silver ($ReguS1-$ReguS2) | Gold ($ReguG1-$ReguG2) | Platinum ($ReguP1-$ReguP2) | Ruby ($ReguR1-$ReguR2) | Sapphire ($ReguSa1-$ReguSa2) | Emerald ($ReguE1-$ReguE2) | Diamond ($ReguD+) ***$iYou $hh found $Regu***"
+      $LargAlt="$LargName:  Bronze ($LargB1-$LargB2) | Silver ($LargS1-$LargS2) | Gold ($LargG1-$LargG2) | Platinum ($LargP1-$LargP2) | Ruby ($LargR1-$LargR2) | Sapphire ($LargSa1-$LargSa2) | Emerald ($LargE1-$LargE2) | Diamond ($LargD+) ***$iYou $hh found $Larg***"
+      $FiveAlt="$FiveName:  Bronze ($FiveB1-$FiveB2) | Silver ($FiveS1-$FiveS2) | Gold ($FiveG1-$FiveG2) | Platinum ($FiveP1-$FiveP2) | Ruby ($FiveR1-$FiveR2) | Sapphire ($FiveSa1-$FiveSa2) | Emerald ($FiveE1-$FiveE2) | Diamond ($FiveD+) ***$iYou $hh found $Five***"
+      $FTFAlt="$FTFName:  Bronze ($FTFB1-$FTFB2) | Silver ($FTFS1-$FTFS2) | Gold ($FTFG1-$FTFG2) | Platinum ($FTFP1-$FTFP2) | Ruby ($FTFR1-$FTFR2) | Sapphire ($FTFSa1-$FTFSa2) | Emerald ($FTFE1-$FTFE2) | Diamond ($FTFD+) ***$iYou $hh $FTF***"
+      $CounAlt="$CounName:  Bronze ($CounB1-$CounB2) | Silver ($CounS1-$CounS2) | Gold ($CounG1-$CounG2) | Platinum ($CounP1-$CounP2) | Ruby ($CounR1-$CounR2) | Sapphire ($CounSa1-$CounSa2) | Emerald ($CounE1-$CounE2) | Diamond ($CounD+) ***$iYou $hh found $Coun***"
+      $HiddAlt="$HiddName:  Bronze ($HiddB1-$HiddB2) | Silver ($HiddS1-$HiddS2) | Gold ($HiddG1-$HiddG2) | Platinum ($HiddP1-$HiddP2) | Ruby ($HiddR1-$HiddR2) | Sapphire ($HiddSa1-$HiddSa2) | Emerald ($HiddE1-$HiddE2) | Diamond ($HiddD+) ***$iYou $hh hidden $Hidd***"
+   $LimitSummary=" $TradAlt $_NewLine $_NewLine $MultAlt $_NewLine $_NewLine $MystAlt $_NewLine $_NewLine $VirtAlt $_NewLine $_NewLine $EartAlt $_NewLine $_NewLine $LettAlt $_NewLine $_NewLine $WherAlt $_NewLine $_NewLine $MegaAlt $_NewLine $_NewLine $EvenAlt $_NewLine $_NewLine $CitoAlt $_NewLine $_NewLine $BencAlt $_NewLine $_NewLine $MicrAlt $_NewLine $_NewLine $SmalAlt $_NewLine $_NewLine $ReguAlt $_NewLine $_NewLine $LargAlt $_NewLine $_NewLine $FiveAlt $_NewLine $_NewLine $FTFAlt $_NewLine $_NewLine $CounAlt $_NewLine $_NewLine $HiddAlt"
+  SHOWSTATUS msg=""
+ENDSUB #name=HoverText
+
+
+
+#------------------------------
+#. . . . FORM . . . . . .
+
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sat 09-Jan-2010 17:05:57
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 523
+  Width = 294
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Hover Text
+  Height = 73
+  Left = 16
+  Top = 192
+  Width = 249
+  Taborder = 4
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = Other Options
+  Height = 121
+  Left = 16
+  Top = 272
+  Width = 121
+  Taborder = 5
+
+Name = Groupbox3
+  Type = Groupbox
+  Caption = Display...
+  Height = 121
+  Left = 152
+  Top = 272
+  Width = 113
+  Taborder = 6
+
+Name = Label1
+  Type = Label
+  Color = 85502
+  Font = Arial Black
+  Height = 38
+  Left = 64
+  Size = 20
+  Top = 8
+  Width = 151
+  Caption = BadgeGen
+
+Name = Label2
+  Type = Label
+  Font = Verdana
+  Height = 18
+  Left = 48
+  Size = 12
+  Top = 80
+  Width = 193
+  Caption = Found Database Name:
+
+Name = EditBox
+  Type = Combobox
+  Height = 21
+  Left = 48
+  Top = 104
+  Width = 193
+  Taborder = 0
+
+Name = Button1
+  Type = Button
+  Enter = Yes
+  Height = 41
+  Left = 80
+  Top = 400
+  Width = 121
+  Taborder = 1
+  Caption = OK
+
+Name = ShowRanges
+  Type = Button
+  Enabled = Yes
+  Height = 25
+  Left = 144
+  Top = 448
+  Width = 113
+  Taborder = 2
+  Caption = View Ranges
+
+Name = Forum
+  Type = Button
+  Height = 25
+  Left = 26
+  Top = 448
+  Width = 113
+  Taborder = 3
+  Caption = Forum
+
+Name = Label3
+  Type = Label
+  Height = 13
+  Left = 104
+  Top = 48
+  Width = 56
+  Caption = by ky.m.guy
+
+Name = FirstPerson
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 32
+  Top = 16
+  Width = 113
+  Taborder = 0
+  Caption = First Person
+
+Name = ThirdPerson
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 112
+  Top = 16
+  Width = 81
+  Taborder = 1
+  Caption = Third Person
+
+Name = Username
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 64
+  Top = 40
+  Width = 137
+  Taborder = 2
+
+Name = Label4
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 8
+  Top = 42
+  Width = 51
+  Caption = Username:
+
+Name = Label5
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 16
+  Top = 50
+  Width = 70
+  Caption = Size:             %
+
+Name = Size
+  Type = Edit
+  Container = Groupbox2
+  Height = 21
+  Left = 43
+  Top = 48
+  Width = 33
+  Taborder = 0
+
+Name = ShowType
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 8
+  Top = 16
+  Width = 97
+  Taborder = 0
+  Caption = Cache Type
+
+Name = ShowSize
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 8
+  Top = 32
+  Width = 97
+  Taborder = 1
+  Caption = Cache Size
+
+Name = ShowDiff
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 8
+  Top = 48
+  Width = 97
+  Taborder = 2
+  Caption = 5/5 Diff/Terr
+
+Name = ShowFTF
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 8
+  Top = 64
+  Width = 97
+  Taborder = 3
+  Caption = First to Find
+
+Name = ShowCoun
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 8
+  Top = 80
+  Width = 97
+  Taborder = 4
+  Caption = Countries
+
+Name = Label6
+  Type = Label
+  Font = Verdana
+  Height = 18
+  Left = 66
+  Size = 12
+  Top = 138
+  Width = 147
+  Caption = # Caches Hidden:
+
+Name = ShowHidd
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 8
+  Top = 96
+  Width = 97
+  Taborder = 5
+  Caption = Placed
+
+Name = Hidd1
+  Type = Edit
+  Height = 21
+  Left = 112
+  Top = 160
+  Width = 65
+  Taborder = 15
+
+<enddata>
+
+
+
+
+
+
+
+
+
+<Data> VarName=$form2
+#********************************************************************
+# Form generated by GSAK form designer on Sun 24-Jan-2010 13:41:00
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 684
+  Width = 881
+
+Name = Memo1
+  Type = Memo
+  Height = 553
+  Left = 16
+  Readonly = Yes
+  Scrollbars = Vertical
+  Top = 40
+  Width = 833
+  Taborder = 8
+
+Name = Label1
+  Type = Label
+  Color = 33023
+  Font = Arial Black
+  Height = 27
+  Left = 320
+  Size = 14
+  Top = 8
+  Width = 206
+  Caption = Badge Qualification
+
+Name = Back
+  Type = Button
+  Height = 25
+  Left = 400
+  Top = 608
+  Width = 75
+  Taborder = 9
+  Caption = Back
+
+<enddata>
+

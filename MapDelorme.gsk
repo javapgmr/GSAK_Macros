@@ -1,0 +1,5533 @@
+# MacVersion = 1.60.10
+# MacDescription = Create Map of Delorme pages for US Delorme Challenges
+# MacAuthor = KoosKoos (modified by byonke)
+# MacFileName = MapDelorme.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=9645&st=0&#entry62269
+#
+# Current version release date = 2012-11-14
+#
+# This macro owes its existence to the fine work of Lignumaqua and specifically, his
+# CheckCounties.gsk macro and all the additions provided by KoosKoos.
+#
+# I used a lot of his code from and it modified for Delorme polygons.
+#
+# The image URL to a PHP script that creates a dynamic image based on the parameters given.
+# 
+# The general parameters are:
+# map - a lower case abbreviation of each state
+# enc - flag to show that the coordinates are coming over encoded (custommap.php accepts either format)
+# x/y - coordinates for fill zones (encoded to reduce size)
+# col1 - list of colors to use in shading gradients
+# s - gradient code for each Delorme polygon
+# 
+# Thanks to Lignumaqua and Clyde for the server/hosting at gsak.net
+# Thanks also go to Lignumaqua for his help in creating the state basemaps and his custommap.php script
+# And of course, thanks to Lignumaqua for some help cleaning up my macro coding in general
+#
+#
+# Release notes:
+# 2008-10-06	0.40 Initial release with support for Nebraska, Iowa, Colorado, Kansas, Missouri, Oklahoma and Rhode Island.
+# 2008-10-06	0.50 Fixed option to use different fields.
+# 2008-10-08	0.60 Added Massachusetts and New Hampshire. Allow for saving user field.
+# 2008-10-13	0.70 Added Oregon and Washington.
+# 2008-10-15	0.80 Added selection of database and filter.
+# 2008-10-17	0.81 Added Idaho.
+# 2008-10-19	0.82 Added South Dakota.
+# 2008-10-22	0.83 Added Illinois.
+# 2008-10-29	0.84 Added Wisconsin and test check box.
+# 2008-11-04	0.85 Added North Carolina and updated Massachusetts, Nebraska and New Hampshire.
+# 2008-11-10	0.86 Added Maine, North Dakota, Connecticut, and Tennessee
+# 2008-11-25	0.87 Added New Jersey, Pennsylvania and Indiana
+# 2008-12-08	0.88 Added New York, Alabama, South Carolina, Maryland-Delaware, Virginia and Georgia
+# 2008-12-11	0.90 Added California North and fixed a bug that didn't allow mapping any maps with non standard abbreviation. CN (California North) and DM (Maryland-Delaware)
+#                    should work correctly now.
+# 2008-12-26    0.91 Added California South, Arizona, Louisiana, Mississippi, Ohio and Kentucky
+# 2008-12-31	0.92 Added support for User3 and User4 fields with GSAK 7.5 and later.
+#		     		 Added Wyoming, Montana, Arkansas and West Virginia
+# 2009-01-21	0.93 Added Hawaii and Nevada. Recreated Iowa shapes from better outline and updated to new naming convention.
+# 2009-02-05  	0.94 Added Vermont, Michigan, Minnesota and New Mexico
+# 2009-02-11	0.95 Udated Rhode Island polygons and maps. Updated grid mapping for Michigan.	
+# 2009-02-16	0.96 Udated Illinois polygons and maps. 
+# 2009-02-19	0.97 Added Alaska South Central  
+# 2009-02-28	1.00 Added California and Florida
+# 2009-06-18	1.02 Updated and renamed polygons for GA.
+# 2009-09-02	1.50 Updated and renamed polygons for remainder of states.
+# 2009-09-09	1.50.01 Updated version check.
+# 2009-09-27	1.50.02 Fixed error in NE-055B - Thanks DundStalker
+# 2010-01-20	1.50.03 Fixed mapping error for California North - Thanks jholly
+# 2010-01-29	1.50.04 SQLite changes
+# 2010-07-15	1.50.05 Fixed North Carolina concerns.
+# 2010-08-03	1.50.06 Cleaned up Illinois pages.
+# 2010-08-15	1.50.07 Fixed errors in Alaska South Central. Thanks Mike
+# 2010-09-18	1.50.08 Fixed errors in New Jersey
+# 2010-09-27	1.50.09 Fixed errors in Virginia
+# 2012-01-11 	1.50.10 Fixed errors for pages 26 and 27 in Texas
+# 2012-07-25 	1.60.00 Replaced deprecated commands
+# 2012-11-14 	1.60.10 Fixed so filter will work again
+
+
+VERCHECK Version=7.6.2.17 (Note: this macro requires at least GSAK "patch" 7.6.2.17 - please see the 7.6.2 patch thread here: http://gsak.net/board/index.php?showtopic=12781)
+
+SHOWSTATUS msg="Loading Delorme Definitions...0%" Width=200 Height=150 Title="Initializing"
+
+GOSUB name=DeclareVariables
+
+
+$MacroVersion = MacHeader("MacVersion")
+$MacroCaption = "Delorme Mapper"
+
+$Form = Replace("VersionNum","Version "+$MacroVersion,$Form,TRUE)
+
+########## Default variable setup
+# flag for test mode or normal operation
+# 1 = testing (show all counties filled for selected state)
+# 0 = normal (only show counties where a cache exists in current db/filter)
+$TestMode = 0
+
+# groups for shading
+$list = List("breaks", "create", ";")
+$list = List("colors", "create", ";")
+
+$dblist = SysInfo("databases")
+$dblist = "Current Database Selected;"+$dblist
+$filterlist = SysInfo("filters")
+$filterlist="NONE;"+$filterlist
+
+########## End default variable setup
+# Define SQL database
+$datafilepath = Sysinfo("MacroPath")
+#$File = $datafilepath + "\USDelormeSQL.db3"
+$file = ":memory:" 
+
+$DataFile = $datafilepath + "\MapDelormeUserSettings.dat"
+
+IF (FileExists($DataFile))
+  $variables = GetFile($DataFile)
+  $limit1 = Extract($variables,$_NewLine,1)
+  $limit2 = Extract($variables,$_NewLine,2)
+  $limit3 = Extract($variables,$_NewLine,3)
+  $limit4 = Extract($variables,$_NewLine,4)
+  $limit5 = Extract($variables,$_NewLine,5)
+  $limit6 = Extract($variables,$_NewLine,6)
+  $limit7 = Extract($variables,$_NewLine,7)
+  $limit8 = Extract($variables,$_NewLine,8)
+  $limit9 = Extract($variables,$_NewLine,9)
+  $color1 = Extract($variables,$_NewLine,10)
+  $color2 = Extract($variables,$_NewLine,11)
+  $color3 = Extract($variables,$_NewLine,12)
+  $color4 = Extract($variables,$_NewLine,13)
+  $color5 = Extract($variables,$_NewLine,14)
+  $color6 = Extract($variables,$_NewLine,15)
+  $color7 = Extract($variables,$_NewLine,16)
+  $color8 = Extract($variables,$_NewLine,17)
+  $color9 = Extract($variables,$_NewLine,18)
+  $color10 = Extract($variables,$_NewLine,19)
+  $excludelocationless = StrToBool(Extract($variables,$_NewLine,20))
+  $StateChosen = Extract($variables,$_NewLine,21)
+  $bgcolor = Extract($variables,$_NewLine,22)
+  $UserDataWhere = Extract($variables,$_NewLine,23)
+  $dbChosen = Extract($variables,$_NewLine,24)
+  $FilterChosen = Extract($variables,$_NewLine,25)
+ELSE
+
+  # No saved file so set defaults for form
+  # set the locationless flag to "on" by default 
+ 
+  $Excludelocationless = TRUE
+
+  $limit1 = "1"
+  $limit2 = "9"
+  $limit3 = "24"
+  $limit4 = "49"
+  $limit5 = "74"
+  $limit6 = "99"
+  $limit7 = "149"
+  $limit8 = "199"
+  $limit9 = "249"
+
+# shading colors
+  $color1 = "#04A6FC"
+  $color10 = "#FF0000"
+  
+# background color
+  $bgcolor = "#2F7F7F"
+
+# userdata location
+  $UserDataWhere = "UserData"
+  $dbChosen = "Default"
+  $FilterChosen = "NONE"
+   
+ENDIF
+
+GOSUB name=SetFormColors
+  
+$status=""
+
+#Open the SQL database ready for use
+$status = Sqlite("open",$file,"")
+
+$_sql = "drop table if exists USDelorme"
+$status = Sqlite("sql",$_sql,"")
+
+
+# Create Delorme table
+$Data = "State text,Abbreviation text,DelormePage text,xFill text,yFill text"
+$_sql = "CREATE TABLE USDelorme ($Data)"
+$status = Sqlite("sql",$_sql,"")
+
+SHOWSTATUS msg="Loading Delorme Definitions...50%" Width=200 Height=150 Title="Initializing"
+
+# Import the master list of Delorme pages into the SQL table
+$status = sqlite("import",$DelormeSQlFile,"table=USDelorme")
+
+SHOWSTATUS msg="Loading Delorme Definitions...75%" Width=200 Height=150 Title="Initializing"
+
+
+# Get a list of States to populate the combo box on the menu form
+$_sql = "SELECT DISTINCT State FROM USDelorme ORDER BY State"
+
+SHOWSTATUS msg="Loading Delorme Definitions...100%" Width=200 Height=150 Title="Initializing"
+
+$result = Sqlite("SQL",$_sql,"")
+$StateList = Replace("$_NewLine",";",$result,true)
+$UserDataList = "UserData;User2;User3;User4"
+# $StateList = "Alabama;Alaska;Arizona;Arkansas;California;Colorado;Connecticut;Delaware;District of Columbia;Florida;Georgia;Hawaii;Idaho;Illinois;Indiana;Iowa;Kansas;Kentucky;Louisiana;Maine;Maryland;Massachusetts;Michigan;Minnesota;Mississippi;Missouri;Montana;Nebraska;Nevada;New Hampshire;New Jersey;New Mexico;New York;North Carolina;North Dakota;Ohio;Oklahoma;Oregon;Pennsylvania;Rhode Island;South Carolina;South Dakota;Tennessee;Texas;Utah;Vermont;Virginia;Washington;West Virginia;Wisconsin;Wyoming"
+
+# set up list that's used for later manipulation
+$list = list("CtyTable","create", ";")
+
+SHOWSTATUS Msg="Done!" Display=Off
+
+# read MimeEncoded help text
+$helptext = MimeDecode($MapCountiesHelpFile)
+
+  
+
+# Show the main form in a loop
+WHILE TRUE
+  $result = Form($form,"")
+# Reset the screen position of the menu form to where the user left it
+  $Form = EditForm($Form,"Form1","Top",$_FormTop)
+  $Form = EditForm($Form,"Form1","Left",$_FormLeft)
+  GOSUB name=SetFormColors
+
+
+
+
+# Grab the state abbreviation to make the URL a little shorter later
+  		
+  $_sql = "SELECT Abbreviation FROM USDelorme WHERE State = '$StateChosen'"
+  $StateAbbreviation = Left(Sqlite("SQL",$_sql,""),2)
+  $UserDataSelected = $UserDataWhere
+
+  If $dbChosen<>"Current Database Selected"
+  	Database Name="$dbChosen"
+  EndIF
+
+  If $FilterChosen = "NONE"
+	CancelFilter
+  Else
+	Filter Name="$FilterChosen"	
+  EndIF
+	
+ If $_FilterActive
+  MFILTER Expression=($d_state)<>"Nil" Join=and
+ Else
+  MFILTER Expression=($d_state)<>"Nil"
+ Endif
+
+  BEGINCASE #User Data Location
+    CASE $UserDataWhere="UserData"
+	$UserDataSelected="u"
+    CASE $UserDataWhere="User2"
+	$UserDataSelected="2"
+    CASE $UserDataWhere="User3"
+	$UserDataSelected="3"
+    CASE $UserDataWhere="User4"
+	$UserDataSelected="4"
+    OTHERWISE
+      CANCEL
+  ENDCASE
+
+#Save the State and User Data fields from the current GSAK database out to an SQL table in the SQL database using current filter.
+
+# Attach our main database	
+
+	$sqlinputfile = SqlQuote($_CurrentDataPath + "\sqlite.db3")
+	
+	$_sql = "drop table if exists Caches"
+	$status = Sqlite("sql",$_sql,"") 
+	
+	$_sql = "ATTACH $sqlinputfile AS gsakdb"
+	$status = Sqlite("sql",$_sql)
+
+#	$data = "CREATE TABLE Caches AS select State, County, UserData, User2, User3, User4, CacheType from gsakdb.caches WHERE $_where"
+	$data = "CREATE TABLE Caches AS select State, " + $UserDataWhere + ", CacheType from gsakdb.caches WHERE $_where"
+	$_sql = $data
+	$status = Sqlite("sql",$_sql,"")
+
+	$_sql = "DETACH gsakdb"
+		$status = Sqlite("sql",$_sql)
+
+  BEGINCASE #Buttons
+    CASE $Cancel
+      CANCEL
+    CASE $GetDelorme
+		$tmpS=GetPolygon($UserDataSelected,"gsak_Delorme_"+$StateAbbreviation)
+    CASE $OK
+		IF $MapTest
+		$TestMode = 1
+	ELSE
+		$TestMode = 0
+	ENDIF
+        GOSUB name=Main
+    CASE $SaveSettings
+		GOSUB name=SaveSettings
+    CASE $btnHelp
+		GOSUB Name="DisplayHelpScreen"
+    OTHERWISE
+      CANCEL
+  ENDCASE
+
+ENDWHILE # Form Loop
+
+
+  If $FilterChosen = "NONE"
+	CancelFilter
+  Else
+	Filter Name="$FilterChosen"	
+  EndIF
+	
+BEGINSUB name=Main
+
+# Exclude locationless? 
+IF $Excludelocationless 
+  $Locationless = " AND caches.Cachetype <> 'L'" 
+ELSE
+  $Locationless = "" 
+ENDIF
+ 
+# Grab the state abbreviation to make the URL a little shorter later
+$_sql = "SELECT Abbreviation FROM USDelorme WHERE State = '$StateChosen'"
+$StateAbbreviation = Left(Sqlite("SQL",$_sql,""),2)
+
+#Save the State and User Data fields from the current GSAK database out to an SQL table in the SQL database
+	
+# Figure out if we are using full state names or abbreviations
+$_sql = "SELECT AVG(LENGTH(state)) from Caches"
+$tmpN = Val(Sqlite("SQL",$_sql,""))
+
+IF $tmpN > 3
+  $CountyCheck = "USDelorme.State"
+  $SearchState = $StateChosen
+  $DelormeSearch = $StateChosen
+	IF $SearchState = "California North" or $SearchState = "California South"
+	  $SearchState = "California"
+	ENDIF
+	IF $SearchState = "Alaska South Central"
+	  $SearchState = "Alaska"
+	ENDIF
+
+	IF $StateAbbreviation = "DM"
+	  $LikeState = " ( caches.State like 'Maryland' OR caches.State like 'Delaware' ) "
+	ELSE
+	  $LikeState = " caches.State like '"+ "$SearchState" + "' "
+	ENDIF  
+
+ELSE
+  $CountyCheck = "USDelorme.Abbreviation"
+  $SearchState = $StateAbbreviation
+  $DelormeSearch = $StateAbbreviation
+	IF $SearchState = "CN" or $SearchState = "CS"
+	  $SearchState = "CA"
+	ENDIF
+	IF $SearchState = "AS"
+	  $SearchState = "AK"
+	ENDIF
+	IF $StateAbbreviation = "DM"
+	  $LikeState = " ( caches.State like 'MD' OR caches.State like 'DE' ) "
+	ELSE
+	  $LikeState = " caches.State like '"+ "$SearchState" + "' "
+	ENDIF  
+ENDIF
+
+# build link to the mapping script
+IF $StateAbbreviation = "VI"
+   $MapName = "pr"
+ELSE
+   $MapName = lower($StateAbbreviation+"_delorme")
+ENDIF
+
+$code= "http://gsak.net/stats/counties/custommap.php?map=" + $MapName + "&enc=1" 
+
+# encoded x/y coords
+$encodingString = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-."
+ 
+$list = List("breaks", "replace", "")
+$list = List("colors", "replace", "")
+
+# set up list of break points for groups
+IF Val($limit1) > 0
+  $list = List("breaks", "add", $limit1)
+ENDIF 
+IF Val($limit2) > 0
+  $list = List("breaks", "add", $limit2)
+ENDIF
+IF Val($limit3) > 0
+  $list = List("breaks", "add", $limit3)
+ENDIF
+IF Val($limit4) > 0
+  $list = List("breaks", "add", $limit4)
+ENDIF
+IF Val($limit5) > 0
+  $list = List("breaks", "add", $limit5)
+ENDIF
+IF Val($limit6) > 0
+  $list = List("breaks", "add", $limit6)
+ENDIF
+IF Val($limit7) > 0
+  $list = List("breaks", "add", $limit7)
+ENDIF
+IF Val($limit8) > 0
+  $list = List("breaks", "add", $limit8)
+ENDIF
+IF Val($limit9) > 0
+  $list = List("breaks", "add", $limit9)
+ENDIF
+
+$list = List("breaks", "add", "9999999")
+
+$list = List("colors", "add", $color1)
+$list = List("colors", "add", $color2)
+$list = List("colors", "add", $color3)
+$list = List("colors", "add", $color4)
+$list = List("colors", "add", $color5)
+$list = List("colors", "add", $color6)
+$list = List("colors", "add", $color7)
+$list = List("colors", "add", $color8)
+$list = List("colors", "add", $color9)
+$list = List("colors", "add", $color10)
+
+$count=0
+$count=Val(List("breaks","count",""))-1
+
+# add shading for number of caches in that county
+$BeginColor = $color1
+$EndColor = $color10
+
+# get the decimal values of the step changes for each shade
+# Red value
+$hex=Substr($BeginColor,2,2)
+GOSUB Name=hextodec
+$begRed=$dec
+$hex=Substr($EndColor,2,2)
+GOSUB Name=hextodec
+$endRed=$dec
+$redChange = Round(($endRed - $begRed) / $count,0)
+
+# Green value
+$hex=Substr($BeginColor,4,2)
+GOSUB Name=hextodec
+$begGreen=$dec
+$hex=Substr($EndColor,4,2)
+GOSUB Name=hextodec
+$endGreen=$dec
+$greenChange = Round(($endGreen - $begGreen) / $count,0)
+
+# Blue value
+$hex=Substr($BeginColor,6,2)
+GOSUB Name=hextodec
+$begBlue=$dec
+$hex=Substr($EndColor,6,2)
+GOSUB Name=hextodec
+$endBlue=$dec
+$blueChange = Round(($endBlue - $begBlue) / $count,0)
+
+$tmpN=0
+$shades=""
+$lowBreak="0"
+$rows=1
+$_sql = " case "
+$legendTable = "<TABLE style='width: 390px; margin: auto auto; font-size: xx-small; text-align: left;' border=0><TR>"
+
+WHILE $tmpN < $count
+  $list = List("colors","item",NumtoStr($tmpN + 1))
+
+  IF len($list) = 0
+    $red=$begRed+($redChange*$tmpN)
+    $dec=$red
+    GOSUB Name=dectohex
+    $redhex=$hex
+
+    $green=$begGreen+($greenChange*$tmpN)
+    $dec=$green
+    GOSUB Name=dectohex
+    $greenhex=$hex
+
+    $blue=$begBlue+($blueChange*$tmpN)
+    $dec=$blue
+    GOSUB Name=dectohex
+    $bluehex=$hex
+  ELSE
+    $redhex=Substr($list,2,2)
+    $greenhex=Substr($list,4,2)
+    $bluehex=Substr($list,6,2)
+
+    $hex=$redhex
+    GOSUB Name=hextodec
+    $red=$dec
+
+    $hex=$greenhex
+    GOSUB Name=hextodec
+    $green=$dec
+
+    $hex=$bluehex
+    GOSUB Name=hextodec
+    $blue=$dec
+  ENDIF
+
+  $shades = $shades + $redhex + $greenhex + $bluehex
+
+  $Break = List("breaks","item",NumtoStr($tmpN+1))
+  $_sql = $_sql + " when cnt > $lowBreak and cnt <= $Break then '$tmpN'"
+
+  IF Val($lowBreak) = 0
+    $Label = $break
+  ELSE
+    $Label = NumtoStr((Val($lowBreak) + 1)) + " - " + $break
+  ENDIF
+  IF $rows < 5
+    $legendTable = $legendTable + "<TD style='width:10px;height:10px;border:1px solid #000000;background-color:#$redhex$greenhex$bluehex'>&nbsp;</td><TD>" + $Label + "</TD>"
+    $rows = $rows + 1
+  ELSE
+    $legendTable = $legendTable + "<TD style='width:10px;height:10px;border:1px solid #000000;background-color:#$redhex$greenhex$bluehex'>&nbsp;</td><TD>" + $Label + "</TD></TR><TR>"
+    $rows = 1  
+  ENDIF
+  $tmpN = $tmpN + 1
+  $lowBreak = $Break
+ENDWHILE
+  
+$dec=$endRed
+GOSUB Name=dectohex
+$redhex=$hex
+
+$dec=$endGreen
+GOSUB Name=dectohex
+$greenhex=$hex
+
+$dec=$endBlue
+GOSUB Name=dectohex
+$bluehex=$hex
+
+$shades = $shades + $redhex + $greenhex + $bluehex
+
+$Break = List("breaks","item",NumtoStr($tmpN+1))
+$Label = NumtoStr((Val($lowBreak) + 1)) + "+"
+
+$_sql = $_sql + " when cnt > $lowBreak and cnt <= $Break then '$tmpN' end"
+
+$legendTable = $legendTable + "<TD style='width:10px;height:10px;border:1px solid #000000;background-color:#$redhex$greenhex$bluehex'>&nbsp;</td><TD>" + $Label + "</TD></TR></TABLE>"
+
+#test code to load ALL counties shaded at highest level
+IF $TestMode = 1
+  $_sql = " '$tmpN' "
+ENDIF
+ 
+#test code to load ALL counties
+IF $TestMode = 1
+  #$_sql = "SELECT substr('$encodingString', (round((xFill / 64)-0.5))+1,1) || substr('$encodingString',(xFill % 64)+1,1) xfill, substr('$encodingString', (round((yFill / 64)-0.5))+1,1) || substr('$encodingString',(yFill % 64)+1,1) yfill, $_sql, USDelorme.DelormePage, cnt FROM USDelorme, (select DelormePage, count(*) cnt from USDelorme WHERE State like '$StateChosen' GROUP BY DelormePage) counts WHERE State like '$StateChosen' and counts.DelormePage like USDelorme.DelormePage GROUP BY xfill,yfill order by cnt desc, USDelorme.DelormePage asc"
+  $_sql = "SELECT substr('$encodingString', floor(xFill/64)+1,1) || substr('$encodingString',(xFill % 64)+1,1) xfill, substr('$encodingString', floor(yFill/64)+1,1) || substr('$encodingString',(yFill % 64)+1,1) yfill, $_sql, USDelorme.DelormePage, cnt FROM USDelorme, (select DelormePage, count(*) cnt from USDelorme WHERE State like '$StateChosen' GROUP BY DelormePage) counts WHERE State like '$StateChosen' and counts.DelormePage like USDelorme.DelormePage GROUP BY xfill,yfill order by cnt desc, USDelorme.DelormePage asc"
+ELSE  # Normal mode
+  #$_sql = "SELECT substr('$encodingString', (round((xFill / 64)-0.5))+1,1) || substr('$encodingString',(xFill % 64)+1,1) xfill, substr('$encodingString', (round((yFill / 64)-0.5))+1,1) || substr('$encodingString',(yFill % 64)+1,1) yfill, $_sql, DelormePage, cnt FROM USDelorme, caches, (select $UserDataWhere, count(*) cnt from caches WHERE caches.$UserDataWhere != '' and $LikeState GROUP BY $UserDataWhere) counts WHERE caches.$UserDataWhere != '' and $LikeState and $CountyCheck = '$DelormeSearch' and USDelorme.DelormePage like caches.$UserDataWhere and caches.$UserDataWhere like counts.$UserDataWhere $Locationless GROUP BY xfill,yfill order by cnt desc, DelormePage asc"
+   $_sql = "SELECT substr('$encodingString', floor(xFill/64)+1,1) || substr('$encodingString',(xFill % 64)+1,1) xfill, substr('$encodingString', floor(yFill/64)+1,1) || substr('$encodingString',(yFill % 64)+1,1) yfill, $_sql, DelormePage, cnt FROM USDelorme, caches, (select $UserDataWhere, count(*) cnt from caches WHERE caches.$UserDataWhere != '' and $LikeState GROUP BY $UserDataWhere) counts WHERE caches.$UserDataWhere != '' and $LikeState and $CountyCheck = '$DelormeSearch' and USDelorme.DelormePage like caches.$UserDataWhere and caches.$UserDataWhere like counts.$UserDataWhere $Locationless GROUP BY xfill,yfill order by cnt desc, DelormePage asc"
+ENDIF 
+
+$result = Sqlite("SQL",$_sql,"")
+#$result = Replace(" ","",$result,true)
+$result = Replace("$_NewLine", ";",$result,true)
+
+$list = list("CtyTable","replace",$result)
+$count = Val(list("CtyTable","count",""))
+
+$tmpN = 1
+$rows = 1
+$TotList = "<TR>"
+$x=""
+$y=""
+$s=""
+
+while $tmpN < $count
+  $x = $x + List("CtyTable","item",NumtoStr($tmpN))
+  $y = $y + List("CtyTable","item",NumtoStr($tmpN+1))
+  $s = $s + List("CtyTable","item",NumtoStr($tmpN+2))
+  $CountyName = List("CtyTable","item",NumtoStr($tmpN+3))
+  $PreviousCountyName = List("CtyTable","item",NumtoStr($tmpN-2))
+
+  # avoid duplicate county names for counties with multiple coord entries
+  IF $CountyName <> List("CtyTable","item",NumtoStr($tmpN-2))
+    $CountyCnt = List("CtyTable","item",NumtoStr($tmpN+4))
+    $TotList = $TotList + "<TD>$CountyName:$CountyCnt"
+    IF $tmpN < $count
+      IF $rows < 5
+        $TotList = $TotList + "</TD>"
+        $rows = $rows + 1
+      ELSE
+        $TotList = $TotList + "</TD></TR><TR>"
+        $rows=1
+      ENDIF
+    ELSE
+      $TotList = $TotList + "</TD></TR>"
+    ENDIF
+  ENDIF
+
+  $tmpN = $tmpN+5
+ENDWHILE
+
+# build the url
+$code = $code + "&x=" + $x + "&y=" + $y + "&col1=" + $shades + "&s=" + $s + "&col2=" + Substr($bgColor,2,6)
+
+# Display map in browser
+WEB URL=$code
+
+# Copy full profile text to clipboard
+$code = "<div style='font-family: Verdana, Arial, sans-serif; font-size: xx-small; text-align: center;'><TABLE style='width: 390px; margin: auto auto; font-size: xx-small; text-align: left;' border=0><TR><TD colspan='5' align='center'><img src=" + $code + "><BR>$legendTable</TD></TR>$TotList</TABLE></div>"
+
+CLIP Data=$code
+
+MSGOK msg="Your $StateChosen map code is on your clipboard, ready to be pasted into your profile or another web page."
+ 
+ENDSUB #Main
+
+
+BEGINSUB name=DeclareVariables
+
+Option Explicit=Yes
+
+Declare Var=$begBlue Type=Numeric
+Declare Var=$begGreen Type=Numeric
+Declare Var=$BeginColor Type=String
+Declare Var=$begRed Type=Numeric
+Declare Var=$bgcolor Type=String
+Declare Var=$blue Type=Numeric
+Declare Var=$blueChange Type=Numeric
+Declare Var=$bluehex Type=String
+Declare Var=$Break Type=String
+Declare Var=$code Type=String
+Declare Var=$color1 Type=String
+Declare Var=$color2 Type=String
+Declare Var=$color3 Type=String
+Declare Var=$color4 Type=String
+Declare Var=$color5 Type=String
+Declare Var=$color6 Type=String
+Declare Var=$color7 Type=String
+Declare Var=$color8 Type=String
+Declare Var=$color9 Type=String
+Declare Var=$color10 Type=String
+Declare Var=$count Type=Numeric
+Declare Var=$DelormeSQlFile Type=String
+Declare Var=$CountyCheck Type=String
+Declare Var=$CountyCnt Type=String
+Declare Var=$CountyName Type=String
+Declare Var=$d Type=Numeric
+Declare Var=$Data Type=String
+Declare Var=$DataFile Type=String
+Declare Var=$datafilepath Type=String
+Declare Var=$dec Type=Numeric
+Declare Var=$DelormeSearch Type=String
+Declare Var=$encodingString Type=String
+Declare Var=$endBlue Type=Numeric
+Declare Var=$EndColor Type=String
+Declare Var=$endGreen Type=Numeric
+Declare Var=$endRed Type=Numeric
+Declare Var=$Excludelocationless Type=Boolean
+Declare Var=$file Type=String
+Declare Var=$Form Type=String
+Declare Var=$green Type=Numeric
+Declare Var=$greenChange Type=Numeric
+Declare Var=$greenhex Type=String
+Declare Var=$help Type=String
+Declare Var=$helpScreen Type=String
+Declare Var=$helptext Type=String
+Declare Var=$hex Type=String
+Declare Var=$hexlookup Type=String
+Declare Var=$Label Type=String
+Declare Var=$legendTable Type=String
+Declare Var=$LikeState Type=String
+Declare Var=$limit1 Type=String
+Declare Var=$limit2 Type=String
+Declare Var=$limit3 Type=String
+Declare Var=$limit4 Type=String
+Declare Var=$limit5 Type=String
+Declare Var=$limit6 Type=String
+Declare Var=$limit7 Type=String
+Declare Var=$limit8 Type=String
+Declare Var=$limit9 Type=String
+Declare Var=$list Type=String
+Declare Var=$Locationless Type=String
+Declare Var=$lowBreak Type=String
+Declare Var=$MacroCaption Type=String
+Declare Var=$MacroVersion Type=String
+Declare Var=$MapName Type=String
+Declare Var=$MapCountiesHelpFile Type=String
+Declare Var=$PreviousCountyName Type=String
+Declare Var=$q Type=Numeric
+Declare Var=$r Type=Numeric
+Declare Var=$red Type=Numeric
+Declare Var=$redChange Type=Numeric
+Declare Var=$redhex Type=String
+Declare Var=$result Type=String
+Declare Var=$return Type=String
+Declare Var=$rows Type=Numeric
+Declare Var=$s Type=String
+Declare Var=$SearchState Type=String
+Declare Var=$shades Type=String
+Declare var=$sqlinputfile Type=String
+Declare Var=$StateAbbreviation Type=String
+Declare Var=$StateChosen Type=String
+Declare Var=$StateList Type=String
+Declare Var=$status Type=String
+Declare Var=$TestMode Type=Numeric
+Declare Var=$tmpS Type=String
+Declare Var=$tmpN Type=Numeric
+Declare Var=$TotList Type=String
+Declare Var=$UserDataList Type=String
+Declare Var=$UserDataSelected Type=String
+Declare Var=$UserDataWhere Type=String
+Declare Var=$variables Type=String
+Declare Var=$x Type=String
+Declare Var=$y Type=String
+Declare Var=$dbChosen Type=String
+Declare Var=$FilterChosen Type=String
+Declare Var=$dbList Type=String
+Declare Var=$FilterList Type=String
+
+
+
+ENDSUB #DeclareVariables
+
+
+BEGINSUB Name=hextodec
+  # assumes variables $hex and $dec are already defined in the macro 
+  # $hex should be set before subroutine is called
+  # $dec is set by the subroutine
+  
+  Declare Var=$HTDSUBcounter Type=Numeric
+  Declare Var=$HTDSUBhexcodes Type=String
+  Declare Var=$HTDSUBnumDigits Type=Numeric
+  
+  $HTDSUBnumDigits=len($hex) 
+  
+  IF $HTDSUBnumDigits = 0
+    $dec=-1 # an error condition. no hex characters were passed
+  ELSE
+    $hex=Upper($hex)
+    $dec=0
+    $HTDSUBhexcodes="0123456789ABCDEF"
+    $HTDSUBcounter=0
+    WHILE $HTDSUBcounter < $HTDSUBnumDigits
+      $dec=16*$dec + (AT(Substr($hex, $HTDSUBcounter, 1), $HTDSUBhexcodes)-1)
+      $HTDSUBcounter = $HTDSUBcounter + 1
+		ENDWHILE
+  ENDIF
+ENDSUB #hextodec
+
+BEGINSUB name=dectohex
+  # Takes input from 0-255 as a decimal number in $dec
+  # and returns it as a two character hex string in $hex
+
+  $hexlookup="0123456789ABCDEF"
+  $d = Int($dec)
+  $q = Int($d/16)
+  $r = $d - ($q*16)
+  $hex = SubStr($hexlookup,$q+1,1) + SubStr($hexlookup,$r+1,1)
+ENDSUB
+
+
+BEGINSUB Name=SaveSettings
+	# Save the values into $datafile to be reused the next time the macro is run
+#settings1 = limits
+
+	$variables=$limit1+$_NewLine+$limit2+$_NewLine+$limit3+$_NewLine+$limit4+$_NewLine+$limit5+$_NewLine+$limit6+$_NewLine+$limit7+$_NewLine+$limit8+$_NewLine+$limit9+$_NewLine
+	$variables=$variables+$color1+$_NewLine+$color2+$_NewLine+$color3+$_NewLine+$color4+$_NewLine+$color5+$_NewLine+$color6+$_NewLine+$color7+$_NewLine+$color8+$_NewLine+$color9+$_NewLine+$color10+$_NewLine
+	$variables=$variables+BoolToStr($excludelocationless,"TRUE","FALSE")+$_NewLine
+        $variables=$variables+$StateChosen+$_NewLine
+        $variables=$variables+$bgcolor+$_NewLine
+	$variables=$variables+$UserDataWhere+$_NewLine
+        $variables=$variables+$dbChosen+$_NewLine
+	$variables=$variables+$FilterChosen+$_NewLine
+
+	$result = PutFile($datafile, $variables)
+	IF Left($result, 7) = "*Error*"
+		# If theres any error abort the macro
+		CANCEL Msg="Unable to write to $datafile!"
+	ENDIF	
+	
+ENDSUB #SaveSettings
+
+BEGINSUB Name=SetFormColors
+  $hex=Substr($color1,2,2)
+  GOSUB name=hextodec
+  $red=$dec
+
+  $hex=Substr($color1,4,2)
+  GOSUB name=hextodec
+  $green=$dec
+
+  $hex=Substr($color1,6,2)
+  GOSUB name=hextodec
+  $blue=$dec
+  
+  $Form = EditForm($Form,"color1","color",NumtoStr(RGBColor($red,$green,$blue)))
+  
+  $hex=Substr($color2,2,2)
+  GOSUB name=hextodec
+  $red=$dec
+
+  $hex=Substr($color2,4,2)
+  GOSUB name=hextodec
+  $green=$dec
+
+  $hex=Substr($color2,6,2)
+  GOSUB name=hextodec
+  $blue=$dec
+  
+  $Form = EditForm($Form,"color2","color",NumtoStr(RGBColor($red,$green,$blue)))
+  
+  $hex=Substr($color3,2,2)
+  GOSUB name=hextodec
+  $red=$dec
+
+  $hex=Substr($color3,4,2)
+  GOSUB name=hextodec
+  $green=$dec
+
+  $hex=Substr($color3,6,2)
+  GOSUB name=hextodec
+  $blue=$dec
+  
+  $Form = EditForm($Form,"color3","color",NumtoStr(RGBColor($red,$green,$blue)))
+
+  $hex=Substr($color4,2,2)
+  GOSUB name=hextodec
+  $red=$dec
+
+  $hex=Substr($color4,4,2)
+  GOSUB name=hextodec
+  $green=$dec
+
+  $hex=Substr($color4,6,2)
+  GOSUB name=hextodec
+  $blue=$dec
+  
+  $Form = EditForm($Form,"color4","color",NumtoStr(RGBColor($red,$green,$blue)))
+
+  $hex=Substr($color5,2,2)
+  GOSUB name=hextodec
+  $red=$dec
+
+  $hex=Substr($color5,4,2)
+  GOSUB name=hextodec
+  $green=$dec
+
+  $hex=Substr($color5,6,2)
+  GOSUB name=hextodec
+  $blue=$dec
+  
+  $Form = EditForm($Form,"color5","color",NumtoStr(RGBColor($red,$green,$blue)))
+
+  $hex=Substr($color6,2,2)
+  GOSUB name=hextodec
+  $red=$dec
+
+  $hex=Substr($color6,4,2)
+  GOSUB name=hextodec
+  $green=$dec
+
+  $hex=Substr($color6,6,2)
+  GOSUB name=hextodec
+  $blue=$dec
+  
+  $Form = EditForm($Form,"color6","color",NumtoStr(RGBColor($red,$green,$blue)))
+
+  $hex=Substr($color7,2,2)
+  GOSUB name=hextodec
+  $red=$dec
+
+  $hex=Substr($color7,4,2)
+  GOSUB name=hextodec
+  $green=$dec
+
+  $hex=Substr($color7,6,2)
+  GOSUB name=hextodec
+  $blue=$dec
+  
+  $Form = EditForm($Form,"color7","color",NumtoStr(RGBColor($red,$green,$blue)))
+
+  $hex=Substr($color8,2,2)
+  GOSUB name=hextodec
+  $red=$dec
+
+  $hex=Substr($color8,4,2)
+  GOSUB name=hextodec
+  $green=$dec
+
+  $hex=Substr($color8,6,2)
+  GOSUB name=hextodec
+  $blue=$dec
+  
+  $Form = EditForm($Form,"color8","color",NumtoStr(RGBColor($red,$green,$blue)))
+
+  $hex=Substr($color9,2,2)
+  GOSUB name=hextodec
+  $red=$dec
+
+  $hex=Substr($color9,4,2)
+  GOSUB name=hextodec
+  $green=$dec
+
+  $hex=Substr($color9,6,2)
+  GOSUB name=hextodec
+  $blue=$dec
+  
+  $Form = EditForm($Form,"color9","color",NumtoStr(RGBColor($red,$green,$blue)))
+
+  $hex=Substr($color10,2,2)
+  GOSUB name=hextodec
+  $red=$dec
+
+  $hex=Substr($color10,4,2)
+  GOSUB name=hextodec
+  $green=$dec
+
+  $hex=Substr($color10,6,2)
+  GOSUB name=hextodec
+  $blue=$dec
+  
+  $Form = EditForm($Form,"color10","color",NumtoStr(RGBColor($red,$green,$blue)))
+  
+  $hex=Substr($bgcolor,2,2)
+  GOSUB name=hextodec
+  $red=$dec
+
+  $hex=Substr($bgcolor,4,2)
+  GOSUB name=hextodec
+  $green=$dec
+
+  $hex=Substr($bgcolor,6,2)
+  GOSUB name=hextodec
+  $blue=$dec
+  
+  $Form = EditForm($Form,"bgcolor","color",NumtoStr(RGBColor($red,$green,$blue)))
+
+ENDSUB #SetFormColors
+
+BEGINSUB Name="DisplayHelpScreen"
+
+$return = Form($help,"")
+
+# Save the form's current position before we close it
+   $helpScreen = EditForm($help,"help","Top",$_FormTop)
+   $helpScreen = EditForm($help,"help","Left",$_FormLeft)
+
+ENDSUB #DisplayHelpScreen 
+
+
+<data> VarName=$form
+Name = Form1
+  Type = Form
+  Caption = Delorme Mapper
+  Height = 499
+  Width = 457
+
+Name = Groupbox1
+  Type = Groupbox
+  Height = 110
+  Left = 248
+  Top = 299
+  Width = 185
+  Taborder = 2
+
+Name = Groupbox2
+  Type = Groupbox
+  Height = 110
+  Left = 248
+  Top = 96
+  Width = 185
+  Taborder = 3
+
+Name = Groupbox4
+  Type = Groupbox
+  Height = 313
+  Left = 16
+  Top = 96
+  Width = 177
+  Taborder = 4
+
+Name = DelormeDataLocation
+  Type = Groupbox
+  Height = 89
+  Left = 248
+  Top = 210
+  Width = 185
+  Taborder = 7
+
+Name = Groupbox3
+  Type = Groupbox
+  Height = 32
+  Left = 16
+  Top = 32
+  Width = 417
+  Taborder = 8
+
+Name = Groupbox5
+  Type = Groupbox
+  Height = 32
+  Left = 16
+  Top = 64
+  Width = 417
+  Taborder = 9
+
+Name = Label1
+  Type = Label
+  Color = 16744448
+  Height = 25
+  Left = 136
+  Size = 16
+  Style = bold
+  Top = 5
+  Width = 173
+  Caption = Delorme Mapper
+
+Name = Label2
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 56
+  Top = 18
+  Width = 60
+  Caption = Area to map:
+
+Name = Statechosen
+  Type = Combobox
+  Container = Groupbox2
+  Height = 21
+  Left = 22
+  Top = 43
+  Values = $StateList
+  Width = 145
+  Taborder = 0
+
+Name = ok
+  Type = Button
+  Height = 25
+  Left = 37
+  Top = 420
+  Width = 75
+  Taborder = 0
+  Caption = &Map it
+
+Name = cancel
+  Type = Button
+  Height = 25
+  Left = 337
+  Top = 420
+  Width = 75
+  Taborder = 1
+  Caption = E&xit
+
+Name = GetDelorme
+  Type = Button
+  Container = Groupbox1
+  Height = 25
+  Left = 46
+  Top = 27
+  Width = 91
+  Taborder = 0
+  Caption = &Update Delorme
+
+Name = Label3
+  Type = Label
+  Color = 255
+  Container = Groupbox1
+  Height = 13
+  Left = 70
+  Style = bold
+  Top = 65
+  Width = 47
+  Caption = Warning
+
+Name = excludelocationless
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 17
+  Left = 149
+  Top = 79
+  Width = 15
+  Taborder = 1
+
+Name = Label4
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 26
+  Top = 82
+  Width = 99
+  Caption = Exclude locationless:
+
+Name = Label5
+  Type = Label
+  Color = 255
+  Container = Groupbox1
+  Height = 13
+  Left = 21
+  Style = bold
+  Top = 81
+  Width = 142
+  Caption = Will overwrite User Data!
+
+Name = Edit3
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 428
+  Top = 228
+  Width = 25
+  Taborder = 0
+
+Name = Edit2
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 428
+  Top = 228
+  Width = 25
+  Taborder = 1
+
+Name = Edit4
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 428
+  Top = 228
+  Width = 25
+  Taborder = 2
+
+Name = text1
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 48
+  Top = 16
+  Width = 56
+  Caption = Upper Limit:
+
+Name = Label7
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 106
+  Top = 16
+  Width = 42
+  Caption = Fill Color:
+
+Name = Limit1
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 57
+  Top = 34
+  Width = 40
+  Taborder = 3
+
+Name = Limit2
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 57
+  Top = 58
+  Width = 40
+  Taborder = 4
+
+Name = Limit3
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 57
+  Top = 82
+  Width = 40
+  Taborder = 5
+
+Name = Limit4
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 57
+  Top = 106
+  Width = 40
+  Taborder = 6
+
+Name = Limit5
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 57
+  Top = 130
+  Width = 40
+  Taborder = 7
+
+Name = Limit6
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 57
+  Top = 154
+  Width = 40
+  Taborder = 8
+
+Name = Limit7
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 57
+  Top = 178
+  Width = 40
+  Taborder = 9
+
+Name = Limit8
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 57
+  Top = 202
+  Width = 40
+  Taborder = 10
+
+Name = Limit9
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 57
+  Top = 226
+  Width = 40
+  Taborder = 11
+
+Name = Color1
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 106
+  Top = 34
+  Width = 55
+  Taborder = 12
+
+Name = Color2
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 106
+  Top = 58
+  Width = 55
+  Taborder = 13
+
+Name = Color3
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 106
+  Top = 82
+  Width = 55
+  Taborder = 14
+
+Name = Color4
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 106
+  Top = 106
+  Width = 55
+  Taborder = 15
+
+Name = Color5
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 106
+  Top = 130
+  Width = 55
+  Taborder = 16
+
+Name = Color6
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 106
+  Top = 154
+  Width = 55
+  Taborder = 17
+
+Name = Color7
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 104
+  Top = 178
+  Width = 55
+  Taborder = 18
+
+Name = Color8
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 104
+  Top = 202
+  Width = 55
+  Taborder = 19
+
+Name = Color9
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 104
+  Top = 226
+  Width = 55
+  Taborder = 20
+
+Name = Label10
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 16
+  Top = 38
+  Width = 38
+  Caption = Group 1
+
+Name = Label11
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 16
+  Top = 62
+  Width = 38
+  Caption = Group 2
+
+Name = Label12
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 16
+  Top = 110
+  Width = 38
+  Caption = Group 4
+
+Name = Label13
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 16
+  Top = 86
+  Width = 38
+  Caption = Group 3
+
+Name = Label14
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 16
+  Top = 134
+  Width = 38
+  Caption = Group 5
+
+Name = Label15
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 16
+  Top = 158
+  Width = 38
+  Caption = Group 6
+
+Name = Label16
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 16
+  Top = 182
+  Width = 38
+  Caption = Group 7
+
+Name = Label17
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 16
+  Top = 206
+  Width = 38
+  Caption = Group 8
+
+Name = Label18
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 16
+  Top = 230
+  Width = 38
+  Caption = Group 9
+
+Name = SaveSettings
+  Type = Button
+  Height = 25
+  Left = 137
+  Top = 420
+  Width = 75
+  Taborder = 5
+  Caption = &Save Settings
+
+Name = Label8
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 32
+  Top = 252
+  Width = 67
+  Caption = All Remaining:
+
+Name = Color10
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 104
+  Top = 248
+  Width = 55
+  Taborder = 21
+
+Name = btnHelp
+  Type = Button
+  Height = 25
+  Left = 237
+  Top = 420
+  Width = 76
+  Taborder = 6
+  Caption = &Help
+
+Name = bgColor
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 104
+  Top = 280
+  Width = 55
+  Taborder = 22
+
+Name = Label6
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 11
+  Top = 284
+  Width = 88
+  Caption = Background Color:
+
+Name = Label9
+  Type = Label
+  Container = DelormeDataLocation
+  Height = 13
+  Left = 32
+  Top = 8
+  Width = 109
+  Caption = Delorme Data Location
+
+Name = UserDataWhere
+  Type = Combobox
+  Container = DelormeDataLocation
+  Height = 21
+  Left = 24
+  Top = 40
+  Values = $UserDataList
+  Width = 145
+  Taborder = 0
+
+Name = Label19
+  Type = Label
+  Container = Groupbox3
+  Font = Fixedsys
+  Height = 15
+  Left = 3
+  Size = 12
+  Top = 12
+  Width = 184
+  Caption = Select Database to Use:
+
+Name = dbChosen
+  Type = Combobox
+  Container = Groupbox3
+  Height = 21
+  Left = 200
+  Top = 8
+  Values = $dblist
+  Width = 217
+  Taborder = 0
+
+Name = Label20
+  Type = Label
+  Container = Groupbox5
+  Font = Fixedsys
+  Height = 15
+  Left = 3
+  Size = 12
+  Top = 12
+  Width = 168
+  Caption = Select Filter to Use:
+
+Name = FilterChosen
+  Type = Combobox
+  Container = Groupbox5
+  Height = 21
+  Left = 200
+  Top = 8
+  Values = $filterlist
+  Width = 217
+  Taborder = 0
+
+Name = MapTest
+  Type = Checkbox
+  Height = 9
+  Left = 0
+  Top = 456
+  Visible = Yes
+  Width = 9
+  Taborder = 10
+
+Name = Label21
+  Type = Label
+  Height = 13
+  Left = 368
+  Top = 448
+  Visible = Yes
+  Width = 57
+  Caption = VersionNum
+
+<enddata>
+
+
+
+
+<Data> VarName=$help
+Name = help
+  Type = Form
+  Caption = Instructions                          (click the "X" to return) -------->
+  Height = 361
+  Left = 304
+  Top = 144
+  Width = 428
+
+Name = HelpText
+  Type = Memo
+  Height = 319
+  Left = 1
+  Readonly = Yes
+  Scrollbars = Vertical
+  Style = Bold
+  Top = 2
+  Width = 416
+  Wrap = Yes
+  Taborder = 8
+
+<enddata>
+
+
+
+<data> VarName=$MapCountiesHelpFile
+RW50ZXIgdGhlIG1heGltdW0gbnVtYmVyIHRvIGJlIGluY2x1ZGVkIGluIGVhY2ggZ3JvdXAuICBUaGUg
+bGFzdCBncm91cCB3aWxsIGFsd2F5cyBzdGFydCBhdCB5b3VyIGhpZ2hlc3QgZ3JvdXAgcGx1cyAiMSIu
+DQoNCklmIHlvdSBkb24ndCB3YW50IHRvIHVzZSBhbGwgMTAgZ3JvdXBzLCBqdXN0IGxlYXZlIHRoZSBl
+eHRyYSByb3dzIGJsYW5rLiAgKEtlZXAgaW4gbWluZCB5b3Ugd2lsbCBhbHdheXMgaGF2ZSBvbmUgbW9y
+ZSBncm91cCBhYm92ZSB5b3VyIGRlZmluaXRpb24gd2hpY2ggaW5jbHVkZXMgeW91ciBtYXhpbXVtIGNv
+dW50KQ0KDQpUbyBkZWZpbmUgZmlsbCBjb2xvcnMgZm9yIGVhY2ggZ3JvdXAsIGVudGVyIGEgaGV4YWRl
+Y2ltYWwgY29kZSBmb3IgZWFjaCByb3cgKCNGRjAwMDApLiAgWW91IGNhbiB0cnkgd3d3LmNvbG9ycGlj
+a2VyLmNvbSBpZiB5b3UnZCBsaWtlIHNvbWUgaGVscCBmaW5kaW5nIGhleCBkZWZpbml0aW9ucyBvZiBj
+b2xvcnMuDQoNCklmIHlvdSBwcmVmZXIgYXV0by1nZW5lcmF0ZWQgY29sb3JzLCBlbnRlciBhIHN0YXJ0
+aW5nIGFuZCBlbmRpbmcgY29sb3IgYW5kIHRoZSBtYWNybyB3aWxsIGF1dG9tYXRpY2FsbHkgZ2VuZXJh
+dGUgc2hhZGVzIGJldHdlZW4gdGhlIHR3byBjb2xvcnMuDQoNCkZvciBhIHNpbmdsZSBmaWxsIGNvbG9y
+LCBlbnRlciB0aGUgc2FtZSBoZXhhZGVjaW1hbCBudW1iZXIgaW4gdGhlIHN0YXJ0IGFuZCBlbmQgY29s
+b3JzLg0KDQpZb3UgY2FuIGNsaWNrIHRoZSAic2F2ZSBzZXR0aW5ncyIgYnV0dG9uIHRvIHNhdmUgeW91
+ciBncm91cCBhbmQgY29sb3IgZGVmaW5pdGlvbnMgYWxvbmcgd2l0aCB5b3VyIHNlbGVjdGVkIGFyZWEg
+YW5kIG9wdGlvbiB0byBpbmNsdWRlL2V4Y2x1ZGUgbG9jYXRpb25sZXNzIGNhY2hlcy4NCg0KVG8gbWFr
+ZSBzdXJlIHRoYXQgYWxsIG9mIHlvdXIgY2FjaGVzIGhhdmUgdGhlIHByb3BlciBjb3VudHkgZGVmaW5l
+ZCwgY2xpY2sgdGhlICJ1cGRhdGUgY291bnRpZXMiIGJ1dHRvbi4gIFRoaXMgd2lsbCB1cGRhdGUgdGhl
+IGZpZWxkICJ1c2VyMiIgaW4geW91ciBkYXRhYmFzZS4NCg0KV2hlbiB0aGUgbWFjcm8gZmluaXNoZXMs
+IGl0IHdpbGwgb3BlbiBhIHByZXZpZXcgb2YgeW91ciBtYXAgaW4gYSB3ZWIgYnJvd3Nlci4gIFRoZSBm
+dWxseSBmb3JtYXR0ZWQgdGV4dCB3aWxsIGJlIG9uIHlvdXIgImNsaXBib2FyZCIgYW5kIGNhbiBiZSBw
+YXN0ZWQgaW50byBhbm90aGVyIHdlYiBwYWdlIHN1Y2ggYXMgeW91ciBnZW9jYWNoaW5nLmNvbSBwcm9m
+aWxlIHRvIHNlZSB0aGUgaW1hZ2UsIGxlZ2VuZCwgYW5kIGxpc3Qgb2YgY291bnRpZXMgd2l0aCB0aGVp
+ciBhc3NvY2lhdGVkIGNvdW50cy4NCg==
+<enddata>
+
+
+<data> VarName=$DelormeSQlFile
+Alabama;AL;AL-016;57;33
+Alabama;AL;AL-017;93;33
+Alabama;AL;AL-018;135;33
+Alabama;AL;AL-019;177;33
+Alabama;AL;AL-020;219;33
+Alabama;AL;AL-021;249;33
+Alabama;AL;AL-022;53;90
+Alabama;AL;AL-023;93;90
+Alabama;AL;AL-024;135;90
+Alabama;AL;AL-025;177;90
+Alabama;AL;AL-026;219;90
+Alabama;AL;AL-027;255;90
+Alabama;AL;AL-027B;281;175
+Alabama;AL;AL-028;51;148
+Alabama;AL;AL-029;93;148
+Alabama;AL;AL-030;135;148
+Alabama;AL;AL-031;177;148
+Alabama;AL;AL-032;219;148
+Alabama;AL;AL-033;260;148
+Alabama;AL;AL-034;40;208
+Alabama;AL;AL-035;75;208
+Alabama;AL;AL-036;118;208
+Alabama;AL;AL-037;160;208
+Alabama;AL;AL-038;202;208
+Alabama;AL;AL-039;244;208
+Alabama;AL;AL-040;278;208
+Alabama;AL;AL-040B;307;262
+Alabama;AL;AL-040B;309;279
+Alabama;AL;AL-041;37;265
+Alabama;AL;AL-042;75;265
+Alabama;AL;AL-043;118;265
+Alabama;AL;AL-044;160;265
+Alabama;AL;AL-045;202;265
+Alabama;AL;AL-046;244;265
+Alabama;AL;AL-047;286;265
+Alabama;AL;AL-048;34;324
+Alabama;AL;AL-049;75;324
+Alabama;AL;AL-050;118;324
+Alabama;AL;AL-051;160;324
+Alabama;AL;AL-052;202;324
+Alabama;AL;AL-053;244;324
+Alabama;AL;AL-054;280;324
+Alabama;AL;AL-055;35;380
+Alabama;AL;AL-056;75;380
+Alabama;AL;AL-057;118;380
+Alabama;AL;AL-058;160;380
+Alabama;AL;AL-059;202;380
+Alabama;AL;AL-060;244;380
+Alabama;AL;AL-061;280;380
+Alabama;AL;AL-062;34;434
+Alabama;AL;AL-062;60;456
+Alabama;AL;AL-063;82;444
+Alabama;AL;AL-063B;104;461
+Alabama;AL;AL-064;43;479
+Alabama;AL;AL-064;58;481
+Alabama;AL;AL-064;80;476
+Alaska;AK;AK-016A;968;630
+Alaska;AK;AK-016B;998;631
+Alaska;AK;AK-017A;971;635
+Alaska;AK;AK-017A;983;632
+Alaska;AK;AK-017B;1009;631
+Alaska;AK;AK-018;946;595
+Alaska;AK;AK-018;953;594
+Alaska;AK;AK-018;957;592
+Alaska;AK;AK-018;961;591
+Alaska;AK;AK-018;959;599
+Alaska;AK;AK-018;959;613
+Alaska;AK;AK-018;961;618
+Alaska;AK;AK-019;972;607
+Alaska;AK;AK-019;980;592
+Alaska;AK;AK-020;983;592
+Alaska;AK;AK-020;983;617
+Alaska;AK;AK-020;983;624
+Alaska;AK;AK-020;990;617
+Alaska;AK;AK-020;995;624
+Alaska;AK;AK-020;996;602
+Alaska;AK;AK-020;1001;591
+Alaska;AK;AK-021;1003;605
+Alaska;AK;AK-021;1012;606
+Alaska;AK;AK-022;934;561
+Alaska;AK;AK-023;951;567
+Alaska;AK;AK-023;960;562
+Alaska;AK;AK-023;962;584
+Alaska;AK;AK-024;969;563
+Alaska;AK;AK-024;984;569
+Alaska;AK;AK-024;986;589
+Alaska;AK;AK-024;967;588
+Alaska;AK;AK-024;966;569
+Alaska;AK;AK-024;972;577
+Alaska;AK;AK-025;997;581
+Alaska;AK;AK-025A;1012;587
+Alaska;AK;AK-026;918;523
+Alaska;AK;AK-026;922;550
+Alaska;AK;AK-027;928;518
+Alaska;AK;AK-027;931;529
+Alaska;AK;AK-027;932;545
+Alaska;AK;AK-027;941;547
+Alaska;AK;AK-027;942;539
+Alaska;AK;AK-027;941;523
+Alaska;AK;AK-028;947;532
+Alaska;AK;AK-028;962;519
+Alaska;AK;AK-028;962;534
+Alaska;AK;AK-028;953;552
+Alaska;AK;AK-028;962;545
+Alaska;AK;AK-029;972;540
+Alaska;AK;AK-030;890;486
+Alaska;AK;AK-031;903;491
+Alaska;AK;AK-031;913;512
+Alaska;AK;AK-032;924;488
+Alaska;AK;AK-032;920;510
+Alaska;AK;AK-032;928;514
+Alaska;AK;AK-032;937;506
+Alaska;AK;AK-032;935;487
+Alaska;AK;AK-033;949;497
+Alaska;AK;AK-033;943;512
+Alaska;AK;AK-034;840;445
+Alaska;AK;AK-034;851;457
+Alaska;AK;AK-035;853;441
+Alaska;AK;AK-035;864;454
+Alaska;AK;AK-036;881;470
+Alaska;AK;AK-036A;838;435
+Alaska;AK;AK-037;912;470
+Alaska;AK;AK-037A;855;434
+Alaska;AK;AK-038;925;459
+Alaska;AK;AK-039;941;475
+Alaska;AK;AK-039A;961;499
+Alaska;AK;AK-039A;963;511
+Alaska;AK;AK-040;527;549
+Alaska;AK;AK-041;542;539
+Alaska;AK;AK-042;563;528
+Alaska;AK;AK-043;578;519
+Alaska;AK;AK-043;594;539
+Alaska;AK;AK-044;602;543
+Alaska;AK;AK-044;616;549
+Alaska;AK;AK-045;623;529
+Alaska;AK;AK-045;618;548
+Alaska;AK;AK-046;475;482
+Alaska;AK;AK-047;486;479
+Alaska;AK;AK-047;501;480
+Alaska;AK;AK-048;515;482
+Alaska;AK;AK-049;540;481
+Alaska;AK;AK-049;549;501
+Alaska;AK;AK-050;564;495
+Alaska;AK;AK-051;587;494
+Alaska;AK;AK-052;606;485
+Alaska;AK;AK-052;616;512
+Alaska;AK;AK-052;620;506
+Alaska;AK;AK-053;628;505
+Alaska;AK;AK-054;477;458
+Alaska;AK;AK-055;497;458
+Alaska;AK;AK-056;520;458
+Alaska;AK;AK-057;542;458
+Alaska;AK;AK-058;564;458
+Alaska;AK;AK-059;585;458
+Alaska;AK;AK-060;603;458
+Alaska;AK;AK-060;604;476
+Alaska;AK;AK-061;621;442
+Alaska;AK;AK-061;618;450
+Alaska;AK;AK-062;648;446
+Alaska;AK;AK-063;667;445
+Alaska;AK;AK-064;686;441
+Alaska;AK;AK-064;693;441
+Alaska;AK;AK-064;697;441
+Alaska;AK;AK-064;700;441
+Alaska;AK;AK-064A;599;554
+Alaska;AK;AK-064A;594;570
+Alaska;AK;AK-064A;600;570
+Alaska;AK;AK-065;705;441
+Alaska;AK;AK-065;708;441
+Alaska;AK;AK-065;714;443
+Alaska;AK;AK-065A;606;557
+Alaska;AK;AK-065A;602;570
+Alaska;AK;AK-066;580;420
+Alaska;AK;AK-067;602;420
+Alaska;AK;AK-068;624;420
+Alaska;AK;AK-069;638;407
+Alaska;AK;AK-069;653;430
+Alaska;AK;AK-070;668;420
+Alaska;AK;AK-071;690;420
+Alaska;AK;AK-072;701;405
+Alaska;AK;AK-072;709;406
+Alaska;AK;AK-072;719;404
+Alaska;AK;AK-072;718;415
+Alaska;AK;AK-072;709;414
+Alaska;AK;AK-072;712;428
+Alaska;AK;AK-072;703;425
+Alaska;AK;AK-072;717;439
+Alaska;AK;AK-073;723;407
+Alaska;AK;AK-073;726;404
+Alaska;AK;AK-073;737;405
+Alaska;AK;AK-073;740;415
+Alaska;AK;AK-073;739;422
+Alaska;AK;AK-073;734;425
+Alaska;AK;AK-073;723;431
+Alaska;AK;AK-074;754;412
+Alaska;AK;AK-075;776;420
+Alaska;AK;AK-076;798;420
+Alaska;AK;AK-077;819;420
+Alaska;AK;AK-078;584;382
+Alaska;AK;AK-079;602;382
+Alaska;AK;AK-080;624;382
+Alaska;AK;AK-081;646;382
+Alaska;AK;AK-082;668;382
+Alaska;AK;AK-083;690;382
+Alaska;AK;AK-084;711;382
+Alaska;AK;AK-085;732;382
+Alaska;AK;AK-086;754;382
+Alaska;AK;AK-087;776;382
+Alaska;AK;AK-088;798;382
+Alaska;AK;AK-089;820;382
+Alaska;AK;AK-090;582;347
+Alaska;AK;AK-091;608;347
+Alaska;AK;AK-092;634;347
+Alaska;AK;AK-093;660;347
+Alaska;AK;AK-094;686;347
+Alaska;AK;AK-095;712;347
+Alaska;AK;AK-096;738;347
+Alaska;AK;AK-097;765;347
+Alaska;AK;AK-098;791;347
+Alaska;AK;AK-099;817;347
+Alaska;AK;AK-100;582;309
+Alaska;AK;AK-101;608;309
+Alaska;AK;AK-102;634;309
+Alaska;AK;AK-103;660;309
+Alaska;AK;AK-104;686;309
+Alaska;AK;AK-105;712;309
+Alaska;AK;AK-106;738;309
+Alaska;AK;AK-107;765;309
+Alaska;AK;AK-108;791;309
+Alaska;AK;AK-109;817;309
+Alaska;AK;AK-110;582;271
+Alaska;AK;AK-111;608;271
+Alaska;AK;AK-112;634;271
+Alaska;AK;AK-113;660;271
+Alaska;AK;AK-114;686;271
+Alaska;AK;AK-115;712;271
+Alaska;AK;AK-116;738;271
+Alaska;AK;AK-117;765;271
+Alaska;AK;AK-118;791;271
+Alaska;AK;AK-119;817;271
+Alaska;AK;AK-120;582;234
+Alaska;AK;AK-121;608;234
+Alaska;AK;AK-122;634;234
+Alaska;AK;AK-123;660;234
+Alaska;AK;AK-124;686;234
+Alaska;AK;AK-125;712;234
+Alaska;AK;AK-126;738;234
+Alaska;AK;AK-127;765;234
+Alaska;AK;AK-128;791;234
+Alaska;AK;AK-129;817;234
+Alaska;AK;AK-130;437;377
+Alaska;AK;AK-130;390;435
+Alaska;AK;AK-130;456;305
+Alaska;AK;AK-131;520;363
+Alaska;AK;AK-132;421;234
+Alaska;AK;AK-132;440;152
+Alaska;AK;AK-132;359;253
+Alaska;AK;AK-132;393;205
+Alaska;AK;AK-133;518;209
+Alaska;AK;AK-134;480;95
+Alaska;AK;AK-135;554;54
+Alaska;AK;AK-135A;686;56
+Alaska;AK;AK-135A;784;62
+Alaska;AK;AK-136;636;137
+Alaska;AK;AK-137;768;137
+Alaska;AK;AK-138;463;611
+Alaska;AK;AK-138;469;624
+Alaska;AK;AK-138;459;631
+Alaska;AK;AK-138;444;638
+Alaska;AK;AK-138;451;649
+Alaska;AK;AK-138;402;656
+Alaska;AK;AK-138;402;659
+Alaska;AK;AK-138;412;662
+Alaska;AK;AK-138;396;661
+Alaska;AK;AK-138A;318;308
+Alaska;AK;AK-139;517;572
+Alaska;AK;AK-139;548;570
+Alaska;AK;AK-139;495;612
+Alaska;AK;AK-139;487;618
+Alaska;AK;AK-139;498;625
+Alaska;AK;AK-139;507;625
+Alaska;AK;AK-139;510;629
+Alaska;AK;AK-139;512;632
+Alaska;AK;AK-139B;281;426
+Alaska;AK;AK-139C;320;546
+Alaska;AK;AK-139C;332;569
+Alaska;AK;AK-139D;575;598
+Alaska;AK;AK-140A;24;708
+Alaska;AK;AK-140A;36;726
+Alaska;AK;AK-140B;312;619
+Alaska;AK;AK-140B;304;623
+Alaska;AK;AK-140B;283;729
+Alaska;AK;AK-140B;262;737
+Alaska;AK;AK-140B;251;735
+Alaska;AK;AK-140C;103;737
+Alaska;AK;AK-140C;105;743
+Alaska;AK;AK-140C;117;741
+Alaska;AK;AK-140C;74;744
+Alaska;AK;AK-140C;128;756
+Alaska;AK;AK-140C;144;744
+Alaska;AK;AK-141B;314;717
+Alaska;AK;AK-141B;323;713
+Alaska;AK;AK-141B;325;707
+Alaska;AK;AK-141B;330;709
+Alaska;AK;AK-141B;331;703
+Alaska;AK;AK-141B;351;697
+Alaska;AK;AK-141B;383;681
+Alaska;AK;AK-141C;186;747
+Alaska;AK;AK-141C;200;750
+Alaska;AK;AK-141C;209;750
+Alaska;AK;AK-141C;218;747
+Alaska;AK;AK-141C;219;739
+Alaska South Central;AS;AS-034;421;236
+Alaska South Central;AS;AS-034A;400;234
+Alaska South Central;AS;AS-036A;420;224
+Alaska South Central;AS;AS-043;11;345
+Alaska South Central;AS;AS-043;31;375
+Alaska South Central;AS;AS-044;53;381
+Alaska South Central;AS;AS-044;67;341
+Alaska South Central;AS;AS-045;76;360
+Alaska South Central;AS;AS-045;72;388
+Alaska South Central;AS;AS-051;23;309
+Alaska South Central;AS;AS-052;52;296
+Alaska South Central;AS;AS-052;65;336
+Alaska South Central;AS;AS-053;85;325
+Alaska South Central;AS;AS-053;67;292
+Alaska South Central;AS;AS-053;95;289
+Alaska South Central;AS;AS-059;20;256
+Alaska South Central;AS;AS-060;48;244
+Alaska South Central;AS;AS-061;75;232
+Alaska South Central;AS;AS-061;71;243
+Alaska South Central;AS;AS-062;117;237
+Alaska South Central;AS;AS-063;147;239
+Alaska South Central;AS;AS-064;177;230
+Alaska South Central;AS;AS-064;189;230
+Alaska South Central;AS;AS-064;195;230
+Alaska South Central;AS;AS-064A;40;398
+Alaska South Central;AS;AS-064A;52;401
+Alaska South Central;AS;AS-064A;32;422
+Alaska South Central;AS;AS-064A;42;421
+Alaska South Central;AS;AS-065A;208;230
+Alaska South Central;AS;AS-065A;213;230
+Alaska South Central;AS;AS-065A;222;233
+Alaska South Central;AS;AS-065B;0;0
+Alaska South Central;AS;AS-065C;259;260
+Alaska South Central;AS;AS-066;16;199
+Alaska South Central;AS;AS-067;44;199
+Alaska South Central;AS;AS-068;78;199
+Alaska South Central;AS;AS-069;102;181
+Alaska South Central;AS;AS-069;124;220
+Alaska South Central;AS;AS-070;148;199
+Alaska South Central;AS;AS-071;183;199
+Alaska South Central;AS;AS-072;203;207
+Alaska South Central;AS;AS-072;227;227
+Alaska South Central;AS;AS-072;219;211
+Alaska South Central;AS;AS-072;229;192
+Alaska South Central;AS;AS-072;216;177
+Alaska South Central;AS;AS-072;215;228
+Alaska South Central;AS;AS-072;215;190
+Alaska South Central;AS;AS-072;230;175
+Alaska South Central;AS;AS-073;236;216
+Alaska South Central;AS;AS-073;236;180
+Alaska South Central;AS;AS-073;236;175
+Alaska South Central;AS;AS-073;241;174
+Alaska South Central;AS;AS-073;247;183
+Alaska South Central;AS;AS-073;256;178
+Alaska South Central;AS;AS-073;265;191
+Alaska South Central;AS;AS-073;262;202
+Alaska South Central;AS;AS-074;286;188
+Alaska South Central;AS;AS-074;270;198
+Alaska South Central;AS;AS-074;270;193
+Alaska South Central;AS;AS-075;322;199
+Alaska South Central;AS;AS-076;356;199
+Alaska South Central;AS;AS-077;391;199
+Alaska South Central;AS;AS-078;16;145
+Alaska South Central;AS;AS-079;45;145
+Alaska South Central;AS;AS-080;80;145
+Alaska South Central;AS;AS-081;114;145
+Alaska South Central;AS;AS-082;149;145
+Alaska South Central;AS;AS-082;147;172
+Alaska South Central;AS;AS-083;182;145
+Alaska South Central;AS;AS-084;217;145
+Alaska South Central;AS;AS-085;252;145
+Alaska South Central;AS;AS-086;287;145
+Alaska South Central;AS;AS-087;321;145
+Alaska South Central;AS;AS-088;356;145
+Alaska South Central;AS;AS-089;391;145
+Alaska South Central;AS;AS-090;20;90
+Alaska South Central;AS;AS-091;54;90
+Alaska South Central;AS;AS-092;95;90
+Alaska South Central;AS;AS-093;137;90
+Alaska South Central;AS;AS-094;179;90
+Alaska South Central;AS;AS-095;220;90
+Alaska South Central;AS;AS-096;262;90
+Alaska South Central;AS;AS-097;303;90
+Alaska South Central;AS;AS-098;345;90
+Alaska South Central;AS;AS-099;386;90
+Alaska South Central;AS;AS-100;20;34
+Alaska South Central;AS;AS-101;54;34
+Alaska South Central;AS;AS-102;96;34
+Alaska South Central;AS;AS-103;137;34
+Alaska South Central;AS;AS-104;179;34
+Alaska South Central;AS;AS-105;220;34
+Alaska South Central;AS;AS-106;262;34
+Alaska South Central;AS;AS-107;303;34
+Alaska South Central;AS;AS-108;345;34
+Alaska South Central;AS;AS-109;386;34
+Arizona;AZ;AZ-015;100;36
+Arizona;AZ;AZ-016;154;36
+Arizona;AZ;AZ-017;208;36
+Arizona;AZ;AZ-018;262;36
+Arizona;AZ;AZ-019;316;36
+Arizona;AZ;AZ-020;370;36
+Arizona;AZ;AZ-021;424;36
+Arizona;AZ;AZ-022;46;108
+Arizona;AZ;AZ-023;100;108
+Arizona;AZ;AZ-024;154;108
+Arizona;AZ;AZ-025;208;108
+Arizona;AZ;AZ-026;262;108
+Arizona;AZ;AZ-027;316;108
+Arizona;AZ;AZ-028;370;108
+Arizona;AZ;AZ-029;424;108
+Arizona;AZ;AZ-030;58;182
+Arizona;AZ;AZ-031;100;182
+Arizona;AZ;AZ-032;154;182
+Arizona;AZ;AZ-033;208;182
+Arizona;AZ;AZ-036;262;182
+Arizona;AZ;AZ-037;316;182
+Arizona;AZ;AZ-038;370;182
+Arizona;AZ;AZ-039;424;182
+Arizona;AZ;AZ-040;68;256
+Arizona;AZ;AZ-041;100;256
+Arizona;AZ;AZ-042;154;256
+Arizona;AZ;AZ-043;208;256
+Arizona;AZ;AZ-044;262;256
+Arizona;AZ;AZ-045;316;256
+Arizona;AZ;AZ-046;370;256
+Arizona;AZ;AZ-047;424;256
+Arizona;AZ;AZ-048;58;330
+Arizona;AZ;AZ-049;100;330
+Arizona;AZ;AZ-050;154;330
+Arizona;AZ;AZ-051;208;330
+Arizona;AZ;AZ-052;262;330
+Arizona;AZ;AZ-053;316;330
+Arizona;AZ;AZ-054;370;330
+Arizona;AZ;AZ-055;424;330
+Arizona;AZ;AZ-056;58;404
+Arizona;AZ;AZ-057;100;404
+Arizona;AZ;AZ-058;154;404
+Arizona;AZ;AZ-059;208;404
+Arizona;AZ;AZ-060;262;404
+Arizona;AZ;AZ-061;316;404
+Arizona;AZ;AZ-062;370;404
+Arizona;AZ;AZ-063;424;404
+Arizona;AZ;AZ-064A;154;449
+Arizona;AZ;AZ-064B;208;459
+Arizona;AZ;AZ-065;262;468
+Arizona;AZ;AZ-066;316;488
+Arizona;AZ;AZ-067;370;488
+Arizona;AZ;AZ-068;424;488
+Arkansas;AR;AR-022;52;48
+Arkansas;AR;AR-023;116;48
+Arkansas;AR;AR-024;181;48
+Arkansas;AR;AR-025;247;48
+Arkansas;AR;AR-026;313;48
+Arkansas;AR;AR-027;378;48
+Arkansas;AR;AR-028;444;48
+Arkansas;AR;AR-029;500;48
+Arkansas;AR;AR-030;59;127
+Arkansas;AR;AR-031;116;127
+Arkansas;AR;AR-032;181;127
+Arkansas;AR;AR-033;247;127
+Arkansas;AR;AR-034;313;127
+Arkansas;AR;AR-035;378;127
+Arkansas;AR;AR-036;444;127
+Arkansas;AR;AR-037;500;127
+Arkansas;AR;AR-038;59;214
+Arkansas;AR;AR-039;116;214
+Arkansas;AR;AR-040;181;214
+Arkansas;AR;AR-041;247;214
+Arkansas;AR;AR-042;313;214
+Arkansas;AR;AR-043;378;214
+Arkansas;AR;AR-044;444;214
+Arkansas;AR;AR-045;500;214
+Arkansas;AR;AR-046;59;301
+Arkansas;AR;AR-047;116;301
+Arkansas;AR;AR-048;181;301
+Arkansas;AR;AR-049;247;301
+Arkansas;AR;AR-050;313;301
+Arkansas;AR;AR-051;378;301
+Arkansas;AR;AR-052;444;301
+Arkansas;AR;AR-052;475;265
+Arkansas;AR;AR-053A;479;262
+Arkansas;AR;AR-053B;553;95
+Arkansas;AR;AR-053B;544;130
+Arkansas;AR;AR-053B;544;144
+Arkansas;AR;AR-053C;415;365
+Arkansas;AR;AR-053C;415;397
+Arkansas;AR;AR-053D;415;431
+Arkansas;AR;AR-053D;412;467
+Arkansas;AR;AR-054;59;389
+Arkansas;AR;AR-055;116;389
+Arkansas;AR;AR-056;181;389
+Arkansas;AR;AR-057;247;389
+Arkansas;AR;AR-058;313;389
+Arkansas;AR;AR-059;378;389
+Arkansas;AR;AR-059;407;428
+Arkansas;AR;AR-060;116;461
+Arkansas;AR;AR-061;181;461
+Arkansas;AR;AR-062;247;461
+Arkansas;AR;AR-063;313;461
+Arkansas;AR;AR-064;378;461
+California;CA;CA-022;27;19
+California;CA;CA-023;44;19
+California;CA;CA-024;68;19
+California;CA;CA-025;91;19
+California;CA;CA-026;115;19
+California;CA;CA-027;138;19
+California;CA;CA-028;162;19
+California;CA;CA-029;180;19
+California;CA;CA-030;27;51
+California;CA;CA-031;44;51
+California;CA;CA-032;68;51
+California;CA;CA-033;91;51
+California;CA;CA-034;115;51
+California;CA;CA-035;138;51
+California;CA;CA-036;162;51
+California;CA;CA-037;180;51
+California;CA;CA-038;27;84
+California;CA;CA-039;44;84
+California;CA;CA-040;68;84
+California;CA;CA-041;91;84
+California;CA;CA-042;115;84
+California;CA;CA-043;138;84
+California;CA;CA-044;162;84
+California;CA;CA-045;180;84
+California;CA;CA-046;29;103
+California;CA;CA-047;44;116
+California;CA;CA-048;68;116
+California;CA;CA-049;91;116
+California;CA;CA-050;115;116
+California;CA;CA-051;138;116
+California;CA;CA-052;162;116
+California;CA;CA-053;180;116
+California;CA;CA-054;44;148
+California;CA;CA-055;68;148
+California;CA;CA-056;91;148
+California;CA;CA-057;115;148
+California;CA;CA-058;138;148
+California;CA;CA-059;162;148
+California;CA;CA-060;180;148
+California;CA;CA-061;52;168
+California;CA;CA-062;68;181
+California;CA;CA-063;91;181
+California;CA;CA-064;115;181
+California;CA;CA-065;138;181
+California;CA;CA-066;162;181
+California;CA;CA-067;185;181
+California;CA;CA-068;209;181
+California;CA;CA-069;224;192
+California;CA;CA-069A;0;0
+California;CA;CA-070;75;201
+California;CA;CA-071;83;203
+California;CA;CA-071;99;209
+California;CA;CA-071;89;227
+California;CA;CA-072;115;213
+California;CA;CA-073;138;213
+California;CA;CA-074;162;213
+California;CA;CA-075;185;213
+California;CA;CA-076;209;213
+California;CA;CA-077;232;213
+California;CA;CA-078;254;222
+California;CA;CA-079;268;228
+California;CA;CA-080;97;240
+California;CA;CA-081;115;246
+California;CA;CA-082;138;246
+California;CA;CA-083;162;246
+California;CA;CA-084;185;246
+California;CA;CA-085;209;246
+California;CA;CA-086;232;246
+California;CA;CA-087;255;246
+California;CA;CA-088;278;246
+California;CA;CA-089;295;257
+California;CA;CA-090;115;278
+California;CA;CA-091;138;278
+California;CA;CA-092;162;278
+California;CA;CA-093;185;278
+California;CA;CA-094;209;278
+California;CA;CA-095;232;278
+California;CA;CA-096;255;278
+California;CA;CA-097;278;278
+California;CA;CA-098;302;278
+California;CA;CA-099;323;287
+California;CA;CA-099A;338;293
+California;CA;CA-100;123;297
+California;CA;CA-101;138;310
+California;CA;CA-102;162;310
+California;CA;CA-103;185;310
+California;CA;CA-104;209;310
+California;CA;CA-105;232;310
+California;CA;CA-106;255;310
+California;CA;CA-107;278;310
+California;CA;CA-108;302;310
+California;CA;CA-109;325;310
+California;CA;CA-110;349;310
+California;CA;CA-111;364;323
+California;CA;CA-112;147;329
+California;CA;CA-113;162;343
+California;CA;CA-114;185;343
+California;CA;CA-115;209;343
+California;CA;CA-116;232;343
+California;CA;CA-117;255;343
+California;CA;CA-118;278;343
+California;CA;CA-119;302;343
+California;CA;CA-120;325;343
+California;CA;CA-121;349;343
+California;CA;CA-122;372;343
+California;CA;CA-123;391;353
+California;CA;CA-124;168;375
+California;CA;CA-125;185;375
+California;CA;CA-126;209;375
+California;CA;CA-127;232;375
+California;CA;CA-128;255;375
+California;CA;CA-129;278;375
+California;CA;CA-130;302;375
+California;CA;CA-131;325;375
+California;CA;CA-132;349;375
+California;CA;CA-133;372;375
+California;CA;CA-134;396;375
+California;CA;CA-135;410;387
+California;CA;CA-136;172;405
+California;CA;CA-137;183;409
+California;CA;CA-137;194;406
+California;CA;CA-138A;198;407
+California;CA;CA-138A;204;406
+California;CA;CA-138A;219;394
+California;CA;CA-138B;206;444
+California;CA;CA-138C;0;0
+California;CA;CA-139;232;398
+California;CA;CA-139A;250;439
+California;CA;CA-140;255;407
+California;CA;CA-141;278;407
+California;CA;CA-142;302;407
+California;CA;CA-143;325;407
+California;CA;CA-144;349;407
+California;CA;CA-145;372;407
+California;CA;CA-146;396;407
+California;CA;CA-147;412;395
+California;CA;CA-148;283;429
+California;CA;CA-148A;249;464
+California;CA;CA-149;302;440
+California;CA;CA-150;325;440
+California;CA;CA-151;349;440
+California;CA;CA-152;372;440
+California;CA;CA-153;396;440
+California;CA;CA-154;302;464
+California;CA;CA-155;325;464
+California;CA;CA-156;349;464
+California;CA;CA-157;372;464
+California;CA;CA-158;396;464
+California;CA;CA-159;409;463
+California North;CN;CN-022;48;30
+California North;CN;CN-023;73;28
+California North;CN;CN-024;105;28
+California North;CN;CN-025;138;28
+California North;CN;CN-026;171;28
+California North;CN;CN-027;203;28
+California North;CN;CN-028;234;28
+California North;CN;CN-029;267;28
+California North;CN;CN-030;299;28
+California North;CN;CN-031;332;28
+California North;CN;CN-032;50;75
+California North;CN;CN-033;73;75
+California North;CN;CN-034;105;75
+California North;CN;CN-035;138;75
+California North;CN;CN-036;171;75
+California North;CN;CN-037;203;75
+California North;CN;CN-038;234;75
+California North;CN;CN-039;267;75
+California North;CN;CN-040;299;75
+California North;CN;CN-041;332;75
+California North;CN;CN-042;45;123
+California North;CN;CN-043;73;123
+California North;CN;CN-044;105;123
+California North;CN;CN-045;138;123
+California North;CN;CN-046;171;123
+California North;CN;CN-047;203;123
+California North;CN;CN-048;234;123
+California North;CN;CN-049;267;123
+California North;CN;CN-050;299;123
+California North;CN;CN-051;332;123
+California North;CN;CN-052;41;171
+California North;CN;CN-053;73;171
+California North;CN;CN-054;105;171
+California North;CN;CN-055;138;171
+California North;CN;CN-056;171;171
+California North;CN;CN-057;203;171
+California North;CN;CN-058;234;171
+California North;CN;CN-059;267;171
+California North;CN;CN-060;299;171
+California North;CN;CN-061;332;171
+California North;CN;CN-062;54;199
+California North;CN;CN-063;73;220
+California North;CN;CN-064;105;220
+California North;CN;CN-065;138;220
+California North;CN;CN-066;171;220
+California North;CN;CN-067;203;220
+California North;CN;CN-068;234;220
+California North;CN;CN-069;267;220
+California North;CN;CN-070;299;220
+California North;CN;CN-071;332;220
+California North;CN;CN-072;81;300
+California North;CN;CN-073;78;266
+California North;CN;CN-074;105;266
+California North;CN;CN-075;138;266
+California North;CN;CN-076;171;266
+California North;CN;CN-077;203;266
+California North;CN;CN-078;234;266
+California North;CN;CN-079;267;266
+California North;CN;CN-080;299;266
+California North;CN;CN-081;332;266
+California North;CN;CN-082;105;314
+California North;CN;CN-083;138;314
+California North;CN;CN-084;171;314
+California North;CN;CN-085;203;314
+California North;CN;CN-086;234;314
+California North;CN;CN-087;267;314
+California North;CN;CN-088;299;314
+California North;CN;CN-089;332;314
+California North;CN;CN-090;363;323
+California North;CN;CN-091;385;334
+California North;CN;CN-092;117;343
+California North;CN;CN-093;138;363
+California North;CN;CN-094;171;363
+California North;CN;CN-095;203;363
+California North;CN;CN-096;234;363
+California North;CN;CN-097;267;363
+California North;CN;CN-098;299;363
+California North;CN;CN-099;332;363
+California North;CN;CN-100;363;363
+California North;CN;CN-101;395;363
+California North;CN;CN-102;428;378
+California North;CN;CN-103;148;392
+California North;CN;CN-104;158;394
+California North;CN;CN-104;181;397
+California North;CN;CN-104;167;429
+California North;CN;CN-104;167;402
+California North;CN;CN-105;203;411
+California North;CN;CN-106;234;411
+California North;CN;CN-107;267;411
+California North;CN;CN-108;299;411
+California North;CN;CN-109;332;411
+California North;CN;CN-110;363;411
+California North;CN;CN-111;395;411
+California North;CN;CN-112;428;411
+California North;CN;CN-113;460;411
+California North;CN;CN-114;177;457
+California North;CN;CN-115;203;457
+California North;CN;CN-116;234;457
+California North;CN;CN-117;267;457
+California North;CN;CN-118;299;457
+California North;CN;CN-119;332;457
+California North;CN;CN-120;363;457
+California North;CN;CN-121;395;457
+California North;CN;CN-122;428;457
+California North;CN;CN-123;460;457
+California North;CN;CN-124;492;457
+California North;CN;CN-125;518;457
+California South;CS;CS-018;21;7
+California South;CS;CS-018;40;54
+California South;CS;CS-019;66;31
+California South;CS;CS-020;106;31
+California South;CS;CS-021;146;31
+California South;CS;CS-022;186;31
+California South;CS;CS-023;226;31
+California South;CS;CS-024;266;31
+California South;CS;CS-025;306;31
+California South;CS;CS-026;346;31
+California South;CS;CS-027;386;31
+California South;CS;CS-028;426;31
+California South;CS;CS-029;466;31
+California South;CS;CS-030;40;70
+California South;CS;CS-30B;497;49
+California South;CS;CS-031;66;86
+California South;CS;CS-032;106;86
+California South;CS;CS-033;146;86
+California South;CS;CS-034;186;86
+California South;CS;CS-035;226;86
+California South;CS;CS-036;266;86
+California South;CS;CS-037;306;86
+California South;CS;CS-038;346;86
+California South;CS;CS-039;386;86
+California South;CS;CS-040;426;86
+California South;CS;CS-041;466;86
+California South;CS;CS-042;506;86
+California South;CS;CS-043;545;96
+California South;CS;CS-43B;81;123
+California South;CS;CS-044;106;142
+California South;CS;CS-44B;571;110
+California South;CS;CS-045;146;141
+California South;CS;CS-046;186;141
+California South;CS;CS-047;226;141
+California South;CS;CS-048;266;141
+California South;CS;CS-049;306;141
+California South;CS;CS-050;346;141
+California South;CS;CS-051;386;141
+California South;CS;CS-052;426;141
+California South;CS;CS-053;466;141
+California South;CS;CS-054;506;141
+California South;CS;CS-055;546;141
+California South;CS;CS-056;586;141
+California South;CS;CS-057;618;160
+California South;CS;CS-058;121;174
+California South;CS;CS-059;148;192
+California South;CS;CS-060;186;196
+California South;CS;CS-061;226;196
+California South;CS;CS-062;266;196
+California South;CS;CS-063;306;196
+California South;CS;CS-064;346;196
+California South;CS;CS-065;386;196
+California South;CS;CS-066;426;196
+California South;CS;CS-067;466;196
+California South;CS;CS-068;506;196
+California South;CS;CS-069;546;196
+California South;CS;CS-070;586;196
+California South;CS;CS-071;626;196
+California South;CS;CS-072;666;210
+California South;CS;CS-073;690;223
+California South;CS;CS-73B;159;252
+California South;CS;CS-074;186;251
+California South;CS;CS-075;226;251
+California South;CS;CS-076;266;251
+California South;CS;CS-077;306;251
+California South;CS;CS-078;346;251
+California South;CS;CS-079;386;251
+California South;CS;CS-080;426;251
+California South;CS;CS-081;466;251
+California South;CS;CS-082;506;251
+California South;CS;CS-083;546;251
+California South;CS;CS-084;586;251
+California South;CS;CS-085;626;251
+California South;CS;CS-086;666;251
+California South;CS;CS-087;695;251
+California South;CS;CS-088;171;285
+California South;CS;CS-088;176;334
+California South;CS;CS-088;198;342
+California South;CS;CS-089;226;287
+California South;CS;CS-089;207;343
+California South;CS;CS-089;231;338
+California South;CS;CS-090;266;293
+California South;CS;CS-090;249;337
+California South;CS;CS-091;306;310
+California South;CS;CS-092;346;310
+California South;CS;CS-093;386;310
+California South;CS;CS-094;426;310
+California South;CS;CS-095;466;310
+California South;CS;CS-096;506;310
+California South;CS;CS-097;546;310
+California South;CS;CS-098;586;310
+California South;CS;CS-099;626;310
+California South;CS;CS-100;666;310
+California South;CS;CS-101;706;310
+California South;CS;CS-102;734;310
+California South;CS;CS-102B;360;348
+California South;CS;CS-103;386;364
+California South;CS;CS-104;426;364
+California South;CS;CS-105;466;364
+California South;CS;CS-106;506;364
+California South;CS;CS-107;546;364
+California South;CS;CS-108;586;364
+California South;CS;CS-109;626;364
+California South;CS;CS-110;666;364
+California South;CS;CS-111;699;364
+California South;CS;CS-112;436;401
+California South;CS;CS-112;353;406
+California South;CS;CS-113;466;420
+California South;CS;CS-114;506;420
+California South;CS;CS-115;546;420
+California South;CS;CS-116;586;420
+California South;CS;CS-117;626;420
+California South;CS;CS-118;666;420
+California South;CS;CS-119;690;420
+California South;CS;CS-120;254;422
+California South;CS;CS-120;351;464
+California South;CS;CS-121;473;470
+California South;CS;CS-122;506;470
+California South;CS;CS-123;546;470
+California South;CS;CS-124;586;470
+California South;CS;CS-125;626;470
+California South;CS;CS-126;666;470
+California South;CS;CS-127;700;470
+Colorado;CO;CO-012;40;36
+Colorado;CO;CO-013;73;36
+Colorado;CO;CO-014;106;36
+Colorado;CO;CO-015;140;36
+Colorado;CO;CO-016;174;36
+Colorado;CO;CO-017;207;36
+Colorado;CO;CO-018;242;36
+Colorado;CO;CO-019;275;36
+Colorado;CO;CO-020;309;36
+Colorado;CO;CO-021;342;36
+Colorado;CO;CO-022;40;80
+Colorado;CO;CO-023;73;80
+Colorado;CO;CO-024;106;80
+Colorado;CO;CO-025;140;80
+Colorado;CO;CO-026;174;80
+Colorado;CO;CO-027;207;80
+Colorado;CO;CO-028;242;80
+Colorado;CO;CO-029;275;80
+Colorado;CO;CO-030;309;80
+Colorado;CO;CO-031;342;80
+Colorado;CO;CO-032;40;129
+Colorado;CO;CO-033;73;129
+Colorado;CO;CO-034;106;129
+Colorado;CO;CO-035;140;129
+Colorado;CO;CO-036;174;129
+Colorado;CO;CO-037;207;129
+Colorado;CO;CO-038;242;129
+Colorado;CO;CO-039;275;129
+Colorado;CO;CO-040;309;129
+Colorado;CO;CO-041;342;129
+Colorado;CO;CO-042;40;175
+Colorado;CO;CO-043;73;175
+Colorado;CO;CO-044;106;175
+Colorado;CO;CO-045;140;175
+Colorado;CO;CO-046;174;175
+Colorado;CO;CO-047;207;175
+Colorado;CO;CO-048;242;175
+Colorado;CO;CO-049;275;175
+Colorado;CO;CO-050;309;175
+Colorado;CO;CO-051;342;175
+Colorado;CO;CO-054;40;220
+Colorado;CO;CO-055;73;220
+Colorado;CO;CO-056;106;220
+Colorado;CO;CO-057;140;220
+Colorado;CO;CO-058;174;220
+Colorado;CO;CO-059;207;220
+Colorado;CO;CO-060;242;220
+Colorado;CO;CO-061;275;220
+Colorado;CO;CO-062;309;220
+Colorado;CO;CO-063;342;220
+Colorado;CO;CO-064;40;265
+Colorado;CO;CO-065;73;265
+Colorado;CO;CO-066;106;265
+Colorado;CO;CO-067;140;265
+Colorado;CO;CO-068;174;265
+Colorado;CO;CO-069;207;265
+Colorado;CO;CO-070;242;265
+Colorado;CO;CO-071;275;265
+Colorado;CO;CO-072;309;265
+Colorado;CO;CO-073;342;265
+Colorado;CO;CO-074;40;311
+Colorado;CO;CO-075;73;311
+Colorado;CO;CO-076;106;311
+Colorado;CO;CO-077;140;311
+Colorado;CO;CO-078;174;311
+Colorado;CO;CO-079;207;311
+Colorado;CO;CO-080;242;311
+Colorado;CO;CO-081;275;311
+Colorado;CO;CO-082;309;311
+Colorado;CO;CO-083;342;311
+Colorado;CO;CO-084;40;358
+Colorado;CO;CO-085;73;358
+Colorado;CO;CO-086;106;358
+Colorado;CO;CO-087;140;358
+Colorado;CO;CO-088;174;358
+Colorado;CO;CO-089;207;358
+Colorado;CO;CO-090;242;358
+Colorado;CO;CO-091;275;358
+Colorado;CO;CO-092;309;358
+Colorado;CO;CO-093;342;358
+Colorado;CO;CO-094;393;61
+Colorado;CO;CO-095;461;61
+Colorado;CO;CO-096;393;150
+Colorado;CO;CO-097;461;150
+Colorado;CO;CO-098;393;245
+Colorado;CO;CO-099;461;245
+Colorado;CO;CO-100;393;337
+Colorado;CO;CO-101;461;337
+Colorado;CO;CO-102A;511;61
+Colorado;CO;CO-102B;511;150
+Colorado;CO;CO-103A;511;245
+Colorado;CO;CO-103B;511;337
+Connecticut;CT;CT-018;36;362
+Connecticut;CT;CT-019;84;344
+Connecticut;CT;CT-020;140;326
+Connecticut;CT;CT-020B;32;386
+Connecticut;CT;CT-021;180;318
+Connecticut;CT;CT-021B;50;384
+Connecticut;CT;CT-022;91;268
+Connecticut;CT;CT-023;140;268
+Connecticut;CT;CT-024;194;268
+Connecticut;CT;CT-025;248;268
+Connecticut;CT;CT-026;304;268
+Connecticut;CT;CT-027;360;268
+Connecticut;CT;CT-028;414;268
+Connecticut;CT;CT-029;470;268
+Connecticut;CT;CT-030;518;268
+Connecticut;CT;CT-031;91;194
+Connecticut;CT;CT-032;140;194
+Connecticut;CT;CT-033;194;194
+Connecticut;CT;CT-034;248;194
+Connecticut;CT;CT-035;304;194
+Connecticut;CT;CT-036;360;194
+Connecticut;CT;CT-037;414;194
+Connecticut;CT;CT-038;470;194
+Connecticut;CT;CT-039;518;194
+Connecticut;CT;CT-040;91;120
+Connecticut;CT;CT-041;140;120
+Connecticut;CT;CT-042;194;120
+Connecticut;CT;CT-043;248;120
+Connecticut;CT;CT-044;304;120
+Connecticut;CT;CT-045;360;120
+Connecticut;CT;CT-046;414;120
+Connecticut;CT;CT-047;470;120
+Connecticut;CT;CT-048;518;120
+Connecticut;CT;CT-049;91;48
+Connecticut;CT;CT-050;140;48
+Connecticut;CT;CT-051;194;48
+Connecticut;CT;CT-052;248;48
+Connecticut;CT;CT-053;304;48
+Connecticut;CT;CT-054;360;48
+Connecticut;CT;CT-055;414;48
+Connecticut;CT;CT-056;470;48
+Connecticut;CT;CT-057;518;48
+Florida;FL;FL-025;12;13
+Florida;FL;FL-026;29;23
+Florida;FL;FL-027;56;23
+Florida;FL;FL-028;82;23
+Florida;FL;FL-029;109;23
+Florida;FL;FL-030;135;23
+Florida;FL;FL-031;161;23
+Florida;FL;FL-032;188;23
+Florida;FL;FL-033;214;40
+Florida;FL;FL-034;240;40
+Florida;FL;FL-035;267;40
+Florida;FL;FL-036;293;40
+Florida;FL;FL-037;320;40
+Florida;FL;FL-038;347;40
+Florida;FL;FL-039;374;40
+Florida;FL;FL-040;410;31
+Florida;FL;FL-041;431;35
+Florida;FL;FL-042;31;50
+Florida;FL;FL-042;17;58
+Florida;FL;FL-043;55;48
+Florida;FL;FL-044;82;47
+Florida;FL;FL-045;109;50
+Florida;FL;FL-046;135;63
+Florida;FL;FL-047;161;63
+Florida;FL;FL-048;188;63
+Florida;FL;FL-049;214;63
+Florida;FL;FL-050;240;63
+Florida;FL;FL-051;267;63
+Florida;FL;FL-052;293;63
+Florida;FL;FL-053;320;63
+Florida;FL;FL-054;346;63
+Florida;FL;FL-055;372;63
+Florida;FL;FL-056;398;63
+Florida;FL;FL-057;425;63
+Florida;FL;FL-058;443;63
+Florida;FL;FL-059;170;88
+Florida;FL;FL-059;167;109
+Florida;FL;FL-060;188;94
+Florida;FL;FL-060;183;110
+Florida;FL;FL-060;200;103
+Florida;FL;FL-060;199;111
+Florida;FL;FL-060;189;115
+Florida;FL;FL-061;214;89
+Florida;FL;FL-061;208;107
+Florida;FL;FL-061A;233;87
+Florida;FL;FL-062;298;91
+Florida;FL;FL-062A;277;84
+Florida;FL;FL-063;320;103
+Florida;FL;FL-064;346;103
+Florida;FL;FL-065;372;103
+Florida;FL;FL-066;398;103
+Florida;FL;FL-067;425;103
+Florida;FL;FL-068;443;103
+Florida;FL;FL-069;325;132
+Florida;FL;FL-070;346;143
+Florida;FL;FL-071;372;143
+Florida;FL;FL-072;398;143
+Florida;FL;FL-073;425;143
+Florida;FL;FL-074;451;143
+Florida;FL;FL-075;470;151
+Florida;FL;FL-076;355;165
+Florida;FL;FL-076;357;176
+Florida;FL;FL-076;357;184
+Florida;FL;FL-076;357;198
+Florida;FL;FL-077;372;183
+Florida;FL;FL-078;398;183
+Florida;FL;FL-079;425;183
+Florida;FL;FL-080;451;183
+Florida;FL;FL-081;470;183
+Florida;FL;FL-082;354;223
+Florida;FL;FL-082A;496;196
+Florida;FL;FL-083;372;223
+Florida;FL;FL-084;398;223
+Florida;FL;FL-085;425;223
+Florida;FL;FL-086;451;223
+Florida;FL;FL-087;470;223
+Florida;FL;FL-088;496;223
+Florida;FL;FL-090;352;254
+Florida;FL;FL-090;352;271
+Florida;FL;FL-090;352;280
+Florida;FL;FL-090;356;281
+Florida;FL;FL-091;360;256
+Florida;FL;FL-091;378;263
+Florida;FL;FL-092;398;263
+Florida;FL;FL-093;425;263
+Florida;FL;FL-094;451;263
+Florida;FL;FL-095;477;263
+Florida;FL;FL-096;504;263
+Florida;FL;FL-096A;356;285
+Florida;FL;FL-097;374;299
+Florida;FL;FL-097A;519;278
+Florida;FL;FL-098;398;303
+Florida;FL;FL-099;425;303
+Florida;FL;FL-100;451;303
+Florida;FL;FL-101;477;303
+Florida;FL;FL-102;504;303
+Florida;FL;FL-103;525;303
+Florida;FL;FL-103A;381;326
+Florida;FL;FL-104;405;340
+Florida;FL;FL-105;425;340
+Florida;FL;FL-106;451;340
+Florida;FL;FL-107;477;340
+Florida;FL;FL-108;504;340
+Florida;FL;FL-109;525;340
+Florida;FL;FL-110;397;366
+Florida;FL;FL-110;409;363
+Florida;FL;FL-110A;430;405
+Florida;FL;FL-111;425;380
+Florida;FL;FL-112;451;380
+Florida;FL;FL-113;477;380
+Florida;FL;FL-114;504;380
+Florida;FL;FL-115;525;380
+Florida;FL;FL-116;454;420
+Florida;FL;FL-117;477;420
+Florida;FL;FL-118;504;420
+Florida;FL;FL-119;522;420
+Florida;FL;FL-119;532;426
+Florida;FL;FL-120;463;444
+Florida;FL;FL-120;463;462
+Florida;FL;FL-121;477;453
+Florida;FL;FL-122;505;452
+Florida;FL;FL-122;514;470
+Florida;FL;FL-122;510;473
+Florida;FL;FL-122;508;479
+Florida;FL;FL-123;519;450
+Florida;FL;FL-123;521;459
+Florida;FL;FL-123;518;467
+Florida;FL;FL-123A;0;0
+Florida;FL;FL-124;487;495
+Florida;FL;FL-124;466;505
+Florida;FL;FL-125;445;505
+Florida;FL;FL-125;450;501
+Florida;FL;FL-126;393;514
+Florida;FL;FL-126A;0;0
+Florida;FL;FL-127;432;509
+Georgia;GA;GA-012;33;32
+Georgia;GA;GA-013;74;32
+Georgia;GA;GA-014;116;32
+Georgia;GA;GA-015;160;32
+Georgia;GA;GA-016;197;32
+Georgia;GA;GA-017;227;58
+Georgia;GA;GA-018;37;89
+Georgia;GA;GA-019;74;89
+Georgia;GA;GA-020;116;89
+Georgia;GA;GA-021;160;89
+Georgia;GA;GA-022;197;89
+Georgia;GA;GA-023;242;89
+Georgia;GA;GA-024A;41;148
+Georgia;GA;GA-024B;46;200
+Georgia;GA;GA-024B;50;235
+Georgia;GA;GA-025;74;148
+Georgia;GA;GA-026;116;148
+Georgia;GA;GA-027;160;148
+Georgia;GA;GA-028;197;148
+Georgia;GA;GA-029;242;148
+Georgia;GA;GA-030;290;148
+Georgia;GA;GA-031A;272;117
+Georgia;GA;GA-031B;318;168
+Georgia;GA;GA-032;74;208
+Georgia;GA;GA-033;116;208
+Georgia;GA;GA-034;160;208
+Georgia;GA;GA-035;197;208
+Georgia;GA;GA-036;242;208
+Georgia;GA;GA-037;290;208
+Georgia;GA;GA-038;334;208
+Georgia;GA;GA-039A;362;227
+Georgia;GA;GA-039B;405;315
+Georgia;GA;GA-040;74;270
+Georgia;GA;GA-041;116;270
+Georgia;GA;GA-042;160;270
+Georgia;GA;GA-043;197;270
+Georgia;GA;GA-044;242;270
+Georgia;GA;GA-045;290;270
+Georgia;GA;GA-046;334;270
+Georgia;GA;GA-047;377;270
+Georgia;GA;GA-048;74;330
+Georgia;GA;GA-049;116;330
+Georgia;GA;GA-050;160;330
+Georgia;GA;GA-051;197;330
+Georgia;GA;GA-052;242;330
+Georgia;GA;GA-053;290;330
+Georgia;GA;GA-054;334;330
+Georgia;GA;GA-055;377;330
+Georgia;GA;GA-056;74;390
+Georgia;GA;GA-057;116;390
+Georgia;GA;GA-058;160;390
+Georgia;GA;GA-059;197;390
+Georgia;GA;GA-060;242;390
+Georgia;GA;GA-061;290;390
+Georgia;GA;GA-062;334;390
+Georgia;GA;GA-063;377;390
+Georgia;GA;GA-063;372;420
+Georgia;GA;GA-064;74;434
+Georgia;GA;GA-065;116;434
+Georgia;GA;GA-066;160;434
+Georgia;GA;GA-067;197;434
+Georgia;GA;GA-068;242;434
+Georgia;GA;GA-069;290;434
+Georgia;GA;GA-070;334;429
+Georgia;GA;GA-071;363;432
+Hawaii;HI;HI-016;15;97
+Hawaii;HI;HI-016;71;60
+Hawaii;HI;HI-017;130;40
+Hawaii;HI;HI-018;152;23
+Hawaii;HI;HI-019;176;24
+Hawaii;HI;HI-020;151;46
+Hawaii;HI;HI-021;174;46
+Hawaii;HI;HI-022;338;112
+Hawaii;HI;HI-023;354;114
+Hawaii;HI;HI-024;378;111
+Hawaii;HI;HI-025;355;130
+Hawaii;HI;HI-026;377;134
+Hawaii;HI;HI-027;401;143
+Hawaii;HI;HI-028;482;172
+Hawaii;HI;HI-029;509;175
+Hawaii;HI;HI-030A;533;176
+Hawaii;HI;HI-030B;505;210
+Hawaii;HI;HI-031;522;220
+Hawaii;HI;HI-032;565;208
+Hawaii;HI;HI-033;593;218
+Hawaii;HI;HI-034;621;222
+Hawaii;HI;HI-035;640;227
+Hawaii;HI;HI-036;564;261
+Hawaii;HI;HI-037;597;242
+Hawaii;HI;HI-038;621;240
+Hawaii;HI;HI-039;641;236
+Hawaii;HI;HI-040;665;316
+Hawaii;HI;HI-041;683;327
+Hawaii;HI;HI-042;711;335
+Hawaii;HI;HI-043;732;339
+Hawaii;HI;HI-044;656;374
+Hawaii;HI;HI-045;683;362
+Hawaii;HI;HI-046;711;362
+Hawaii;HI;HI-047;739;362
+Hawaii;HI;HI-048;764;369
+Hawaii;HI;HI-049A;783;383
+Hawaii;HI;HI-049B;643;386
+Hawaii;HI;HI-050;661;399
+Hawaii;HI;HI-051;688;402
+Hawaii;HI;HI-052;716;402
+Hawaii;HI;HI-053;743;402
+Hawaii;HI;HI-054;771;402
+Hawaii;HI;HI-055;794;413
+Hawaii;HI;HI-056;668;442
+Hawaii;HI;HI-057;688;440
+Hawaii;HI;HI-058;716;440
+Hawaii;HI;HI-059;743;437
+Hawaii;HI;HI-060;771;435
+Hawaii;HI;HI-061;791;429
+Hawaii;HI;HI-062A;670;475
+Hawaii;HI;HI-062B;693;503
+Hawaii;HI;HI-063;692;477
+Hawaii;HI;HI-064;712;469
+Idaho;ID;ID-016;38;370
+Idaho;ID;ID-017;67;370
+Idaho;ID;ID-018;96;370
+Idaho;ID;ID-019;125;370
+Idaho;ID;ID-020;154;370
+Idaho;ID;ID-021;183;370
+Idaho;ID;ID-022;212;370
+Idaho;ID;ID-023;241;370
+Idaho;ID;ID-024;38;330
+Idaho;ID;ID-025;67;330
+Idaho;ID;ID-026;96;330
+Idaho;ID;ID-027;125;330
+Idaho;ID;ID-028;154;330
+Idaho;ID;ID-029;183;330
+Idaho;ID;ID-030;212;330
+Idaho;ID;ID-031;241;330
+Idaho;ID;ID-034;38;288
+Idaho;ID;ID-035;67;288
+Idaho;ID;ID-036;96;288
+Idaho;ID;ID-037;125;288
+Idaho;ID;ID-038;154;288
+Idaho;ID;ID-039;183;288
+Idaho;ID;ID-040;212;288
+Idaho;ID;ID-041;241;288
+Idaho;ID;ID-042;38;248
+Idaho;ID;ID-043;67;248
+Idaho;ID;ID-044;96;248
+Idaho;ID;ID-045;125;248
+Idaho;ID;ID-046;154;248
+Idaho;ID;ID-047;183;265
+Idaho;ID;ID-048A;39;14
+Idaho;ID;ID-048B;212;260
+Idaho;ID;ID-049A;56;14
+Idaho;ID;ID-049B;241;260
+Idaho;ID;ID-050A;19;259
+Idaho;ID;ID-050B;44;206
+Idaho;ID;ID-051;67;206
+Idaho;ID;ID-052;96;206
+Idaho;ID;ID-053;125;206
+Idaho;ID;ID-054;38;165
+Idaho;ID;ID-055;67;165
+Idaho;ID;ID-056;96;165
+Idaho;ID;ID-057A;116;165
+Idaho;ID;ID-057B;147;214
+Idaho;ID;ID-058;39;125
+Idaho;ID;ID-059;72;125
+Idaho;ID;ID-060;39;83
+Idaho;ID;ID-061;64;83
+Idaho;ID;ID-062;40;40
+Idaho;ID;ID-063A;58;40
+Idaho;ID;ID-063B;96;125
+Idaho;ID;ID-063C;120;140
+Illinois;IL;IL-015;94;22
+Illinois;IL;IL-016;123;27
+Illinois;IL;IL-017;154;27
+Illinois;IL;IL-018;185;27
+Illinois;IL;IL-019;216;27
+Illinois;IL;IL-020;247;27
+Illinois;IL;IL-021;268;27
+Illinois;IL;IL-022A;75;95
+Illinois;IL;IL-022B;41;117
+Illinois;IL;IL-023;100;80
+Illinois;IL;IL-024;123;72
+Illinois;IL;IL-025;154;72
+Illinois;IL;IL-026;185;72
+Illinois;IL;IL-027;216;72
+Illinois;IL;IL-028;247;72
+Illinois;IL;IL-029;268;72
+Illinois;IL;IL-030;60;119
+Illinois;IL;IL-031;92;119
+Illinois;IL;IL-032;122;119
+Illinois;IL;IL-033;153;119
+Illinois;IL;IL-034;185;119
+Illinois;IL;IL-035;216;119
+Illinois;IL;IL-036;247;119
+Illinois;IL;IL-037;277;119
+Illinois;IL;IL-038;60;165
+Illinois;IL;IL-039;92;165
+Illinois;IL;IL-040;122;165
+Illinois;IL;IL-041;153;165
+Illinois;IL;IL-042;185;165
+Illinois;IL;IL-043;216;165
+Illinois;IL;IL-044;247;165
+Illinois;IL;IL-045;277;165
+Illinois;IL;IL-046;11;220
+Illinois;IL;IL-047;29;211
+Illinois;IL;IL-048;60;211
+Illinois;IL;IL-049;92;211
+Illinois;IL;IL-050;122;211
+Illinois;IL;IL-051;153;211
+Illinois;IL;IL-052;185;211
+Illinois;IL;IL-053;216;211
+Illinois;IL;IL-054;247;211
+Illinois;IL;IL-055;277;211
+Illinois;IL;IL-056;12;235
+Illinois;IL;IL-056A;37;180
+Illinois;IL;IL-057;29;258
+Illinois;IL;IL-058;60;258
+Illinois;IL;IL-059;92;258
+Illinois;IL;IL-060;122;258
+Illinois;IL;IL-061;153;258
+Illinois;IL;IL-062;185;258
+Illinois;IL;IL-063;216;258
+Illinois;IL;IL-064;247;258
+Illinois;IL;IL-065;277;258
+Illinois;IL;IL-066;65;292
+Illinois;IL;IL-067;92;302
+Illinois;IL;IL-068;122;302
+Illinois;IL;IL-069;153;302
+Illinois;IL;IL-070;185;302
+Illinois;IL;IL-071;216;302
+Illinois;IL;IL-072;247;302
+Illinois;IL;IL-073;277;302
+Illinois;IL;IL-074B;72;331
+Illinois;IL;IL-074A;99;393
+Illinois;IL;IL-075;99;331
+Illinois;IL;IL-075;103;369
+Illinois;IL;IL-076;122;348
+Illinois;IL;IL-077;153;348
+Illinois;IL;IL-078;185;348
+Illinois;IL;IL-079;216;348
+Illinois;IL;IL-080;247;348
+Illinois;IL;IL-081;277;348
+Illinois;IL;IL-082;122;394
+Illinois;IL;IL-083;153;394
+Illinois;IL;IL-084;185;394
+Illinois;IL;IL-085;216;394
+Illinois;IL;IL-086;247;394
+Illinois;IL;IL-087;268;380
+Illinois;IL;IL-087;263;406
+Illinois;IL;IL-088;148;434
+Illinois;IL;IL-089;180;443
+Illinois;IL;IL-090;211;443
+Illinois;IL;IL-091;240;443
+Illinois;IL;IL-092;156;485
+Illinois;IL;IL-093;178;482
+Illinois;IL;IL-094;209;482
+Illinois;IL;IL-095;232;469
+Illinois;IL;IL-095;227;499
+Indiana;IN;IN-018;83;39
+Indiana;IN;IN-019;120;39
+Indiana;IN;IN-020;166;39
+Indiana;IN;IN-021;212;39
+Indiana;IN;IN-022;258;39
+Indiana;IN;IN-023;302;39
+Indiana;IN;IN-024;83;98
+Indiana;IN;IN-025;120;98
+Indiana;IN;IN-026;166;98
+Indiana;IN;IN-027;212;98
+Indiana;IN;IN-028;258;98
+Indiana;IN;IN-029;302;98
+Indiana;IN;IN-030;83;156
+Indiana;IN;IN-031;120;156
+Indiana;IN;IN-032;166;156
+Indiana;IN;IN-033;212;156
+Indiana;IN;IN-034;258;156
+Indiana;IN;IN-035;302;156
+Indiana;IN;IN-036;83;218
+Indiana;IN;IN-037;120;218
+Indiana;IN;IN-038;166;218
+Indiana;IN;IN-039;212;218
+Indiana;IN;IN-040;258;218
+Indiana;IN;IN-041;302;218
+Indiana;IN;IN-042;83;276
+Indiana;IN;IN-043;120;276
+Indiana;IN;IN-044;166;276
+Indiana;IN;IN-045;212;276
+Indiana;IN;IN-046;258;276
+Indiana;IN;IN-047;302;276
+Indiana;IN;IN-048;83;337
+Indiana;IN;IN-049;120;337
+Indiana;IN;IN-050;166;337
+Indiana;IN;IN-051;212;337
+Indiana;IN;IN-052;258;337
+Indiana;IN;IN-053;302;337
+Indiana;IN;IN-054;32;428
+Indiana;IN;IN-054;37;428
+Indiana;IN;IN-054;45;425
+Indiana;IN;IN-055;83;400
+Indiana;IN;IN-056;120;400
+Indiana;IN;IN-057;166;400
+Indiana;IN;IN-058;212;400
+Indiana;IN;IN-059;250;390
+Indiana;IN;IN-060;38;454
+Indiana;IN;IN-061;73;450
+Indiana;IN;IN-062;120;450
+Indiana;IN;IN-063;154;450
+Indiana;IN;IN-064;205;444
+Iowa;IA;IA-014;50;54
+Iowa;IA;IA-015;93;54
+Iowa;IA;IA-016;142;54
+Iowa;IA;IA-017;192;54
+Iowa;IA;IA-018;242;54
+Iowa;IA;IA-019;292;54
+Iowa;IA;IA-020;342;54
+Iowa;IA;IA-021;392;54
+Iowa;IA;IA-022;442;54
+Iowa;IA;IA-023;480;54
+Iowa;IA;IA-024;48;120
+Iowa;IA;IA-025;93;120
+Iowa;IA;IA-026;142;120
+Iowa;IA;IA-027;192;120
+Iowa;IA;IA-028;242;120
+Iowa;IA;IA-029;292;120
+Iowa;IA;IA-030;342;120
+Iowa;IA;IA-031;392;120
+Iowa;IA;IA-032;442;120
+Iowa;IA;IA-033;480;120
+Iowa;IA;IA-034;530;145
+Iowa;IA;IA-035;58;175
+Iowa;IA;IA-035;64;204
+Iowa;IA;IA-036;93;195
+Iowa;IA;IA-037;142;195
+Iowa;IA;IA-038;192;195
+Iowa;IA;IA-039;242;195
+Iowa;IA;IA-040;292;195
+Iowa;IA;IA-041;342;195
+Iowa;IA;IA-042;392;195
+Iowa;IA;IA-043;442;195
+Iowa;IA;IA-044;492;195
+Iowa;IA;IA-045;542;195
+Iowa;IA;IA-046;98;269
+Iowa;IA;IA-047;142;269
+Iowa;IA;IA-048;192;269
+Iowa;IA;IA-049;242;269
+Iowa;IA;IA-050;292;269
+Iowa;IA;IA-051;342;269
+Iowa;IA;IA-052;392;269
+Iowa;IA;IA-053;442;269
+Iowa;IA;IA-054;487;269
+Iowa;IA;IA-055A;537;242
+Iowa;IA;IA-055B;572;195
+Iowa;IA;IA-056;103;330
+Iowa;IA;IA-057;142;330
+Iowa;IA;IA-058;192;330
+Iowa;IA;IA-059;242;330
+Iowa;IA;IA-060;292;330
+Iowa;IA;IA-061;342;330
+Iowa;IA;IA-062;392;330
+Iowa;IA;IA-063;442;330
+Iowa;IA;IA-064;492;330
+Kansas;KS;KS-015;40;51
+Kansas;KS;KS-016;90;51
+Kansas;KS;KS-017;140;51
+Kansas;KS;KS-018;195;51
+Kansas;KS;KS-019;245;51
+Kansas;KS;KS-020;300;51
+Kansas;KS;KS-021;350;51
+Kansas;KS;KS-022;405;51
+Kansas;KS;KS-023;455;51
+Kansas;KS;KS-024;510;51
+Kansas;KS;KS-025;560;51
+Kansas;KS;KS-026;615;51
+Kansas;KS;KS-027;645;51
+Kansas;KS;KS-028;40;110
+Kansas;KS;KS-029;90;110
+Kansas;KS;KS-030;140;110
+Kansas;KS;KS-031;195;110
+Kansas;KS;KS-032;245;110
+Kansas;KS;KS-033;300;110
+Kansas;KS;KS-034;350;110
+Kansas;KS;KS-035;405;110
+Kansas;KS;KS-036;455;110
+Kansas;KS;KS-037;510;110
+Kansas;KS;KS-038;560;110
+Kansas;KS;KS-039;615;110
+Kansas;KS;KS-040;660;110
+Kansas;KS;KS-041;40;185
+Kansas;KS;KS-042;90;185
+Kansas;KS;KS-043;140;185
+Kansas;KS;KS-044;195;185
+Kansas;KS;KS-045;245;185
+Kansas;KS;KS-046;300;185
+Kansas;KS;KS-047;350;185
+Kansas;KS;KS-048;405;185
+Kansas;KS;KS-049;455;185
+Kansas;KS;KS-050;510;185
+Kansas;KS;KS-051;560;185
+Kansas;KS;KS-052;615;185
+Kansas;KS;KS-053;660;185
+Kansas;KS;KS-054;40;260
+Kansas;KS;KS-055;90;260
+Kansas;KS;KS-056;140;260
+Kansas;KS;KS-057;195;260
+Kansas;KS;KS-058;245;260
+Kansas;KS;KS-059;300;260
+Kansas;KS;KS-060;350;260
+Kansas;KS;KS-061;405;260
+Kansas;KS;KS-062;455;260
+Kansas;KS;KS-063;510;260
+Kansas;KS;KS-064;560;260
+Kansas;KS;KS-065;615;260
+Kansas;KS;KS-066;660;260
+Kansas;KS;KS-067;40;325
+Kansas;KS;KS-068;90;325
+Kansas;KS;KS-069;140;325
+Kansas;KS;KS-070;195;325
+Kansas;KS;KS-071;245;325
+Kansas;KS;KS-072;300;325
+Kansas;KS;KS-073;350;325
+Kansas;KS;KS-074;405;325
+Kansas;KS;KS-075;455;325
+Kansas;KS;KS-076;510;325
+Kansas;KS;KS-077;560;325
+Kansas;KS;KS-078;615;325
+Kansas;KS;KS-079;660;325
+Kentucky;KY;KY-022;380;20
+Kentucky;KY;KY-023;400;22
+Kentucky;KY;KY-024;327;60
+Kentucky;KY;KY-025;348;57
+Kentucky;KY;KY-026;381;54
+Kentucky;KY;KY-027;415;56
+Kentucky;KY;KY-028;448;62
+Kentucky;KY;KY-029;481;64
+Kentucky;KY;KY-030;514;64
+Kentucky;KY;KY-031;534;73
+Kentucky;KY;KY-032A;134;123
+Kentucky;KY;KY-032A;158;122
+Kentucky;KY;KY-032B;215;121
+Kentucky;KY;KY-032B;228;123
+Kentucky;KY;KY-033A;170;122
+Kentucky;KY;KY-033B;252;114
+Kentucky;KY;KY-034;282;119
+Kentucky;KY;KY-035;315;100
+Kentucky;KY;KY-036;348;100
+Kentucky;KY;KY-037;381;100
+Kentucky;KY;KY-038;415;100
+Kentucky;KY;KY-039;448;100
+Kentucky;KY;KY-040;481;100
+Kentucky;KY;KY-041;514;100
+Kentucky;KY;KY-042;532;100
+Kentucky;KY;KY-043;124;149
+Kentucky;KY;KY-044;149;148
+Kentucky;KY;KY-045;182;148
+Kentucky;KY;KY-046;215;148
+Kentucky;KY;KY-047;249;148
+Kentucky;KY;KY-048;282;148
+Kentucky;KY;KY-049;315;148
+Kentucky;KY;KY-050;348;148
+Kentucky;KY;KY-051;381;148
+Kentucky;KY;KY-052;415;148
+Kentucky;KY;KY-053;448;148
+Kentucky;KY;KY-054;481;148
+Kentucky;KY;KY-055;514;148
+Kentucky;KY;KY-056;532;148
+Kentucky;KY;KY-057;571;162
+Kentucky;KY;KY-058;53;204
+Kentucky;KY;KY-059;82;210
+Kentucky;KY;KY-060;116;192
+Kentucky;KY;KY-061;149;192
+Kentucky;KY;KY-062;182;192
+Kentucky;KY;KY-063;215;192
+Kentucky;KY;KY-064;249;192
+Kentucky;KY;KY-065;282;192
+Kentucky;KY;KY-066;315;192
+Kentucky;KY;KY-067;348;192
+Kentucky;KY;KY-068;381;192
+Kentucky;KY;KY-069;415;192
+Kentucky;KY;KY-070;448;192
+Kentucky;KY;KY-071;481;192
+Kentucky;KY;KY-072;514;192
+Kentucky;KY;KY-073;547;178
+Kentucky;KY;KY-074;11;255
+Kentucky;KY;KY-074;25;255
+Kentucky;KY;KY-075;52;235
+Kentucky;KY;KY-076;82;235
+Kentucky;KY;KY-077;116;235
+Kentucky;KY;KY-078;149;235
+Kentucky;KY;KY-079;182;235
+Kentucky;KY;KY-080;215;235
+Kentucky;KY;KY-081;249;235
+Kentucky;KY;KY-082;282;235
+Kentucky;KY;KY-083;315;235
+Kentucky;KY;KY-084;348;235
+Kentucky;KY;KY-085;381;235
+Kentucky;KY;KY-086;415;235
+Kentucky;KY;KY-087;448;235
+Kentucky;KY;KY-088;481;228
+Louisiana;LA;LA-014;37;44
+Louisiana;LA;LA-015;87;44
+Louisiana;LA;LA-016;137;44
+Louisiana;LA;LA-017;187;44
+Louisiana;LA;LA-018;237;44
+Louisiana;LA;LA-019;287;44
+Louisiana;LA;LA-019;312;70
+Louisiana;LA;LA-020;37;109
+Louisiana;LA;LA-021;87;109
+Louisiana;LA;LA-022;137;109
+Louisiana;LA;LA-023;187;109
+Louisiana;LA;LA-024;237;109
+Louisiana;LA;LA-025;287;109
+Louisiana;LA;LA-026;47;176
+Louisiana;LA;LA-027;87;176
+Louisiana;LA;LA-028;137;176
+Louisiana;LA;LA-029;187;176
+Louisiana;LA;LA-030;237;176
+Louisiana;LA;LA-031A;269;159
+Louisiana;LA;LA-031A;289;150
+Louisiana;LA;LA-031A;287;157
+Louisiana;LA;LA-031A;262;211
+Louisiana;LA;LA-031B;314;92
+Louisiana;LA;LA-031B;313;112
+Louisiana;LA;LA-032;81;245
+Louisiana;LA;LA-033;126;245
+Louisiana;LA;LA-034;176;245
+Louisiana;LA;LA-035;226;245
+Louisiana;LA;LA-036;276;263
+Louisiana;LA;LA-036;258;215
+Louisiana;LA;LA-037;326;263
+Louisiana;LA;LA-038;376;263
+Louisiana;LA;LA-039;426;263
+Louisiana;LA;LA-040;53;316
+Louisiana;LA;LA-041;87;316
+Louisiana;LA;LA-042;137;316
+Louisiana;LA;LA-043;187;316
+Louisiana;LA;LA-044;237;316
+Louisiana;LA;LA-045;287;316
+Louisiana;LA;LA-046;337;316
+Louisiana;LA;LA-047;387;316
+Louisiana;LA;LA-048;437;316
+Louisiana;LA;LA-049A;462;342
+Louisiana;LA;LA-049B;533;369
+Louisiana;LA;LA-049B;533;379
+Louisiana;LA;LA-049B;530;388
+Louisiana;LA;LA-050;53;381
+Louisiana;LA;LA-051;87;381
+Louisiana;LA;LA-052;137;381
+Louisiana;LA;LA-053;187;381
+Louisiana;LA;LA-054;237;381
+Louisiana;LA;LA-054;229;414
+Louisiana;LA;LA-055;287;381
+Louisiana;LA;LA-056;337;381
+Louisiana;LA;LA-057;387;381
+Louisiana;LA;LA-058;437;381
+Louisiana;LA;LA-059;470;377
+Louisiana;LA;LA-059;462;403
+Louisiana;LA;LA-060;307;437
+Louisiana;LA;LA-061;346;438
+Louisiana;LA;LA-061;343;474
+Louisiana;LA;LA-061;368;455
+Louisiana;LA;LA-062;395;436
+Louisiana;LA;LA-062;383;473
+Louisiana;LA;LA-063;450;435
+Louisiana;LA;LA-064;492;457
+Maine;ME;ME-001;35;388
+Maine;ME;ME-002;32;360
+Maine;ME;ME-003;50;360
+Maine;ME;ME-003;68;346
+Maine;ME;ME-004;31;325
+Maine;ME;ME-005;56;325
+Maine;ME;ME-005;68;346
+Maine;ME;ME-006;83;320
+Maine;ME;ME-006;72;340
+Maine;ME;ME-007;106;318
+Maine;ME;ME-008;129;313
+Maine;ME;ME-009;152;310
+Maine;ME;ME-009;166;311
+Maine;ME;ME-010;30;288
+Maine;ME;ME-011;56;288
+Maine;ME;ME-012;83;288
+Maine;ME;ME-013;106;288
+Maine;ME;ME-014;134;288
+Maine;ME;ME-014;146;292
+Maine;ME;ME-014;147;305
+Maine;ME;ME-015;163;280
+Maine;ME;ME-015;150;283
+Maine;ME;ME-015;151;304
+Maine;ME;ME-015;155;296
+Maine;ME;ME-015;163;292
+Maine;ME;ME-015;163;297
+Maine;ME;ME-015;173;285
+Maine;ME;ME-016;187;285
+Maine;ME;ME-016;178;301
+Maine;ME;ME-016;176;297
+Maine;ME;ME-016;183;305
+Maine;ME;ME-016;183;299
+Maine;ME;ME-016;189;293
+Maine;ME;ME-017;206;275
+Maine;ME;ME-017;231;272
+Maine;ME;ME-017B;15;240
+Maine;ME;ME-018;30;250
+Maine;ME;ME-019;56;250
+Maine;ME;ME-020;82;250
+Maine;ME;ME-021;110;250
+Maine;ME;ME-022;136;250
+Maine;ME;ME-023;162;250
+Maine;ME;ME-024;188;250
+Maine;ME;ME-025;213;250
+Maine;ME;ME-026;240;245
+Maine;ME;ME-026;230;270
+Maine;ME;ME-027;260;242
+Maine;ME;ME-027;270;243
+Maine;ME;ME-027B;14;205
+Maine;ME;ME-028;30;214
+Maine;ME;ME-029;56;214
+Maine;ME;ME-030;82;214
+Maine;ME;ME-031;110;214
+Maine;ME;ME-032;136;214
+Maine;ME;ME-033;162;214
+Maine;ME;ME-034;188;214
+Maine;ME;ME-035;213;214
+Maine;ME;ME-036;240;220
+Maine;ME;ME-037;258;226
+Maine;ME;ME-038;39;182
+Maine;ME;ME-039;56;178
+Maine;ME;ME-040;82;178
+Maine;ME;ME-041;110;178
+Maine;ME;ME-042;136;178
+Maine;ME;ME-043;162;178
+Maine;ME;ME-044;188;178
+Maine;ME;ME-045;214;178
+Maine;ME;ME-046;232;184
+Maine;ME;ME-047;66;134
+Maine;ME;ME-048;82;140
+Maine;ME;ME-049;110;140
+Maine;ME;ME-050;136;140
+Maine;ME;ME-051;162;140
+Maine;ME;ME-052;188;140
+Maine;ME;ME-053;210;140
+Maine;ME;ME-054;84;102
+Maine;ME;ME-055;110;102
+Maine;ME;ME-056;136;102
+Maine;ME;ME-057;162;102
+Maine;ME;ME-058;188;102
+Maine;ME;ME-059;210;102
+Maine;ME;ME-060;88;74
+Maine;ME;ME-061;110;66
+Maine;ME;ME-062;136;66
+Maine;ME;ME-063;162;66
+Maine;ME;ME-064;188;66
+Maine;ME;ME-065;210;66
+Maine;ME;ME-066;114;39
+Maine;ME;ME-067;135;32
+Maine;ME;ME-067B;130;10
+Maine;ME;ME-068;188;36
+Maine;ME;ME-069;210;40
+Maine;ME;ME-070;162;36
+Maryland-Delaware;DM;DM-023;514;370
+Maryland-Delaware;DM;DM-024;578;372
+Maryland-Delaware;DM;DM-024;584;407
+Maryland-Delaware;DM;DM-025;590;403
+Maryland-Delaware;DM;DM-025;489;414
+Maryland-Delaware;DM;DM-025;625;386
+Maryland-Delaware;DM;DM-026;662;384
+Maryland-Delaware;DM;DM-027;705;381
+Maryland-Delaware;DM;DM-028;394;309
+Maryland-Delaware;DM;DM-029;443;316
+Maryland-Delaware;DM;DM-030;489;328
+Maryland-Delaware;DM;DM-031;516;343
+Maryland-Delaware;DM;DM-031;549;312
+Maryland-Delaware;DM;DM-032;581;316
+Maryland-Delaware;DM;DM-032;564;355
+Maryland-Delaware;DM;DM-032;596;354
+Maryland-Delaware;DM;DM-032;578;365
+Maryland-Delaware;DM;DM-032;603;365
+Maryland-Delaware;DM;DM-033;629;330
+Maryland-Delaware;DM;DM-033;645;303
+Maryland-Delaware;DM;DM-034;677;333
+Maryland-Delaware;DM;DM-034;677;304
+Maryland-Delaware;DM;DM-035;721;331
+Maryland-Delaware;DM;DM-035;724;304
+Maryland-Delaware;DM;DM-036;402;286
+Maryland-Delaware;DM;DM-037;440;263
+Maryland-Delaware;DM;DM-038;483;265
+Maryland-Delaware;DM;DM-039;546;240
+Maryland-Delaware;DM;DM-039;551;284
+Maryland-Delaware;DM;DM-042;582;263
+Maryland-Delaware;DM;DM-043;623;263
+Maryland-Delaware;DM;DM-043;645;264
+Maryland-Delaware;DM;DM-044;676;263
+Maryland-Delaware;DM;DM-045;724;264
+Maryland-Delaware;DM;DM-046;394;180
+Maryland-Delaware;DM;DM-047;442;189
+Maryland-Delaware;DM;DM-048;488;195
+Maryland-Delaware;DM;DM-049;515;188
+Maryland-Delaware;DM;DM-049;553;169
+Maryland-Delaware;DM;DM-049;536;201
+Maryland-Delaware;DM;DM-049;544;230
+Maryland-Delaware;DM;DM-049;511;211
+Maryland-Delaware;DM;DM-049;511;205
+Maryland-Delaware;DM;DM-050;581;196
+Maryland-Delaware;DM;DM-051;619;196
+Maryland-Delaware;DM;DM-051;643;196
+Maryland-Delaware;DM;DM-052;676;200
+Maryland-Delaware;DM;DM-053;708;224
+Maryland-Delaware;DM;DM-054;311;110
+Maryland-Delaware;DM;DM-054B;357;171
+Maryland-Delaware;DM;DM-055;348;129
+Maryland-Delaware;DM;DM-056;394;128
+Maryland-Delaware;DM;DM-057;441;130
+Maryland-Delaware;DM;DM-058;489;130
+Maryland-Delaware;DM;DM-059;524;111
+Maryland-Delaware;DM;DM-059;551;154
+Maryland-Delaware;DM;DM-059;511;163
+Maryland-Delaware;DM;DM-060;560;102
+Maryland-Delaware;DM;DM-060;583;136
+Maryland-Delaware;DM;DM-061;617;130
+Maryland-Delaware;DM;DM-061;641;130
+Maryland-Delaware;DM;DM-062;670;139
+Maryland-Delaware;DM;DM-062B;636;28
+Maryland-Delaware;DM;DM-063;661;23
+Maryland-Delaware;DM;DM-063B;661;23
+Maryland-Delaware;DM;DM-064;28;113
+Maryland-Delaware;DM;DM-065;27;66
+Maryland-Delaware;DM;DM-066;65;63
+Maryland-Delaware;DM;DM-067;112;58
+Maryland-Delaware;DM;DM-068;160;55
+Maryland-Delaware;DM;DM-069;201;47
+Maryland-Delaware;DM;DM-069;184;64
+Maryland-Delaware;DM;DM-069;183;73
+Maryland-Delaware;DM;DM-070;260;49
+Maryland-Delaware;DM;DM-070;264;64
+Maryland-Delaware;DM;DM-070;275;74
+Maryland-Delaware;DM;DM-071;303;65
+Maryland-Delaware;DM;DM-072;348;68
+Maryland-Delaware;DM;DM-073;395;67
+Maryland-Delaware;DM;DM-074;440;68
+Maryland-Delaware;DM;DM-075;488;68
+Maryland-Delaware;DM;DM-076;534;68
+Maryland-Delaware;DM;DM-077;580;61
+Maryland-Delaware;DM;DM-078;614;68
+Maryland-Delaware;DM;DM-078;639;68
+Maryland-Delaware;DM;DM-079;661;40
+Maryland-Delaware;DM;DM-079;656;77
+Maryland-Delaware;DM;DM-079;661;59
+Maryland-Delaware;DM;DM-079;660;66
+Massachusetts;MA;MA-018;420;40
+Massachusetts;MA;MA-019;448;34
+Massachusetts;MA;MA-020;59;77
+Massachusetts;MA;MA-021;95;77
+Massachusetts;MA;MA-022;135;77
+Massachusetts;MA;MA-023;175;77
+Massachusetts;MA;MA-024;215;77
+Massachusetts;MA;MA-025;260;77
+Massachusetts;MA;MA-026;300;77
+Massachusetts;MA;MA-027;340;77
+Massachusetts;MA;MA-028;380;77
+Massachusetts;MA;MA-029;420;77
+Massachusetts;MA;MA-030;462;77
+Massachusetts;MA;MA-031A;492;72
+Massachusetts;MA;MA-031B;28;157
+Massachusetts;MA;MA-032;53;129
+Massachusetts;MA;MA-033;95;129
+Massachusetts;MA;MA-034;135;129
+Massachusetts;MA;MA-035;175;129
+Massachusetts;MA;MA-036;215;129
+Massachusetts;MA;MA-037;260;129
+Massachusetts;MA;MA-038;300;129
+Massachusetts;MA;MA-039;340;129
+Massachusetts;MA;MA-040;380;129
+Massachusetts;MA;MA-041;420;129
+Massachusetts;MA;MA-042;449;107
+Massachusetts;MA;MA-042;447;121
+Massachusetts;MA;MA-042;452;156
+Massachusetts;MA;MA-043;24;185
+Massachusetts;MA;MA-044;53;180
+Massachusetts;MA;MA-045;95;180
+Massachusetts;MA;MA-046;135;180
+Massachusetts;MA;MA-047;175;180
+Massachusetts;MA;MA-048;215;180
+Massachusetts;MA;MA-049;260;180
+Massachusetts;MA;MA-050;300;180
+Massachusetts;MA;MA-051;340;180
+Massachusetts;MA;MA-052;380;180
+Massachusetts;MA;MA-053;420;180
+Massachusetts;MA;MA-054;465;180
+Massachusetts;MA;MA-055;489;196
+Massachusetts;MA;MA-056;390;240
+Massachusetts;MA;MA-057;426;240
+Massachusetts;MA;MA-058;467;240
+Massachusetts;MA;MA-059;498;240
+Massachusetts;MA;MA-060A;563;202
+Massachusetts;MA;MA-060B;563;202
+Massachusetts;MA;MA-061;602;256
+Massachusetts;MA;MA-062A;398;277
+Massachusetts;MA;MA-062B;398;277
+Massachusetts;MA;MA-063;428;293
+Massachusetts;MA;MA-064;461;282
+Massachusetts;MA;MA-064;482;324
+Massachusetts;MA;MA-064;460;305
+Massachusetts;MA;MA-065;510;291
+Massachusetts;MA;MA-066;551;286
+Massachusetts;MA;MA-067;590;280
+Massachusetts;MA;MA-068;467;336
+Massachusetts;MA;MA-068;474;361
+Massachusetts;MA;MA-069;496;349
+Massachusetts;MA;MA-070;566;376
+Massachusetts;MA;MA-071;592;375
+Michigan;MI;MI-018;233;505
+Michigan;MI;MI-019;254;505
+Michigan;MI;MI-020;278;505
+Michigan;MI;MI-021;303;505
+Michigan;MI;MI-022;327;505
+Michigan;MI;MI-023;352;505
+Michigan;MI;MI-024;376;505
+Michigan;MI;MI-025;397;505
+Michigan;MI;MI-026;237;487
+Michigan;MI;MI-027;254;475
+Michigan;MI;MI-028;278;475
+Michigan;MI;MI-029;303;475
+Michigan;MI;MI-030;327;475
+Michigan;MI;MI-031;352;475
+Michigan;MI;MI-032;376;475
+Michigan;MI;MI-033;401;475
+Michigan;MI;MI-034;421;462
+Michigan;MI;MI-035;257;436
+Michigan;MI;MI-036;278;436
+Michigan;MI;MI-037;303;436
+Michigan;MI;MI-038;327;436
+Michigan;MI;MI-039;352;436
+Michigan;MI;MI-040;376;436
+Michigan;MI;MI-041;401;436
+Michigan;MI;MI-042;435;436
+Michigan;MI;MI-043;448;428
+Michigan;MI;MI-044;238;382
+Michigan;MI;MI-045;254;396
+Michigan;MI;MI-046;278;396
+Michigan;MI;MI-047;303;396
+Michigan;MI;MI-048;327;396
+Michigan;MI;MI-049;352;396
+Michigan;MI;MI-050;376;396
+Michigan;MI;MI-051;401;396
+Michigan;MI;MI-052;426;396
+Michigan;MI;MI-053;448;396
+Michigan;MI;MI-054;238;356
+Michigan;MI;MI-055;254;356
+Michigan;MI;MI-056;278;356
+Michigan;MI;MI-057;303;356
+Michigan;MI;MI-058;327;356
+Michigan;MI;MI-059;352;356
+Michigan;MI;MI-060;369;356
+Michigan;MI;MI-061;402;367
+Michigan;MI;MI-062;427;367
+Michigan;MI;MI-063;444;356
+Michigan;MI;MI-063;431;334
+Michigan;MI;MI-063A;431;334
+Michigan;MI;MI-063A;444;356
+Michigan;MI;MI-064;236;331
+Michigan;MI;MI-065;250;316
+Michigan;MI;MI-066;278;316
+Michigan;MI;MI-067;303;316
+Michigan;MI;MI-068;327;316
+Michigan;MI;MI-069;352;316
+Michigan;MI;MI-070;376;316
+Michigan;MI;MI-071;399;307
+Michigan;MI;MI-072;258;282
+Michigan;MI;MI-072;252;255
+Michigan;MI;MI-072;257;246
+Michigan;MI;MI-072A;252;255
+Michigan;MI;MI-072A;257;246
+Michigan;MI;MI-072A;258;282
+Michigan;MI;MI-073;257;246
+Michigan;MI;MI-074;279;282
+Michigan;MI;MI-075;303;277
+Michigan;MI;MI-076;327;277
+Michigan;MI;MI-077;352;277
+Michigan;MI;MI-078;376;277
+Michigan;MI;MI-079;399;277
+Michigan;MI;MI-080;277;253
+Michigan;MI;MI-081;305;240
+Michigan;MI;MI-081;313;219
+Michigan;MI;MI-082;329;237
+Michigan;MI;MI-083;352;237
+Michigan;MI;MI-084;377;237
+Michigan;MI;MI-085;397;243
+Michigan;MI;MI-086A;170;223
+Michigan;MI;MI-086A;110;178
+Michigan;MI;MI-086B;110;178
+Michigan;MI;MI-086B;170;223
+Michigan;MI;MI-087;143;180
+Michigan;MI;MI-087;123;178
+Michigan;MI;MI-087;179;222
+Michigan;MI;MI-087A;179;222
+Michigan;MI;MI-087A;143;180
+Michigan;MI;MI-087A;123;178
+Michigan;MI;MI-088;161;192
+Michigan;MI;MI-089;190;195
+Michigan;MI;MI-090;218;183
+Michigan;MI;MI-090;218;183
+Michigan;MI;MI-090A;218;183
+Michigan;MI;MI-090A;218;183
+Michigan;MI;MI-091;236;181
+Michigan;MI;MI-092;261;179
+Michigan;MI;MI-092;284;205
+Michigan;MI;MI-093;312;212
+Michigan;MI;MI-094;330;206
+Michigan;MI;MI-094;325;181
+Michigan;MI;MI-094;336;188
+Michigan;MI;MI-094;342;194
+Michigan;MI;MI-095;346;196
+Michigan;MI;MI-095;353;211
+Michigan;MI;MI-095;354;179
+Michigan;MI;MI-096;50;146
+Michigan;MI;MI-097;77;150
+Michigan;MI;MI-098;106;155
+Michigan;MI;MI-099;133;156
+Michigan;MI;MI-100;161;155
+Michigan;MI;MI-101;186;156
+Michigan;MI;MI-102;218;158
+Michigan;MI;MI-103;245;155
+Michigan;MI;MI-104;272;155
+Michigan;MI;MI-105;302;155
+Michigan;MI;MI-106;330;155
+Michigan;MI;MI-107;354;150
+Michigan;MI;MI-108;49;124
+Michigan;MI;MI-109;76;121
+Michigan;MI;MI-110;105;117
+Michigan;MI;MI-111;133;122
+Michigan;MI;MI-111;119;100
+Michigan;MI;MI-112;160;125
+Michigan;MI;MI-113;177;133
+Michigan;MI;MI-113;201;136
+Michigan;MI;MI-113;28;137
+Michigan;MI;MI-113A;28;137
+Michigan;MI;MI-113A;177;133
+Michigan;MI;MI-113A;201;136
+Michigan;MI;MI-114A;85;25
+Michigan;MI;MI-114A;221;135
+Michigan;MI;MI-114A;204;136
+Michigan;MI;MI-114B;85;25
+Michigan;MI;MI-114B;221;135
+Michigan;MI;MI-114B;204;136
+Michigan;MI;MI-115A;108;13
+Michigan;MI;MI-115A;248;132
+Michigan;MI;MI-115B;248;132
+Michigan;MI;MI-115B;108;13
+Michigan;MI;MI-116A;273;130
+Michigan;MI;MI-116A;390;175
+Michigan;MI;MI-116B;390;175
+Michigan;MI;MI-116B;273;130
+Michigan;MI;MI-117A;301;128
+Michigan;MI;MI-117A;400;176
+Michigan;MI;MI-117A;361;136
+Michigan;MI;MI-117B;400;176
+Michigan;MI;MI-117B;301;128
+Michigan;MI;MI-117B;361;136
+Michigan;MI;MI-117C;361;136
+Michigan;MI;MI-117C;301;128
+Michigan;MI;MI-117C;400;176
+Michigan;MI;MI-118A;110;89
+Michigan;MI;MI-118A;153;63
+Michigan;MI;MI-118B;153;63
+Michigan;MI;MI-118A;110;89
+Michigan;MI;MI-119;131;73
+Minnesota;MN;MN-019;73;460
+Minnesota;MN;MN-020;104;460
+Minnesota;MN;MN-021;137;460
+Minnesota;MN;MN-022;170;460
+Minnesota;MN;MN-023;204;460
+Minnesota;MN;MN-024;237;460
+Minnesota;MN;MN-025;270;460
+Minnesota;MN;MN-026;303;460
+Minnesota;MN;MN-027;334;460
+Minnesota;MN;MN-028;73;409
+Minnesota;MN;MN-029;104;409
+Minnesota;MN;MN-030;137;409
+Minnesota;MN;MN-031;170;409
+Minnesota;MN;MN-032;204;409
+Minnesota;MN;MN-033;237;409
+Minnesota;MN;MN-034;270;409
+Minnesota;MN;MN-035;300;421
+Minnesota;MN;MN-036;73;358
+Minnesota;MN;MN-037;104;358
+Minnesota;MN;MN-038;137;358
+Minnesota;MN;MN-039;170;358
+Minnesota;MN;MN-040;204;358
+Minnesota;MN;MN-041;237;358
+Minnesota;MN;MN-042A;258;358
+Minnesota;MN;MN-042B;46;313
+Minnesota;MN;MN-043;73;307
+Minnesota;MN;MN-044;104;307
+Minnesota;MN;MN-045;137;307
+Minnesota;MN;MN-046;170;307
+Minnesota;MN;MN-047;204;307
+Minnesota;MN;MN-048;237;307
+Minnesota;MN;MN-049;258;297
+Minnesota;MN;MN-050;49;241
+Minnesota;MN;MN-051;73;256
+Minnesota;MN;MN-052;104;256
+Minnesota;MN;MN-053;137;256
+Minnesota;MN;MN-054;170;256
+Minnesota;MN;MN-055;204;256
+Minnesota;MN;MN-056;237;256
+Minnesota;MN;MN-057;270;256
+Minnesota;MN;MN-058A;289;256
+Minnesota;MN;MN-058B;47;205
+Minnesota;MN;MN-058B;47;205
+Minnesota;MN;MN-059;73;205
+Minnesota;MN;MN-060;104;205
+Minnesota;MN;MN-061;137;205
+Minnesota;MN;MN-062;170;205
+Minnesota;MN;MN-063;204;205
+Minnesota;MN;MN-064;237;205
+Minnesota;MN;MN-065;270;205
+Minnesota;MN;MN-066;303;205
+Minnesota;MN;MN-067A;328;187
+Minnesota;MN;MN-067B;363;155
+Minnesota;MN;MN-068;45;155
+Minnesota;MN;MN-069;73;155
+Minnesota;MN;MN-070;104;155
+Minnesota;MN;MN-071;137;155
+Minnesota;MN;MN-072;170;155
+Minnesota;MN;MN-073;204;155
+Minnesota;MN;MN-074;237;155
+Minnesota;MN;MN-075;270;155
+Minnesota;MN;MN-076;303;155
+Minnesota;MN;MN-077;334;155
+Minnesota;MN;MN-078;375;127
+Minnesota;MN;MN-079A;409;123
+Minnesota;MN;MN-079B;433;122
+Minnesota;MN;MN-080;37;104
+Minnesota;MN;MN-081;73;104
+Minnesota;MN;MN-082;104;104
+Minnesota;MN;MN-083;137;104
+Minnesota;MN;MN-084;170;104
+Minnesota;MN;MN-085;204;104
+Minnesota;MN;MN-086;237;104
+Minnesota;MN;MN-087;270;104
+Minnesota;MN;MN-088;303;104
+Minnesota;MN;MN-089A;334;122
+Minnesota;MN;MN-089B;141;18
+Minnesota;MN;MN-090;36;57
+Minnesota;MN;MN-091;73;57
+Minnesota;MN;MN-092;104;57
+Minnesota;MN;MN-093;137;57
+Minnesota;MN;MN-094A;170;70
+Minnesota;MN;MN-094B;197;73
+Minnesota;MN;MN-095A;237;73
+Minnesota;MN;MN-095B;251;73
+Mississippi;MS;MS-017;108;33
+Mississippi;MS;MS-018;146;33
+Mississippi;MS;MS-019;184;33
+Mississippi;MS;MS-020;221;33
+Mississippi;MS;MS-021;257;33
+Mississippi;MS;MS-022A;80;85
+Mississippi;MS;MS-022B;42;127
+Mississippi;MS;MS-022B;42;138
+Mississippi;MS;MS-022B;42;147
+Mississippi;MS;MS-023;108;85
+Mississippi;MS;MS-024;146;85
+Mississippi;MS;MS-025;184;85
+Mississippi;MS;MS-026;221;85
+Mississippi;MS;MS-027;257;85
+Mississippi;MS;MS-028;66;137
+Mississippi;MS;MS-028;44;146
+Mississippi;MS;MS-029;101;137
+Mississippi;MS;MS-030;139;137
+Mississippi;MS;MS-031;176;137
+Mississippi;MS;MS-032;214;137
+Mississippi;MS;MS-033;247;137
+Mississippi;MS;MS-034;66;189
+Mississippi;MS;MS-035;101;189
+Mississippi;MS;MS-036;139;189
+Mississippi;MS;MS-037;176;189
+Mississippi;MS;MS-038;214;189
+Mississippi;MS;MS-039;247;189
+Mississippi;MS;MS-040;74;240
+Mississippi;MS;MS-041;101;240
+Mississippi;MS;MS-042;139;240
+Mississippi;MS;MS-043;176;240
+Mississippi;MS;MS-044;214;240
+Mississippi;MS;MS-045;243;240
+Mississippi;MS;MS-046;36;305
+Mississippi;MS;MS-047;62;293
+Mississippi;MS;MS-048;101;293
+Mississippi;MS;MS-049;139;293
+Mississippi;MS;MS-050;176;293
+Mississippi;MS;MS-051;214;293
+Mississippi;MS;MS-052;243;293
+Mississippi;MS;MS-053;36;344
+Mississippi;MS;MS-054;62;344
+Mississippi;MS;MS-055;101;344
+Mississippi;MS;MS-056;139;344
+Mississippi;MS;MS-057;176;344
+Mississippi;MS;MS-058;214;344
+Mississippi;MS;MS-059;243;344
+Mississippi;MS;MS-060;166;395
+Mississippi;MS;MS-061;200;396
+Mississippi;MS;MS-062;236;395
+Mississippi;MS;MS-063A;170;430
+Mississippi;MS;MS-063A;188;425
+Mississippi;MS;MS-063B;201;434
+Mississippi;MS;MS-063C;247;425
+Missouri;MO;MO-014A;30;23
+Missouri;MO;MO-015A;64;23
+Missouri;MO;MO-014B;104;23
+Missouri;MO;MO-015B;140;23
+Missouri;MO;MO-016A;179;23
+Missouri;MO;MO-017A;216;23
+Missouri;MO;MO-016B;254;23
+Missouri;MO;MO-017B;279;27
+Missouri;MO;MO-018;36;44
+Missouri;MO;MO-019;65;58
+Missouri;MO;MO-020;104;58
+Missouri;MO;MO-021;140;58
+Missouri;MO;MO-022;179;58
+Missouri;MO;MO-023;216;58
+Missouri;MO;MO-024;254;58
+Missouri;MO;MO-025;281;58
+Missouri;MO;MO-026;70;103
+Missouri;MO;MO-027;104;112
+Missouri;MO;MO-028;140;112
+Missouri;MO;MO-029;179;112
+Missouri;MO;MO-030;216;112
+Missouri;MO;MO-031;254;112
+Missouri;MO;MO-032;281;112
+Missouri;MO;MO-033;324;126
+Missouri;MO;MO-034;104;166
+Missouri;MO;MO-035;140;166
+Missouri;MO;MO-036;179;166
+Missouri;MO;MO-037;216;166
+Missouri;MO;MO-038;254;166
+Missouri;MO;MO-039;292;166
+Missouri;MO;MO-040;330;166
+Missouri;MO;MO-041;360;170
+Missouri;MO;MO-042;104;217
+Missouri;MO;MO-043;140;217
+Missouri;MO;MO-044;179;217
+Missouri;MO;MO-045;216;217
+Missouri;MO;MO-046;254;217
+Missouri;MO;MO-047;292;217
+Missouri;MO;MO-048;330;217
+Missouri;MO;MO-049;360;217
+Missouri;MO;MO-050;104;270
+Missouri;MO;MO-051;140;270
+Missouri;MO;MO-052;179;270
+Missouri;MO;MO-053;216;270
+Missouri;MO;MO-054;254;270
+Missouri;MO;MO-055;292;270
+Missouri;MO;MO-056;330;270
+Missouri;MO;MO-057;360;270
+Missouri;MO;MO-058;405;270
+Missouri;MO;MO-059;394;240
+Missouri;MO;MO-060;104;323
+Missouri;MO;MO-061;140;323
+Missouri;MO;MO-062;179;323
+Missouri;MO;MO-063;216;323
+Missouri;MO;MO-064;254;323
+Missouri;MO;MO-065;292;323
+Missouri;MO;MO-066;330;323
+Missouri;MO;MO-067;360;323
+Missouri;MO;MO-068;405;323
+Missouri;MO;MO-068;419;352
+Missouri;MO;MO-069;431;323
+Missouri;MO;MO-070;381;374
+Missouri;MO;MO-071;396;374
+Montana;MT;MT-020;215;400
+Montana;MT;MT-021;254;400
+Montana;MT;MT-022;306;390
+Montana;MT;MT-022;306;390
+Montana;MT;MT-024;185;341
+Montana;MT;MT-025;237;341
+Montana;MT;MT-026;288;341
+Montana;MT;MT-027;340;341
+Montana;MT;MT-028;392;341
+Montana;MT;MT-029;444;341
+Montana;MT;MT-030;495;341
+Montana;MT;MT-031;547;341
+Montana;MT;MT-032;599;341
+Montana;MT;MT-033;650;341
+Montana;MT;MT-034;702;341
+Montana;MT;MT-035;752;341
+Montana;MT;MT-036;126;314
+Montana;MT;MT-037;133;267
+Montana;MT;MT-038;185;267
+Montana;MT;MT-039;237;267
+Montana;MT;MT-040;288;267
+Montana;MT;MT-041;340;267
+Montana;MT;MT-042;392;267
+Montana;MT;MT-043;444;267
+Montana;MT;MT-044;495;267
+Montana;MT;MT-045;547;267
+Montana;MT;MT-046;599;267
+Montana;MT;MT-047;650;267
+Montana;MT;MT-050;702;267
+Montana;MT;MT-051;752;267
+Montana;MT;MT-052A;85;175
+Montana;MT;MT-052B;50;161
+Montana;MT;MT-053;133;193
+Montana;MT;MT-054;185;193
+Montana;MT;MT-055;237;193
+Montana;MT;MT-056;288;193
+Montana;MT;MT-057;340;193
+Montana;MT;MT-058;392;193
+Montana;MT;MT-059;444;193
+Montana;MT;MT-060;495;193
+Montana;MT;MT-061;547;193
+Montana;MT;MT-062;599;193
+Montana;MT;MT-063;650;193
+Montana;MT;MT-064;702;193
+Montana;MT;MT-065;752;193
+Montana;MT;MT-066;82;119
+Montana;MT;MT-067;133;119
+Montana;MT;MT-068;185;119
+Montana;MT;MT-069;237;119
+Montana;MT;MT-070;288;119
+Montana;MT;MT-071;340;119
+Montana;MT;MT-072;392;119
+Montana;MT;MT-073;444;119
+Montana;MT;MT-074;495;119
+Montana;MT;MT-075;547;119
+Montana;MT;MT-076;599;119
+Montana;MT;MT-077;650;119
+Montana;MT;MT-078;702;119
+Montana;MT;MT-079;752;119
+Montana;MT;MT-080;35;119
+Montana;MT;MT-081;35;45
+Montana;MT;MT-082;82;45
+Montana;MT;MT-083;133;45
+Montana;MT;MT-084;185;45
+Montana;MT;MT-085;237;45
+Montana;MT;MT-086;288;45
+Montana;MT;MT-087;340;45
+Montana;MT;MT-088;392;45
+Montana;MT;MT-089;444;45
+Montana;MT;MT-090;495;45
+Montana;MT;MT-091;547;45
+Montana;MT;MT-092;599;45
+Montana;MT;MT-093;650;45
+Montana;MT;MT-094;702;45
+Montana;MT;MT-095;752;45
+Nebraska;NE;NE-015;46;40
+Nebraska;NE;NE-016;103;40
+Nebraska;NE;NE-017;160;40
+Nebraska;NE;NE-018;218;40
+Nebraska;NE;NE-019;275;40
+Nebraska;NE;NE-020;333;40
+Nebraska;NE;NE-021;391;40
+Nebraska;NE;NE-022;448;40
+Nebraska;NE;NE-023;505;40
+Nebraska;NE;NE-024;563;40
+Nebraska;NE;NE-025;621;55
+Nebraska;NE;NE-026;678;55
+Nebraska;NE;NE-027A;736;55
+Nebraska;NE;NE-027B;770;74
+Nebraska;NE;NE-028;46;120
+Nebraska;NE;NE-029;103;120
+Nebraska;NE;NE-030;160;120
+Nebraska;NE;NE-031;218;120
+Nebraska;NE;NE-032;275;120
+Nebraska;NE;NE-033;333;120
+Nebraska;NE;NE-034;391;120
+Nebraska;NE;NE-035;448;120
+Nebraska;NE;NE-036;505;120
+Nebraska;NE;NE-037;563;120
+Nebraska;NE;NE-038;621;120
+Nebraska;NE;NE-039;678;120
+Nebraska;NE;NE-040;736;120
+Nebraska;NE;NE-041;777;120
+Nebraska;NE;NE-042;46;204
+Nebraska;NE;NE-043;103;204
+Nebraska;NE;NE-044;160;204
+Nebraska;NE;NE-045;218;204
+Nebraska;NE;NE-046;275;204
+Nebraska;NE;NE-047;333;204
+Nebraska;NE;NE-048;391;204
+Nebraska;NE;NE-049;448;204
+Nebraska;NE;NE-050;505;204
+Nebraska;NE;NE-051;563;204
+Nebraska;NE;NE-052;621;204
+Nebraska;NE;NE-053;678;204
+Nebraska;NE;NE-054;736;204
+Nebraska;NE;NE-055A;786;204
+Nebraska;NE;NE-055B;823;226
+Nebraska;NE;NE-055B;823;243
+Nebraska;NE;NE-056A;46;256
+Nebraska;NE;NE-056B;103;256
+Nebraska;NE;NE-056C;160;256
+Nebraska;NE;NE-057;218;287
+Nebraska;NE;NE-058;275;287
+Nebraska;NE;NE-059;333;287
+Nebraska;NE;NE-060;391;287
+Nebraska;NE;NE-061;448;287
+Nebraska;NE;NE-062;505;287
+Nebraska;NE;NE-063;563;287
+Nebraska;NE;NE-064;621;287
+Nebraska;NE;NE-065;678;287
+Nebraska;NE;NE-066;736;287
+Nebraska;NE;NE-067;786;287
+Nebraska;NE;NE-068A;824;287
+Nebraska;NE;NE-068A;828;318
+Nebraska;NE;NE-068A;844;325
+Nebraska;NE;NE-068B;229;362
+Nebraska;NE;NE-069;275;362
+Nebraska;NE;NE-070;333;362
+Nebraska;NE;NE-071;391;362
+Nebraska;NE;NE-072;448;362
+Nebraska;NE;NE-073;505;362
+Nebraska;NE;NE-074;563;362
+Nebraska;NE;NE-075;621;362
+Nebraska;NE;NE-076;678;362
+Nebraska;NE;NE-077;736;362
+Nebraska;NE;NE-078;786;362
+Nebraska;NE;NE-079;840;362
+Nevada;NV;NV-018;37;35
+Nevada;NV;NV-019;76;35
+Nevada;NV;NV-020;116;35
+Nevada;NV;NV-021;156;35
+Nevada;NV;NV-022;195;35
+Nevada;NV;NV-023;235;35
+Nevada;NV;NV-024;274;35
+Nevada;NV;NV-025;313;35
+Nevada;NV;NV-026;37;88
+Nevada;NV;NV-027;76;88
+Nevada;NV;NV-028;116;88
+Nevada;NV;NV-029;156;88
+Nevada;NV;NV-030;195;88
+Nevada;NV;NV-031;235;88
+Nevada;NV;NV-032;274;88
+Nevada;NV;NV-033;313;88
+Nevada;NV;NV-034;37;142
+Nevada;NV;NV-035;76;142
+Nevada;NV;NV-036;116;142
+Nevada;NV;NV-037;156;142
+Nevada;NV;NV-038;195;142
+Nevada;NV;NV-039;235;142
+Nevada;NV;NV-040;274;142
+Nevada;NV;NV-041;313;142
+Nevada;NV;NV-042;37;195
+Nevada;NV;NV-043;76;195
+Nevada;NV;NV-044;116;195
+Nevada;NV;NV-045;156;195
+Nevada;NV;NV-046;195;195
+Nevada;NV;NV-047;235;195
+Nevada;NV;NV-048;274;195
+Nevada;NV;NV-049;313;195
+Nevada;NV;NV-050;47;228
+Nevada;NV;NV-051;76;247
+Nevada;NV;NV-052;116;247
+Nevada;NV;NV-053;156;247
+Nevada;NV;NV-054;195;247
+Nevada;NV;NV-055;235;247
+Nevada;NV;NV-056;274;247
+Nevada;NV;NV-057;313;247
+Nevada;NV;NV-058A;116;286
+Nevada;NV;NV-058B;94;276
+Nevada;NV;NV-059;156;300
+Nevada;NV;NV-060;195;300
+Nevada;NV;NV-061;235;300
+Nevada;NV;NV-062;274;300
+Nevada;NV;NV-063;313;300
+Nevada;NV;NV-064;195;354
+Nevada;NV;NV-065;235;354
+Nevada;NV;NV-066;274;354
+Nevada;NV;NV-067;313;354
+Nevada;NV;NV-068A;165;336
+Nevada;NV;NV-068B;210;384
+Nevada;NV;NV-069;235;396
+Nevada;NV;NV-070;274;406
+Nevada;NV;NV-071;313;393
+Nevada;NV;NV-071;295;421
+Nevada;NV;NV-072;283;446
+New Hampshire;NH;NH-018;37;352
+New Hampshire;NH;NH-019;58;352
+New Hampshire;NH;NH-020;89;352
+New Hampshire;NH;NH-021;119;352
+New Hampshire;NH;NH-022;150;352
+New Hampshire;NH;NH-023;182;345
+New Hampshire;NH;NH-025;58;310
+New Hampshire;NH;NH-026;89;310
+New Hampshire;NH;NH-027;119;310
+New Hampshire;NH;NH-028;150;310
+New Hampshire;NH;NH-029;182;310
+New Hampshire;NH;NH-030;204;321
+New Hampshire;NH;NH-031;210;341
+New Hampshire;NH;NH-032;66;235
+New Hampshire;NH;NH-033;61;265
+New Hampshire;NH;NH-034;89;265
+New Hampshire;NH;NH-035;119;265
+New Hampshire;NH;NH-036;150;265
+New Hampshire;NH;NH-037;182;265
+New Hampshire;NH;NH-038;89;220
+New Hampshire;NH;NH-039;119;220
+New Hampshire;NH;NH-040;150;220
+New Hampshire;NH;NH-041;182;220
+New Hampshire;NH;NH-042;94;173
+New Hampshire;NH;NH-043;119;173
+New Hampshire;NH;NH-044;150;173
+New Hampshire;NH;NH-045;182;173
+New Hampshire;NH;NH-046A;95;150
+New Hampshire;NH;NH-046B;131;90
+New Hampshire;NH;NH-047;122;141
+New Hampshire;NH;NH-048;150;130
+New Hampshire;NH;NH-049;177;130
+New Hampshire;NH;NH-050;150;83
+New Hampshire;NH;NH-051;175;83
+New Hampshire;NH;NH-052;154;40
+New Hampshire;NH;NH-053A;175;40
+New Hampshire;NH;NH-053B;160;14
+New Hampshire;NH;NH-053C;180;14
+New Jersey;NJ;NJ-018;128;41
+New Jersey;NJ;NJ-019;154;37
+New Jersey;NJ;NJ-020;189;47
+New Jersey;NJ;NJ-021;211;53
+New Jersey;NJ;NJ-022;92;85
+New Jersey;NJ;NJ-023;120;80
+New Jersey;NJ;NJ-024;155;80
+New Jersey;NJ;NJ-025;190;80
+New Jersey;NJ;NJ-026;225;80
+New Jersey;NJ;NJ-027;253;87
+New Jersey;NJ;NJ-028;90;125
+New Jersey;NJ;NJ-029;120;125
+New Jersey;NJ;NJ-030;155;125
+New Jersey;NJ;NJ-031;190;125
+New Jersey;NJ;NJ-032;225;125
+New Jersey;NJ;NJ-033;249;115
+New Jersey;NJ;NJ-034;86;156
+New Jersey;NJ;NJ-035;120;170
+New Jersey;NJ;NJ-036;155;170
+New Jersey;NJ;NJ-037;190;170
+New Jersey;NJ;NJ-038;213;160
+New Jersey;NJ;NJ-038;230;139
+New Jersey;NJ;NJ-039;253;193
+New Jersey;NJ;NJ-040;96;196
+New Jersey;NJ;NJ-041;120;215
+New Jersey;NJ;NJ-042;155;215
+New Jersey;NJ;NJ-043;190;215
+New Jersey;NJ;NJ-044;225;215
+New Jersey;NJ;NJ-045;248;215
+New Jersey;NJ;NJ-046;95;281
+New Jersey;NJ;NJ-047;120;271
+New Jersey;NJ;NJ-048;155;262
+New Jersey;NJ;NJ-049;190;262
+New Jersey;NJ;NJ-050;225;262
+New Jersey;NJ;NJ-051;244;248
+New Jersey;NJ;NJ-052;29;330
+New Jersey;NJ;NJ-053;50;320
+New Jersey;NJ;NJ-054;90;308
+New Jersey;NJ;NJ-055;120;308
+New Jersey;NJ;NJ-056;155;308
+New Jersey;NJ;NJ-057;190;308
+New Jersey;NJ;NJ-058;225;308
+New Jersey;NJ;NJ-059;216;346
+New Jersey;NJ;NJ-060;24;354
+New Jersey;NJ;NJ-061;50;352
+New Jersey;NJ;NJ-062;90;352
+New Jersey;NJ;NJ-063;120;352
+New Jersey;NJ;NJ-064;155;352
+New Jersey;NJ;NJ-065;190;352
+New Jersey;NJ;NJ-066T;27;383
+New Jersey;NJ;NJ-066B;90;429
+New Jersey;NJ;NJ-067;50;392
+New Jersey;NJ;NJ-068;90;400
+New Jersey;NJ;NJ-069;120;400
+New Jersey;NJ;NJ-070;155;400
+New Jersey;NJ;NJ-071;190;388
+New Jersey;NJ;NJ-072;128;444
+New Jersey;NJ;NJ-073T;147;432
+New Jersey;NJ;NJ-073B;117;477
+New Mexico;NM;NM-012;34;49
+New Mexico;NM;NM-013;86;49
+New Mexico;NM;NM-014;139;49
+New Mexico;NM;NM-015;193;49
+New Mexico;NM;NM-016;246;49
+New Mexico;NM;NM-017;300;49
+New Mexico;NM;NM-018;354;49
+New Mexico;NM;NM-019;404;49
+New Mexico;NM;NM-020;34;128
+New Mexico;NM;NM-021;86;128
+New Mexico;NM;NM-022;139;128
+New Mexico;NM;NM-023;193;128
+New Mexico;NM;NM-024;246;128
+New Mexico;NM;NM-025;300;128
+New Mexico;NM;NM-026;354;128
+New Mexico;NM;NM-027;404;128
+New Mexico;NM;NM-028;34;208
+New Mexico;NM;NM-029;86;208
+New Mexico;NM;NM-030;139;208
+New Mexico;NM;NM-031;193;208
+New Mexico;NM;NM-032;246;208
+New Mexico;NM;NM-033;300;208
+New Mexico;NM;NM-034;354;208
+New Mexico;NM;NM-035;404;208
+New Mexico;NM;NM-036;34;288
+New Mexico;NM;NM-037;86;288
+New Mexico;NM;NM-038;139;288
+New Mexico;NM;NM-039;193;288
+New Mexico;NM;NM-040;246;288
+New Mexico;NM;NM-041;300;288
+New Mexico;NM;NM-042;354;288
+New Mexico;NM;NM-043;404;288
+New Mexico;NM;NM-044;34;368
+New Mexico;NM;NM-045;86;368
+New Mexico;NM;NM-046;139;368
+New Mexico;NM;NM-047;193;368
+New Mexico;NM;NM-048;246;368
+New Mexico;NM;NM-049;300;368
+New Mexico;NM;NM-050;354;368
+New Mexico;NM;NM-051;404;368
+New Mexico;NM;NM-052;34;420
+New Mexico;NM;NM-053;86;420
+New Mexico;NM;NM-054;139;420
+New Mexico;NM;NM-055;193;420
+New Mexico;NM;NM-056A;246;420
+New Mexico;NM;NM-056B;300;420
+New Mexico;NM;NM-057A;354;420
+New Mexico;NM;NM-057B;404;420
+New York;NY;NY-024;447;480
+New York;NY;NY-024;460;470
+New York;NY;NY-025;480;464
+New York;NY;NY-026;514;460
+New York;NY;NY-027;548;452
+New York;NY;NY-028;580;440
+New York;NY;NY-028;591;422
+New York;NY;NY-029;600;437
+New York;NY;NY-029;613;409
+New York;NY;NY-029;619;431
+New York;NY;NY-029;605;427
+New York;NY;NY-030;391;387
+New York;NY;NY-031;415;393
+New York;NY;NY-032;448;402
+New York;NY;NY-033;480;406
+New York;NY;NY-034;385;354
+New York;NY;NY-035;413;356
+New York;NY;NY-036;448;355
+New York;NY;NY-037;480;355
+New York;NY;NY-039;26;312
+New York;NY;NY-040;58;304
+New York;NY;NY-041;92;304
+New York;NY;NY-042;126;304
+New York;NY;NY-043;160;304
+New York;NY;NY-044;194;304
+New York;NY;NY-045;228;304
+New York;NY;NY-046;262;304
+New York;NY;NY-047;296;304
+New York;NY;NY-048;330;304
+New York;NY;NY-049;364;304
+New York;NY;NY-050;398;304
+New York;NY;NY-051;432;304
+New York;NY;NY-052;466;304
+New York;NY;NY-053;492;304
+New York;NY;NY-054;68;268
+New York;NY;NY-054;71;227
+New York;NY;NY-055;92;250
+New York;NY;NY-056;126;250
+New York;NY;NY-057;160;250
+New York;NY;NY-058;194;250
+New York;NY;NY-059;228;250
+New York;NY;NY-060;262;250
+New York;NY;NY-061;296;250
+New York;NY;NY-062;330;250
+New York;NY;NY-063;364;250
+New York;NY;NY-064;398;250
+New York;NY;NY-065;432;250
+New York;NY;NY-066;466;250
+New York;NY;NY-067;492;250
+New York;NY;NY-068;70;208
+New York;NY;NY-069;92;208
+New York;NY;NY-070;126;208
+New York;NY;NY-071;160;208
+New York;NY;NY-072;194;208
+New York;NY;NY-073;228;208
+New York;NY;NY-074;262;198
+New York;NY;NY-075;296;198
+New York;NY;NY-076;330;198
+New York;NY;NY-077;364;198
+New York;NY;NY-078;398;198
+New York;NY;NY-079;432;198
+New York;NY;NY-080;466;198
+New York;NY;NY-081;492;198
+New York;NY;NY-082;272;171
+New York;NY;NY-083;296;144
+New York;NY;NY-084;330;144
+New York;NY;NY-085;364;144
+New York;NY;NY-086;398;144
+New York;NY;NY-087;432;144
+New York;NY;NY-088;466;144
+New York;NY;NY-089;492;144
+New York;NY;NY-090;275;107
+New York;NY;NY-091;296;102
+New York;NY;NY-092;330;90
+New York;NY;NY-093;364;90
+New York;NY;NY-094;398;90
+New York;NY;NY-095;432;90
+New York;NY;NY-096;466;90
+New York;NY;NY-097;492;90
+New York;NY;NY-098;338;57
+New York;NY;NY-099;364;45
+New York;NY;NY-100;398;40
+New York;NY;NY-101;432;40
+New York;NY;NY-102;466;40
+New York;NY;NY-103;492;40
+North Carolina;NC;NC-012;221;89
+North Carolina;NC;NC-012;246;86
+North Carolina;NC;NC-013;273;75
+North Carolina;NC;NC-014;318;63
+North Carolina;NC;NC-015;361;63
+North Carolina;NC;NC-016;405;63
+North Carolina;NC;NC-017;450;63
+North Carolina;NC;NC-018;495;63
+North Carolina;NC;NC-019;539;63
+North Carolina;NC;NC-020;583;63
+North Carolina;NC;NC-021;628;63
+North Carolina;NC;NC-022;672;64
+North Carolina;NC;NC-023;716;64
+North Carolina;NC;NC-024;760;64
+North Carolina;NC;NC-025;805;64
+North Carolina;NC;NC-026;846;65
+North Carolina;NC;NC-027;872;76
+North Carolina;NC;NC-028;58;175
+North Carolina;NC;NC-029;94;170
+North Carolina;NC;NC-030A;140;143
+North Carolina;NC;NC-030B;18;216
+North Carolina;NC;NC-031;184;125
+North Carolina;NC;NC-032;226;120
+North Carolina;NC;NC-033;273;120
+North Carolina;NC;NC-034;318;120
+North Carolina;NC;NC-035;361;120
+North Carolina;NC;NC-036;405;120
+North Carolina;NC;NC-037;450;120
+North Carolina;NC;NC-038;495;120
+North Carolina;NC;NC-039;539;120
+North Carolina;NC;NC-040;583;120
+North Carolina;NC;NC-041;628;120
+North Carolina;NC;NC-042;672;120
+North Carolina;NC;NC-043;716;120
+North Carolina;NC;NC-046;760;120
+North Carolina;NC;NC-047;800;97
+North Carolina;NC;NC-047;805;131
+North Carolina;NC;NC-048;829;93
+North Carolina;NC;NC-048;869;94
+North Carolina;NC;NC-048;850;133
+North Carolina;NC;NC-049;871;96
+North Carolina;NC;NC-049;883;104
+North Carolina;NC;NC-049;875;135
+North Carolina;NC;NC-049;903;146
+North Carolina;NC;NC-050;50;208
+North Carolina;NC;NC-051;95;208
+North Carolina;NC;NC-052;139;182
+North Carolina;NC;NC-053;184;180
+North Carolina;NC;NC-054;227;178
+North Carolina;NC;NC-055;272;178
+North Carolina;NC;NC-056;317;178
+North Carolina;NC;NC-057;361;182
+North Carolina;NC;NC-058;406;182
+North Carolina;NC;NC-059;449;182
+North Carolina;NC;NC-060;495;182
+North Carolina;NC;NC-061;539;182
+North Carolina;NC;NC-062;583;182
+North Carolina;NC;NC-063;628;182
+North Carolina;NC;NC-064;670;182
+North Carolina;NC;NC-065;715;182
+North Carolina;NC;NC-066;761;182
+North Carolina;NC;NC-067;805;170
+North Carolina;NC;NC-068;842;167
+North Carolina;NC;NC-068;840;229
+North Carolina;NC;NC-069;873;155
+North Carolina;NC;NC-069;896;200
+North Carolina;NC;NC-070A;405;233
+North Carolina;NC;NC-070B;137;222
+North Carolina;NC;NC-071A;450;233
+North Carolina;NC;NC-071B;165;218
+North Carolina;NC;NC-072;495;239
+North Carolina;NC;NC-073;539;239
+North Carolina;NC;NC-074;583;239
+North Carolina;NC;NC-075;628;239
+North Carolina;NC;NC-076;670;239
+North Carolina;NC;NC-077;715;239
+North Carolina;NC;NC-078;760;240
+North Carolina;NC;NC-079;798;246
+North Carolina;NC;NC-080A;371;228
+North Carolina;NC;NC-080B;511;282
+North Carolina;NC;NC-081;539;295
+North Carolina;NC;NC-082;583;305
+North Carolina;NC;NC-083;628;305
+North Carolina;NC;NC-084;670;300
+North Carolina;NC;NC-085;708;285
+North Carolina;NC;NC-086;599;353
+North Carolina;NC;NC-087;640;352
+North Dakota;ND;ND-009;48;60
+North Dakota;ND;ND-010;114;60
+North Dakota;ND;ND-011;186;60
+North Dakota;ND;ND-012;256;60
+North Dakota;ND;ND-013;326;60
+North Dakota;ND;ND-014;396;60
+North Dakota;ND;ND-015;466;60
+North Dakota;ND;ND-016;536;60
+North Dakota;ND;ND-017;606;60
+North Dakota;ND;ND-018;676;60
+North Dakota;ND;ND-019;730;60
+North Dakota;ND;ND-020;48;160
+North Dakota;ND;ND-021;114;160
+North Dakota;ND;ND-022;186;160
+North Dakota;ND;ND-023;256;160
+North Dakota;ND;ND-024;326;160
+North Dakota;ND;ND-025;396;160
+North Dakota;ND;ND-026;466;160
+North Dakota;ND;ND-027;536;160
+North Dakota;ND;ND-028;606;160
+North Dakota;ND;ND-029;676;160
+North Dakota;ND;ND-030;730;160
+North Dakota;ND;ND-031;48;260
+North Dakota;ND;ND-032;114;260
+North Dakota;ND;ND-033;186;260
+North Dakota;ND;ND-034;256;260
+North Dakota;ND;ND-035;326;260
+North Dakota;ND;ND-036;396;260
+North Dakota;ND;ND-037;466;260
+North Dakota;ND;ND-038;536;260
+North Dakota;ND;ND-039;606;260
+North Dakota;ND;ND-040;676;260
+North Dakota;ND;ND-041;730;260
+North Dakota;ND;ND-042;48;360
+North Dakota;ND;ND-043;114;360
+North Dakota;ND;ND-044;186;360
+North Dakota;ND;ND-045;256;360
+North Dakota;ND;ND-046;326;360
+North Dakota;ND;ND-047;396;360
+North Dakota;ND;ND-048;466;360
+North Dakota;ND;ND-049;536;360
+North Dakota;ND;ND-050;606;360
+North Dakota;ND;ND-051;676;360
+North Dakota;ND;ND-052;730;360
+North Dakota;ND;ND-053;792;450
+North Dakota;ND;ND-053;782;343
+North Dakota;ND;ND-053;782;368
+North Dakota;ND;ND-054;48;450
+North Dakota;ND;ND-055;114;450
+North Dakota;ND;ND-056;186;450
+North Dakota;ND;ND-057;256;450
+North Dakota;ND;ND-058;326;450
+North Dakota;ND;ND-059;396;450
+North Dakota;ND;ND-060;466;450
+North Dakota;ND;ND-061;536;450
+North Dakota;ND;ND-062;606;450
+North Dakota;ND;ND-063;676;450
+North Dakota;ND;ND-064;730;450
+Ohio;OH;OH-024;25;58
+Ohio;OH;OH-025;86;58
+Ohio;OH;OH-026;111;56
+Ohio;OH;OH-027;155;60
+Ohio;OH;OH-028;183;67
+Ohio;OH;OH-028;208;51
+Ohio;OH;OH-028;209;47
+Ohio;OH;OH-028;208;43
+Ohio;OH;OH-028;219;58
+Ohio;OH;OH-030;291;71
+Ohio;OH;OH-031;346;63
+Ohio;OH;OH-032;380;51
+Ohio;OH;OH-033;424;47
+Ohio;OH;OH-034;22;102
+Ohio;OH;OH-035;66;102
+Ohio;OH;OH-036;110;102
+Ohio;OH;OH-037;154;102
+Ohio;OH;OH-038;198;102
+Ohio;OH;OH-039;242;102
+Ohio;OH;OH-040;286;102
+Ohio;OH;OH-041;330;102
+Ohio;OH;OH-042;374;102
+Ohio;OH;OH-043;418;102
+Ohio;OH;OH-044;22;170
+Ohio;OH;OH-045;66;170
+Ohio;OH;OH-046;110;170
+Ohio;OH;OH-047;154;170
+Ohio;OH;OH-048;198;170
+Ohio;OH;OH-049;242;170
+Ohio;OH;OH-050;286;170
+Ohio;OH;OH-051;330;170
+Ohio;OH;OH-052;374;170
+Ohio;OH;OH-053;418;170
+Ohio;OH;OH-054;22;237
+Ohio;OH;OH-055;66;237
+Ohio;OH;OH-056;110;237
+Ohio;OH;OH-057;154;237
+Ohio;OH;OH-058;198;237
+Ohio;OH;OH-059;242;237
+Ohio;OH;OH-060;286;237
+Ohio;OH;OH-061;330;237
+Ohio;OH;OH-062;374;237
+Ohio;OH;OH-063;418;237
+Ohio;OH;OH-064;22;304
+Ohio;OH;OH-065;66;304
+Ohio;OH;OH-066;110;304
+Ohio;OH;OH-067;154;304
+Ohio;OH;OH-068;198;304
+Ohio;OH;OH-069;242;304
+Ohio;OH;OH-070;286;304
+Ohio;OH;OH-071;330;304
+Ohio;OH;OH-072;374;304
+Ohio;OH;OH-073A;406;296
+Ohio;OH;OH-073B;366;348
+Ohio;OH;OH-074;22;370
+Ohio;OH;OH-075;66;370
+Ohio;OH;OH-076;110;370
+Ohio;OH;OH-077;154;370
+Ohio;OH;OH-078;198;370
+Ohio;OH;OH-079;242;370
+Ohio;OH;OH-080;286;370
+Ohio;OH;OH-081;330;352
+Ohio;OH;OH-081;313;405
+Ohio;OH;OH-082;79;420
+Ohio;OH;OH-083;117;427
+Ohio;OH;OH-084;162;430
+Ohio;OH;OH-085;207;424
+Ohio;OH;OH-086;251;439
+Ohio;OH;OH-087A;277;414
+Ohio;OH;OH-087A;307;411
+Ohio;OH;OH-087B;244;478
+Oklahoma;OK;OK-012;14;44
+Oklahoma;OK;OK-013;47;44
+Oklahoma;OK;OK-014;97;44
+Oklahoma;OK;OK-015;147;44
+Oklahoma;OK;OK-016;197;44
+Oklahoma;OK;OK-017;247;44
+Oklahoma;OK;OK-018;298;44
+Oklahoma;OK;OK-019;348;44
+Oklahoma;OK;OK-020;398;44
+Oklahoma;OK;OK-021;448;44
+Oklahoma;OK;OK-022;498;44
+Oklahoma;OK;OK-023;549;44
+Oklahoma;OK;OK-024;599;44
+Oklahoma;OK;OK-025;649;44
+Oklahoma;OK;OK-026;699;44
+Oklahoma;OK;OK-027;739;44
+Oklahoma;OK;OK-028;298;111
+Oklahoma;OK;OK-029;348;111
+Oklahoma;OK;OK-030;398;111
+Oklahoma;OK;OK-031;448;111
+Oklahoma;OK;OK-032;498;111
+Oklahoma;OK;OK-033;549;111
+Oklahoma;OK;OK-034;599;111
+Oklahoma;OK;OK-035;649;111
+Oklahoma;OK;OK-036;699;111
+Oklahoma;OK;OK-037;739;111
+Oklahoma;OK;OK-038;298;180
+Oklahoma;OK;OK-039;348;180
+Oklahoma;OK;OK-040;398;180
+Oklahoma;OK;OK-041;448;180
+Oklahoma;OK;OK-042;498;180
+Oklahoma;OK;OK-043;549;180
+Oklahoma;OK;OK-044;599;180
+Oklahoma;OK;OK-045;649;180
+Oklahoma;OK;OK-046;699;180
+Oklahoma;OK;OK-047;739;180
+Oklahoma;OK;OK-048;298;249
+Oklahoma;OK;OK-049;348;249
+Oklahoma;OK;OK-050;398;249
+Oklahoma;OK;OK-051;448;249
+Oklahoma;OK;OK-052;498;249
+Oklahoma;OK;OK-053;549;249
+Oklahoma;OK;OK-054;599;249
+Oklahoma;OK;OK-055;649;249
+Oklahoma;OK;OK-056;699;249
+Oklahoma;OK;OK-057;739;249
+Oklahoma;OK;OK-058A;305;289
+Oklahoma;OK;OK-058B;505;355
+Oklahoma;OK;OK-058B;529;360
+Oklahoma;OK;OK-058B;538;354
+Oklahoma;OK;OK-058C;599;359
+Oklahoma;OK;OK-058D;564;355
+Oklahoma;OK;OK-059A;350;295
+Oklahoma;OK;OK-059B;750;361
+Oklahoma;OK;OK-060;397;302
+Oklahoma;OK;OK-061;447;306
+Oklahoma;OK;OK-062;497;315
+Oklahoma;OK;OK-063;547;315
+Oklahoma;OK;OK-064;597;315
+Oklahoma;OK;OK-065;647;315
+Oklahoma;OK;OK-066;697;315
+Oklahoma;OK;OK-067;747;315
+Oregon;OR;OR-017;70;24
+Oregon;OR;OR-018;98;25
+Oregon;OR;OR-019;118;26
+Oregon;OR;OR-020;70;53
+Oregon;OR;OR-021;98;53
+Oregon;OR;OR-022;125;53
+Oregon;OR;OR-023;159;74
+Oregon;OR;OR-024;194;68
+Oregon;OR;OR-025;226;68
+Oregon;OR;OR-026;70;99
+Oregon;OR;OR-027;97;99
+Oregon;OR;OR-028;130;99
+Oregon;OR;OR-029;162;99
+Oregon;OR;OR-030;194;99
+Oregon;OR;OR-031;226;99
+Oregon;OR;OR-032;70;143
+Oregon;OR;OR-033;97;143
+Oregon;OR;OR-034;130;143
+Oregon;OR;OR-035;162;143
+Oregon;OR;OR-036;194;143
+Oregon;OR;OR-037;226;143
+Oregon;OR;OR-038;65;188
+Oregon;OR;OR-039;97;188
+Oregon;OR;OR-040;130;188
+Oregon;OR;OR-041;162;188
+Oregon;OR;OR-042;194;188
+Oregon;OR;OR-043;226;188
+Oregon;OR;OR-044;45;250
+Oregon;OR;OR-045;65;233
+Oregon;OR;OR-046;97;233
+Oregon;OR;OR-047;130;233
+Oregon;OR;OR-048;162;233
+Oregon;OR;OR-049;194;233
+Oregon;OR;OR-050;226;233
+Oregon;OR;OR-051;40;282
+Oregon;OR;OR-052;65;282
+Oregon;OR;OR-053;97;282
+Oregon;OR;OR-054;130;282
+Oregon;OR;OR-055;162;282
+Oregon;OR;OR-056;194;282
+Oregon;OR;OR-057;226;282
+Oregon;OR;OR-058;40;327
+Oregon;OR;OR-059;65;327
+Oregon;OR;OR-060;97;327
+Oregon;OR;OR-061;130;327
+Oregon;OR;OR-062;162;327
+Oregon;OR;OR-063;194;327
+Oregon;OR;OR-064;226;327
+Oregon;OR;OR-065;40;365
+Oregon;OR;OR-066;65;365
+Oregon;OR;OR-067;97;365
+Oregon;OR;OR-068;130;365
+Oregon;OR;OR-069;162;365
+Oregon;OR;OR-070;194;365
+Oregon;OR;OR-071;226;365
+Oregon;OR;OR-072;274;77
+Oregon;OR;OR-073;338;77
+Oregon;OR;OR-074;405;77
+Oregon;OR;OR-075;469;77
+Oregon;OR;OR-076;274;167
+Oregon;OR;OR-077;338;167
+Oregon;OR;OR-078;405;167
+Oregon;OR;OR-079;469;167
+Oregon;OR;OR-080;274;258
+Oregon;OR;OR-081;338;258
+Oregon;OR;OR-082;405;258
+Oregon;OR;OR-083;469;258
+Oregon;OR;OR-084;274;349
+Oregon;OR;OR-085;338;349
+Oregon;OR;OR-086;405;349
+Oregon;OR;OR-087;469;349
+Oregon;OR;OR-088A;513;77
+Oregon;OR;OR-088B;504;130
+Oregon;OR;OR-088B;502;197
+Pennsylvania;PA;PA-026;57;59
+Pennsylvania;PA;PA-027;97;43
+Pennsylvania;PA;PA-028;43;110
+Pennsylvania;PA;PA-029;98;110
+Pennsylvania;PA;PA-030;160;110
+Pennsylvania;PA;PA-031;222;110
+Pennsylvania;PA;PA-032;284;110
+Pennsylvania;PA;PA-033;346;110
+Pennsylvania;PA;PA-034;408;110
+Pennsylvania;PA;PA-035;470;110
+Pennsylvania;PA;PA-036;532;110
+Pennsylvania;PA;PA-037;594;110
+Pennsylvania;PA;PA-038;656;110
+Pennsylvania;PA;PA-039;718;110
+Pennsylvania;PA;PA-040;770;110
+Pennsylvania;PA;PA-042;43;202
+Pennsylvania;PA;PA-043;98;202
+Pennsylvania;PA;PA-044;160;202
+Pennsylvania;PA;PA-045;222;202
+Pennsylvania;PA;PA-046;284;202
+Pennsylvania;PA;PA-047;346;202
+Pennsylvania;PA;PA-048;408;202
+Pennsylvania;PA;PA-049;470;202
+Pennsylvania;PA;PA-050;532;202
+Pennsylvania;PA;PA-051;594;202
+Pennsylvania;PA;PA-052;656;202
+Pennsylvania;PA;PA-053;718;202
+Pennsylvania;PA;PA-054;770;202
+Pennsylvania;PA;PA-055;820;186
+Pennsylvania;PA;PA-056;43;296
+Pennsylvania;PA;PA-057;98;296
+Pennsylvania;PA;PA-058;160;296
+Pennsylvania;PA;PA-059;222;296
+Pennsylvania;PA;PA-060;284;296
+Pennsylvania;PA;PA-061;346;296
+Pennsylvania;PA;PA-062;408;296
+Pennsylvania;PA;PA-063;470;296
+Pennsylvania;PA;PA-064;532;296
+Pennsylvania;PA;PA-065;594;296
+Pennsylvania;PA;PA-066;656;296
+Pennsylvania;PA;PA-067;718;296
+Pennsylvania;PA;PA-068;762;296
+Pennsylvania;PA;PA-070;43;390
+Pennsylvania;PA;PA-071;98;390
+Pennsylvania;PA;PA-072;160;390
+Pennsylvania;PA;PA-073;222;390
+Pennsylvania;PA;PA-074;284;390
+Pennsylvania;PA;PA-075;346;390
+Pennsylvania;PA;PA-076;408;390
+Pennsylvania;PA;PA-077;470;390
+Pennsylvania;PA;PA-078;532;390
+Pennsylvania;PA;PA-079;594;390
+Pennsylvania;PA;PA-080;656;390
+Pennsylvania;PA;PA-081;718;390
+Pennsylvania;PA;PA-082;770;390
+Pennsylvania;PA;PA-083;823;407
+Pennsylvania;PA;PA-084;43;466
+Pennsylvania;PA;PA-085;98;466
+Pennsylvania;PA;PA-086;160;466
+Pennsylvania;PA;PA-087;222;466
+Pennsylvania;PA;PA-088;284;466
+Pennsylvania;PA;PA-089;346;466
+Pennsylvania;PA;PA-090;408;466
+Pennsylvania;PA;PA-091;470;466
+Pennsylvania;PA;PA-092;532;466
+Pennsylvania;PA;PA-093;594;466
+Pennsylvania;PA;PA-094;656;466
+Pennsylvania;PA;PA-095;718;455
+Pennsylvania;PA;PA-096;765;453
+Rhode Island;RI;RI-064;115;49
+Rhode Island;RI;RI-065;198;50
+Rhode Island;RI;RI-066A;250;88
+Rhode Island;RI;RI-066B;100;150
+Rhode Island;RI;RI-067;163;150
+Rhode Island;RI;RI-068;240;150
+Rhode Island;RI;RI-068;257;207
+Rhode Island;RI;RI-069;295;182
+Rhode Island;RI;RI-069;325;205
+Rhode Island;RI;RI-070;118;264
+Rhode Island;RI;RI-071;194;265
+Rhode Island;RI;RI-072;270;236
+Rhode Island;RI;RI-072;286;215
+Rhode Island;RI;RI-072;289;279
+Rhode Island;RI;RI-072;265;298
+Rhode Island;RI;RI-072;247;277
+Rhode Island;RI;RI-072;293;212
+Rhode Island;RI;RI-072;317;292
+Rhode Island;RI;RI-073A;335;262
+Rhode Island;RI;RI-073B;66;362
+Rhode Island;RI;RI-074;116;348
+Rhode Island;RI;RI-075A;185;340
+Rhode Island;RI;RI-075B;163;474
+South Carolina;SC;SC-016;56;50
+South Carolina;SC;SC-016B;17;80
+South Carolina;SC;SC-017;100;43
+South Carolina;SC;SC-018;154;40
+South Carolina;SC;SC-019;205;40
+South Carolina;SC;SC-020;257;40
+South Carolina;SC;SC-021;308;46
+South Carolina;SC;SC-022;48;88
+South Carolina;SC;SC-023;100;100
+South Carolina;SC;SC-024;152;100
+South Carolina;SC;SC-025;206;100
+South Carolina;SC;SC-026;258;100
+South Carolina;SC;SC-027;310;100
+South Carolina;SC;SC-028;362;100
+South Carolina;SC;SC-029;414;100
+South Carolina;SC;SC-030;466;100
+South Carolina;SC;SC-031;511;124
+South Carolina;SC;SC-032;109;161
+South Carolina;SC;SC-033;152;170
+South Carolina;SC;SC-034;206;170
+South Carolina;SC;SC-035;258;170
+South Carolina;SC;SC-036;310;170
+South Carolina;SC;SC-037;362;170
+South Carolina;SC;SC-038;414;170
+South Carolina;SC;SC-039;466;170
+South Carolina;SC;SC-040;519;170
+South Carolina;SC;SC-041;569;190
+South Carolina;SC;SC-041B;602;208
+South Carolina;SC;SC-042;165;226
+South Carolina;SC;SC-043;206;244
+South Carolina;SC;SC-044;258;244
+South Carolina;SC;SC-045;310;244
+South Carolina;SC;SC-046;362;244
+South Carolina;SC;SC-047;414;244
+South Carolina;SC;SC-048;466;244
+South Carolina;SC;SC-049;519;244
+South Carolina;SC;SC-050;560;226
+South Carolina;SC;SC-051;216;298
+South Carolina;SC;SC-052;258;318
+South Carolina;SC;SC-053;310;318
+South Carolina;SC;SC-054;362;318
+South Carolina;SC;SC-055;414;318
+South Carolina;SC;SC-056;466;318
+South Carolina;SC;SC-057;514;305
+South Carolina;SC;SC-058;298;390
+South Carolina;SC;SC-059;350;390
+South Carolina;SC;SC-060;377;429
+South Carolina;SC;SC-060;403;382
+South Carolina;SC;SC-061;440;369
+South Carolina;SC;SC-061B;264;378
+South Carolina;SC;SC-062;308;452
+South Carolina;SC;SC-063;341;444
+South Dakota;SD;SD-012;32;53
+South Dakota;SD;SD-013;83;53
+South Dakota;SD;SD-014;134;53
+South Dakota;SD;SD-015;185;53
+South Dakota;SD;SD-016;236;53
+South Dakota;SD;SD-017;287;53
+South Dakota;SD;SD-018;338;53
+South Dakota;SD;SD-019;389;53
+South Dakota;SD;SD-020;440;53
+South Dakota;SD;SD-021;491;53
+South Dakota;SD;SD-022;542;53
+South Dakota;SD;SD-023;574;33
+South Dakota;SD;SD-023;574;82
+South Dakota;SD;SD-024;32;123
+South Dakota;SD;SD-025;83;123
+South Dakota;SD;SD-026;134;123
+South Dakota;SD;SD-027;185;123
+South Dakota;SD;SD-028;236;123
+South Dakota;SD;SD-029;287;123
+South Dakota;SD;SD-030;338;123
+South Dakota;SD;SD-031;389;123
+South Dakota;SD;SD-032;440;123
+South Dakota;SD;SD-033;491;123
+South Dakota;SD;SD-034;542;123
+South Dakota;SD;SD-035;580;123
+South Dakota;SD;SD-036;32;188
+South Dakota;SD;SD-037;83;188
+South Dakota;SD;SD-038;134;188
+South Dakota;SD;SD-039;185;188
+South Dakota;SD;SD-040;236;188
+South Dakota;SD;SD-041;287;188
+South Dakota;SD;SD-042;338;188
+South Dakota;SD;SD-043;389;188
+South Dakota;SD;SD-044;440;188
+South Dakota;SD;SD-045;491;188
+South Dakota;SD;SD-046;542;188
+South Dakota;SD;SD-047;580;188
+South Dakota;SD;SD-048;32;256
+South Dakota;SD;SD-049;83;256
+South Dakota;SD;SD-050;134;256
+South Dakota;SD;SD-051;185;256
+South Dakota;SD;SD-052;236;256
+South Dakota;SD;SD-053;287;256
+South Dakota;SD;SD-054;338;256
+South Dakota;SD;SD-055;389;256
+South Dakota;SD;SD-056;440;256
+South Dakota;SD;SD-057;491;256
+South Dakota;SD;SD-058;542;256
+South Dakota;SD;SD-059;580;256
+South Dakota;SD;SD-060;32;311
+South Dakota;SD;SD-061;83;311
+South Dakota;SD;SD-062;134;311
+South Dakota;SD;SD-063;185;311
+South Dakota;SD;SD-064;236;311
+South Dakota;SD;SD-065;287;311
+South Dakota;SD;SD-066;338;311
+South Dakota;SD;SD-067;389;311
+South Dakota;SD;SD-68A;440;311
+South Dakota;SD;SD-68B;473;360
+South Dakota;SD;SD-069;491;311
+South Dakota;SD;SD-070;542;311
+South Dakota;SD;SD-071;580;311
+South Dakota;SD;SD-072;571;367
+Tennessee;TN;TN-013;28;187
+Tennessee;TN;TN-013;27;148
+Tennessee;TN;TN-014;55;165
+Tennessee;TN;TN-015;92;165
+Tennessee;TN;TN-016;129;165
+Tennessee;TN;TN-017;166;165
+Tennessee;TN;TN-018;203;165
+Tennessee;TN;TN-019;240;165
+Tennessee;TN;TN-020;277;165
+Tennessee;TN;TN-021;314;165
+Tennessee;TN;TN-022;351;165
+Tennessee;TN;TN-023;388;165
+Tennessee;TN;TN-024;425;165
+Tennessee;TN;TN-025;462;165
+Tennessee;TN;TN-026;499;165
+Tennessee;TN;TN-027;536;165
+Tennessee;TN;TN-029A;637;94
+Tennessee;TN;TN-030;58;113
+Tennessee;TN;TN-030A;33;139
+Tennessee;TN;TN-031;92;113
+Tennessee;TN;TN-032;129;113
+Tennessee;TN;TN-033;166;113
+Tennessee;TN;TN-034;203;113
+Tennessee;TN;TN-035;240;113
+Tennessee;TN;TN-036;277;113
+Tennessee;TN;TN-037;314;113
+Tennessee;TN;TN-038;351;113
+Tennessee;TN;TN-039;388;113
+Tennessee;TN;TN-040;425;113
+Tennessee;TN;TN-041;462;113
+Tennessee;TN;TN-042;499;113
+Tennessee;TN;TN-043;536;113
+Tennessee;TN;TN-044;577;108
+Tennessee;TN;TN-045;615;101
+Tennessee;TN;TN-046;68;82
+Tennessee;TN;TN-046;71;55
+Tennessee;TN;TN-046A;722;47
+Tennessee;TN;TN-047;92;62
+Tennessee;TN;TN-048;129;62
+Tennessee;TN;TN-049;166;62
+Tennessee;TN;TN-050;203;62
+Tennessee;TN;TN-051;240;62
+Tennessee;TN;TN-052;277;62
+Tennessee;TN;TN-053;314;62
+Tennessee;TN;TN-054;351;62
+Tennessee;TN;TN-055;388;62
+Tennessee;TN;TN-056;425;62
+Tennessee;TN;TN-057;462;62
+Tennessee;TN;TN-058;499;62
+Tennessee;TN;TN-059;536;62
+Tennessee;TN;TN-060;577;62
+Tennessee;TN;TN-061;615;62
+Tennessee;TN;TN-062;654;62
+Tennessee;TN;TN-063;693;55
+Tennessee;TN;TN-063A;670;90
+Tennessee;TN;TN-064;280;28
+Tennessee;TN;TN-064A;213;28
+Tennessee;TN;TN-065;318;28
+Tennessee;TN;TN-065A;242;28
+Tennessee;TN;TN-066;429;30
+Tennessee;TN;TN-066A;354;30
+Tennessee;TN;TN-067;465;30
+Tennessee;TN;TN-067A;390;30
+Tennessee;TN;TN-068;579;31
+Tennessee;TN;TN-068A;503;31
+Tennessee;TN;TN-069;616;31
+Tennessee;TN;TN-069A;541;31
+Tennessee;TN;TN-070;727;31
+Tennessee;TN;TN-070A;653;31
+Tennessee;TN;TN-071;746;25
+Tennessee;TN;TN-071A;689;31
+Texas;TX;TX-026A;159;13
+Texas;TX;TX-026B;233;13
+Texas;TX;TX-027A;189;13
+Texas;TX;TX-027B;266;13
+Texas;TX;TX-028;159;54
+Texas;TX;TX-029;189;54
+Texas;TX;TX-030;233;54
+Texas;TX;TX-031;266;54
+Texas;TX;TX-032;159;143
+Texas;TX;TX-033;189;143
+Texas;TX;TX-034;233;143
+Texas;TX;TX-035;277;143
+Texas;TX;TX-036;321;143
+Texas;TX;TX-037;364;143
+Texas;TX;TX-038A;408;143
+Texas;TX;TX-038B;452;143
+Texas;TX;TX-039A;495;143
+Texas;TX;TX-039B;521;147
+Texas;TX;TX-040;159;179
+Texas;TX;TX-041;189;179
+Texas;TX;TX-042;233;179
+Texas;TX;TX-043;277;179
+Texas;TX;TX-044;321;179
+Texas;TX;TX-045;364;179
+Texas;TX;TX-046;408;179
+Texas;TX;TX-047;452;179
+Texas;TX;TX-048;495;179
+Texas;TX;TX-049;521;179
+Texas;TX;TX-050;20;241
+Texas;TX;TX-051;59;241
+Texas;TX;TX-050;59;241
+Texas;TX;TX-051;102;241
+Texas;TX;TX-052;146;241
+Texas;TX;TX-053;189;241
+Texas;TX;TX-054;233;241
+Texas;TX;TX-055;277;241
+Texas;TX;TX-056;321;241
+Texas;TX;TX-057;364;241
+Texas;TX;TX-058;408;241
+Texas;TX;TX-059;452;241
+Texas;TX;TX-060;495;241
+Texas;TX;TX-061;521;241
+Texas;TX;TX-062;72;279
+Texas;TX;TX-062A;20;241
+Texas;TX;TX-063;102;304
+Texas;TX;TX-064;146;304
+Texas;TX;TX-065;189;304
+Texas;TX;TX-066;233;304
+Texas;TX;TX-067;277;304
+Texas;TX;TX-068;321;304
+Texas;TX;TX-069;364;304
+Texas;TX;TX-070;408;304
+Texas;TX;TX-071;452;304
+Texas;TX;TX-072;495;304
+Texas;TX;TX-073;521;304
+Texas;TX;TX-074;115;342
+Texas;TX;TX-075;144;350
+Texas;TX;TX-076;277;362
+Texas;TX;TX-077;321;362
+Texas;TX;TX-078;364;362
+Texas;TX;TX-079;408;362
+Texas;TX;TX-080;452;362
+Texas;TX;TX-081;481;348
+Texas;TX;TX-081;507;337
+Texas;TX;TX-082;288;409
+Texas;TX;TX-083;321;426
+Texas;TX;TX-084;365;426
+Texas;TX;TX-085;395;405
+Texas;TX;TX-085;388;431
+Texas;TX;TX-085;398;423
+Texas;TX;TX-085;411;407
+Texas;TX;TX-085;388;444
+Texas;TX;TX-086;245;342
+Texas;TX;TX-087;327;474
+Texas;TX;TX-088;365;483
+Texas;TX;TX-089;389;510
+Texas;TX;TX-089;388;480
+Texas;TX;TX-089;387;476
+Utah;UT;UT-016;30;442
+Utah;UT;UT-017;74;442
+Utah;UT;UT-018;125;442
+Utah;UT;UT-019;176;442
+Utah;UT;UT-020;227;442
+Utah;UT;UT-021;278;442
+Utah;UT;UT-022;329;442
+Utah;UT;UT-023;368;442
+Utah;UT;UT-024;30;366
+Utah;UT;UT-025;74;366
+Utah;UT;UT-026;125;366
+Utah;UT;UT-027;176;366
+Utah;UT;UT-028;227;366
+Utah;UT;UT-029;278;366
+Utah;UT;UT-030;329;366
+Utah;UT;UT-031;368;366
+Utah;UT;UT-034;30;288
+Utah;UT;UT-035;74;288
+Utah;UT;UT-036;125;288
+Utah;UT;UT-037;176;288
+Utah;UT;UT-038;227;288
+Utah;UT;UT-039;278;288
+Utah;UT;UT-040;329;288
+Utah;UT;UT-041;368;288
+Utah;UT;UT-042;30;212
+Utah;UT;UT-043;74;212
+Utah;UT;UT-044;125;212
+Utah;UT;UT-045;176;212
+Utah;UT;UT-046;227;212
+Utah;UT;UT-047;278;212
+Utah;UT;UT-048;329;212
+Utah;UT;UT-049;368;212
+Utah;UT;UT-050;30;136
+Utah;UT;UT-051;74;136
+Utah;UT;UT-052;125;136
+Utah;UT;UT-053;176;136
+Utah;UT;UT-054;227;136
+Utah;UT;UT-055;278;136
+Utah;UT;UT-056;329;136
+Utah;UT;UT-057;368;136
+Utah;UT;UT-058;41;61
+Utah;UT;UT-059;99;61
+Utah;UT;UT-060;156;61
+Utah;UT;UT-061;208;61
+Utah;UT;UT-062A;41;17
+Utah;UT;UT-062B;156;17
+Utah;UT;UT-063A;99;17
+Utah;UT;UT-063B;208;17
+Vermont;VT;VT-020;48;453
+Vermont;VT;VT-021;80;453
+Vermont;VT;VT-022;126;453
+Vermont;VT;VT-023;156;428
+Vermont;VT;VT-023;153;485
+Vermont;VT;VT-024;50;385
+Vermont;VT;VT-025;80;385
+Vermont;VT;VT-026;126;385
+Vermont;VT;VT-027;158;385
+Vermont;VT;VT-028;50;317
+Vermont;VT;VT-029;80;317
+Vermont;VT;VT-030;126;317
+Vermont;VT;VT-031;162;317
+Vermont;VT;VT-032;40;246
+Vermont;VT;VT-033;80;246
+Vermont;VT;VT-034;126;246
+Vermont;VT;VT-035;172;246
+Vermont;VT;VT-036;201;246
+Vermont;VT;VT-037A;294;100
+Vermont;VT;VT-037B;297;32
+Vermont;VT;VT-037B;290;78
+Vermont;VT;VT-038;42;179
+Vermont;VT;VT-039;80;179
+Vermont;VT;VT-040;126;179
+Vermont;VT;VT-041;172;179
+Vermont;VT;VT-042;209;179
+Vermont;VT;VT-043;252;150
+Vermont;VT;VT-044;45;115
+Vermont;VT;VT-045;80;115
+Vermont;VT;VT-046;126;115
+Vermont;VT;VT-047;172;115
+Vermont;VT;VT-048;218;115
+Vermont;VT;VT-049;265;115
+Vermont;VT;VT-050;41;47
+Vermont;VT;VT-051;80;47
+Vermont;VT;VT-052;126;47
+Vermont;VT;VT-053;172;47
+Vermont;VT;VT-054;218;47
+Vermont;VT;VT-055;265;47
+Virginia;VA;VA-018;30;391
+Virginia;VA;VA-019;69;382
+Virginia;VA;VA-020;115;367
+Virginia;VA;VA-021;160;367
+Virginia;VA;VA-022;209;367
+Virginia;VA;VA-023;255;367
+Virginia;VA;VA-024;303;367
+Virginia;VA;VA-025;348;367
+Virginia;VA;VA-026;395;367
+Virginia;VA;VA-027;442;367
+Virginia;VA;VA-028;489;367
+Virginia;VA;VA-029;535;367
+Virginia;VA;VA-030;582;367
+Virginia;VA;VA-031;628;367
+Virginia;VA;VA-032;675;367
+Virginia;VA;VA-033;722;367
+Virginia;VA;VA-034;768;367
+Virginia;VA;VA-034;779;344
+Virginia;VA;VA-035;812;374
+Virginia;VA;VA-036;124;328
+Virginia;VA;VA-037;162;317
+Virginia;VA;VA-037;187;272
+Virginia;VA;VA-037B;162;317
+Virginia;VA;VA-037B;187;272
+Virginia;VA;VA-038;208;323
+Virginia;VA;VA-038;185;275
+Virginia;VA;VA-039;255;322
+Virginia;VA;VA-040;302;316
+Virginia;VA;VA-040;368;266
+Virginia;VA;VA-040B;302;316
+Virginia;VA;VA-040B;368;266
+Virginia;VA;VA-041;348;305
+Virginia;VA;VA-042;395;305
+Virginia;VA;VA-043;442;305
+Virginia;VA;VA-044;489;305
+Virginia;VA;VA-045;535;305
+Virginia;VA;VA-046;582;305
+Virginia;VA;VA-047;628;305
+Virginia;VA;VA-048;675;305
+Virginia;VA;VA-049;722;305
+Virginia;VA;VA-050;765;298
+Virginia;VA;VA-050;750;328
+Virginia;VA;VA-051;838;293
+Virginia;VA;VA-052;396;243
+Virginia;VA;VA-052;369;248
+Virginia;VA;VA-052;369;240
+Virginia;VA;VA-052B;396;243
+Virginia;VA;VA-052B;369;248
+Virginia;VA;VA-052B;369;240
+Virginia;VA;VA-053;442;237
+Virginia;VA;VA-054;489;237
+Virginia;VA;VA-055;535;237
+Virginia;VA;VA-056;582;237
+Virginia;VA;VA-057;628;237
+Virginia;VA;VA-058;675;237
+Virginia;VA;VA-059;722;237
+Virginia;VA;VA-060;771;226
+Virginia;VA;VA-060;756;261
+Virginia;VA;VA-061;794;223
+Virginia;VA;VA-061;821;213
+Virginia;VA;VA-061;825;229
+Virginia;VA;VA-061;834;266
+Virginia;VA;VA-061;792;256
+Virginia;VA;VA-061;792;256
+Virginia;VA;VA-062;860;239
+Virginia;VA;VA-063;891;213
+Virginia;VA;VA-063;899;204
+Virginia;VA;VA-063B;891;213
+Virginia;VA;VA-063B;899;204
+Virginia;VA;VA-064;411;192
+Virginia;VA;VA-064;440;133
+Virginia;VA;VA-064B;411;192
+Virginia;VA;VA-064B;440;133
+Virginia;VA;VA-065;442;170
+Virginia;VA;VA-066;489;170
+Virginia;VA;VA-067;535;170
+Virginia;VA;VA-068;582;170
+Virginia;VA;VA-069;628;170
+Virginia;VA;VA-070;675;170
+Virginia;VA;VA-071;720;191
+Virginia;VA;VA-072;500;121
+Virginia;VA;VA-073;535;112
+Virginia;VA;VA-074;582;102
+Virginia;VA;VA-075;628;102
+Virginia;VA;VA-076;675;102
+Virginia;VA;VA-077;705;96
+Virginia;VA;VA-078;585;47
+Virginia;VA;VA-079;629;61
+Virginia;VA;VA-080;660;61
+Washington;WA;WA-014;139;12
+Washington;WA;WA-014;130;47
+Washington;WA;WA-014;140;44
+Washington;WA;WA-014;147;54
+Washington;WA;WA-015;155;55
+Washington;WA;WA-015;175;25
+Washington;WA;WA-015;170;47
+Washington;WA;WA-015;167;53
+Washington;WA;WA-015;165;58
+Washington;WA;WA-015;171;60
+Washington;WA;WA-015;171;65
+Washington;WA;WA-016;215;40
+Washington;WA;WA-017;255;40
+Washington;WA;WA-018;295;40
+Washington;WA;WA-019;335;40
+Washington;WA;WA-020;375;40
+Washington;WA;WA-021;415;40
+Washington;WA;WA-022;455;40
+Washington;WA;WA-023;495;40
+Washington;WA;WA-024;535;40
+Washington;WA;WA-025;572;40
+Washington;WA;WA-026;26;128
+Washington;WA;WA-027;25;104
+Washington;WA;WA-028;51;108
+Washington;WA;WA-029;95;114
+Washington;WA;WA-030;135;115
+Washington;WA;WA-030;145;69
+Washington;WA;WA-031;155;70
+Washington;WA;WA-031;186;75
+Washington;WA;WA-031;171;84
+Washington;WA;WA-031;157;118
+Washington;WA;WA-032;215;91
+Washington;WA;WA-033;255;91
+Washington;WA;WA-034;295;91
+Washington;WA;WA-035;335;91
+Washington;WA;WA-036;375;91
+Washington;WA;WA-037;415;91
+Washington;WA;WA-038;455;91
+Washington;WA;WA-039;495;91
+Washington;WA;WA-040;535;91
+Washington;WA;WA-041;572;91
+Washington;WA;WA-042;54;148
+Washington;WA;WA-043;95;148
+Washington;WA;WA-044;135;148
+Washington;WA;WA-045;170;148
+Washington;WA;WA-045;178;123
+Washington;WA;WA-045;188;125
+Washington;WA;WA-045;190;157
+Washington;WA;WA-045;190;170
+Washington;WA;WA-045;172;128
+Washington;WA;WA-046;215;148
+Washington;WA;WA-047;255;148
+Washington;WA;WA-048;295;148
+Washington;WA;WA-049;335;148
+Washington;WA;WA-050;375;148
+Washington;WA;WA-051;415;148
+Washington;WA;WA-052;455;148
+Washington;WA;WA-053;495;148
+Washington;WA;WA-054;535;148
+Washington;WA;WA-055;572;148
+Washington;WA;WA-056;62;205
+Washington;WA;WA-057;95;205
+Washington;WA;WA-058;135;205
+Washington;WA;WA-059;175;205
+Washington;WA;WA-059;191;180
+Washington;WA;WA-060;215;205
+Washington;WA;WA-061;255;205
+Washington;WA;WA-062;295;205
+Washington;WA;WA-063;335;205
+Washington;WA;WA-064;375;205
+Washington;WA;WA-065;415;205
+Washington;WA;WA-066;455;205
+Washington;WA;WA-067;495;205
+Washington;WA;WA-068;535;205
+Washington;WA;WA-069;572;205
+Washington;WA;WA-070;57;236
+Washington;WA;WA-070;67;250
+Washington;WA;WA-070;66;276
+Washington;WA;WA-071;95;262
+Washington;WA;WA-072;135;262
+Washington;WA;WA-073;175;262
+Washington;WA;WA-074;215;262
+Washington;WA;WA-075;255;262
+Washington;WA;WA-076;295;262
+Washington;WA;WA-077;335;262
+Washington;WA;WA-078;375;262
+Washington;WA;WA-079;415;262
+Washington;WA;WA-080;455;262
+Washington;WA;WA-081;495;262
+Washington;WA;WA-082;535;262
+Washington;WA;WA-083;572;262
+Washington;WA;WA-084;69;298
+Washington;WA;WA-085;95;299
+Washington;WA;WA-086;135;304
+Washington;WA;WA-087;175;318
+Washington;WA;WA-088;215;318
+Washington;WA;WA-089;255;318
+Washington;WA;WA-090;295;318
+Washington;WA;WA-091;335;318
+Washington;WA;WA-092;375;318
+Washington;WA;WA-093;415;318
+Washington;WA;WA-094;455;318
+Washington;WA;WA-095;495;318
+Washington;WA;WA-096;535;318
+Washington;WA;WA-097;572;318
+Washington;WA;WA-099;175;363
+Washington;WA;WA-100;215;363
+Washington;WA;WA-101;255;363
+Washington;WA;WA-102;295;358
+Washington;WA;WA-103A;335;358
+Washington;WA;WA-103B;375;352
+West Virginia;WV;WV-020;250;39
+West Virginia;WV;WV-021;242;105
+West Virginia;WV;WV-022;124;210
+West Virginia;WV;WV-022;146;203
+West Virginia;WV;WV-023;183;196
+West Virginia;WV;WV-024;232;164
+West Virginia;WV;WV-025;283;164
+West Virginia;WV;WV-026;333;164
+West Virginia;WV;WV-027;367;164
+West Virginia;WV;WV-027;403;206
+West Virginia;WV;WV-028;434;198
+West Virginia;WV;WV-028;458;159
+West Virginia;WV;WV-029;460;159
+West Virginia;WV;WV-029;484;190
+West Virginia;WV;WV-030;535;179
+West Virginia;WV;WV-031A;568;194
+West Virginia;WV;WV-031A;562;163
+West Virginia;WV;WV-031B;562;218
+West Virginia;WV;WV-031B;562;218
+West Virginia;WV;WV-032;82;265
+West Virginia;WV;WV-033;131;246
+West Virginia;WV;WV-034;182;246
+West Virginia;WV;WV-035;232;246
+West Virginia;WV;WV-036;283;246
+West Virginia;WV;WV-037;333;246
+West Virginia;WV;WV-038;384;246
+West Virginia;WV;WV-039;434;246
+West Virginia;WV;WV-040;479;227
+West Virginia;WV;WV-041;37;343
+West Virginia;WV;WV-042;81;317
+West Virginia;WV;WV-043;131;317
+West Virginia;WV;WV-044;182;317
+West Virginia;WV;WV-045;232;317
+West Virginia;WV;WV-046;283;317
+West Virginia;WV;WV-047;333;317
+West Virginia;WV;WV-048;384;304
+West Virginia;WV;WV-049;415;290
+West Virginia;WV;WV-049;445;283
+West Virginia;WV;WV-050;34;387
+West Virginia;WV;WV-051;81;387
+West Virginia;WV;WV-052;131;387
+West Virginia;WV;WV-053;182;387
+West Virginia;WV;WV-054;232;387
+West Virginia;WV;WV-055;283;387
+West Virginia;WV;WV-056A;318;369
+West Virginia;WV;WV-056B;49;428
+West Virginia;WV;WV-057;81;454
+West Virginia;WV;WV-058;131;454
+West Virginia;WV;WV-059;182;454
+West Virginia;WV;WV-060;232;454
+West Virginia;WV;WV-061;271;447
+West Virginia;WV;WV-062;118;501
+West Virginia;WV;WV-063A;174;500
+West Virginia;WV;WV-063B;200;498
+Wisconsin;WI;WI-024;121;353
+Wisconsin;WI;WI-025;142;360
+Wisconsin;WI;WI-026;168;360
+Wisconsin;WI;WI-027;194;360
+Wisconsin;WI;WI-028;220;360
+Wisconsin;WI;WI-029;246;360
+Wisconsin;WI;WI-030;272;360
+Wisconsin;WI;WI-031;298;360
+Wisconsin;WI;WI-032;121;320
+Wisconsin;WI;WI-033;142;320
+Wisconsin;WI;WI-034;168;320
+Wisconsin;WI;WI-035;194;320
+Wisconsin;WI;WI-036;220;320
+Wisconsin;WI;WI-037;246;320
+Wisconsin;WI;WI-038;272;320
+Wisconsin;WI;WI-039;293;320
+Wisconsin;WI;WI-040;115;280
+Wisconsin;WI;WI-041;142;280
+Wisconsin;WI;WI-042;168;280
+Wisconsin;WI;WI-043;194;280
+Wisconsin;WI;WI-044;220;280
+Wisconsin;WI;WI-045;246;280
+Wisconsin;WI;WI-046;272;280
+Wisconsin;WI;WI-047;299;280
+Wisconsin;WI;WI-048;78;237
+Wisconsin;WI;WI-048A;98;261
+Wisconsin;WI;WI-049;105;237
+Wisconsin;WI;WI-050;133;237
+Wisconsin;WI;WI-051;163;237
+Wisconsin;WI;WI-052;193;237
+Wisconsin;WI;WI-053;222;237
+Wisconsin;WI;WI-054;251;237
+Wisconsin;WI;WI-055;280;237
+Wisconsin;WI;WI-056;310;237
+Wisconsin;WI;WI-057;324;218
+Wisconsin;WI;WI-058;23;192
+Wisconsin;WI;WI-058A;53;220
+Wisconsin;WI;WI-059;46;195
+Wisconsin;WI;WI-060;75;195
+Wisconsin;WI;WI-061;105;195
+Wisconsin;WI;WI-062;134;195
+Wisconsin;WI;WI-063;163;195
+Wisconsin;WI;WI-064;192;195
+Wisconsin;WI;WI-065;222;195
+Wisconsin;WI;WI-066;251;195
+Wisconsin;WI;WI-067;280;195
+Wisconsin;WI;WI-068;299;184
+Wisconsin;WI;WI-068;313;209
+Wisconsin;WI;WI-069;329;192
+Wisconsin;WI;WI-070;23;155
+Wisconsin;WI;WI-071;46;155
+Wisconsin;WI;WI-072;75;155
+Wisconsin;WI;WI-073;105;155
+Wisconsin;WI;WI-074;134;155
+Wisconsin;WI;WI-075;163;155
+Wisconsin;WI;WI-076;192;155
+Wisconsin;WI;WI-077;222;155
+Wisconsin;WI;WI-078;251;155
+Wisconsin;WI;WI-079;280;155
+Wisconsin;WI;WI-080;303;155
+Wisconsin;WI;WI-081;344;166
+Wisconsin;WI;WI-081A;358;145
+Wisconsin;WI;WI-081A;353;156
+Wisconsin;WI;WI-082;23;114
+Wisconsin;WI;WI-083;46;114
+Wisconsin;WI;WI-084;75;114
+Wisconsin;WI;WI-085;105;114
+Wisconsin;WI;WI-086;134;114
+Wisconsin;WI;WI-087;163;114
+Wisconsin;WI;WI-088;192;114
+Wisconsin;WI;WI-089;222;114
+Wisconsin;WI;WI-090;251;114
+Wisconsin;WI;WI-091;280;114
+Wisconsin;WI;WI-092;51;72
+Wisconsin;WI;WI-093;75;72
+Wisconsin;WI;WI-094;105;72
+Wisconsin;WI;WI-095;134;72
+Wisconsin;WI;WI-096;163;72
+Wisconsin;WI;WI-097;192;82
+Wisconsin;WI;WI-098;222;86
+Wisconsin;WI;WI-099;240;90
+Wisconsin;WI;WI-099;263;92
+Wisconsin;WI;WI-099A;300;124
+Wisconsin;WI;WI-100;52;43
+Wisconsin;WI;WI-101;75;43
+Wisconsin;WI;WI-102;105;38
+Wisconsin;WI;WI-103;125;22
+Wisconsin;WI;WI-103;135;46
+Wisconsin;WI;WI-103;136;27
+Wisconsin;WI;WI-103;141;23
+Wisconsin;WI;WI-103;143;16
+Wisconsin;WI;WI-104;156;50
+Wisconsin;WI;WI-104A;152;7
+Wyoming;WY;WY-016;50;444
+Wyoming;WY;WY-017;118;444
+Wyoming;WY;WY-018;183;444
+Wyoming;WY;WY-019;248;444
+Wyoming;WY;WY-020;314;444
+Wyoming;WY;WY-021;380;444
+Wyoming;WY;WY-022;445;444
+Wyoming;WY;WY-023;510;444
+Wyoming;WY;WY-024;576;444
+Wyoming;WY;WY-025;617;444
+Wyoming;WY;WY-026;50;354
+Wyoming;WY;WY-027;118;354
+Wyoming;WY;WY-028;183;354
+Wyoming;WY;WY-029;248;354
+Wyoming;WY;WY-030;314;354
+Wyoming;WY;WY-031;380;354
+Wyoming;WY;WY-032;445;354
+Wyoming;WY;WY-033;510;354
+Wyoming;WY;WY-034;576;354
+Wyoming;WY;WY-035;617;354
+Wyoming;WY;WY-038;50;264
+Wyoming;WY;WY-039;118;264
+Wyoming;WY;WY-040;183;264
+Wyoming;WY;WY-041;248;264
+Wyoming;WY;WY-042;314;264
+Wyoming;WY;WY-043;380;264
+Wyoming;WY;WY-044;445;264
+Wyoming;WY;WY-045;510;264
+Wyoming;WY;WY-046;576;264
+Wyoming;WY;WY-047;617;264
+Wyoming;WY;WY-048;50;175
+Wyoming;WY;WY-049;118;175
+Wyoming;WY;WY-050;183;175
+Wyoming;WY;WY-051;248;175
+Wyoming;WY;WY-052;314;175
+Wyoming;WY;WY-053;380;175
+Wyoming;WY;WY-054;445;175
+Wyoming;WY;WY-055;510;175
+Wyoming;WY;WY-056;576;175
+Wyoming;WY;WY-057;617;175
+Wyoming;WY;WY-058;50;86
+Wyoming;WY;WY-059;118;86
+Wyoming;WY;WY-060;183;86
+Wyoming;WY;WY-061;248;86
+Wyoming;WY;WY-062;314;86
+Wyoming;WY;WY-063;380;86
+Wyoming;WY;WY-064;445;86
+Wyoming;WY;WY-065;510;86
+Wyoming;WY;WY-066;576;86
+Wyoming;WY;WY-067;617;86
+Wyoming;WY;WY-068A;50;26
+Wyoming;WY;WY-069A;118;26
+Wyoming;WY;WY-068B;183;26
+Wyoming;WY;WY-069B;248;26
+Wyoming;WY;WY-068C;314;26
+Wyoming;WY;WY-069C;380;26
+Wyoming;WY;WY-070A;445;26
+Wyoming;WY;WY-071A;510;26
+Wyoming;WY;WY-070B;576;26
+Wyoming;WY;WY-071B;617;26
+<enddata>
+
+
+
+

@@ -1,0 +1,705 @@
+#***************************************
+# HTMLName=K610i
+# SplitScreen=Yes
+# Export=Yes
+# Offline=Yes
+#***************************************
+
+# MacVersion = 1.1
+# MacDescription = Split Screen macro for Sony Ericsson K610i and others
+# MacAuthor = Bronstein
+# MacFileName = HTML_K610i.gsk
+
+# ToDo:
+# NA
+
+#************************************************************************
+# Based on HTML_Offline by Clyde
+# Used Variable declarations tool
+#**************************************************************************
+# V1.1
+# - Fixed new names for pictures
+#**************************************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$Child Type=String
+Declare Var=$count Type=Numeric
+Declare Var=$CurrentNumber Type=Numeric
+Declare Var=$Diff Type=String
+Declare Var=$Difficulty Type=String
+Declare Var=$file Type=String
+Declare Var=$found Type=String
+Declare Var=$header Type=String
+Declare Var=$Hints Type=String
+Declare Var=$html Type=String
+Declare Var=$HtmlText Type=String
+Declare Var=$images Type=String
+Declare Var=$logImage Type=String
+Declare Var=$logs Type=String
+Declare Var=$LogTypes Type=String
+Declare Var=$msg Type=String
+Declare Var=$out_str Type=String
+Declare Var=$Reg_String Type=String
+Declare Var=$Replace_String Type=String
+Declare Var=$RequiredNumber Type=Numeric
+Declare Var=$RequiredVersion Type=String
+Declare Var=$tb Type=String
+Declare Var=$tbId Type=String
+Declare Var=$tbName Type=String
+Declare Var=$tbRef Type=String
+Declare Var=$temp Type=String
+Declare Var=$temp2 Type=String
+Declare Var=$Terr Type=String
+Declare Var=$Terrain Type=String
+Declare Var=$TotalBugs Type=Numeric
+Declare Var=$TravelBugs Type=String
+Declare Var=$work Type=String
+Declare Var=$x Type=Numeric
+Declare Var=$y Type=Numeric
+Declare Var=$z Type=Numeric
+Declare Var=$_HTML Type=String
+Declare Var=$RoundedString Type=String
+Declare Var=$RoundedNumber Type=Numeric
+Declare Var=$WholeNumber Type=String
+Declare var=$time_string Type=String
+
+# Check to see if macro started by view or by run
+IF $_HTMLFormat = ""
+  CANCEL Msg="This macro is intended for use in SplitScreen, Offline and Export View only.$_NewLine Aborting the macro"
+ENDIF
+
+# check to see if macro can run on this version
+VerCheck version=7.1.1.10
+
+# set where the actual file will be generated
+$file = $_Install + "\temp\HtmlOffline.htm"
+
+# At first do it for Export, the desired view for this one
+If $_HtmlFormat = "Export"
+
+  # GSAK images for cache and log types are stored here
+  $images = "."
+
+  # HTML expects the path to contain forward slashes, so convert the path to all forward slashes.
+  $images = replace("\","/",$images,false)
+
+  # set up required tables
+  $html = $header
+
+# cache name line
+  $html = $html + "<span style=""text-align:center""><font size=+1><b>" + $d_name + "</b></font><br></span>"
+  $html = $html + "<table cellspacing=" + quote("0") + ">" + $_newline
+  $html = $html + "<tr><td width=20><img src=" + quote($Images + "/" + "cache" + $d_CacheType + ".gif") 
+  $html = $html + "alt="  + quote($d_CacheType) + " ></td><td>"  
+
+# cache size
+  IF left($d_container,1) = "N"
+    $html = $html + "S: <img src=" + quote($Images + "/cacheSizeU.gif") + " Alt=" + $d_container + "> "
+  ELSE
+    $html = $html + "S: <img src=" + quote($Images + "/cacheSize" + LEFT($d_container,1) + ".gif") + " Alt=" + $d_container + "> "
+  ENDIF
+
+# difficulty stars
+  GoSub Name=Difficulty
+  $html = $html + "<br>"
+  $html = $html + "D: " + $Difficulty
+
+# Terrain stars
+  GoSub Name=Terrain
+  $html = $html + "<br>"
+  $html = $html + "T: " + $Terrain
+
+  $html = $html + "</td></table>" + $_NewLine
+
+  Gosub Name=CacheStatus
+
+  $html = $html + "<table bgcolor=" + quote("white") + " border=0 width=95%>"  + $_newline
+  $html = $html + "<tr><td width=15><span class=""tablenames"">by:</span></td><td>" + $d_PlacedBy + " </td>"
+
+  # generate Latitude and Longitude output
+  $temp = GeoCalc($d_Latitude + ";" + $d_Longitude, "FormatMinutes")
+  $html = $html + "<tr>"
+  $html = $html + "<td><span class=""tablenames"">WGS84:</span></td><td>" +  extract($temp,";",1)
+  $html = $html + "<br>"
+  $html = $html + " " + extract($temp,";",2) + "</b></td>"  + $_Newline
+
+  # generate Waypoint code
+  $html = $html + "<tr><td><span class=""tablenames"">Waypoint:</span></td><td>" + $d_Code + "</td>" + $_newline
+
+  # generate Smart Name
+  $html = $html + "<tr><td><span class=""tablenames"">SmartN:</span></td><td>" + $d_SmartName + "</td>" + $_newline
+
+  # container and date hidden/placed
+  $html = $html + "<tr>"
+  $html = $html + "<td><span class=""tablenames"">Size:</span></td><td>"
+  $html = $html + $d_container + "</td>"
+  $html = $html + "<tr><td><span class=""tablenames"">Placed:</span></td><td>" + DateFormat($d_PlacedDate) + "</td>" + $_NewLine
+
+  # state, country
+  $html = $html + "<tr>"
+  $html = $html + "<td><span class=""tablenames"">Where:</span></td><td>"
+  If ($d_state <> "Nil")
+    $html = $html + $d_state + ", "
+  EndIf
+  $html = $html + $d_Country + "</td>" + $_NewLine
+
+  # Last update
+  $html = $html + "<tr><td><span class=""tablenames"">Last Update:</span></td><td>" + DateFormat($d_LastGpxDate) + "</td>" + $_NewLine
+
+  # User Data
+  IF ($d_UserData <> "") or ($d_User2 <> "")
+    $html = $html + "<tr>"
+  ENDIF
+  IF $d_UserData <> ""
+    $html = $html + "<td><span class=""tablenames"">User Data:</span></td><td>" + $d_UserData + "</td>" + $_NewLine
+  ENDIF
+  IF $d_User2 <> ""
+    IF $d_UserData <> ""
+      $html = $html + "<tr>"
+    ENDIF
+    $html = $html + "<td><span class=""tablenames"">User Data2:</span></td><td>" + $d_User2 + "</td>"
+  ENDIF
+
+  # Travel Bugs
+  GoSub Name=TravelBugs
+  $html = $html + $TravelBugs
+
+  GOSUB Name=Link2User
+  GOSUB Name=Link2Hints
+  $html= $html + "<tr>"
+  GOSUB Name=Link2Logs
+  GOSUB Name=Link2Nearby
+  
+	$html = $html + "</table>"
+
+ELSE
+  # OK, now for Online or Offline View
+
+  # GSAK images for cache and log types are stored here
+  $images = "file://" + $_Install + "\images"
+
+  # HTML expects the path to contain forward slashes, so convert the path to all forward slashes.
+  $images = replace("\","/",$images,false)
+
+  # set up required tables
+  $html = $header
+
+  $html = $html + "<table cellspacing=" + quote("0") + ">" + $_newline
+  $html = $html + "<tr><td width=20><img src=" + quote($images + "\cache" + $d_CacheType + ".gif") 
+  $html = $html + "alt="  + quote($d_CacheType) + " ></td><td>"  
+
+# cache name line
+  $html = $html + "<font size=+1><b>" + $d_name + "</font></b>"
+	IF $d_Url<>""
+	  $html = $html + " <a href=" + quote($d_url) + ">Online page</a>"
+	ENDIF
+	$html = $html + "<br>"
+
+# cache size
+  IF left($d_container,1) = "N"
+    $html = $html + "S: <img src=" + quote($Images + "/cacheSizeU.gif") + " Alt=" + $d_container + "> "
+  ELSE
+    $html = $html + "S: <img src=" + quote($Images + "/cacheSize" + LEFT($d_container,1) + ".gif") + " Alt=" + $d_container + "> "
+  ENDIF
+
+# difficulty stars
+  GoSub Name=Difficulty
+  $html = $html + "&nbsp;&nbsp;"
+  $html = $html + "D: " + $Difficulty
+
+# Terrain stars
+  Gosub Name=Terrain
+  $html = $html + "&nbsp;&nbsp;"
+  $html = $html + "T: " + $Terrain
+
+  $html = $html + "</td><td style=""vertical-align:top"">&nbsp;&nbsp;&nbsp;&nbsp;"
+  
+  GOSUB Name=CacheStatus
+
+  $html = $html + "</td></table>" + $_NewLine
+
+  $html = $html + "<table bgcolor=" + quote("white") + " border=0 width=95%>"  + $_newline
+  $html = $html + "<tr><td width=15><span class=""tablenames"">by:</span></td><td>" + $d_PlacedBy + " </td>"
+
+  # generate Latitude and Longitude output
+  $temp = GeoCalc($d_Latitude + ";" + $d_Longitude, "FormatMinutes")
+  $html = $html + "<td><span class=""tablenames"">WGS84:</span></td><td>" +  extract($temp,";",1)
+  $html = $html + "&nbsp;&nbsp;&nbsp;&nbsp;"
+  $html = $html + " " + extract($temp,";",2) + "</b></td>"  + $_Newline
+
+  # generate Waypoint code & Smart Name
+  $html = $html + "<tr><td><span class=""tablenames"">Waypoint:</span></td><td>" + $d_Code + "&nbsp;&nbsp(" + $d_SmartName + ")</td>" + $_newline
+
+  # container and date hidden/placed
+  $html = $html + "<td><span class=""tablenames"">Size:</span></td><td>"
+  $html = $html + $d_container + "</td>"
+  $html = $html + "<tr><td><span class=""tablenames"">Placed:</span></td><td>" + DateFormat($d_PlacedDate) + "</td>" + $_NewLine
+
+  # state, country
+  $html = $html + "<td><span class=""tablenames"">Where:</span></td><td>"
+  If ($d_state <> "Nil")
+    $html = $html + $d_state + ", "
+  EndIf
+  $html = $html + $d_Country + "</td>" + $_NewLine
+
+  # Last update
+  $html = $html + "<tr><td><span class=""tablenames"">Last Update:</span></td><td>" + DateFormat($d_LastGpxDate) + "</td>" + $_NewLine
+
+  # User Data
+  IF ($d_UserData <> "") or ($d_User2 <> "")
+    $html = $html + "<tr>"
+  ENDIF
+  IF $d_UserData <> ""
+    $html = $html + "<td><span class=""tablenames"">User Data:</span></td><td>" + $d_UserData + "</td>" + $_NewLine
+  ELSE
+    $html = $html + "<td></td><td></td>"
+  ENDIF
+  IF $d_User2 <> ""
+    $html = $html + "<td><span class=""tablenames"">User Data2:</span></td><td>" + $d_User2 + "</td>"
+  ENDIF
+
+  # Travel Bugs
+  GoSub Name=TravelBugs
+  $html = $html + $TravelBugs
+
+  GOSUB Name=Link2User
+  GOSUB Name=Link2Hints
+
+  GOSUB Name=Link2Logs
+  GOSUB Name=Link2Nearby
+  
+  $html = $html + "</table>"
+
+ENDIF
+
+# The following stuff is the same for all views
+
+# now the short description (but only if actaully something there)
+If not (IsEmpty($d_ShortDescription))
+  $HtmlText = $d_ShortDescription
+  # make plain text if not HTML encoded
+  If not ($d_ShortHtm)
+    GoSub Name=HtmlText
+  EndIf
+  $html = $html + "<hr>" + $HtmlText + $_NewLine
+EndIf
+
+# horizonal line here
+$html = $html + "<hr>" + $_NewLine
+
+# now the Long description (but only if actaully something there)
+If not (IsEmpty($d_LongDescription))
+  $temp = $d_LongDescription
+  # remove "adition hidden waypoint" as these are shown in the GSAK child waypoint section
+  if at("Additional Hidden Waypoints",$temp) > 0
+    $temp = Extract($temp,"Additional Hidden Waypoints",1)
+  EndIf
+  # make plain text if not HTML encoded
+  $HtmlText = $temp
+  If not ($d_LongHtm)
+    GoSub Name=HtmlText
+  EndIf
+  $html = $html + $HtmlText + "<br>" + $_NewLine
+EndIf
+
+# now child waypoints 
+GoSub Name=Child
+$Html = $html + $child
+
+# User Notes if any
+IF $d_HasUserNote
+  $html = $html + "<hr><a name=""UserNotes""></a>" + HTML("GSAKNotes","")
+ENDIF
+
+# Hints if any
+If IsEmpty($d_Hints)
+  $html = $html + "<hr><b>Additional Hints</b> (There are no hints for this cache)" + $_NewLine 
+else
+  #$Html = $html + "<p><b>Additional Hints </b>"
+  # decode hints
+  GoSub Name=Hints
+  $Html = $Html + "<hr>" + $hints + $_Newline
+Endif 
+
+# Horizonal line here
+$Html = $html + "<p><hr>" + $_NewLine
+
+# now the logs 
+#GoSub Name=Logs
+$Html = $html + "<a name=""logs""></a>" + $logs
+
+# NearBy only for Export View
+If $_HtmlFormat = "Export"
+  $temp = HTML("NearBy","")
+  # Extract first (head) line
+  $x = AT("<br>", $temp)
+  IF ($x>0)
+    $html = $html + left($temp,$x-1) + $_NewLine
+    $temp = right($temp,len($temp)-$x-3)
+		# Remove any bold and italic formatting, don't needed for small display
+	  $temp = Replace("<b>", "", $temp, true)
+	  $temp = Replace("</b>", "", $temp, true)
+	  $temp = Replace("<i>", "", $temp, true)
+	  $temp = Replace("</i>", "", $temp, true)
+	  # Use smaller font for waypoints
+	  $temp = replace("<a href=", "<font size=-3><a href=", $temp, true)
+	  $temp = replace("</a>", "</a></font>", $temp, true)
+	  # Exchange "kms" with "km" in smaller font
+	  $temp = replace(" kms ", "<font size=-3>km</font> ", $temp, true)
+		# Do this also with miles
+	  $temp = replace("miles ", "<font size=-3>mls</font> ", $temp, true)
+	  # Change order of name and distance
+	  $temp = trim($temp) + "<br>"
+	  $x = AT("<br>", $temp)
+	  while $x>0
+	    $y = AT("</a></font>", $temp)
+	    $z = AT("(",$temp)
+	    while AT("(",substr($temp,$z+1,$x-$z))>0
+	      $z = AT("(",substr($temp,$z+1,$x-$z)) + $z
+	    endwhile
+	    # Add waypoint
+	    $html = $html + "<br>" + left($temp, $y+10)
+	    # Add distance
+	    $html = $html + "<font size=+2> </font>" + substr($temp, $z+1, $x-$z-2)
+	    # Add name
+	    $html = $html + "<br>" + substr($temp, $y+12, $z-$y-13)
+	    $html = $html + $_NewLine
+	    $temp = substr($temp,$x+4,len($temp)-$x-3)
+	    $x = AT("<br>", $temp)
+	  endwhile
+	ELSE
+		$html = $html + "<hr><a name=""nc"">No Nearby Caches</a>"
+	ENDIF
+
+
+EndIf
+
+	
+$html = $html + "</body></html>" + $_NewLine	
+
+# Find copied images and add a link to support zooming of images
+$count = RegExCount("<img[^>]*>",$html)
+$x = $count
+While $x > 0
+	$found = RegExData("<img[^>]*>",$html,$x)
+	IF RegEx("gs.*jpg",RegExData("<img[^>]*>",$html,$x))
+		$temp = RegExData("'[^']*'",RegExData("<img[^>]*>",$html,$x),1)
+		$temp = substr($temp, 2, len($temp)-2)
+		$html = Replace(RegExData("<img[^>]*>",$html,$x),"<a href=""" + $temp  + """>" + RegExData("<img[^>]*>",$html,$x) + "</a>", $html, true)
+	ELSE
+		IF RegEx("http://",RegExData("<img[^>]*>",$html,$x))
+			$html = Replace(RegExData("<img[^>]*>",$html,$x),"[IMG removed]", $html, true)
+		ENDIF
+	ENDIF
+	$x = $x - 1
+EndWhile
+
+# Replace all ampersands by the original character
+$Reg_String = "&amp;"
+$replace_string = "&"
+$html = replace($reg_string, $replace_string, $html, true)
+
+# Removing of all Unicode characters which cannot be shown and replace it by a simple dot
+IF $_HtmlFormat="Export"
+	$Reg_String = "("
+	# Removing of 5 digits Unicode	
+	$Reg_String = $Reg_String + "(&#\d{4,5};)"
+	$Reg_String = $Reg_String + "|"
+	# Removing of 4 Hex-digits-Unicode	
+	$Reg_String = $Reg_String + "(&#x[a-fA-F0-9]{3,4};)"
+	$Reg_String = $Reg_String + ")"
+	$replace_string = "."
+	$count = RegExCount($Reg_String,$html)
+	While $count > 0
+		$found = RegExData($Reg_String,$html,$count)
+		$html = Replace(RegExData($Reg_String,$html,$count),$replace_string, $html, true)
+		$count = $count - 1
+	EndWhile
+ENDIF
+
+$_HTML = $html
+CANCEL
+
+#******************************************************************
+# subroutine and <data> elements start here
+#******************************************************************
+
+BeginSub Name=Link2User
+  # Link to User Notes
+  If $d_HasUserNote
+    $Html = $html + "<tr><hr><td><span class=""tablenames""><a href=""#UserNotes"">User Notes</a></span></td>" + $_NewLine 
+  else
+    $html = $html + "<tr><td><span class=""tablenames"">No User Notes</span></td>" + $_NewLine 
+  Endif
+EndSub
+
+BeginSub Name=Link2Hints
+	# Link to Hints
+	If IsEmpty($d_Hints)
+	  $html = $html + "<td><span class=""tablenames"">No Hints</span></td>" + $_NewLine 
+	else
+	  $Html = $html + "<td><span class=""tablenames""><a href=""#Hints"">Hints</a></span></td>" + $_NewLine 
+	Endif 
+EndSub
+
+BeginSub Name=Link2Logs
+	# Link to Logs
+	GoSub Name=Logs
+	If IsEmpty($logs)
+	  $html = $html + "<td><span class=""tablenames"">No Logs</span></td>" + $_NewLine 
+	else
+	  $Html = $html + "<td><span class=""tablenames""><a href=""#logs"">Logs</a></span></td>" + $_NewLine 
+	Endif 
+EndSub
+
+BeginSub Name=Link2Nearby
+  # Link to Nearby Caches
+  IF $_HtmlFormat = "Export"
+    $html = $html + "<td><span class=""tablenames""><a href=""#nc"">Nearby Caches</a></span></td>" + $_NewLine
+  ELSE
+    $html = $html + "<td><span class=""tablenames"">No Nearby</span></td>" + $_NewLine
+  ENDIF
+EndSub
+
+BeginSub Name=CacheStatus
+  # Found
+  IF $d_found
+    $html = $html + "<b><font size=+1 color=""green"">Already Found!</font></b><br>"
+  ENDIF
+  # Unavailable
+  IF $d_TempDisabled
+    $html = $html + "<b><font size=+1 color=""red"">Unavailable!</font></b><br>"
+  ENDIF
+  # Archived
+  IF $d_Archived
+    $html = $html + "<b><font size=+1 color=""red"">Archived!</font></b><br>"
+  ENDIF
+EndSub
+
+BeginSub Name=Hints
+  $Hints = ""
+  If IsEmpty($d_Hints)
+    ExitSub
+  EndIf
+  $HtmlText = $d_Hints
+  GoSub Name=HtmlText
+  $Hints = "<a name=" + quote("Hints") + "></a><b>Decoded Hints</b><br>" #<table border=0 "
+#  $Hints = $hints + "width=80% summary=" + quote("hints") + "><tr><td>"
+  $Hints = $hints + $HtmlText + $_Newline # + "</tr></table>" + $_NewLine
+EndSub
+
+
+
+BeginSub Name=TravelBugs
+
+# this section of code is best understood if we look at sample information of how the
+# travelbug information is stored in the database. Travel bug information is currently
+# combined into one field in the database called $d_TravelBugs. Here is a sample of 3
+# travel bugs:
+
+# <BR>Bugsbee (id = 57508, ref = TBE0A4)
+# <BR>Toots the Brownie Bug (id = 70643, ref = TB113F3)
+# <BR>(I was) Sad eye lobster (id = 105939, ref = TB19DD3)
+
+# The follwoing code is required to extract the required information we want to show in
+# our HTML output.
+ 
+  $TravelBugs = ""
+  $temp = ""
+  If $d_HasTravelBug
+    $TotalBugs = RegExCount("\r\n",$d_TravelBugs) #\r\n counts the line terminators
+    $temp = $temp + "<tr><td style=""vertical-align:top""><span class=""tablenames"">"
+    $temp = $temp + "<img src=" + quote($Images + "/" + "bug3.jpg") + " alt=" + quote("TB")
+    $temp = $temp + " border=" + quote("0") + ">"
+    $temp = $temp + " Stock:</span></td><td>"
+    $x = 0
+    While $x < $TotalBugs
+      $x = $x + 1
+      $tb = RegExData(".+\r\n",$d_TravelBugs,$x) # this regex gets all the data for that line
+      $tbName = Extract($tb,"(id =",1)
+      $tbName = Replace("<br>","",$tbName,true) # this removes the <br> in the name
+      $tbId = Extract($tb,"(id = ",2)
+      $tbId = Extract($tbid,",",1)  
+      $tbRef = Extract($tb,"ref = ",2)
+      $tbRef = Extract($tbRef,")",1)
+      $temp = $temp + "&bull;&nbsp;" + $tbName # + "(ref = <a href=" + quote("http://www.geocaching.com/track/details.aspx?id=" + $tbId)
+#      $temp = $temp + "> " + $tbRef + ")</a>"
+      $temp = $temp + "<br>"
+    EndWhile
+    $temp = $temp + "</td>"
+    $TravelBugs = $temp
+  EndIf
+EndSub
+  
+
+BeginSub Name=LogImage
+ # debug status=on
+  $logImage = extract($LogTypes,$d_lType + "=",2)
+  If IsEmpty($logImage)
+    $logImage = "Note"
+  Else
+    $logImage = extract($LogImage,$_Newline,1)
+  EndIf
+  $LogImage = "log" + $LogImage + ".gif"
+EndSub
+
+BeginSub Name=Difficulty
+  IF true #or ($p_htmlk610i_images=1)
+    $Diff=numtostr($d_Difficulty)
+    $Difficulty = "<img src=" + quote($images + "/stars" + replace(",","_",replace(".","_",$Diff,true),true) + ".gif") + " alt=" + quote($Diff) + ">" + $_Newline
+  ELSE
+	  $RoundedString = str($d_Difficulty,1,0)
+	  $RoundedNumber = val($RoundedString)
+	  If $RoundedNumber > $d_Difficulty # if has decimal portion will be rounded up
+		$WholeNumber = NumToStr($RoundedNumber - 1)
+	  Else
+		$WholeNumber = NumToStr($RoundedNumber)
+	  EndIf
+
+	  $x = 0
+	  $temp = ""
+	  While $x < val($wholeNumber)
+		 $temp = $temp + "<img src=" + quote($images + "/staryellow.gif") +  " height=" + quote("18") + "width=" + quote("18") + " alt=" + quote("*") + ">" + $_Newline
+		 $x = $x + 1
+	  EndWhile
+	  
+		If $RoundedNumber > $d_Difficulty 
+			$temp = $temp + "<img src=" + quote($Images + "/halfstaryellow.gif") + " height=" + quote("18") + " width=" + quote("10") + " alt=" + quote("&frac12;") + ">" + $_Newline
+		EndIf
+		$Difficulty = $temp
+  ENDIF
+EndSub
+
+BeginSub Name=Terrain
+  IF true #or FileExists($_install + "\Macros\myGME_Library\img_stars1.gif")
+		$Terr=numtostr($d_Terrain)
+		$Terrain = "<img src=" + quote($images + "\stars" + replace(",","_",replace(".","_",$Terr,true),true) + ".gif") + " alt=" + quote($Terr) + ">" + $_Newline
+	ELSE
+		$RoundedString = str($d_Terrain,1,0)
+		$RoundedNumber = val($RoundedString)
+		# if has decimal portion will be rounded up
+		If $RoundedNumber > $d_Terrain
+			$WholeNumber = NumToStr($RoundedNumber - 1)
+		Else
+			$WholeNumber = NumToStr($RoundedNumber)
+		EndIf
+
+		$x = 0
+		$temp = "&nbsp;&nbsp;"
+		While $x < val($wholeNumber)
+			$temp = $temp + "<img src=" + quote($images + "/stargreen.gif") +  " height=" + quote("18") + "width=" + quote("18") + " alt=" + quote("*") + ">" + $_Newline
+			$x = $x + 1
+		EndWhile
+
+		if $RoundedNumber > $d_Terrain 
+			$temp = $temp + "<img src=" + quote($Images + "/halfstargreen.gif") + " height=" + quote("18") + " width=" + quote("10") + " alt=" + quote("&frac12;") + ">" + $_Newline
+		EndIf
+		$Terrain = $temp
+	ENDIF
+EndSub
+
+BeginSub name=HtmlText
+  $HtmlText = Replace("<br>", "~.~", $HtmlText, true) # exception, do not replace <br>
+  $HtmlText = Replace("&", "&amp;", $HtmlText, false)
+  $HtmlText = Replace("<","&lt;", $HtmlText, false)
+  $HtmlText = Replace(">", "&gt;", $HtmlText, false)
+  $HtmlText = Replace($_quote, "&quot;", $HtmlText, false)
+  $HtmlText = Replace("~.~", "<br>", $HtmlText, false)
+  $HtmlText = Replace($_Newline,"<br>",$HtmlText,false) 
+EndSub
+
+
+BeginSub name=Child
+  Table Active=WayPoints scope=Parent
+  $Child = ""
+  If $_count > 0
+    $temp = "<hr>" + NumToStr($_count) + " additional Waypoint"
+    IF $_count > 1
+      $temp = $temp + "s"
+    ENDIF
+    $temp = $temp + "<br>" + $_NewLine
+    $temp = $temp + "<table cellspacing=" + quote("0") + ">"
+    While not($_eol)
+      IF $_HtmlFormat="Export"
+      $temp = $temp + "<tr><td><br>" +  $d_cPrefix + ": "
+      $temp = $temp + $d_cName + "</td>" + $_NewLine
+      $temp2 = GeoCalc($d_cLat + ";" + $d_cLon, "FormatMinutes")
+      $temp2 = extract($temp2,";",1) + " " + extract($temp2,";",2) 
+      $temp = $temp + "<tr><td>" + $temp2 + "</td>" + $_NewLine 
+      $temp = $temp + "<tr><td><span class=""tablenames"">" + $d_cType + "</span></td>" + $_NewLine
+      $temp = $temp + "<tr><td><span class=""tablenames"">" + $d_cComment + "</span></td>" + $_NewLine
+      $temp = $temp + "</tr>" + $_NewLine
+      ELSE
+      $temp = $temp + "<tr><td><span class=""tablenames"">Prefix</span></td><td>" +  $d_cPrefix + "</td>" + $_NewLine
+      $temp = $temp + "<tr><td><span class=""tablenames"">Name</span></td><td>" + $d_cName + "</td>" + $_NewLine
+      $temp = $temp + "<tr><td><span class=""tablenames"">Type</span></td><td>" + $d_cType + "</td>" + $_NewLine
+      $temp = $temp + "<tr><td><span class=""tablenames"">Comment</span></td><td>" + $d_cComment + "</td>" + $_NewLine
+      $temp2 = GeoCalc($d_cLat + ";" + $d_cLon, "FormatMinutes")
+      $temp2 = extract($temp2,";",1) + "<br>" + extract($temp2,";",2) 
+      $temp = $temp + "<tr><td><span class=""tablenames"">WGS84</span></td><td>" + $temp2 + "</td>" + $_NewLine 
+      $temp = $temp + "</tr>" + $_NewLine
+      ENDIF
+      Goto Position=Next
+    EndWhile
+    $Child = $temp + "</table>" + $_NewLine
+  EndIf
+EndSub
+
+BeginSub name=Logs
+  Table Active=Logs scope=Parent
+  $logs = ""
+  If $_count > 0
+    $temp = ""
+    While not ($_eol)
+      GoSub Name=LogImage 
+      $temp = $temp + "<img src=" + quote($Images + "/" + $LogImage) + " width=" + quote("15") + " height=" + quote("15") +  " alt=" + quote($d_lType) + ">" 
+      $temp = $temp + "&nbsp;<b>" + DateFormat($d_lDate) + " by&nbsp;" + $d_lBy + "</b><br>" + $_NewLine
+      $HtmlText = $d_lText
+      GoSub Name=HtmlText
+      $temp = $temp + $HtmlText + "<p>" + $_NewLine
+      Goto Position=Next
+    EndWhile
+    $Logs = $temp 
+  EndIf
+EndSub
+
+
+<data> VarName=$header
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<title>GSAK Offline</title>
+<style type='text/css'>                                                 
+body { font-family: Helvetica,Arial,sans-serif;
+       font-size: small }
+table { font-family: Helvetica,Arial,sans-serif;
+       font-size: small }
+.tablenames { font-size: x-small;
+              vertical-align: top; }
+.FullText { font-weight: bold; color: #F00; background-color: #FF0 } 
+.gsak { font-family: Arial }
+</style>
+</head>                                                                
+<body text="#000000">
+<enddata>
+
+<data> VarName=$LogTypes
+Webcam Photo Taken=Webcam
+Found it=Found
+Didn't find it=NotFound
+Temporarily Disable Listing=Disable
+Archive (show)=Archived
+Archive (no show)=Archived
+Needs Archived=NeedsArchived
+Post Reviewer Note=Review
+Will Attend=WillAttend
+Enable Listing=Enable
+Publish Listing=Published
+Owner Maintenance=OwnerMaintenance
+Needs Maintenance=NeedsMaintenance
+Update Coordinates=UpdateCoordinates
+Attended=Attended
+<enddata>
+

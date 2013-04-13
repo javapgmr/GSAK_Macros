@@ -1,0 +1,44 @@
+#*******************************************
+# MacDescription = Clear Bad elevations  
+# MacFileName = ClearBadElevations.gsk
+# MacAuthor = javapgmr
+# MacVersion=1.0
+# MacUrl=
+#*******************************************
+
+#*******************************************************
+#   Variable declarations for
+#   C:\Users\Owner\AppData\Roaming\gsak\Macros\clearBadElevations.gsk
+#
+#   Generated 09/12/2011 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$Code Type=String
+Declare Var=$Count Type=Numeric
+Declare Var=$Data Type=String
+Declare Var=$DataBase Type=String
+Declare Var=$SeqNo Type=Numeric
+Declare Var=$Sequence Type=Numeric
+Declare Var=$Status Type=String
+Declare Var=$DB1File Type=String
+
+
+
+GOSUB Name=ClearBadElevations
+
+BEGINSUB Name=ClearBadElevations
+         $DB1File=$_dbPath + "\" + "$_CurrentDatabase" + "\sqlite.db3"
+         $_sql="ATTACH '$DB1File' AS DBOne"
+         $Status=Sqlite("sql",$_sql)
+
+         $_sql="UPDATE DBOne.caches SET Resolution='' WHERE Resolution IN ('30m','90m', 'USER')"
+         $Status=Sqlite("sql",$_sql)
+
+         $_sql="DETACH DBOne"
+         $Status=Sqlite("sql",$_sql)
+
+ENDSUB

@@ -1,0 +1,1671 @@
+#*******************************************
+# MacVersion = 1.0.4
+# MacDescription = Road Trip Sheet - Contact sheet using current filter.
+# MacAuthor = vtgeopirates - borrowed code from geo-mario (RoadSheet) and lignumaqua (GarminExport)
+# MacFileName = RoadTrip.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=18763
+#
+# Customizable sheet for printing or emailing. Whether you are planing a trip or logging caches.
+# This works really good for coping into an email.
+# Use with TextFilter.gsk to filter found caches for logging.
+# Processes just the caches in the current filter.
+#
+# Change History:
+#  Ver - Date
+#  1.0.4   - Sep 08, 2011 - Added FavPoints
+#  1.0.3   - Aug 29, 2011 - Changed $d_UserSort to except numbers
+#  1.0.2   - Jun 18, 2011 - Changed all image paths to $_ExePath
+#  1.0.1   - Jun 17, 2011 - first beta
+#  
+#*******************************************
+
+GOSUB Name=DeclareVariables         # DECLARE all the variables
+GOSUB Name=GetVer                   # set $CurrentVersion from MacVersion
+GOSUB Name=Initialize
+GOSUB Name=Parse
+GOSUB Name=OpenForm									# Open Form1
+
+#----------------------------------------------------
+BEGINSUB Name=Initialize
+#----------------------------------------------------
+
+ #Now build the name of the file to store the form data in
+ #This will have the same path and name as the macro but will end in .dat
+ $MN=sysinfo("MacroFile")  #Get MacroName
+ $datafile=sysinfo("macropath")+ "\" +substr($MN,1,len($MN)-4)+ ".db3"
+
+	# Set up the SQL table	
+
+	IF NOT(FileExists($datafile))
+		$status = Sqlite("CREATE",$datafile)
+		$status = Sqlite("CLOSE","")
+	ENDIF
+
+  $status = sqlite("sql","attach '$datafile' as roadtripDB")
+
+	$Data = "SaveName text UNIQUE, SaveText text"
+	$_sql = "CREATE TABLE IF NOT EXISTS roadtripDB.SavedSettings ($Data)"
+	$status = Sqlite("sql",$_sql)
+
+	$_sql = "SELECT SaveName FROM roadtripDB.SavedSettings ORDER BY SaveName"
+	$SaveNameValues = Sqlite("sql",$_sql)
+	$SaveNameValues = Replace($_NewLine,";",$SaveNameValues)
+	$SaveBoxList = $SaveNameValues
+	
+	$PromptSaveText = "... Last active"
+
+	#############################################################
+	# PreLoad User variables into Form
+	#############################################################
+
+  $column1    = "CacheType"
+  $myHeader1  = "Type"
+  $column2    = "Code w/GC Link"
+  $myHeader2  = "GC"
+  $column3    = "Container"
+  $myHeader3  = "Size"
+  $column4    = "Name"
+  $myHeader4  = "Name"
+  $column5    = "Last4Logs Pic"
+  $myHeader5  = "L4"
+  $column6    = "OwnerName"
+  $myHeader6  = "Owner"
+  $column7    = "LastFoundDate"
+  $myHeader7  = "Last Found"
+  $column8    = "Coordinates"
+  $myHeader8  = "Coordinates"
+  $column9    = "Dif/Ter Pic"
+  $myHeader9  = "Dif/Ter"
+  $column10   = "User2"
+  $myHeader10 = "Town"
+  $column11   = "HasTravelBug"
+  $myHeader11 = "TB"
+  $column12   = "Attributes"
+  $myHeader12 = "Attributes"
+  $column13   = "Hints"
+  $myHeader13 = "Hint"
+  $column14   = ""
+  $myHeader14 = ""
+  $column15   = ""
+  $myHeader15 = ""
+  $column16   = ""
+  $myHeader16 = ""
+  $column17   = ""
+  $myHeader17 = ""
+  $column18   = ""
+  $myHeader18 = ""
+  $column19   = ""
+  $myHeader19 = ""
+  $column20   = ""
+  $myHeader20 = ""
+	
+	#############################################################
+	# Settings file
+
+	$NameSQL = "... Last active"
+	$_sql = "SELECT SaveText FROM roadtripDB.SavedSettings WHERE SaveName='$NameSQL'"
+	$variables = Sqlite("sql",$_sql,"delim=%%")
+	
+ENDSUB Name=Initialize
+
+#----------------------------------------------------
+BEGINSUB Name=Parse
+#----------------------------------------------------
+
+	IF Len($variables) > 0
+
+		# Now, extract out the individual values
+    $column1  = Extract($variables,";",1)
+    $column2  = Extract($variables,";",2)
+    $column3  = Extract($variables,";",3)
+    $column4  = Extract($variables,";",4)
+    $column5  = Extract($variables,";",5)
+    $column6  = Extract($variables,";",6)
+    $column7  = Extract($variables,";",7)
+    $column8  = Extract($variables,";",8)
+    $column9  = Extract($variables,";",9)
+    $column10 = Extract($variables,";",10)
+    $column11 = Extract($variables,";",11)
+    $column12 = Extract($variables,";",12)
+    $column13 = Extract($variables,";",13)
+    $column14 = Extract($variables,";",14)
+    $column15 = Extract($variables,";",15)
+    $column16 = Extract($variables,";",16)
+    $column17 = Extract($variables,";",17)
+    $column18 = Extract($variables,";",18)
+    $column19 = Extract($variables,";",19)
+    $column20 = Extract($variables,";",20)
+    $myHeader1  = Extract($variables,";",21)
+    $myHeader2  = Extract($variables,";",22)
+    $myHeader3  = Extract($variables,";",23)
+    $myHeader4  = Extract($variables,";",24)
+    $myHeader5  = Extract($variables,";",25)
+    $myHeader6  = Extract($variables,";",26)
+    $myHeader7  = Extract($variables,";",27)
+    $myHeader8  = Extract($variables,";",28)
+    $myHeader9  = Extract($variables,";",29)
+    $myHeader10 = Extract($variables,";",30)
+    $myHeader11 = Extract($variables,";",31)
+    $myHeader12 = Extract($variables,";",32)
+    $myHeader13 = Extract($variables,";",33)
+    $myHeader14 = Extract($variables,";",34)
+    $myHeader15 = Extract($variables,";",35)
+    $myHeader16 = Extract($variables,";",36)
+    $myHeader17 = Extract($variables,";",37)
+    $myHeader18 = Extract($variables,";",38)
+    $myHeader19 = Extract($variables,";",39)
+    $myHeader20 = Extract($variables,";",40)
+
+	ENDIF
+
+ENDSUB Name=Parse
+
+#----------------------------------------------------
+BEGINSUB Name=OpenForm
+#----------------------------------------------------
+
+  IF $ExportSettings <> ""
+	# Load settings passed in $ExportSettings and auto run
+	$SaveBox = $ExportSettings
+	GOSUB name=SaveBox
+	
+  ELSE
+  	$ColumnList = " ;Attributes;Bearing;CacheID;CacheType;Code;Code w/GC Link;Code w/Log Link;Coordinates;Changed;Container;County;Country;Created;Degrees;"
+    $ColumnList = $ColumnList + "Dif/Ter Num;Dif/Ter Pic;Distance;DNF;DNFDate;Elevation;FavPoints;Found;FoundCount;FoundByMeDate;FTF;"
+    $ColumnList = $ColumnList + "HasCorrected;HasTravelBug;HasUserNote;Hints;LastFoundDate;LastGPXDate;Last4Logs Letters;"
+    $ColumnList = $ColumnList + "Last4Logs Pic;LastLog;LastUserDate;Lock;LongDescription;LongDescription no HTML;"
+    $ColumnList = $ColumnList + "Name;Name w/GC Link;Name w/Log Link;NumberOfLogs;OwnerName;PlacedBy;"
+    $ColumnList = $ColumnList + "PlacedDate;Resolution;ShortDescription;ShortDescription no HTML;SmartName;Source;State;Status;"
+    $ColumnList = $ColumnList + "Symbol;TravelBugs;Url;UserData;User2;User3;User4;UserFlag;UserNote;UserNoteDate;UserSort;Watch;"
+  	
+  	$Form = EditForm($Form,"Form1","Caption","RoadTrip:  v" + $CurrentVersion) #set up form captions before displaying
+
+   WHILE TRUE					# Infinite loop to display main form until exit conditions are chosen
+   	$FormExit = Form("$Form","")
+   
+  	$Form = EditForm($Form,"Form1","Top",$_FormTop)	# Reset the screen position of the menu form to where the user left it
+  	$Form = EditForm($Form,"Form1","Left",$_FormLeft)
+  	
+  	
+    BEGINCASE
+      CASE $FormExit = "SystemExit"		# Exit the Macro
+        CANCEL
+        
+      CASE $FormExit = "Cancel"				# Press of the Cancel Button
+        CANCEL
+        
+      CASE  $FormExit = "SaveBox"			# Edit of the Saved List Box
+			  GOSUB name=SaveBox
+			  
+      CASE $Save 											# Press of the Save Button
+        GOSUB name=Save
+        
+      CASE $Delete										# Press of the Delete Button
+        GOSUB name=Delete
+        
+      CASE $Run												# Press of the Run Button
+        GOSUB name=Header
+        BREAK
+
+    ENDCASE  
+   ENDWHILE
+  ENDIF
+  
+  $NameSQL = "... Last active"
+  GOSUB name=UpdateDataFile
+ 
+ENDSUB Name=OpenForm
+
+#----------------------------------------------------
+BEGINSUB name=UpdateDataFile					#Subroutine to update datafile
+#----------------------------------------------------
+
+	$variables = "$column1;$column2;$column3;$column4;$column5;$column6;$column7;$column8;$column9;$column10;"
+	$variables = $variables + "$column11;$column12;$column13;$column14;$column15;$column16;$column17;$column18;$column19;$column20;"
+	$variables = $variables + "$myHeader1;$myHeader2;$myHeader3;$myHeader4;$myHeader5;$myHeader6;$myHeader7;$myHeader8;$myHeader9;$myHeader10;"
+	$variables = $variables + "$myHeader11;$myHeader12;$myHeader13;$myHeader14;$myHeader15;$myHeader16;$myHeader17;$myHeader18;$myHeader19;$myHeader20"
+	$variablesSQL = Replace("'","''",$variables)
+	$_sql = "REPLACE INTO roadtripDB.SavedSettings VALUES ('$NameSQL','$variablesSQL')"
+	$status = Sqlite("sql",$_sql)
+
+ENDSUB Name=UpdateDataFile
+
+#----------------------------------------------------
+BEGINSUB Name=Header
+#----------------------------------------------------
+  $result = "<html>" + $_NewLine
+  $result = $result + "<style type='text/css'>" + $_NewLine
+  $result = $result + "<!--" + $_NewLine
+  $result = $result + ".Body{font-family:'Arial'}" + $_NewLine
+  $result = $result + ".TableHeader{background: #176199;color: #ffffff;text-align: center;font: 12px tahoma, verdana, geneva, lucida, helvetica, sans-serif}" + $_NewLine
+  $result = $result + ".Item{color:blue;font-weight:bold}" + $_NewLine
+  $result = $result + ".row{background: #d9d9d9;color: #000000;font: 12px tahoma, verdana, geneva, lucida, helvetica, sans-serif}" + $_NewLine
+  $result = $result + "-->" + $_NewLine
+  $result = $result + "</style>" + $_NewLine
+  $result = $result + "<body class=body>" + $_NewLine
+  $result = $result + "<table border='0' summary=''>"
+
+#################################################
+ # Load all of the $colmun and $myHeader variables into an Array
+ 
+  Array(1,0) = "20" 
+  Array(1,1)  = $column1
+  Array(1,2)  = $column2
+  Array(1,3)  = $column3
+  Array(1,4)  = $column4
+  Array(1,5)  = $column5
+  Array(1,6)  = $column6
+  Array(1,7)  = $column7
+  Array(1,8)  = $column8
+  Array(1,9)  = $column9
+  Array(1,10) = $column10
+  Array(1,11) = $column11
+  Array(1,12) = $column12
+  Array(1,13) = $column13
+  Array(1,14) = $column14
+  Array(1,15) = $column15
+  Array(1,16) = $column16
+  Array(1,17) = $column17
+  Array(1,18) = $column18
+  Array(1,19) = $column19
+  Array(1,20) = $column20
+  
+  Array(2,0) = "20" 
+  Array(2,1)  = $myHeader1
+  Array(2,2)  = $myHeader2
+  Array(2,3)  = $myHeader3
+  Array(2,4)  = $myHeader4
+  Array(2,5)  = $myHeader5
+  Array(2,6)  = $myHeader6
+  Array(2,7)  = $myHeader7
+  Array(2,8)  = $myHeader8
+  Array(2,9)  = $myHeader9
+  Array(2,10) = $myHeader10
+  Array(2,11) = $myHeader11
+  Array(2,12) = $myHeader12
+  Array(2,13) = $myHeader13
+  Array(2,14) = $myHeader14
+  Array(2,15) = $myHeader15
+  Array(2,16) = $myHeader16
+  Array(2,17) = $myHeader17
+  Array(2,18) = $myHeader18
+  Array(2,19) = $myHeader19
+  Array(2,20) = $myHeader20
+  
+#################################################
+ # Modify to display the desired columns header
+  $result = $result + "<tr class=TableHeader>"
+  
+  $x = 1
+  WHILE $x <= 20
+ 	
+    IF Array(2,$x) <> ""
+  	  $result = $result + "<td><b>" + Array(2,$x) + "</b></td>"
+    ELSE
+  	  IF Array(1,$x) <> " "
+  		  $result = $result + "<td><b></b></td>"
+      ENDIF
+    ENDIF
+  $x = $x + 1
+  ENDWHILE
+  $result = $result + "</tr>" +  $_NewLine
+
+  GOSUB Name=Main
+  
+ENDSUB Name=Header
+
+#----------------------------------------------------
+BEGINSUB Name=Main
+#----------------------------------------------------
+$myLoop = 1
+# Main loop: cycling through the caches in the active filter
+TRANSACTION Action=Begin
+  WHILE NOT ($_EOL)
+	 showstatus msg="Cache $myLoop / $_Count"
+	 GOSUB Name=ProcessCache
+	 GOTO Position=Next
+	 $myLoop = $myLoop + 1
+  ENDWHILE
+TRANSACTION Action=End
+
+Goto position=top
+
+#close out HTML
+$result = $result + "</table></body></html>"	# close out HTML
+
+# generate file and display
+$FileName = $_Install + "\Temp\RoadTrip.htm"
+$Error = PutFile($FileName,$result)
+OPENFILE file="$FileName"
+
+ENDSUB Name=Main
+
+#----------------------------------------------------
+BEGINSUB Name=ProcessCache
+#----------------------------------------------------
+
+	$GCcode = $d_Code
+	$myContainer = Lower($d_Container)
+	$myDifficulty = NumToStr($d_Difficulty)
+	$myTerrain = NumToStr($d_Terrain)
+	
+	$myLogs = ""
+	GOSUB Name=GetAttributes 
+	$attributes = RegExReplace(";tata;1",$attributes,".gif" + $_Quote + " height=15 witdh=15></td>")
+	$attributes = RegExReplace(";tata;0",$attributes,"x.gif" + $_Quote + " height=15 witdh=15></td>")
+	$attributes = RegExReplace("toto;",$attributes,"<td><img src=" + $_Quote + "file:///" + $_ExePath + "/images/att")
+	$attributes = RegExReplace("\r\n",$attributes,"")
+	$myContainer = RegExReplace("not chosen",$d_Container,"notchosen")
+	$myDifficulty = RegExReplace("[.,]",NumToStr($d_Difficulty),"_")
+	$myTerrain = RegExReplace("[.,]",NumToStr($d_Terrain),"_")
+	$attributes = "<table border=0><tr>" + $attributes + "</tr></table>"
+ 	$myCacheType = "<center><img src=" + $_Quote + "file:///" + $_ExePath + "/images/cache" + $d_CacheType + ".gif" + $_Quote + "></center>"
+  $myDifficulty = "<img src=" + $_Quote + "file:///" + $_ExePath + "/images/stars" + $myDifficulty + ".gif" + $_Quote + ">"
+  $myTerrain = "<img src=" + $_Quote + "file:///" + $_ExePath + "/images/stars" + $myTerrain + ".gif" + $_Quote + ">"
+  $myContainer = "<img src=" + $_Quote + "file:///" + $_ExePath + "/images/con_" + $myContainer + ".gif" + $_Quote + ">"
+  $UTMcoord = Replace(";","</td></tr><tr><td>",GCalc( $d_Latitude + " " + $d_Longitude, "FormatMinutes"),true)
+  $UTMcoord = RegExReplace(" ",$UTMcoord,"</td><td>")
+  $UTMcoord = RegExReplace("</td></tr><tr><td>",$UTMcoord,"</td></tr><tr class=row><td>")
+  $UTMcoord = "<table border=0><tr class=row><td>" + $UTMcoord + "</td></tr></table>"
+  $myHints = RegExReplace("\r\n",$d_Hints,", ")
+  
+  $myDNF = ""
+  $myFound = ""
+  $myFTF = ""
+  $myCorrected = ""
+  $hasTB = ""
+  $myHasUserNote = ""
+  $myLock = ""
+  $myUserFlag = ""
+  $myWatch = ""
+  
+  IF ($d_DNF)
+  	$myDNF = "<img src=" + $_Quote + "file:///" + $_ExePath + "/images/logNotFound.gif" + $_Quote + "> "
+  ENDIF
+  IF ($d_Found)
+  	$myFound = "<img src=" + $_Quote + "file:///" + $_ExePath + "/images/logFound.gif" + $_Quote + "> "
+  ENDIF
+  IF ($d_FTF)
+  	$myFTF = "FTF"
+  ENDIF
+  IF ($d_HasCorrected)
+  	$myCorrected = "C"
+  ENDIF
+  IF ($d_HasTravelBug)
+    $hasTB = "<img src=" + $_Quote + "file:///" + $_ExePath + "/images/bug.gif" + $_Quote + "> "
+  ENDIF
+  IF ($d_HasUserNote)
+  	$myHasUserNote = "UN"
+  ENDIF
+  IF ($d_Lock)
+  	$myLock = "L"
+  ENDIF
+  IF ($d_UserFlag)
+  	$myUserFlag = "UF"
+  ENDIF
+  IF ($d_Watch)
+  	$myWatch = "W"
+  ENDIF  
+  
+	GOSUB Name=GetLogs
+	GOSUB Name=ExtractLogs
+	
+	#################################################
+  # Built the column lists
+
+  $result = $result + "<tr class=row>"
+ $x = 1
+ WHILE $x <= 20
+ 	
+  IF Array(1,$x) <> " "								# Look for text in $column
+  	IF Array(1,$x) = "Attributes"
+  		$result = $result + "<td>" + $attributes + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Bearing"
+  		$result = $result + "<td><center>" + $d_Bearing + "</center></td>"
+  	ENDIF
+  	IF Array(1,$x) = "CacheID"
+  		$result = $result + "<td>" + $d_CacheID + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "CacheType"
+  	 $result = $result + "<td>" + $myCacheType + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Code"
+  	 $result = $result + "<td>" + $d_Code + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Code w/GC Link"
+  		$result = $result + "<td><a href=http://www.geocaching.com/seek/cache_details.aspx?wp=" + $d_code + "&pf=n&decrypt=y&log=y>" + $d_code + "</a></td>"
+  	ENDIF
+  	IF Array(1,$x) = "Code w/Log Link"
+  		$result = $result + "<td><a href=http://www.geocaching.com/seek/log.aspx?wp=" + $d_code + ">" + $d_code + "</a></td>"
+  	ENDIF
+  	IF Array(1,$x) = "Coordinates"
+  	 $result = $result + "<td>" + $UTMcoord + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Changed"
+  	 IF DateFormat($d_Changed) = "12/30/1899"
+  			$result = $result + "<td></td>"
+  		ELSE
+  	    $result = $result + "<td>" + DateFormat($d_Changed) + "</td>"
+  	  ENDIF
+  	ENDIF
+  	IF Array(1,$x) = "Container"
+  		$result = $result + "<td>" + $myContainer + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "County"
+  	 $result = $result + "<td>" + $d_County + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Country"
+  	 $result = $result + "<td>" + $d_Country + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Created"
+  	 IF DateFormat($d_Created) = "12/30/1899"
+  			$result = $result + "<td></td>"
+  		ELSE
+  	    $result = $result + "<td>" + DateFormat($d_Created) + "</td>"
+  	  ENDIF
+  	ENDIF
+  	IF Array(1,$x) = "Degrees"
+  	 $result = $result + "<td>" + NumToStr($d_Degrees) + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Dif/Ter Num"
+  		$result = $result + "<td>" + NumToStr($d_Difficulty) + "/" + NumToStr($d_Terrain) + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Dif/Ter Pic"
+  		$result = $result + "<td>" + $myDifficulty + "<br>" + $myTerrain + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Distance"
+  	 $result = $result + "<td>" + NumToStr($d_Distance) + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "DNF"
+  	 $result = $result + "<td><center>" +  $myDNF + "</center></td>"
+  	ENDIF
+  	IF Array(1,$x) = "DNFDate"
+  		IF DateFormat($d_DNFDate) = "12/30/1899"
+  			$result = $result + "<td></td>"
+  		ELSE
+  	    $result = $result + "<td>" + DateFormat($d_DNFDate) + "</td>"
+  	  ENDIF
+  	ENDIF
+  	IF Array(1,$x) = "Elevation"
+  	 $result = $result + "<td>" + NumToStr($d_Elevation) + "</td>"
+  	ENDIF
+	IF Array(1,$x) = "FavPoints"
+  	 $result = $result + "<td>" + NumToStr($d_FavPoints) + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Found"
+  	 $result = $result + "<td><center>" + $myFound + "</center></td>"
+  	ENDIF
+  	IF Array(1,$x) = "FoundCount"
+  	 $result = $result + "<td>" + NumToStr($d_FoundCount) + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "FoundByMeDate"
+  	  IF DateFormat($d_FoundByMeDate) = "12/30/1899"
+  			$result = $result + "<td></td>"
+  		ELSE
+  	    $result = $result + "<td>" + DateFormat($d_FoundByMeDate) + "</td>"
+  	  ENDIF
+  	ENDIF
+  	IF Array(1,$x) = "FTF"
+  	 $result = $result + "<td><center>" + $myFTF + "</center></td>"
+  	ENDIF
+  	IF Array(1,$x) = "HasCorrected"
+  	 $result = $result + "<td><center>" + $myCorrected + "</center></td>"
+  	ENDIF
+  	IF Array(1,$x) = "HasTravelBug"
+  	 $result = $result + "<td>" + $hasTB + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "HasUserNote"
+  	 $result = $result + "<td>" + $myHasUserNote + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Hints"
+  	 $result = $result + "<td>" + $myHints + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "LastFoundDate"
+  	 IF DateFormat($d_LastFoundDate) = "12/30/1899"
+  			$result = $result + "<td></td>"
+  		ELSE
+  	    $result = $result + "<td>" + DateFormat($d_LastFoundDate) + "</td>"
+  	  ENDIF
+  	ENDIF
+  	IF Array(1,$x) = "LastGPXDate"
+  	 IF DateFormat($d_LastGPXDate) = "12/30/1899"
+  			$result = $result + "<td></td>"
+  		ELSE
+  	    $result = $result + "<td>" + DateFormat($d_LastGPXDate) + "</td>"
+  	  ENDIF
+  	ENDIF
+  	IF Array(1,$x) = "Last4Logs Letters"
+  	 $result = $result + "<td>" + $last4 + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Last4Logs Pic"
+  	 $result = $result + "<td>" + $MyLogs + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "LastLog"
+  	 IF DateFormat($d_LastLog) = "12/30/1899"
+  			$result = $result + "<td></td>"
+  		ELSE
+  	    $result = $result + "<td>" + DateFormat($d_LastLog) + "</td>"
+  	  ENDIF
+  	ENDIF
+  	IF Array(1,$x) = "LastUserDate"
+  	 IF DateFormat($d_LastUserDate) = "12/30/1899"
+  			$result = $result + "<td></td>"
+  		ELSE
+  	    $result = $result + "<td>" + DateFormat($d_LastUserDate) + "</td>"
+  	  ENDIF
+  	ENDIF
+  	IF Array(1,$x) = "Lock"
+  	 $result = $result + "<td><center>" + $myLock + "<center></td>"
+  	ENDIF
+  	IF Array(1,$x) = "LongDescription"
+  	$result = $result + "<td>" + RegExReplace("BODY Background",$d_LongDescription,"img src") + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "LongDescription no HTML"
+     $result = $result + "<td>" +  Remove($d_LongDescription,"</?[a-z][a-z0-9]*[^<>]*>","R")	 
+  	ENDIF
+  	IF Array(1,$x) = "Name"
+  	 $result = $result + "<td>" + $d_Name + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Name w/GC Link"
+  	 $result = $result + "<td><a href=http://www.geocaching.com/seek/cache_details.aspx?wp=" + $d_code + "&pf=n&decrypt=y&log=y>" + $d_Name + "</a></td>"
+  	ENDIF
+  	IF Array(1,$x) = "Name w/Log Link"
+  	 $result = $result + "<td><a href=http://www.geocaching.com/seek/log.aspx?wp=" + $d_code + ">" + $d_Name + "</a></td>"
+  	ENDIF
+  	IF Array(1,$x) = "NumberOfLogs"
+  	 $result = $result + "<td><center>" + NumToStr($d_NumberOfLogs) + "</center></td>"
+  	ENDIF
+  	IF Array(1,$x) = "OwnerName"
+  	 $result = $result + "<td>" + $d_OwnerName + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "PlacedBy"
+  	 $result = $result + "<td>" + $d_PlacedBy + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "PlacedDate"
+  	 IF DateFormat($d_PlacedDate) = "12/30/1899"
+  			$result = $result + "<td></td>"
+  		ELSE
+  	    $result = $result + "<td>" + DateFormat($d_PlacedDate) + "</td>"
+  	  ENDIF
+  	ENDIF
+  	IF Array(1,$x) = "Resolution"
+  	 $result = $result + "<td>" + $d_Resolution + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "ShortDescription"
+  	 $result = $result + "<td>" + RegExReplace("BODY Background",$d_ShortDescription,"img src") + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "ShortDescription no HTML"
+     $result = $result + "<td>" +  Remove($d_ShortDescription,"</?[a-z][a-z0-9]*[^<>]*>","R")	 
+  	ENDIF
+  	IF Array(1,$x) = "SmartName"
+  	 $result = $result + "<td>" + $d_SmartName + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Source"
+  	 $result = $result + "<td><center>" + $d_Source + "</center></td>"
+  	ENDIF
+  	IF Array(1,$x) = "State"
+  	 $result = $result + "<td><center>" + $d_State + "</center></td>"
+  	ENDIF
+  	IF Array(1,$x) = "Status"
+  	 $result = $result + "<td><center>" + $d_Status + "<center></td>"
+  	ENDIF
+  	IF Array(1,$x) = "Symbol"
+  	 $result = $result + "<td>" + $d_Symbol + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "TravelBugs"
+  	 $result = $result + "<td>" + $d_TravelBugs + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Url"  
+  	 $result = $result + "<td><a href=" + $d_Url + ">" + $d_Url + "</a></td>"
+  	ENDIF
+  	IF Array(1,$x) = "UserData"
+  	 $result = $result + "<td>" + $d_UserData + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "User2"
+  	 $result = $result + "<td>" + $d_User2 + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "User3"
+  	 $result = $result + "<td>" + $d_User3 + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "User4"
+  	 $result = $result + "<td>" + $d_User4 + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "UserFlag"
+  	 $result = $result + "<td><center>" + $myUserFlag + "</center></td>"
+  	ENDIF
+  	IF Array(1,$x) = "UserNote"
+  	 $result = $result + "<td>" + $d_UserNote + "</td>"
+  	ENDIF
+  	IF Array(1,$x) = "UserNoteDate"
+     $result = $result + "<td>" + DateFormat($d_UserNoteDate) + "</td>"
+   	ENDIF
+  	IF Array(1,$x) = "UserSort"
+  	 $result = $result + "<td>$d_UserSort</td>"
+  	ENDIF
+  	IF Array(1,$x) = "Watch"
+  	 $result = $result + "<td><center>" + $myWatch + "</center></td>"
+  	ENDIF
+  	  	
+  ELSE
+  	IF Array(2,$x) <> ""								# Look for text in $myHeader
+  		$result = $result + "<td></td>"
+    ENDIF
+  ENDIF
+  $x = $x + 1
+ENDWHILE
+ 
+ 	$result = $result + "</tr>" + $_NewLine
+	
+ENDSUB Name=ProcessCache
+
+#----------------------------------------------------
+BEGINSUB Name=GetLogs
+#----------------------------------------------------
+  # retieve logs from DB
+
+	$_sql="SELECT lType,lDate FROM Logs where lParent='$GCcode' order by lDate desc"
+	$logs = Sqlite("sql",$_sql)
+	
+ENDSUB Name=GetLogs
+
+#----------------------------------------------------
+BEGINSUB Name=ExtractLogs
+#----------------------------------------------------
+	$last4  = ""
+	$logcnt = RegExCount(";",$logs)
+	IF ($logcnt > 4)
+	  $logcnt = 4
+	ENDIF
+	$MyLogs = "<table border=0 height=6><tr>"
+	IF ($logcnt=0)
+		$logcnt=1
+	ELSE
+		$i = 1
+		# for each log retrieved by sql
+		WHILE $i <= $logcnt
+			$thislog = Extract($logs,$_CrLf,$i)
+			$logType=Extract($thislog,";",1)
+			$logDate=Extract($thislog,";",2)
+			IF ($i = 3)
+			   $MyLogs = $MyLogs + "</tr><tr>"
+			ENDIF
+			BEGINCASE
+        CASE $logType="Found it"
+            $MyLogs = $MyLogs + "<td width=2 height=1 bgcolor=green><font size=-2 color=green>y</font></td>"
+            $last4  = $last4  + "F"
+        CASE $logType="Didn't find it"
+            $MyLogs = $MyLogs + "<td width=2 height=1 bgcolor=red><font size=-2 color=red>n</font></td>"
+            $last4  = $last4  + "N"
+        OtherWise
+            $MyLogs = $MyLogs + "<td width=2 height=1 bgcolor=yellow><font size=-2 color=yellow>o</font></td>"
+            $last4  = $last4  + "O"
+      ENDCASE
+			$i = $i + 1
+		ENDWHILE
+	ENDIF
+	IF ($logcnt < 4)
+	   WHILE $i <= 4
+	      IF ($i = 3)
+			     $MyLogs = $MyLogs + "</tr><tr>"
+			  ENDIF
+	      $MyLogs = $MyLogs + "<td width=2 height=1 bgcolor=gray><font size=-2 color=gray>x</font></td>"
+			  $i = $i + 1
+		 ENDWHILE
+	ENDIF
+	$MyLogs = $MyLogs + "</tr></table>"
+ENDSUB Name=ExtractLogs
+
+#----------------------------------------------------
+BEGINSUB Name=GetAttributes
+#----------------------------------------------------
+  # retieve attributes from DB
+
+	$_sql="SELECT 'toto;',aId,'tata;',aInc FROM Attributes where aCode='$GCcode'"
+	$attributes = Sqlite("sql",$_sql)
+
+ENDSUB Name=GetAttributes
+
+#----------------------------------------------------
+BEGINSUB Name=Save
+#----------------------------------------------------
+
+	IF $SaveBox = $PromptSaveText
+		$Name = ""
+	ELSE
+		$Name = $SaveBox
+	ENDIF
+	$result = Form($form3,"")
+	IF $NameOK
+		$NameSQL = Replace("'","''",$Name)
+		GOSUB name=UpdateDataFile
+		$_sql = "SELECT SaveName FROM roadtripDB.SavedSettings ORDER BY SaveName"
+		$SaveNameValues = Sqlite("sql",$_sql)
+		$SaveNameValues = Replace($_NewLine,";",$SaveNameValues)
+		$SaveBoxList = $SaveNameValues
+		$SaveBox = $Name
+	ENDIF
+ENDSUB Name=Save
+
+#----------------------------------------------------
+BEGINSUB name=Delete							# Delete values
+#----------------------------------------------------
+
+	IF $SaveBox = $PromptSaveText
+		EXITSUB
+	ENDIF
+	$Name = $SaveBox
+	$Form4 = EditForm($Form4,"FilterLabel","Caption",$Name)
+	$result = Form($form4,"")
+	IF $DeleteOK
+		$NameSQL = Replace("'","''",$Name)
+		$_sql = "DELETE FROM roadtripDB.SavedSettings WHERE SaveName = '$NameSQL'"
+		$status = Sqlite("sql",$_sql)
+		$_sql = "SELECT SaveName FROM roadtripDB.SavedSettings ORDER BY SaveName"
+		$SaveNameValues = Sqlite("sql",$_sql)
+		$SaveNameValues = Replace($_NewLine,";",$SaveNameValues)
+		$SaveBoxList = $SaveNameValues
+		$NameSQL = "... Last active"
+		$SaveBox = $NameSQL
+		GOSUB name=SaveBox
+	ENDIF
+ENDSUB name=Delete
+
+#----------------------------------------------------
+BEGINSUB Name=SaveBox							# Retrieve Saved value
+#----------------------------------------------------
+
+	$SaveBoxSQL = Replace("'","''",$SaveBox)
+	$_sql = "SELECT SaveText FROM roadtripDB.SavedSettings WHERE SaveName = '$SaveBoxSQL'"
+	$result = Sqlite("sql",$_sql,"delim=%%")
+	IF Len($result) > 0
+		$variables = $result
+		GOSUB name=parse
+	ENDIF
+ENDSUB Name=SaveBox
+	
+#----------------------------------------------------
+BEGINSUB Name=GetVer
+#----------------------------------------------------
+ $cvdata = GetFile(SysInfo("MacroPath") + "\" + SysInfo("MacroFile"))
+ $CurrentVersion = RegExSub("# macversion = (.*)\r",$cvdata,1,1)
+ $CurrentVersion=Replace("#","", $CurrentVersion)
+ $CurrentVersion=RegExReplace("\A\s+|\s+\z", $CurrentVersion, "")
+ $data = ""
+ENDSUB Name=GetVer
+
+#----------------------------------------------------
+BEGINSUB Name=DeclareVariables
+#----------------------------------------------------
+#*******************************************************
+#   Variable declarations for
+#   C:\gsak\Macros\RoadTrip.gsk
+#
+#   Generated 6/9/2011 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+ Option Explicit=Yes
+
+DECLARE Var=$attributes Type=String
+DECLARE Var=$column1 Type=String
+DECLARE Var=$column10 Type=String
+DECLARE Var=$column11 Type=String
+DECLARE Var=$column12 Type=String
+DECLARE Var=$column13 Type=String
+DECLARE Var=$column14 Type=String
+DECLARE Var=$column15 Type=String
+DECLARE Var=$column16 Type=String
+DECLARE Var=$column17 Type=String
+DECLARE Var=$column18 Type=String
+DECLARE Var=$column19 Type=String
+DECLARE Var=$column2 Type=String
+DECLARE Var=$column20 Type=String
+DECLARE Var=$column3 Type=String
+DECLARE Var=$column4 Type=String
+DECLARE Var=$column5 Type=String
+DECLARE Var=$column6 Type=String
+DECLARE Var=$column7 Type=String
+DECLARE Var=$column8 Type=String
+DECLARE Var=$column9 Type=String
+DECLARE Var=$ColumnList Type=String
+DECLARE Var=$CurrentVersion Type=String
+DECLARE Var=$cvdata Type=String
+DECLARE Var=$Data Type=String
+DECLARE Var=$datafile Type=String
+DECLARE Var=$desc Type=String
+DECLARE Var=$Error Type=String
+DECLARE Var=$ExportSettings Type=String
+DECLARE Var=$FileName Type=String
+DECLARE Var=$Form Type=String
+DECLARE Var=$form3 Type=String
+DECLARE Var=$Form4 Type=String
+DECLARE Var=$FormExit Type=String
+DECLARE Var=$GCcode Type=String
+DECLARE Var=$hasTB Type=String
+DECLARE Var=$i Type=Numeric
+DECLARE Var=$last4 Type=String
+DECLARE Var=$logcnt Type=Numeric
+DECLARE Var=$logDate Type=String
+DECLARE Var=$logs Type=String
+DECLARE Var=$logType Type=String
+DECLARE Var=$MN Type=String
+DECLARE Var=$myCacheType Type=String
+DECLARE Var=$myContainer Type=String
+DECLARE Var=$myCorrected Type=String
+DECLARE Var=$myDifficulty Type=String
+DECLARE Var=$myDNF Type=String
+DECLARE Var=$myFound Type=String
+DECLARE Var=$myFTF Type=String
+DECLARE Var=$myHasUserNote Type=String
+DECLARE Var=$myHeader1 Type=String
+DECLARE Var=$myHeader10 Type=String
+DECLARE Var=$myHeader11 Type=String
+DECLARE Var=$myHeader12 Type=String
+DECLARE Var=$myHeader13 Type=String
+DECLARE Var=$myHeader14 Type=String
+DECLARE Var=$myHeader15 Type=String
+DECLARE Var=$myHeader16 Type=String
+DECLARE Var=$myHeader17 Type=String
+DECLARE Var=$myHeader18 Type=String
+DECLARE Var=$myHeader19 Type=String
+DECLARE Var=$myHeader2 Type=String
+DECLARE Var=$myHeader20 Type=String
+DECLARE Var=$myHeader3 Type=String
+DECLARE Var=$myHeader4 Type=String
+DECLARE Var=$myHeader5 Type=String
+DECLARE Var=$myHeader6 Type=String
+DECLARE Var=$myHeader7 Type=String
+DECLARE Var=$myHeader8 Type=String
+DECLARE Var=$myHeader9 Type=String
+DECLARE Var=$myHints Type=String
+DECLARE Var=$myLock Type=String
+DECLARE Var=$myLogs Type=String
+DECLARE Var=$myLoop Type=Numeric
+DECLARE Var=$myTerrain Type=String
+DECLARE Var=$myUserFlag Type=String
+DECLARE Var=$myWatch Type=String
+DECLARE Var=$Name Type=String
+DECLARE Var=$NameSQL Type=String
+DECLARE Var=$PromptSaveText Type=String
+DECLARE Var=$result Type=String
+DECLARE Var=$SaveBox Type=String
+DECLARE Var=$SaveBoxList Type=String
+DECLARE Var=$SaveBoxSQL Type=String
+DECLARE Var=$SaveNameValues Type=String
+DECLARE Var=$status Type=String
+DECLARE Var=$thislog Type=String
+DECLARE Var=$UTMcoord Type=String
+DECLARE Var=$UTMcorrected Type=String
+DECLARE Var=$variables Type=String
+DECLARE Var=$variablesSQL Type=String
+DECLARE Var=$x Type=Numeric
+
+ENDSUB
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Mon 06-Jun-2011 19:38:38
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 579
+  Width = 342
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Saved Settings
+  Height = 73
+  Left = 40
+  Top = 428
+  Width = 269
+  Taborder = 41
+
+Name = LabelColumn
+  Type = Label
+  Height = 13
+  Left = 4
+  Top = 4
+  Width = 35
+  Caption = Column
+
+Name = Label1
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 24
+  Width = 6
+  Caption = 1
+
+Name = myHeader1
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 20
+  Width = 121
+  Taborder = 39
+
+Name = myHeader2
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 40
+  Width = 121
+  Taborder = 0
+
+Name = myHeader3
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 60
+  Width = 121
+  Taborder = 2
+
+Name = myHeader4
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 80
+  Width = 121
+  Taborder = 4
+
+Name = Label3
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 44
+  Width = 6
+  Caption = 2
+
+Name = Label4
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 64
+  Width = 6
+  Caption = 3
+
+Name = Label5
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 84
+  Width = 6
+  Caption = 4
+
+Name = Label6
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 104
+  Width = 6
+  Caption = 5
+
+Name = Label7
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 124
+  Width = 6
+  Caption = 6
+
+Name = Label8
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 144
+  Width = 6
+  Caption = 7
+
+Name = Label9
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 164
+  Width = 6
+  Caption = 8
+
+Name = Label10
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 184
+  Width = 6
+  Caption = 9
+
+Name = Label11
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 204
+  Width = 12
+  Caption = 10
+
+Name = Label12
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 224
+  Width = 12
+  Caption = 11
+
+Name = myHeader5
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 100
+  Width = 121
+  Taborder = 6
+
+Name = myHeader6
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 120
+  Width = 121
+  Taborder = 8
+
+Name = myHeader7
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 140
+  Width = 121
+  Taborder = 10
+
+Name = myHeader8
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 160
+  Width = 121
+  Taborder = 12
+
+Name = myHeader9
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 180
+  Width = 121
+  Taborder = 14
+
+Name = myHeader10
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 200
+  Width = 121
+  Taborder = 16
+
+Name = myHeader11
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 220
+  Width = 121
+  Taborder = 18
+
+Name = myHeader12
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 240
+  Width = 121
+  Taborder = 20
+
+Name = column1
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 20
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 42
+
+Name = column2
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 40
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 37
+
+Name = column3
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 60
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 1
+
+Name = column4
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 80
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 3
+
+Name = column5
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 100
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 5
+
+Name = column6
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 120
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 7
+
+Name = column7
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 140
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 9
+
+Name = column8
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 160
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 11
+
+Name = column9
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 180
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 13
+
+Name = column10
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 200
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 15
+
+Name = column11
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 220
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 17
+
+Name = column12
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 240
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 19
+
+Name = column13
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 260
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 21
+
+Name = column14
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 280
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 23
+
+Name = column15
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 300
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 25
+
+Name = column16
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 320
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 27
+
+Name = column17
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 340
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 29
+
+Name = column18
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 360
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 31
+
+Name = column19
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 380
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 33
+
+Name = column20
+  Type = Combobox
+  Directinput = No
+  Enabled = Yes
+  Exitonchange = No
+  Height = 21
+  Left = 40
+  Top = 400
+  Values = $ColumnList
+  Visible = Yes
+  Width = 145
+  Taborder = 35
+
+Name = Run
+  Type = Button
+  Height = 25
+  Left = 92
+  Top = 508
+  Width = 75
+  Taborder = 38
+  Caption = &Run
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 188
+  Top = 508
+  Width = 75
+  Taborder = 40
+  Caption = &Cancel
+
+Name = myHeader13
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 260
+  Width = 121
+  Taborder = 22
+
+Name = myHeader14
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 280
+  Width = 121
+  Taborder = 24
+
+Name = myHeader15
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 300
+  Width = 121
+  Taborder = 26
+
+Name = myHeader16
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 320
+  Width = 121
+  Taborder = 28
+
+Name = myHeader17
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 340
+  Width = 121
+  Taborder = 30
+
+Name = myHeader18
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 360
+  Width = 121
+  Taborder = 32
+
+Name = myHeader19
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 380
+  Width = 121
+  Taborder = 34
+
+Name = myHeader20
+  Type = Edit
+  Height = 21
+  Left = 188
+  Top = 400
+  Width = 121
+  Taborder = 36
+
+Name = Label13
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 244
+  Width = 12
+  Caption = 12
+
+Name = Label14
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 264
+  Width = 12
+  Caption = 13
+
+Name = Label15
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 284
+  Width = 12
+  Caption = 14
+
+Name = Label16
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 304
+  Width = 12
+  Caption = 15
+
+Name = Label17
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 324
+  Width = 12
+  Caption = 16
+
+Name = Label18
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 344
+  Width = 12
+  Caption = 17
+
+Name = Label19
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 364
+  Width = 12
+  Caption = 18
+
+Name = Label20
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 384
+  Width = 12
+  Caption = 19
+
+Name = Label21
+  Type = Label
+  Height = 13
+  Left = 24
+  Top = 404
+  Width = 12
+  Caption = 20
+
+Name = Label22
+  Type = Label
+  Height = 13
+  Left = 88
+  Top = 4
+  Width = 28
+  Caption = Effect
+
+Name = Label23
+  Type = Label
+  Height = 13
+  Left = 232
+  Top = 4
+  Width = 28
+  Caption = Name
+
+Name = SaveBox
+  Type = Combobox
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 21
+  Left = 8
+  Top = 16
+  Values = $SaveBoxList
+  Width = 253
+  Taborder = 0
+
+Name = Save
+  Type = Button
+  Container = Groupbox1
+  Height = 25
+  Left = 8
+  Top = 40
+  Width = 75
+  Taborder = 1
+  Caption = &Save
+
+Name = Delete
+  Type = Button
+  Container = Groupbox1
+  Height = 25
+  Left = 184
+  Top = 40
+  Width = 75
+  Taborder = 2
+  Caption = &Delete
+
+<enddata>
+
+
+
+
+
+
+<Data> VarName=$form3
+#********************************************************************
+# Form generated by GSAK form designer on Sat 04-Jun-2011 17:51:05
+#********************************************************************
+
+Name = Form3
+  Type = Form
+  Caption = Settings Name to Save ...
+  Height = 163
+  Width = 300
+
+Name = Name
+  Type = Edit
+  Height = 21
+  Left = 16
+  Top = 28
+  Width = 260
+  Taborder = 8
+
+Name = NameOK
+  Type = Button
+  Height = 30
+  Left = 34
+  Top = 80
+  Width = 75
+  Taborder = 9
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 30
+  Left = 183
+  Top = 80
+  Width = 75
+  Taborder = 10
+  Caption = Cancel
+
+<enddata>
+
+
+<Data> VarName=$form4
+Name = form4
+  Type = Form
+  Caption = Confirm deletion
+  Height = 166
+  Width = 311
+
+Name = DeleteOK
+  Type = Button
+  Height = 30
+  Left = 33
+  Top = 80
+  Width = 75
+  Taborder = 8
+  Caption = Delete
+
+Name = Cancel
+  Type = Button
+  Height = 30
+  Left = 183
+  Top = 80
+  Width = 75
+  Taborder = 9
+  Caption = Cancel
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 5
+  Size = 10
+  Top = 10
+  Width = 292
+  Caption = Confirm that you wish to delete the saved settings:
+
+Name = FilterLabel
+  Type = Label
+  Color = 255
+  Height = 16
+  Left = 20
+  Size = 10
+  Top = 40
+  Width = 58
+  Caption = %name%
+
+<enddata>
+

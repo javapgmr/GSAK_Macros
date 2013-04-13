@@ -1,0 +1,74 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = GSAK elevation database update
+# MacAuthor = Clyde,Lignumaqua
+# MacFileName = gsak_elevation.gsk
+# MacUrl =
+#*******************************************
+# Upload elevation database
+
+# first check if we have a newer version of the sqlite database available
+GoSub Name=VerCheck
+
+
+$result = sqlite("sql","attach '$_appdata\macros\checkele.db3' as checkele")
+
+# the attached checkele database is detached on macro exit. So we need to do the following
+# bit of fancy foot work to make sure the filter is still valid after the macro exits
+
+$result = sqlite("sql","drop table if exists TempEleCheck")
+$result = sqlite("sql","create temp table TempEleCheck as select * from chkele")
+$result = sqlite("close")
+
+# now set our filter of unmatched coordinates (that is, the ones we already have elevations for)
+# we use join=and to respect our current filter
+
+Mfilter where= round(latitude,4) || round(longitude,4) not in (select * from TempEleCheck) join=and
+
+If $_FilterCount = 0
+  cancel msg="All coordinates are matched locally, nothing to do"
+Endif
+
+$urlstatic = "http://gsak.biz/elevation/elevationtest.php?"
+
+$_sql = "SELECT round(latitude,4) as latitude, round(longitude,4) as longitude, source FROM caches WHERE $_WHERE"
+$status = Sqlite("sql",$_sql, "sqlget=yes")
+$count = 1
+WHILE not($_SQLEol)
+ $url = $urlstatic + "lat=" + SqlGet("latitude") + "&lon=" + SqlGet("longitude") + "&gpx=" + SqlGet("source")
+ $data = GetUrl($url,"")
+ $elevation = RegExSub("<elevation>(.*?)</elevation>",$data,1,1)
+ $resolution = RegExSub("<resolution>(.*?)</resolution>",$data,1,1)
+ $datasource = RegExSub("<datasource>(.*?)</datasource>",$data,1,1)
+ $cached = RegExSub("<cached>(.*?)</cached>",$data,1,1)
+ $lat = SqlGet("latitude")
+ $lon = SqlGet("longitude")
+ $gpxsource = SqlGet("source")
+ $output = "$count of $_FilterCount: $lat,$lon,$elevation,$resolution,$datasource,$gpxsource,$cached"
+ SHOWSTATUS msg=$output width=350
+ $count = $count + 1
+ SQLNEXT
+ENDWHILE
+
+MsgOk msg=Upload finished
+
+BeginSub Name=VerCheck
+  
+  $checkele = "$_appdata\macros\checkele.db3" 
+  if FileExists($checkele)
+    $result = sqlite("open",$checkele)
+    $LocalVer = val(sqlite("sql","pragma user_version"))
+    $result = sqlite("close")
+  else
+    $LocalVer = 0
+  endif
+
+  # get remote version
+  $RemoteVer = val(GetUrl("http://gsak.net/elever.txt"))
+
+  If $RemoteVer > $LocalVer
+    $elezip = GetUrl("http://gsak.net/checkele.zip","Grabbing elevation check database")
+    $result = PutFile("$_appdata\macros\checkele.zip",$elezip) 
+    $status = ZipFile("unzip","$_appdata\macros\checkele.zip","$_appdata\macros") 
+  endif
+EndSub

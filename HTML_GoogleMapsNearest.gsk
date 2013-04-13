@@ -1,0 +1,1133 @@
+# MacDescription = Google Maps Nearest Caches Split-Screen macro
+# MacFileName =HTML_GoogleMapsNearest.gsk
+# MacAuthor = Lignumaqua
+# MacVersion=1.9
+# MacUrl = http://gsak.net/board/index.php?showtopic=7425&view=findpost&p=45266
+
+#***************************************
+# HTMLName=Map Nearest V1.9
+# SplitScreen=Yes
+# Export=No
+# Offline=No
+#***************************************
+
+#===========================================================================#
+#   GMaps Split Screen Nearest
+#   Mike Wood (Lignumaqua)
+#
+#===========================================================================#
+#   GMaps Split Screen Nearest Change History
+#
+#   v0.1  (1/5/08) First trial release
+#		v0.2  (1/21/08) Use Getnear() instead of Centre
+# 	v0.3  (1/22/08) Add ring to show centre cache
+# 	v0.4  (1/28/08) Options menu when <Shift> is pressed
+# 	v0.5  (2/15/08) Limit loop to number of caches in current grid
+#   v0.6  (3/19/08) Add bounding circle and corresponding menu option - thanks to jer for idea and code
+# 	v0.7  (7/13/08) Replaced Canadian Topo maps with MyTopo
+# 	v0.8  (8/15/08) Add Google Earth - change icons to web based rather than local
+# 	v0.9  (10/10/09) Add Open Street Map, use new zoom control
+#		v1.0  (11/13/09) Add Waymarks
+#		v1.1	(12/18/09) Option to show all child waypoints (current waypoint indicated by * around child name
+#										 others have cache name as a prefix). Fixed size of 'Found' icon.
+#		v1.2  (6/18/10) Optional 0.1 Mile circles around caches (Thanks to Team Tschüsken). Fixed MyTopo
+#		v1.3  (6/19/10) Added circles to 'Stages of a Multicache' child waypoints and Puzzle caches with corrected coordinates
+#		v1.4  (1/11/11) Fix circles shown even if option is disabled for puzzles with corrected coordinates
+#		v1.5  (2/18/11) Added exclamation mark indicator for caches with corrected coordinates.
+#		v1.6  (5/1/11)  Added support for 'Other' caches.
+#		v1.7  (5/20/11) Added OCM map type, move corrected icon to bottom left, Fixed found icon, green found child icons
+#		v1.8  (12/17/11) Changed MOTW to localhost. Fixed MyTopo.
+#		v1.9  (12/17/11) Changed file name, rename older versions, add version number to form
+#===========================================================================#
+#   This GSAK macro creates a split screen format
+#   to show the current cache and its nearest neighbors on Google Maps
+#		Hold the 'Shift' key down when selecting a cache to access the configuration menu
+#
+VERCHECK Version=7.2.1.12 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+PREPROCESS Shift=$Edit
+GOSUB Name=DeclareVariables
+SPEEDMODE status=on
+
+$nearestnumber = "10"
+$showchild = "T"
+$showallchild = "F"
+$radius = "1"
+$showcircle = "F"
+$version = "V" + MacHeader("MacVersion")
+
+#Check if we're using Miles or Kilometres
+IF SysInfo("Distance") = "K"
+	$conversion = 1.6093
+ELSE
+	$conversion = 1
+ENDIF
+
+# Check which icon set we are using
+
+$IconSet = Sysinfo("gsakini;TfmConfig;cbxIconSet.Text")
+
+IF $IconSet = "Set 1"
+	$IconSet = "1"
+	$IconDef = $IconDef1
+ELSE
+	$IconSet = ""
+	$IconDef = $IconDef0
+ENDIF
+
+$datafilepath = Sysinfo("MacroPath")
+$DataFile = $datafilepath + "\HTMLNearestData.dat"
+
+IF (FileExists($DataFile))
+	$variables = GetFile($DataFile)
+	$nearestnumber = Extract($variables,";",1)
+	$showchild = Extract($variables,";",2)
+	$radius = Extract($variables,";",3)
+	$showallchild = Extract($variables,";",4)
+	$showcircle = Extract($variables,";",5)
+	$runonce = Extract($variables,";",6)
+ENDIF
+
+IF $runonce = ""
+	# Rename any old file versions found
+	$FileName = $_AppData + "\macros\HTML_Google Maps Nearest.gsk"
+	IF FileExists($FileName)
+		$file = Quote($FileName) + " " + Quote("HTML_Google Maps Nearest.gsk.old")
+		$BatFile = $_AppData + "\babel.bat"
+		$result = PutFile($BatFile, "REN " + $file)
+		FILEOPEN File="$BatFile" Wait=yes
+	ENDIF
+	$FileName = $_AppData + "\macros\HTML_Google_Maps_Nearest.gsk"
+	IF FileExists($FileName)
+		$file = Quote($FileName) + " " + Quote("HTML_Google_Maps_Nearest.gsk.old")
+		$BatFile = $_AppData + "\babel.bat"
+		$result = PutFile($BatFile, "REN " + $file)
+	FILEOPEN File="$BatFile" Wait=yes
+	ENDIF
+	$runonce = "1"
+	$variables = "$nearestnumber;$showchild;$radius;$showallchild;$showcircle;$runonce"
+	$result = PutFile($datafile, $variables)
+	IF Left($result, 7) = "*Error*"
+		# If theres any error abort the macro
+		CANCEL Msg="Unable to write to $datafile!"
+	ENDIF
+ENDIF
+
+
+$childbox = StrToBool($showchild)
+$allchildbox = StrToBool($showallchild)
+
+$circlebox = StrToBool($showcircle)
+
+$oldchildbox = $childbox
+$oldnearestnumber = $nearestnumber
+$oldradius = $radius
+$oldallchildbox = $allchildbox
+$oldcirclebox = $circlebox
+
+IF $Edit OR $nearestnumber = ""
+	$form = Replace("%%ver%%",$version,$form)
+	WHILE TRUE
+		
+		# Enable/disable the 'All' child box
+  	IF $childbox
+  		$Form = Editform($Form,"allchildbox","enabled","yes")
+  		$Form = Editform($Form,"labelall","enabled","yes")
+  	ELSE
+  		$Form = Editform($Form,"allchildbox","enabled","no")
+  		$Form = Editform($Form,"labelall","enabled","no")
+  	ENDIF
+  			
+		$result = Form($form,"")
+		# Reset the screen position of the menu form to where the user left it
+  	$Form = EditForm($Form,"Form1","Top",$_FormTop)
+  	$Form = EditForm($Form,"Form1","Left",$_FormLeft)
+  	  	
+  	BEGINCASE #Buttons
+  		CASE $Cancel
+  			$childbox = $oldchildbox
+				$nearestnumber = $oldnearestnumber
+				$radius = $oldradius
+				$allchildbox = $oldallchildbox
+				$circlebox = $oldcirclebox
+    		BREAK
+    	CASE $result = "Childbox"
+    		
+			CASE $OK
+				$showchild = BoolToStr($childbox,"T","F")
+				$showallchild = BoolToStr($allchildbox,"T","F")
+				$nearestnumber = NumToStr(Abs(Int(Val($nearestnumber))))
+				$radius = NumToStr(Abs(Val($radius)))
+				$showcircle = BoolToStr($circlebox,"T","F")
+				$variables = "$nearestnumber;$showchild;$radius;$showallchild;$showcircle;$runonce"
+				$result = PutFile($datafile, $variables)
+				IF Left($result, 7) = "*Error*"
+					# If theres any error abort the macro
+					CANCEL Msg="Unable to write to $datafile!"
+				ENDIF
+				BREAK
+	    OTHERWISE 
+  			BREAK
+  	ENDCASE	
+  	
+	ENDWHILE # Form Loop
+ENDIF
+
+$nearesttotal = Abs(Int(Val($nearestnumber))) + 1
+$radiusnumber = Abs(Val($radius))
+
+IF $nearesttotal > $_Count
+	$nearesttotal = $_Count
+ENDIF
+
+#   User Configurable Variables       
+   
+$split_zoom="3" #Values: 1 - 16
+
+#---initialize---#
+
+#Output flag macro
+
+IF NOT(FileExists($_Install + "\Macros\splittoggleflag.gsk"))
+	$split_result = PutFile($_Install + "\Macros\splittoggleflag.gsk",$splittoggle)
+ENDIF
+
+$split_savedcode = $d_Code
+$p_savedcode = $d_Code
+
+$split_count = $nearesttotal
+
+$split_data = GetNear($d_Latitude + " " + $d_Longitude, "M", $nearesttotal)
+
+$split_html = ""
+
+WHILE $split_count>=1
+
+	$split_line = Extract($split_data,$_Newline,$split_count)
+	$split_code = Extract($split_line,";",1)
+	$split_tmpB = Seek($split_code)
+	
+	# Add ring
+	IF $split_count = 1
+		$split_html=$split_html + "var mrkring = new GMarker(new GPoint("
+		$split_html=$split_html + $d_Longitude + "," + $d_Latitude + ")"
+		$split_html=$split_html + ", {icon: ringIcon});" + $_NewLine
+		$split_html=$split_html + "map.addOverlay(mrkring);" + $_NewLine
+	ENDIF
+
+	
+	#-----remove bad characters-----#
+
+	$split_code = HTML("Clean",$d_Code)
+	$split_code = replace($_Quote,"&#034",$split_code,true)
+	$split_code = replace("'","&#039",$split_code,true)
+	$split_cacheName = HTML("Clean",$d_Name)
+	$split_cacheName_Jscript = replace($_Quote,"\" + $_Quote,$split_cacheName,true)
+	$split_cacheName_Jscript = EntityDecode($split_cacheName_Jscript)
+	$split_cacheName = replace($_Quote,"&#034",$split_cacheName,true)
+	$split_cacheName = replace("'","&#039",$split_cacheName,true)
+	$split_ownerName = HTML("Clean",$d_OwnerName)
+	$split_ownerName = replace($_Quote,"&#034",$split_ownerName,true)
+	$split_ownerName = replace("'","&#039",$split_ownerName,true)
+
+	#-----apply the correct difficulty & terrain graphics-----#
+
+	$split_s_diff = str($d_Difficulty,3,1)
+	$split_s_diff = replace(",",".",$split_s_diff,true)      # Some computers use [,] decimal separator vs [.]
+	$split_s_diff = replace(".0","",$split_s_diff,true)
+	$split_s_diff = replace(".5","_5",$split_s_diff,true)
+	$split_dif = "http://www.geocaching.com/images/stars/stars" + $split_s_diff + ".gif"
+
+	$split_s_terr = str($d_Terrain,3,1)
+	$split_s_terr = replace(",",".",$split_s_terr,true)      # Some computers use [,] decimal separator vs [.]
+	$split_s_terr = replace(".0","",$split_s_terr,true)
+	$split_s_terr = replace(".5","_5",$split_s_terr,true)
+	$split_ter = "http://www.geocaching.com/images/stars/stars" + $split_s_terr + ".gif"
+
+	#-----apply the correct cache type icon & graphic-----#
+
+	$split_types = "TMUBVERWLCGZAIXYO"
+	$split_images = "tr,mu,un,le,vi,ev,ea,we,lo,ci,be,me,ap,wh,ex,wm,ot"
+	$split_typenums = "2,3,8,5,4,6,137,11,12,13,27,453,9,1858,1304,9999,9999"
+
+	$split_index = At($d_CacheType,$split_types)
+	$split_indexlarge = $split_index
+	$split_Icon  = Extract($split_images, "," , $split_index)
+
+	IF $d_Found
+		$split_Icon = "found"
+		$split_index = Len($split_types) + 1
+	ENDIF
+
+	BEGINCASE
+	CASE $split_index = 0
+		$split_Pic = "http://labs.google.com/ridefinder/images/mm_20_gray.png"
+	CASE $split_index = 16
+		$split_Pic = "http://gsak.net/google/cacheicons/wm32.gif"
+	CASE $split_index = 17
+		$split_Pic = "http://gsak.net/google/cacheicons/otherlarge.gif"
+	OTHERWISE
+		$split_Pic = "http://www.geocaching.com/images/WptTypes/" + extract($split_typenums, "," , $split_indexlarge) + ".gif"
+	ENDCASE
+
+	# "T"     Traditional, 2
+	# "M"     Multi, 3
+	# "U"     Puzzle, 8
+	# "B"     LetterBox, 5
+	# "V"     Virtual, 4
+	# "E"     Event, 6
+	# "R"     Earth, 137
+	# "W"     Webcam, 11
+	# "L"     Locationless, 12
+	# "C"     CITO, 13
+	# "G"     Benchmark, 27
+	# "Z"			Mega Event, 453
+	# "A"			Project Ape, 9
+	# "I"			Wherigo, 1858
+	# "X"			Exhibit, 1304
+	# "Y"			Waymark
+	# "O"			Other
+
+	#-----build the cache info marker-----#
+
+	$split_html=$split_html + "//---------------------------------------------------------------//" + $_NewLine
+	$split_html=$split_html + "var mrk$split_count = new GMarker(new GPoint("
+	$split_html=$split_html + $d_Longitude + "," + $d_Latitude + ")"
+	$split_html=$split_html + ", {icon: " + $split_icon + "_icon, title:" + quote($split_cacheName_Jscript) + "});" + $_newLine
+	$split_html=$split_html + "map.addOverlay(mrk$split_count);" + $_newLine
+	$split_html=$split_html + "var msg$split_count = "
+
+	$split_html=$split_html + $_Quote
+
+	$split_html=$split_html + "<div style= 'width:200px;overflow:auto;' >"
+
+	#$split_html=$split_html + "<font size = 2 face ='Verdana'><small><center><b>" + "<a href='" + $d_Url + "' target='geo'>" + $split_code + "</a><BR>"
+	$split_html=$split_html + "<font size = 2 face ='Verdana'><small><center><b>" + "<a href=" + "\" + $_Quote + "gsak://%FF/open/" +  HttpEncode($d_Url) + "\" + $_Quote + ">" + $split_code + "</a><BR>"
+	$split_html=$split_html + $split_cacheName + "</b><BR>"
+	$split_html=$split_html + "<i>by:  " + $split_ownerName + "</i><BR>"
+	if $d_HasTravelBug
+		$split_bug = "http://www.geocaching.com/images/WptTypes/21.gif"
+		$split_html=$split_html + "<img src='" + $split_pic + "'>" +"<img src='" + $split_bug + "'>" + "<BR>"
+	else
+		$split_html=$split_html + "<img src='" + $split_pic + "'>"  + "<BR>"
+	endif
+	$split_html=$split_html + "Difficulty:  " + "<img src='" + $split_dif + "'>" + "<BR>"
+	$split_html=$split_html + "Terrain:  " + "<img src='" + $split_ter + "'>" + "<BR>"
+	$split_html=$split_html + "Size:  " + $d_Container + "<BR><BR>"
+	if $d_Found
+		$split_html=$split_html + "<i>You have found this cache!</i><BR><BR>"
+	endif
+
+	$split_CacheHere = GCalc(($d_Latitude + " " + $d_Longitude),"FormatMinutes")
+	$split_CacheHere = Replace(";"," ",$split_CacheHere,true)
+	$split_html=$split_html + "<b>" + $split_CacheHere + "</b><BR>"
+
+	if $d_HasCorrected
+		$split_CacheHere = GCalc(($d_LatOriginal + " " + $d_LonOriginal),"FormatMinutes")
+		$split_CacheHere = Replace(";"," ",$split_CacheHere,true)
+		$split_html=$split_html + "<small>(Was: " + $split_CacheHere + ")</small><BR>"
+	endif
+
+	#$split_href = "<a href=" + "\" + $_Quote + "gsak://%FF/flagtoggle/" +  HttpEncode($d_Code) + "/" + HttpEncode($_CurrentDatabase) + "\" + $_Quote + ">Toggle GSAK User Flag</a>"
+
+	# gsak://%FF/Macro/MacroFile/code/database
+	$split_href = "<a href=" + "\" + $_Quote + "gsak://%FF/Macro/splittoggleflag.gsk/" +  HttpEncode($d_Code) + "/" + HttpEncode($_CurrentDatabase) + "\" + $_Quote + ">Toggle Flag</a>"
+	$split_html=$split_html + "<BR>"+ $split_href + " : "
+
+	$split_href = "<a href=" + "\" + $_Quote + "gsak://%FF/search/" +  HttpEncode($d_Code) + "/" + HttpEncode($_CurrentDatabase) + "\" + $_Quote + ">Center Here</a>"
+	$split_html=$split_html + $split_href + "<BR><BR>"
+
+	$split_html=$split_html + "</center></small></font></div>"
+
+	$split_html=$split_html + $_Quote + $_NewLine
+	$split_html=$split_html + "GEvent.addListener(mrk$split_count, " + quote("click") + ", function() {mrk$split_count.openInfoWindowHtml(msg$split_count);});"
+	$split_html=$split_html + $_newLine
+
+	#----Show Corrected Original position----#
+
+	IF $d_HasCorrected AND $split_count = 1 AND $childbox
+		$correctedtext = "Original Position"
+		$split_html=$split_html + "//---------------------------------------------------------------//" + $_NewLine
+		$split_html=$split_html + "var mrkcorrected$split_count = new GMarker(new GPoint("
+		$split_html=$split_html + $d_LonOriginal + "," + $d_LatOriginal + ")"
+		$split_html=$split_html + ", {icon: correctedicon, title:" + quote($correctedtext) + "});" + $_newLine
+		$split_html=$split_html + "map.addOverlay(mrkcorrected$split_count);" + $_newLine
+	ENDIF
+	
+	#----Show Saturation circles----#
+	# Traditional, Webcam, Ape, Multi and Letterbox AND Puzzles with corrected coordinates
+	 IF $circlebox AND ((At($d_CacheType,"TWABM") <> 0) OR ($d_CacheType = "U" AND $d_HasCorrected))
+    IF ($split_count=1)
+			$split_html=$split_html + "drawCircle(" + $d_Latitude + ", " + $d_Longitude + ", 0.1, '#C4FF57', 1, 0.75, '#A2A2FF',0.2);" + $_NewLine
+    ELSE
+			$split_html=$split_html + "drawCircle(" + $d_Latitude + ", " + $d_Longitude + ", 0.1, '#847FF7', 1, 0.75, '#BFBFA2',0.2);" + $_NewLine
+    ENDIF
+  ENDIF
+	
+	#----Show Exclamation icon for corrected caches----#
+	IF $d_HasCorrected
+		$split_html=$split_html + "var mrk_corr$split_count = new GMarker(new GPoint("
+		$split_html=$split_html + $d_Longitude + "," + $d_Latitude + ")"
+		$split_html=$split_html + ", {zIndexProcess: function() {return 9999;}, icon: exclamationIcon});" + $_NewLine
+		$split_html=$split_html + "map.addOverlay(mrk_corr$split_count);" + $_NewLine
+	ENDIF
+	
+
+	#----Show Child Markers----#
+	#----use a single marker image (waypoint) to avoid slowing things down too much---#
+	IF	($split_count = 1 OR $allchildbox)  AND $childbox
+		Table Active=Waypoints Scope=Parent
+		IF $d_Found
+			$ChildIconFound = "childfoundicon"
+		ELSE
+			$ChildIconFound = "childicon"
+		ENDIF
+		Goto Position=Top
+		$Count = 0
+
+		WHILE Not($_EOL)
+			$Count = $Count + 1
+			$Markername = "$Split_Count_$Count"
+			IF $split_count = 1
+				$split_childName = "* " + HTML("Clean",$d_cName) + " *"
+			ELSE
+				$split_childName = HTML("Clean",$d_Name + " - " + $d_cName)
+			ENDIF
+			$split_childName = replace($_Quote,"'",$split_childName,true)
+
+			$split_html=$split_html + "//---------------------------------------------------------------//" + $_NewLine
+			$split_html=$split_html + "var mrk$split_count" + $MarkerName +" = new GMarker(new GPoint("
+			$split_html=$split_html + $d_cLon + "," + $d_cLat + ")"
+			$split_html=$split_html + ", {icon: $ChildIconFound, title:" + quote($split_childName) + "});" + $_newLine
+			$split_html=$split_html + "map.addOverlay(mrk$split_count" + $MarkerName + ");" + $_NewLine
+			
+			IF $circlebox AND ($d_cType = "Final Location" OR $d_cType = "Stages of a Multicache")
+  			IF ($split_count=1)
+					$split_html=$split_html + "drawCircle(" + $d_cLat + ", " + $d_cLon + ", 0.1, '#C47B57', 1, 0.75, '#A2A2FF',.2);" + $_NewLine
+  			ELSE
+					$split_html=$split_html + "drawCircle(" + $d_cLat + ", " + $d_cLon + ", 0.1, '#847B57', 1, 0.75, '#BFBFA2',.2);" + $_NewLine
+  			ENDIF
+			ENDIF
+			
+			GOTO Position=Next
+		ENDWHILE
+		TABLE active=caches
+	ENDIF
+
+	$split_count = $split_count-1
+ENDWHILE
+
+$split_tmpB = Seek($split_SavedCode)
+
+#----Draw circle on map radius $radiusnumber--------------#
+
+IF $radiusnumber > 0
+	$Radius = Replace(",", ".", NumToStr($Radiusnumber / $conversion), true)
+	$split_html=$split_html + "//---------------------------------------------------------------//" + $_NewLine
+	$split_html=$split_html + "drawCircle(" + $d_Latitude + ", " + $d_Longitude + ", " + $radius + ", '#847B57', 1, 0.75, '#BFBCA2',.3);" + $_NewLine
+ENDIF
+
+#----finish the $html string--------------#
+
+   $split_html = $split_header + $split_html
+   $split_html = $split_html + "//---------------------------------------------------------------//" + $_newLine
+   $split_html = $split_html + "</script>" + $_newline
+   $split_html = $split_html + "</body></html>"
+
+#----Search and replace variables in the final $html string----------#
+   
+   $split_html = replace("my_zoom",$split_zoom,$split_html,true)
+   $split_html = replace("my_center_lat",$d_Latitude,$split_html,true)
+   $split_html = replace("my_center_lon",$d_Longitude,$split_html,true)
+   $split_html = replace("my_icon",$IconSet,$split_html,true)
+   $split_html = replace("my_baseicon",$IconDef,$split_html,true)
+   
+      
+#-----Create the HTML File----------
+
+$_HTML = $split_html
+
+
+<data> VarName=$IconDef0
+baseIcon.iconSize = new GSize(20, 34);
+baseIcon.shadowSize = new GSize(37, 34);
+baseIcon.iconAnchor = new GPoint(9, 34);
+baseIcon.infoWindowAnchor = new GPoint(9, 1);
+baseIcon.infoShadowAnchor = new GPoint(18, 25);
+<enddata>
+
+<data> VarName=$IconDef1
+baseIcon.iconSize = new GSize(27, 34);
+baseIcon.shadowSize = new GSize(38, 33);
+baseIcon.iconAnchor = new GPoint(6, 35);
+baseIcon.infoWindowAnchor = new GPoint(18,10);
+baseIcon.infoShadowAnchor = new GPoint(18,25);
+<enddata>
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#  HTML Header Data
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+<data> VarName=$split_header
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+"http://www.w3.org/TR/html4/loose.dtd">
+<HTML xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml">
+<head>
+<!-- saved from url=(0016)http://localhost -->
+<title>GSAK Google Map</title>
+
+<!-----external references----->
+<script src="http://gsak.net/stats/maps/mytopo.js" type="text/javascript"></script>
+
+<script src="http://maps.google.com/maps?file=api&amp;v=2" type="text/javascript"></script>
+
+<!-----With API key for http://localhost/----->
+<!-----<script src="http://maps.google.com/maps?file=api&amp;v=2&amp;key=ABQIAAAAcgt7h3CsXAU-Pcy9jDXNrRT2yXp_ZAY8_ufC3CFXhHIE1NvwkxQ_Twxpil8Xru91kHRd8o4vcVhC-w" type="text/javascript"></script>----->
+
+<script type="text/javascript">
+
+function writecookie(cookiename,k) { document.cookie=cookiename+'='+k+'; expires=Fri, 31 Dec 2020 00:00:00 UTC' };
+
+function clearcookie(cookiename,k) { document.cookie=cookiename+'='+k+'; expires=Fri, 31 Dec 2000 00:00:00 UTC' };
+
+function readCookie(cookieName){
+   var searchName = cookieName + "=";
+   var cookies = document.cookie;
+   var start = cookies.indexOf(cookieName);
+   if (start == -1){ // cookie not found 
+     return "-1";
+     }
+   start += searchName.length //start of the cookie data
+   var end = cookies.indexOf(";", start);
+   if (end == -1){
+     end = cookies.length;
+     }
+   return cookies.substring(start, end);
+   }
+
+function drawCircle(lat, lng, radius, strokeColor, strokeWidth, strokeOpacity, fillColor, fillOpacity){
+   var d2r = Math.PI/180;
+   var r2d = 180/Math.PI;
+   var Clat = (radius/3963)*r2d;
+   var Clng = Clat/Math.cos(lat*d2r);
+   var Cpoints = [];
+   for (var i=0; i < 33; i++) {
+      var theta = Math.PI * (i/16);
+      Cy = lat + (Clat * Math.sin(theta));
+      Cx = lng + (Clng * Math.cos(theta));
+      var P = new GPoint(Cx,Cy);
+      Cpoints.push(P);
+      }
+       
+    var polygon = new GPolygon(Cpoints, strokeColor, strokeWidth, strokeOpacity, fillColor, fillOpacity);
+    map.addOverlay(polygon);
+    }
+
+</script>
+
+<style type="text/css">
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: Verdana;
+      font-size: 7pt;
+    }
+
+    body {
+      background-color: white;
+      margin: 0;
+    }
+
+    #map {
+      background-color: #e5e3df;
+      height: 100%;
+    }
+    
+    #printDiv{
+      position: absolute;
+      top: 7px;
+      left: 80px;
+      width: 55px;
+      border: 1px solid black;
+      background: #6789CC;
+      display:block;
+      padding: 0px 1px;
+    }
+     
+    .print{
+      color: #FFFFFF;
+      font-size: 10pt;
+      font-weight: bold;
+      height: 17px;
+      cursor: pointer;
+      text-align: center;
+  	  z-index: 5;
+     }
+
+</style>
+<style type="text/css" media="print">
+	#printDiv { display: none; }
+</style>
+</head>
+
+<body onunload="GUnload()">
+
+<!-----map container----->
+<div id="map"></div>
+
+<div id="printDiv" class="print">Rt.Click</div>
+
+<script type="text/javascript">
+
+// Web Map Service map types.
+//
+// Copyright © 2005,2006 by Jef Poskanzer <jef@mail.acme.com>.
+// http://www.acme.com/javascript/
+
+function WMSCreateMap( name, tip, copyright, baseUrl, layer, format, transparent, opacity, minResolution, maxResolution, extraTileLayers, urlArg )
+    {
+    var tileLayer = new GTileLayer( new GCopyrightCollection( copyright ), minResolution, maxResolution );
+    tileLayer.baseUrl = baseUrl;
+    tileLayer.layer = layer;
+    tileLayer.format = format;
+    tileLayer.transparent = transparent;
+    tileLayer.getTileUrl = WMSGetTileUrl;
+    tileLayer.getOpacity = function () { return opacity; };
+    tileLayer.getCopyright = function () { return { prefix: '', copyrightTexts: [ copyright ] }; };
+    var tileLayers = [];
+    for ( var i in extraTileLayers )
+   tileLayers.push( extraTileLayers[i] );
+    tileLayers.push( tileLayer );
+    return new GMapType( tileLayers, G_SATELLITE_MAP.getProjection(), name, { urlArg: 'o', alt: tip} );
+    }
+
+function WMSGetTileUrl( tile, zoom )
+    {
+    var southWestPixel = new GPoint( tile.x * 256, ( tile.y + 1 ) * 256 );
+    var northEastPixel = new GPoint( ( tile.x + 1 ) * 256, tile.y * 256 );
+    var southWestCoords = G_NORMAL_MAP.getProjection().fromPixelToLatLng( southWestPixel, zoom );
+    var northEastCoords = G_NORMAL_MAP.getProjection().fromPixelToLatLng( northEastPixel, zoom );
+    var bbox = southWestCoords.lng() + ',' + southWestCoords.lat() + ',' + northEastCoords.lng() + ',' + northEastCoords.lat();
+    var transparency = this.transparent ? '&TRANSPARENT=TRUE' : '';
+    return this.baseUrl + '?VERSION=1.1.1&REQUEST=GetMap&LAYERS=' + this.layer + '&STYLES=&SRS=EPSG:4326&BBOX=' + bbox + '&WIDTH=256&HEIGHT=256&FORMAT=' + this.format + '&BGCOLOR=0xFFFFFF&EXCEPTIONS=INIMAGE' + transparency;
+    }
+    
+function MyTopoInit()
+	{
+
+		GetMyTopoTile=function(a,b,c) {
+		var lURL=this.myBaseURL;
+		lURL+=b;
+		lURL+="/"+a.x;
+		lURL+="/"+a.y+".png";
+		return lURL;
+		}
+
+		var mytopoCopy = new GCopyright(1,new GLatLngBounds(new GLatLng(-90, -180), new GLatLng(90, 180)),0,'Topo maps (c) MyTopo.com');
+		var mytopoc = new GCopyrightCollection('');
+		mytopoc.addCopyright(mytopoCopy);
+		
+		var tileMytopo = new GTileLayer(mytopoc,6,16);
+		tileMytopo.myLayers='topoG';
+		tileMytopo.myFormat='image/png';
+		tileMytopo.myBaseURL='http://maps.mytopo.com/mytopo/tilecache.py/1.0.0/topoG/';
+		
+		// mytopo.js contains a variable definition for 'mytopourl' for the current url of the mytopo data
+			
+		tileMytopo.myBaseURL=mytopourl;
+
+		tileMytopo.getTileUrl=GetMyTopoTile;
+		
+		mytopoLayer=[tileMytopo];
+	}
+
+// var WMS_DOQ_MAP = WMSCreateMap( 'DOQ', 'Imagery by USGS / Service by TerraServer', 'http://www.terraserver-usa.com/ogcmap6.ashx', 'DOQ', 'image/jpeg', false, 1.0, 4, 18, [], 'o' );
+// var WMS_NEXRAD_MAP = WMSCreateMap( 'NEXRAD', 'Data by NWS / Service by Iowa U. Ag. Dept.', 'http://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0r.cgi', 'nexrad-n0r', 'image/png', true, 0.666, 4, 10, G_HYBRID_MAP.getTileLayers(), 'n' );
+
+MyTopoInit();
+
+var WMS_TOPO_MAP = WMSCreateMap( 'Topo', 'USGS Topographic', 'Imagery by USGS / Service by TerraServer', 'http://www.terraserver-usa.com/ogcmap6.ashx', 'DRG', 'image/jpeg', false, 1.0, 4, 17, [], 't' );
+// var NRCAN_TOPO_TILES = WMSCreateMap('Cdn', 'Canadian Topographic', 'Maps by NRCan.gc.ca','http://wms.cits.rncan.gc.ca/cgi-bin/cubeserv.cgi', 'PUB_50K:CARTES_MATRICIELLES/RASTER_MAPS', 'image/png', false, 1.0, 6, 17, [], 't' );
+var MYTOPO_MAP = new GMapType(mytopoLayer, G_SATELLITE_MAP.getProjection(), "MyTopo",  { urlArg: 'o', alt: 'MyTopo topographic'});
+
+//OSM Map
+var copyOSM = new GCopyrightCollection("<a href=\"http://www.openstreetmap.org/\">OpenStreetMap</a>");
+copyOSM.addCopyright(new GCopyright(1, new GLatLngBounds(new GLatLng(-90,-180), new GLatLng(90,180)), 0, " "));
+
+var tilesMapnik = new GTileLayer(copyOSM, 1, 17, {tileUrlTemplate: 'http://tile.openstreetmap.org/{Z}/{X}/{Y}.png'});
+var OPEN_MAP = new GMapType([tilesMapnik], G_NORMAL_MAP.getProjection(), "OSM", { urlArg: 'o', alt: 'OpenStreetMap'});
+
+
+//OCM Map
+var copyOCM = new GCopyrightCollection("<a href=\"http://www.opencyclemap.org/\">OpenCycleMap</a>");
+copyOCM.addCopyright(new GCopyright(1, new GLatLngBounds(new GLatLng(-90,-180), new GLatLng(90,180)), 0, " "));
+
+var tilesOCMMapnik = new GTileLayer(copyOCM, 1, 17, {tileUrlTemplate: 'http://tile.opencyclemap.org/cycle/{Z}/{X}/{Y}.png'});
+var OCM_MAP = new GMapType([tilesOCMMapnik], G_NORMAL_MAP.getProjection(), "OCM", { urlArg: 'o', alt: 'OpenCycleMap'});
+
+<!-----map variables----->
+
+var map = new GMap2(document.getElementById("map"));
+   map.addControl(new GScaleControl());
+// map.addControl(new GLargeMapControl());
+   map.addControl(new GLargeMapControl3D());
+// map.addControl(new GMapTypeControl(true));
+   map.addControl(new GHierarchicalMapTypeControl(true));
+   map.enableContinuousZoom();
+   map.enableDoubleClickZoom();
+
+//Don't add Earth if we are using IE6
+if (window.XMLHttpRequest) {
+// IE 7, mozilla, safari, opera 9
+   map.addMapType(G_SATELLITE_3D_MAP);
+} else {
+// IE6, older browsers
+}
+
+<!-----Add map types----->
+map.addMapType(G_PHYSICAL_MAP);
+map.addMapType( WMS_TOPO_MAP );
+//map.addMapType( NRCAN_TOPO_TILES );
+map.addMapType(MYTOPO_MAP);
+map.addMapType(OPEN_MAP);
+map.addMapType(OCM_MAP);
+
+<!-----minimap inset----->
+
+//   var ovSize=new GSize(200, 150)
+//   var ovMap=new GOverviewMapControl(ovSize);
+//   map.addControl(ovMap);
+//   var mini=ovMap.getOverviewMap();
+//   ovMap.hide();    //hide by default
+    
+   
+   map.setCenter(new GLatLng(my_center_lat,my_center_lon),my_zoom);
+   map.enableScrollWheelZoom();
+   
+      
+<!----check if maptype changes and set a cookie---->   
+   GEvent.addListener(map,'maptypechanged',function(){
+     for (var k=0; k<9; k++){if (map.getCurrentMapType() == map.getMapTypes()[k]) {writecookie('maptype' + 'mn',k);}}
+     }
+    );
+
+<!----read cookie and set maptype accordingly---->
+var typecookie = readCookie("maptype" + "mn");
+if (typecookie == "-1") {typecookie = "0";};
+map.setMapType(map.getMapTypes()[typecookie]);
+
+<!----check if zoom changes and set a cookie---->   
+   GEvent.addListener(map,'zoomend',function(){writecookie('zoom' + 'mn',map.getZoom())});
+
+<!----read cookie and set zoom accordingly---->
+var zoomcookie = readCookie("zoom" + "mn");
+if (zoomcookie == "-1") {zoomcookie = "14";};
+map.setZoom(parseInt(zoomcookie));
+
+/*
+clearcookie('zoom','');
+clearcookie('maptype','');
+*/
+
+<!-----icon references----->
+
+var ringIcon = new GIcon();
+	ringIcon.iconSize = new GSize(31, 20);
+	ringIcon.iconAnchor = new GPoint(15, 11);
+	ringIcon.image = "http://gsak.net/google/cacheicons/ring.png";
+	
+var exclamationIcon = new GIcon();
+	exclamationIcon.iconSize = new GSize(16, 16);
+	exclamationIcon.iconAnchor = new GPoint(12, 20);
+	exclamationIcon.image = "http://gsak.net/stats/maps/cacheicons/exclamation.png";
+
+var baseIcon = new GIcon();
+   baseIcon.shadow = "http://gsak.net/google/cacheicons/shadowmy_icon.png";
+   my_baseicon
+     
+
+//var found_icon = new GIcon();
+//		found_icon.iconSize = new GSize(20, 34);
+//		found_icon.shadowSize = new GSize(37, 34);
+//		found_icon.shadow = "http://gsak.net/google/cacheicons/shadow.png";
+//		found_icon.iconAnchor = new GPoint(9, 34);
+//		found_icon.infoWindowAnchor = new GPoint(9, 1);/
+//		found_icon.infoShadowAnchor = new GPoint(18, 25);
+//  	found_icon.image = "http://gsak.net/google/cacheicons/found.png";
+
+
+var found_icon = new GIcon(baseIcon);
+   found_icon.image = "http://gsak.net/stats/maps/cacheicons/foundmy_icon.png";
+
+
+var mu_icon = new GIcon(baseIcon);
+   mu_icon.image = "http://gsak.net/google/cacheicons/mumy_icon.png";
+
+var le_icon = new GIcon(baseIcon);
+   le_icon.image = "http://gsak.net/google/cacheicons/lemy_icon.png";
+
+var tr_icon = new GIcon(baseIcon);
+   tr_icon.image = "http://gsak.net/google/cacheicons/trmy_icon.png";
+
+var un_icon = new GIcon(baseIcon);
+   un_icon.image = "http://gsak.net/google/cacheicons/unmy_icon.png";
+
+var vi_icon = new GIcon(baseIcon);
+   vi_icon.image = "http://gsak.net/google/cacheicons/vimy_icon.png";
+
+var ev_icon = new GIcon(baseIcon);
+   ev_icon.image = "http://gsak.net/google/cacheicons/evmy_icon.png";
+
+var ea_icon = new GIcon(baseIcon);
+   ea_icon.image = "http://gsak.net/google/cacheicons/eamy_icon.png";
+
+var we_icon = new GIcon(baseIcon);
+   we_icon.image = "http://gsak.net/google/cacheicons/wemy_icon.png";
+
+var lo_icon = new GIcon(baseIcon);
+   lo_icon.image = "http://gsak.net/google/cacheicons/lomy_icon.png";
+   
+var ci_icon = new GIcon(baseIcon);
+   ci_icon.image = "http://gsak.net/google/cacheicons/cimy_icon.png";
+   
+var be_icon = new GIcon(baseIcon);
+   be_icon.image = "http://gsak.net/google/cacheicons/bemy_icon.png";
+
+var ex_icon = new GIcon(baseIcon);
+   ex_icon.image = "http://gsak.net/google/cacheicons/exmy_icon.png";
+   
+var wh_icon = new GIcon(baseIcon);
+   wh_icon.image = "http://gsak.net/google/cacheicons/whmy_icon.png";
+   
+var ap_icon = new GIcon(baseIcon);
+   ap_icon.image = "http://gsak.net/google/cacheicons/apmy_icon.png";
+   
+var me_icon = new GIcon(baseIcon);
+   me_icon.image = "http://gsak.net/google/cacheicons/memy_icon.png";
+   
+var wm_icon = new GIcon(baseIcon);
+   wm_icon.image = "http://gsak.net/google/cacheicons/wmmy_icon.png";
+   
+var ot_icon = new GIcon(baseIcon);
+   ot_icon.image = "http://gsak.net/google/cacheicons/othermy_icon.png";
+   
+var childicon = new GIcon(baseIcon);
+	childicon.image = "http://gsak.net/google/cacheicons/waypointmy_icon.png";
+	
+var childfoundicon = new GIcon(baseIcon);
+	childfoundicon.image = "http://gsak.net/stats/maps/cacheicons/waypointfoundmy_icon.png";
+	
+	
+var correctedicon = new GIcon();
+	correctedicon.image = "http://gsak.net/google/cacheicons/traffic_cone.png";
+	correctedicon.iconSize = new GSize(16, 16);
+	correctedicon.iconAnchor = new GPoint(8, 16);
+  
+<enddata>
+
+<data> VarName=$splittoggle
+USERFLAG type=swap range=1
+$split_tmpB = Seek($p_savedcode)
+<enddata>
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sat 17-Dec-2011 10:57:05
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 348
+  Width = 269
+
+Name = Groupbox1
+  Type = Groupbox
+  Height = 51
+  Left = 11
+  Top = 110
+  Width = 231
+  Taborder = 2
+
+Name = Groupbox2
+  Type = Groupbox
+  Height = 41
+  Left = 11
+  Top = 70
+  Width = 231
+  Taborder = 3
+
+Name = Groupbox3
+  Type = Groupbox
+  Height = 41
+  Left = 11
+  Top = 201
+  Width = 231
+  Taborder = 4
+
+Name = GroupBox4
+  Type = Groupbox
+  Height = 41
+  Left = 11
+  Top = 161
+  Width = 231
+  Taborder = 5
+
+Name = Label1
+  Type = Label
+  Color = 16711680
+  Height = 24
+  Left = 35
+  Size = 14
+  Top = 10
+  Width = 191
+  Caption = Google Maps Nearest
+
+Name = Label2
+  Type = Label
+  Height = 16
+  Left = 60
+  Size = 10
+  Top = 50
+  Width = 140
+  Caption = Please select options:
+
+Name = Label3
+  Type = Label
+  Container = Groupbox2
+  Height = 16
+  Left = 13
+  Size = 10
+  Top = 14
+  Width = 168
+  Caption = Number of nearest caches:
+
+Name = Label4
+  Type = Label
+  Container = Groupbox1
+  Height = 16
+  Left = 37
+  Size = 10
+  Top = 11
+  Width = 144
+  Caption = Show Child Waypoints:
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 23
+  Top = 262
+  Width = 75
+  Taborder = 0
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 163
+  Top = 262
+  Width = 75
+  Taborder = 1
+  Caption = Cancel
+
+Name = nearestnumber
+  Type = Edit
+  Container = Groupbox2
+  Height = 21
+  Left = 183
+  Top = 13
+  Width = 31
+  Taborder = 0
+
+Name = Childbox
+  Type = Checkbox
+  Container = Groupbox1
+  Exitonchange = yes
+  Height = 17
+  Left = 186
+  Top = 11
+  Width = 15
+  Taborder = 0
+
+Name = Label5
+  Type = Label
+  Container = Groupbox3
+  Height = 16
+  Left = 34
+  Size = 10
+  Top = 14
+  Width = 146
+  Caption = Circle radius (0 to hide):
+
+Name = radius
+  Type = Edit
+  Container = Groupbox3
+  Height = 21
+  Left = 180
+  Top = 13
+  Width = 31
+  Taborder = 0
+
+Name = LabelAll
+  Type = Label
+  Container = Groupbox1
+  Height = 16
+  Left = 86
+  Size = 10
+  Top = 29
+  Width = 95
+  Caption = For all caches:
+
+Name = AllChildBox
+  Type = Checkbox
+  Container = Groupbox1
+  Height = 17
+  Left = 186
+  Top = 28
+  Width = 17
+  Taborder = 1
+
+Name = Label6
+  Type = Label
+  Container = GroupBox4
+  Height = 16
+  Left = 37
+  Size = 10
+  Top = 14
+  Width = 151
+  Caption = Show Saturation Circles:
+
+Name = CircleBox
+  Type = Checkbox
+  Container = GroupBox4
+  Exitonchange = No
+  Height = 17
+  Left = 186
+  Top = 14
+  Width = 15
+  Taborder = 0
+
+Name = Version
+  Type = Label
+  Height = 17
+  Left = 212
+  Size = 8
+  Top = 294
+  Width = 55
+  Caption = %%ver%%
+
+<enddata>
+
+
+
+
+
+
+
+
+BEGINSUB Name=DeclareVariables
+#*******************************************************
+#   Variable declarations for
+#   C:\Program Files\GSAK\Macros\HTML_Google Maps Nearest.gsk
+#
+#   Generated 1/5/2008 10:18:31 PM on GSAKVariables.gsk Rev V0.20 B14
+#
+#*******************************************************
+
+Option Explicit=Yes
+
+Declare Var=$_HTML Type=String
+Declare Var=$BatFile Type=String
+Declare Var=$correctedtext Type=String
+Declare Var=$Childbox Type=Boolean
+Declare Var=$Circlebox Type=Boolean
+Declare Var=$ChildIconFound Type=String
+Declare Var=$OldChildbox Type=Boolean
+Declare Var=$AllChildbox Type=Boolean
+Declare Var=$OldAllChildbox Type=Boolean
+Declare Var=$Count Type=Numeric
+Declare Var=$Conversion Type=Numeric
+Declare Var=$DataFilePath Type=String
+Declare Var=$DataFile Type=String
+Declare Var=$Form Type=String
+Declare Var=$FileName Type=String
+Declare Var=$File Type=String
+Declare Var=$Images Type=String
+Declare Var=$IconSet Type=String
+Declare Var=$IconDef Type=String
+Declare Var=$IconDef0 Type=String
+Declare Var=$IconDef1 Type=String
+Declare Var=$Markername Type=String
+Declare Var=$NearestNumber Type=String
+Declare Var=$OldCirclebox Type=Boolean
+Declare Var=$OldNearestNumber Type=String
+Declare Var=$NearestTotal Type=Numeric
+Declare Var=$oldradius Type=String
+Declare Var=$p_savedcode Type=String
+Declare Var=$result Type=String
+Declare Var=$radius Type=String
+Declare Var=$radiusnumber Type=Numeric
+Declare Var=$runonce Type=String
+Declare Var=$ShowChild Type=String
+Declare Var=$ShowCircle Type=String
+Declare Var=$ShowAllChild Type=String
+Declare Var=$split_BatFile Type=String
+Declare Var=$split_File Type=String
+Declare Var=$split_be Type=String
+Declare Var=$split_bug Type=String
+Declare Var=$split_CacheHere Type=String
+Declare Var=$split_cacheIconList Type=String
+Declare Var=$split_cacheName Type=String
+Declare Var=$split_cacheName_Jscript Type=String
+Declare Var=$split_childName Type=String
+Declare Var=$split_ci Type=String
+Declare Var=$split_code Type=String
+Declare Var=$split_count Type=Numeric
+Declare Var=$split_data Type=String
+Declare Var=$split_dif Type=String
+Declare Var=$split_ea Type=String
+Declare Var=$split_ev Type=String
+Declare Var=$split_found Type=String
+Declare Var=$split_header Type=String
+Declare Var=$split_home Type=String
+Declare Var=$split_href Type=String
+Declare Var=$split_html Type=String
+Declare Var=$split_Icon Type=String
+Declare Var=$split_image Type=String
+Declare Var=$split_images Type=String
+Declare Var=$split_index Type=Numeric
+Declare Var=$split_indexlarge Type=Numeric
+Declare Var=$split_le Type=String
+Declare Var=$split_line Type=String
+Declare Var=$split_lo Type=String
+Declare Var=$split_mu Type=String
+Declare Var=$split_me Type=String
+Declare Var=$split_ap Type=String
+Declare Var=$split_wh Type=String
+Declare Var=$split_ex Type=String
+Declare Var=$split_ownerName Type=String
+Declare Var=$split_path Type=String
+Declare Var=$split_Pic Type=String
+Declare Var=$split_result Type=String
+Declare Var=$split_ring Type=String
+Declare Var=$split_s_diff Type=String
+Declare Var=$split_s_terr Type=String
+Declare Var=$split_savedcode Type=String
+Declare Var=$split_shadow Type=String
+Declare Var=$split_ter Type=String
+Declare Var=$split_tmpB Type=Boolean
+Declare Var=$split_tr Type=String
+Declare Var=$split_typenums Type=String
+Declare Var=$split_types Type=String
+Declare Var=$split_un Type=String
+Declare Var=$split_URLpath Type=String
+Declare Var=$split_vi Type=String
+Declare Var=$split_waypoint Type=String
+Declare Var=$split_we Type=String
+Declare Var=$split_zoom Type=String
+Declare Var=$splittoggle Type=String
+Declare Var=$traffic_cone Type=String
+Declare Var=$Variables Type=String
+Declare Var=$version Type=String
+
+ENDSUB 
+

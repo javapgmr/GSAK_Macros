@@ -1,0 +1,199 @@
+#Debug Status=ON
+# Save everything
+
+#Filter to be used for all caches 
+MFilter Expression=not $d_found and not $d_Archived AND NOT $d_TempDisabled  
+
+
+
+DATASAVE Data=$d_UserFlag
+$currentsort = $_SortBy
+$currentfilter = SAVEFILTER()
+$currentdb = $_CurrentDatabase
+
+$baselocation="C:\Macrotest\"
+
+IF .not. FOLDEREXISTS($baselocation)
+  MsgOK Msg="Base Location Does not Exist. Macro Cancelling"
+  CANCEL
+Endif
+
+#A = Project Ape
+#B = Letterbox
+#C = Cache In Trash Out
+#E = Event
+#G = BenchMark
+#L = Locationless
+#M = Multi
+#O = Other
+#R = Earth
+#T = Traditional
+#U = Unknown/Mystery
+#V = Virtual
+#W = Webcam
+#Z = Mega event
+
+#Traditional Micro
+MFilter Expression=$d_CacheType="T" and $d_Container="Micro" Join=And
+ If $_FilterCount > 0
+ 		$OutFile= $baselocation + "Traditional_Micro.csv" 
+ 		$S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+ 		MACROSET Dialog=S&T  VarName=$S&TFinal
+		EXPORT Type=SNT Settings=<Macro>
+		GOSUB Name=Restore
+		Delay MS=1000
+Endif
+
+#Traditional
+MFilter Expression=$d_CacheType="T" and $d_Container<>"Micro" Join=And
+ If $_FilterCount > 0
+ 		$OutFile= $baselocation + "Traditional.csv" 
+ 		$S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+ 		MACROSET Dialog=S&T  VarName=$S&TFinal
+		EXPORT Type=SNT Settings=<Macro>
+		GOSUB Name=Restore
+		Delay MS=1000
+Endif
+
+#Other
+MFilter Expression=$d_CacheType="O" Join=And
+ If $_FilterCount > 0
+		$OutFile= $baselocation + "Other.csv" 
+ 		$S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+ 		MACROSET Dialog=S&T  VarName=$S&TFinal
+		EXPORT Type=SNT Settings=<Macro>
+		GOSUB Name=Restore
+		Delay MS=1000
+Endif
+
+#Multi
+MFilter Expression=$d_CacheType="M" Join=And
+ If $_FilterCount > 0
+ 		$OutFile= $baselocation + "Multicache.csv" 
+ 		$S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+ 		MACROSET Dialog=S&T  VarName=$S&TFinal
+		EXPORT Type=SNT Settings=<Macro>
+		GOSUB Name=Restore
+		Delay MS=1000
+Endif
+
+#Unknown/Mystery
+MFilter Expression=$d_CacheType="U" Join=And
+ If $_FilterCount > 0
+ 		$OutFile= $baselocation + "Mystery.csv" 
+ 		$S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+ 		MACROSET Dialog=S&T  VarName=$S&TFinal
+		EXPORT Type=SNT Settings=<Macro>
+		GOSUB Name=Restore
+		Delay MS=1000
+Endif
+
+#Letterbox
+MFilter Expression=$d_CacheType="B" Join=And
+ If $_FilterCount > 0
+ 		$OutFile= $baselocation + "Letterbox.csv" 
+ 		$S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+ 		MACROSET Dialog=S&T  VarName=$S&TFinal
+		EXPORT Type=SNT Settings=<Macro>
+		GOSUB Name=Restore
+		Delay MS=1000
+Endif
+
+#Virtual
+MFilter Expression=$d_CacheType="V" Join=And
+ If $_FilterCount > 0
+		$OutFile= $baselocation + "Virtual.csv" 
+ 		$S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+ 		MACROSET Dialog=S&T  VarName=$S&TFinal
+		EXPORT Type=SNT Settings=<Macro>
+		GOSUB Name=Restore
+		Delay MS=1000
+Endif
+
+#Earth
+MFilter Expression=$d_CacheType="R" Join=And
+ If $_FilterCount > 0
+		$OutFile= $baselocation + "Earth.csv" 
+ 		$S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+ 		MACROSET Dialog=S&T  VarName=$S&TFinal
+		EXPORT Type=SNT Settings=<Macro>
+		GOSUB Name=Restore
+		Delay MS=1000
+Endif
+
+#Event
+MFilter Expression=$d_CacheType="E" Join=And
+ If $_FilterCount > 0
+		$OutFile= $baselocation + "Event.csv" 
+ 		$S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+ 		MACROSET Dialog=S&T  VarName=$S&TFinal
+		EXPORT Type=SNT Settings=<Macro>
+		GOSUB Name=Restore
+		Delay MS=1000
+Endif
+
+#Cache In Trash Out
+MFilter Expression=$d_CacheType="C" Join=And
+ If $_FilterCount > 0
+		$OutFile= $baselocation + "CITO.csv" 
+ 		$S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+ 		MACROSET Dialog=S&T  VarName=$S&TFinal
+		EXPORT Type=SNT Settings=<Macro>
+		GOSUB Name=Restore
+		Delay MS=1000
+Endif
+
+#Mega Event
+MFilter Expression=$d_CacheType="Z" Join=And
+ If $_FilterCount > 0
+		$OutFile= $baselocation + "Mega Event.csv" 
+ 		$S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+ 		MACROSET Dialog=S&T  VarName=$S&TFinal
+		EXPORT Type=SNT Settings=<Macro>
+		GOSUB Name=Restore
+		Delay MS=1000
+Endif
+
+#Webcam
+MFilter Expression=$d_CacheType="W" Join=And
+ If $_FilterCount > 0
+		$OutFile= $baselocation + "Webcam.csv" 
+ 		$S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+ 		MACROSET Dialog=S&T  VarName=$S&TFinal
+		EXPORT Type=SNT Settings=<Macro>
+		GOSUB Name=Restore
+		Delay MS=1000
+Endif
+
+GOSUB Name=Restore
+
+
+
+
+BEGINSUB Name=Restore
+# Return to original database, if different
+IF $_CurrentDatabase <> $currentdb
+DATABASE Name=$currentdb Action=select
+ENDIF
+
+# Restore userflags, filter, and sort
+DATARESTORE Data=$d_UserFlag
+IF RESTOREFILTER($currentfilter, True) = 0
+PAUSE Msg="Previously-set filter would now show no records. Clearing."
+ENDIF
+EndSUB
+
+<data> VarName=$S&T
+[TfmStreets]
+chkChild.Checked=True
+chkDefault.Checked=False
+chkFlag.Checked=False
+edtFormat.Text=[%Code] %Name by %By (%Dif/%Ter)
+edtMax.Text=
+edtMaxGps.Text=14
+edtProblem.Text=
+edtWaypoint.Text=%smart
+cbxLink.Text=*Default
+<enddata>
+
+

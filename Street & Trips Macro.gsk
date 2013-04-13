@@ -1,0 +1,256 @@
+#*******************************************
+# MacDescription = Streets & Trips Macro modified to save filter
+# MacFileName = Streets_&_Trips_SaveFilter.gsk
+# MacAuthor = javapgmr
+# MacVersion=1.0
+# MacUrl=
+#*******************************************
+
+#DEBUG Status=ON
+SPEEDMODE Status=On
+
+#Filter to be used for all caches 
+Declare Var=$FSRStatus Type=String
+Declare Var=$FSRCodes Type=String
+
+SHOWSTATUS msg="Setting up initial filtering." Width=350
+GOSUB Name=FilterSet
+GOSUB Name=FilterRestore
+$FSRCodes2 = $FSRCodes
+ 
+MFilter Expression= (not ($d_found OR $d_Archived OR $d_TempDisabled)) and $d_macroflag
+GOSUB Name=FilterSet
+GOSUB Name=FilterRestore
+
+DATASAVE Data=$d_UserFlag
+$currentsort = $_SortBy
+$currentdb = $_CurrentDatabase
+
+$baselocation="c:\tmp\"
+
+IF .not. FOLDEREXISTS($baselocation)
+  MsgOK Msg="Base Location Does not Exist. Macro Cancelling"
+  CANCEL
+Endif
+
+#A = Project Ape
+#B = Letterbox
+#C = Cache In Trash Out
+#E = Event
+#G = BenchMark
+#I = Wherigo
+#L = Locationless
+#M = Multi
+#O = Other
+#R = Earth
+#T = Traditional
+#U = Unknown/Mystery
+#V = Virtual
+#W = Webcam
+#Z = Mega event
+
+#Traditional Micro
+SHOWSTATUS msg="Exporting Micro caches" Width=350
+MFilter Expression=$d_CacheType="T" and $d_Container="Micro"  and $d_macroflag 
+If $_FilterCount > 0
+        $OutFile= $baselocation + "Traditional_Micro.csv" 
+        $S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+        MACROSET Dialog=S&T  VarName=$S&TFinal
+        EXPORT Type=SNT Settings=<Macro>
+ENDIF
+        GOSUB Name=FilterRestore
+        Delay MS=1000
+
+
+#Traditional
+SHOWSTATUS msg="Exporting Traditional caches" Width=350
+MFilter Expression=$d_CacheType="T" and $d_Container<>"Micro" and $d_macroflag
+If $_FilterCount > 0
+        $OutFile= $baselocation + "Traditional.csv" 
+        $S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+        MACROSET Dialog=S&T  VarName=$S&TFinal
+        EXPORT Type=SNT Settings=<Macro>
+ENDIF
+        GOSUB Name=FilterRestore
+        Delay MS=1000
+
+
+#Other
+SHOWSTATUS msg="Exporting Other caches" Width=350
+MFilter Expression=$d_CacheType="O" and $d_macroflag
+If $_FilterCount > 0
+        $OutFile= $baselocation + "Other.csv" 
+        $S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+        MACROSET Dialog=S&T  VarName=$S&TFinal
+        EXPORT Type=SNT Settings=<Macro>
+ENDIF
+        GOSUB Name=FilterRestore
+        Delay MS=1000
+
+
+#Multi
+SHOWSTATUS msg="Exporting Multi caches" Width=350
+MFilter Expression=$d_CacheType="M" and $d_macroflag
+If $_FilterCount > 0
+        $OutFile= $baselocation + "Multicache.csv" 
+        $S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+        MACROSET Dialog=S&T  VarName=$S&TFinal
+        EXPORT Type=SNT Settings=<Macro>
+ENDIF
+        GOSUB Name=FilterRestore
+        Delay MS=1000
+
+#Unknown/Mystery
+SHOWSTATUS msg="Exporting Mystery/Unknown caches" Width=350
+MFilter Expression=$d_CacheType="U" and $d_macroflag
+If $_FilterCount > 0
+        $OutFile= $baselocation + "Mystery.csv" 
+        $S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+        MACROSET Dialog=S&T  VarName=$S&TFinal
+        EXPORT Type=SNT Settings=<Macro>
+ENDIF
+        GOSUB Name=FilterRestore
+        Delay MS=1000
+
+
+#Letterbox
+SHOWSTATUS msg="Exporting Letterbox caches" Width=350
+MFilter Expression=$d_CacheType="B" and $d_macroflag
+If $_FilterCount > 0
+        $OutFile= $baselocation + "Letterbox.csv" 
+        $S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+        MACROSET Dialog=S&T  VarName=$S&TFinal
+        EXPORT Type=SNT Settings=<Macro>
+ENDIF
+        GOSUB Name=FilterRestore
+        Delay MS=1000
+
+
+#Virtual
+SHOWSTATUS msg="Exporting Virtual caches" Width=350
+MFilter Expression=$d_CacheType="V" and $d_macroflag
+If $_FilterCount > 0
+        $OutFile= $baselocation + "Virtual.csv" 
+        $S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+        MACROSET Dialog=S&T  VarName=$S&TFinal
+        EXPORT Type=SNT Settings=<Macro>
+ENDIF
+        GOSUB Name=FilterRestore
+        Delay MS=1000
+
+
+#Earth
+SHOWSTATUS msg="Exporting Earth caches" Width=350
+MFilter Expression=$d_CacheType="R" and $d_macroflag
+If $_FilterCount > 0
+        $OutFile= $baselocation + "Earth.csv" 
+        $S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+        MACROSET Dialog=S&T  VarName=$S&TFinal
+        EXPORT Type=SNT Settings=<Macro>
+ENDIF
+        GOSUB Name=FilterRestore
+        Delay MS=1000
+
+#Event
+SHOWSTATUS msg="Exporting Event caches" Width=350
+MFilter Expression=$d_CacheType="E" and $d_macroflag
+If $_FilterCount > 0
+        $OutFile= $baselocation + "Event.csv" 
+        $S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+        MACROSET Dialog=S&T  VarName=$S&TFinal
+        EXPORT Type=SNT Settings=<Macro>
+ENDIF
+        GOSUB Name=FilterRestore
+        Delay MS=1000
+
+
+#Cache In Trash Out
+SHOWSTATUS msg="Exporting CITO caches" Width=350
+MFilter Expression=$d_CacheType="C" and $d_macroflag
+If $_FilterCount > 0
+        $OutFile= $baselocation + "CITO.csv" 
+        $S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+        MACROSET Dialog=S&T  VarName=$S&TFinal
+        EXPORT Type=SNT Settings=<Macro>
+ENDIF
+        GOSUB Name=FilterRestore
+        Delay MS=1000
+
+
+#Mega Event
+SHOWSTATUS msg="Exporting Mega caches" Width=350
+MFilter Expression=$d_CacheType="Z" and $d_macroflag
+If $_FilterCount > 0        
+        $OutFile= $baselocation + "Mega Event.csv" 
+        $S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+        MACROSET Dialog=S&T  VarName=$S&TFinal
+        EXPORT Type=SNT Settings=<Macro>
+ENDIF
+        GOSUB Name=FilterRestore
+        Delay MS=1000
+
+
+#Webcam
+SHOWSTATUS msg="Exporting Webcam caches" Width=350
+MFilter Expression=$d_CacheType="W" and $d_macroflag
+If $_FilterCount > 0
+        $OutFile= $baselocation + "Webcam.csv" 
+        $S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+        MACROSET Dialog=S&T  VarName=$S&TFinal
+        EXPORT Type=SNT Settings=<Macro>
+ENDIF
+        GOSUB Name=FilterRestore
+        Delay MS=1000
+
+
+#Wherigo
+SHOWSTATUS msg="Exporting Wherigo caches" Width=350
+MFilter Expression=$d_CacheType="I" and $d_macroflag
+If $_FilterCount > 0
+        $OutFile= $baselocation + "Wherigo.csv" 
+        $S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+        MACROSET Dialog=S&T  VarName=$S&TFinal
+        EXPORT Type=SNT Settings=<Macro>
+ENDIF
+        GOSUB Name=FilterRestore
+        Delay MS=1000
+
+
+SHOWSTATUS msg="Exporting Maze caches" Width=350
+MFilter Expression=$d_CacheType="X" and $d_macroflag
+If $_FilterCount > 0
+        $OutFile= $baselocation + "Maze.csv" 
+        $S&TFinal = $S&T + "fnmTo.Text=$OutFile" + $_NewLine
+        MACROSET Dialog=S&T  VarName=$S&TFinal
+        EXPORT Type=SNT Settings=<Macro>
+ENDIF
+        GOSUB Name=FilterRestore
+        Delay MS=1000
+
+$FSRCodes=$FSRCodes2
+SHOWSTATUS msg="Replacing existing filters" Width=350
+GOSUB Name=FilterRestore
+
+BEGINSUB  Name=FilterSet
+$FSRcodes = SQLite("sql","SELECT Code FROM Caches WHERE $_Where")
+ENDSUB
+
+BEGINSUB Name=FilterRestore 
+MFILTER Where=MACROFLAG  
+MACROFLAG Type=Clear range=FILTER
+$results = CodeMatch($FSRcodes,$_NewLine,"M")
+MFILTER Where=MacroFlag  
+ENDSUB
+
+<data> VarName=$S&T
+[TfmStreets]
+chkChild.Checked=False
+chkDefault.Checked=False
+chkFlag.Checked=False
+edtFormat.Text=[%Code] %Name by %By (%Dif/%Ter)  %con (%Last4)    HINT IS- %hint
+edtMax.Text=
+edtMaxGps.Text=14
+edtProblem.Text=
+edtWaypoint.Text=%Shortname=14
+cbxLink.Text=*Default
+<enddata>

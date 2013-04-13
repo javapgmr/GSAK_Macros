@@ -1,0 +1,342 @@
+################################################################################
+# MacVersion = 1.6
+# MacDescription = Get and Sort By Travel Times to all caches (Current Filter)
+# MacAuthor = beejay
+# MacFileName = TravelTime.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=14129&view=getlastpost
+################################################################################
+#
+# History:
+# Bushman4 did the hard work on this macro and maintained it through version 1.4
+# Since he is no longer able to maintain it for Google Map changes, beejay took over maintenance
+# 2010-01-14 1.5 Modified to handle Google Map change (sometime in late 2009)
+# 2011-10-08 1.6 Modified to handle Google Map change  
+#                Also replaced old method of retrieving webpage with GetURL
+#
+Option Explicit=Yes
+
+# Version check
+# GetURL was added in 7.5.0 (which makes things easier and faster)
+VERCHECK Version=7.5.0.0 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+
+Declare Var=$Arguments	Type=String
+Declare Var=$Completed          Type=Numeric
+Declare Var=$Days		Type=String
+Declare Var=$DirectionsURL      Type=String
+Declare Var=$DirHTML            Type=String
+Declare Var=$file               Type=String
+Declare Var=$ForceUpdate        Type=Boolean
+Declare Var=$form               Type=String
+Declare Var=$frmChkSaveResults  Type=Boolean
+Declare Var=$frmChkUseCache     Type=Boolean
+Declare Var=$GetHTML            Type=String
+Declare Var=$Hours              Type=String
+Declare Var=$HTMLFile           Type=String
+Declare Var=$Htmlfilepath       Type=String
+Declare Var=$Mins               Type=String
+Declare Var=$Msg               Type=String
+Declare Var=$OriginalValue      Type=String
+Declare Var=$Pos	          Type=Numeric
+Declare Var=$result             Type=String
+Declare Var=$SaveResults        Type=Boolean
+Declare Var=$SQLCode            Type=String
+Declare Var=$tmp                Type=String
+Declare Var=$tmp2		Type=String
+Declare Var=$TravelTime         Type=String
+Declare Var=$TravelTimeN         Type=Numeric
+Declare Var=$UseSavedResults    Type=Boolean
+Declare Var=$VBSFile            Type=String
+Declare Var=$DestLat            Type=String
+Declare Var=$DestLon            Type=String
+
+$frmChkSaveResults = True
+$frmChkUseCache = True
+
+While ShowForm($form)
+
+        If $FrmBtnOK
+                #Options Sanity Check
+                $SaveResults = $frmChkSaveResults
+                $UseSavedResults = $frmChkUseCache
+                $ForceUpdate = $frmChkForceUpdate
+                If Not($SaveResults) and $ForceUpdate
+                        MsgOK msg="If you want to Force an update of the saved data, you must also choose the Save Results option."
+                Else
+                        If $ForceUpdate and $UseSavedResults
+                                MsgOK msg="If you want to Force an update of the saved data, you cannot also use the Saved Results."
+                        Else
+                                GoSub Name=TravelTimes
+                                Break
+                        EndIf
+                EndIf
+        EndIf
+
+        If $FrmBtnCancel
+                break
+        EndIf
+
+EndWhile
+
+BeginSub Name=TravelTimes
+        If $SaveResults or $UseSavedResults or $ForceUpdate
+                #Make sure the data file exists
+                $file = $_Install + "\macros\TravelTimes.txt"
+                If not(FileExists($file))
+                        $Result = SQL("Create Table TravelTimes (DestLat,DestLon,CenterLat,CenterLon,Minutes)","")
+                EndIf
+        EndIf
+
+        Sort By=Code
+
+        $Htmlfilepath = $_Install + "\html"
+        $HTMLFile= $Htmlfilepath + "\directions.html"
+        $tmp = PutFile($Htmlfilepath + "\GetHTML.vbs", MimeDecode($GetHTML))
+
+        $Completed = 0
+        goto position=top
+        while .not. $_EOL
+                $Completed = $completed + 1
+                If Frac($completed/10) = 0
+                        SHOWSTATUS msg="Processing cache $Completed"
+                EndIF
+                $DestLat = allTrim($d_Latitude)
+                $DestLon = allTrim($d_Longitude)
+                Table Active=Waypoints Scope=Parent
+                While Not($_EOL)
+                        If $d_cType="Parking Area"
+                                $DestLat = allTrim($d_cLat)
+                                $DestLon = allTrim($d_cLon)
+                                Break
+                        EndIf
+                        Goto Position=Next
+                EndWhile
+                TABLE Active=caches
+                $SQLCode = "Select Minutes from TravelTimes WHERE DestLat='" + $DestLat + "' and DestLon='" + $DestLon + "' and CenterLat='" + allTrim(Sysinfo("gsakini;LastCenter;Lat")) + "' and CenterLon='" + allTrim(Sysinfo("gsakini;LastCenter;Lon")) + "'"
+                $OriginalValue = SQL($SqlCode,"")
+                If Left($OriginalValue, 7) = "*ERROR*"
+                        $OriginalValue = ""
+                EndIf
+           
+                If $OriginalValue="" or $ForceUpdate
+                        $TravelTime=""
+                        # Use external VBS file to get the Google Directions file
+                        SHOWSTATUS msg="Now retrieving directions to cache $Completed: $d_Code - $d_Name" width=400
+                       
+                        $DirectionsURL = "http://maps.google.com/maps?f=d&hl=en&saddr=" + allTrim(Sysinfo("gsakini;LastCenter;Lat")) + "," + allTrim(Sysinfo("gsakini;LastCenter;Lon")) + "&daddr=$DestLat,$DestLon&pw=2"
+                       
+                        $DirHTML = GetURL( $DirectionsURL)
+
+# In version 1.5 I didn't understand that this was processing the print output version and just found the right information in the html
+# I don't know what is "constant" in this webpage.  This works now.
+# Find x22ph-title, then is time after  \x26#8211; 
+
+$tmp=$DirHTML
+# Debug Status=On
+$pos=At("x22ph-title",$tmp)
+		$tmp=Substr($tmp,$pos,0)
+ 
+$tmp = Replace("\x3c", "<", $tmp, True) 
+$tmp = Replace("\x3e", ">", $tmp, True) 
+# Change some Hex HTML to more readable character entities
+# Will I always find time as:  about <b>33 mins</b>		
+$pos=At("about <b>",$tmp)	
+
+$tmp=Substr($tmp,$pos+9,0)
+$tmp=Extract($tmp,"</b>",1)	 
+                      
+# Given a string, $tmp, with a time in hours and minutes, return $TravelTime as the time in minutes
+		GoSub Name=ConvertTime
+                     
+                Else
+                        $TravelTime = Extract($OriginalValue, ";", 1)
+                EndIf
+                If $SaveResults
+                        If $OriginalValue <> "" and $OriginalValue <> $TravelTime
+                                #Update
+                                $SQLCode = "Update TravelTimes Set Minutes='" + $TravelTime + "' WHERE DestLat='" + $DestLat + "' and DestLon='" + $DestLon + "' and CenterLat='" + allTrim(Sysinfo("gsakini;LastCenter;Lat")) + "' and CenterLon='" + allTrim(Sysinfo("gsakini;LastCenter;Lon")) + "'"
+                                $result = SQL($SQLCode, "")
+                        Else
+                                If $OriginalValue = ""
+                                        #Insert
+                                        $SQLCode = "Insert Into TravelTimes VALUES(" + $DestLat + ", " + $DestLon + ", " + allTrim(Sysinfo("gsakini;LastCenter;Lat")) + ", " + allTrim(Sysinfo("gsakini;LastCenter;Lon")) + ", $TravelTime)" 
+                                        $result = SQL($SQLCode, "")
+                                EndIf
+                        EndIf
+                EndIf
+
+                $d_MacroSort = Str(val($TravelTime),5,0)
+                Goto Position=Next
+        endwhile
+        $result = SQL("Commit", "")
+        $Result = sql("release table TravelTimes","")
+        Sort By=MacroSort
+        MsgOK msg="Your caches are now sorted by the number of driving minutes they are from the current Center.  Show the column 'MacroSort' to see the number of minutes."
+EndSub
+
+BeginSub Name=ConvertTime
+#  Debug Status=On
+$tmp2=$tmp
+# Use $tmp2 so I can change it while retaining original value
+$TravelTimeN=0
+# Are there days?
+$pos=At("day", $tmp2)
+  If $pos <> 0
+                                $Days = Extract($tmp2, "day", 1)
+$TravelTimeN=$TravelTimeN+ Val($Days) * 60 *24
+# Find the blank after day or dayss
+$pos=AtStart(" ",$tmp2,$pos)
+$tmp2=Substr($tmp2,$pos+1,0)
+Endif
+# Are there hours?
+
+$pos=At("hour", $tmp2)
+  If $pos <> 0
+                                $Hours = Extract($tmp2, "hour", 1)
+$TravelTimeN=$TravelTimeN+ Val($Hours) * 60
+# Find the blank after hour or hours
+$pos=AtStart(" ",$tmp2,$pos)
+$tmp2=Substr($tmp2,$pos+1,0)
+Endif
+$pos=At("min", $tmp2)
+  If $pos <> 0
+# x hours yy mins
+ $Mins = Extract($tmp2, " ", 1)
+                               
+                             $TravelTimeN =$TravelTimeN +  Val($Mins)
+
+  Endif
+$TravelTime=NumtoStr($TravelTimeN)
+$msg = $tmp + " Converted to " + $TravelTime
+# Pause Msg=$msg
+EndSub
+
+BeginSub Name=BushmanGetDir
+# This is how Bushman got the webpage.  GetURL function was added in 7.5.0  15th January, 2009 which makes this easier
+  $VBSFile = Quote($Htmlfilepath + "\GetHTML.vbs")
+                        $DirectionsURL = "http://maps.google.com/maps?f=d&hl=en&saddr=" + allTrim(Sysinfo("gsakini;LastCenter;Lat")) + "," + allTrim(Sysinfo("gsakini;LastCenter;Lon")) + "&daddr=$DestLat,$DestLon&pw=2"
+                        $Arguments = " " + Quote($DirectionsURL) + " " + Quote($HTMLFile)
+                        RUNPGM pgm=$VBSFile parms=$Arguments wait=yes
+                        $DirHTML = GetFile($HTMLFile)
+EndSub
+BeginSub Name=PreOct2011
+# Keep the old code for historical reference and possible re-use
+#                        $tmp = Extract($DirHTML, "ph_dist", 2)
+# The above worked until late 2009 when Google changed their map output
+# The pw=2 option is generating the print format
+		$tmp = Extract($DirHTML, "Driving directions", 1)
+			$tmp = Replace("\x3c", "<", $tmp, True) 
+			$tmp = Replace("\x3e", ">", $tmp, True) 
+                        $tmp = Extract($tmp, " about ", 2)
+                        $tmp = Extract($tmp, ">", 2)
+                        $tmp = Extract($tmp, "min", 1)
+                        If At("hour", $tmp) <> 0
+                                $Hours = Extract($tmp, "hour", 1)
+                                $Mins = Extract($tmp, "hour", 2)
+                                If At("s", $Mins) <> 0
+                                        $Mins = Extract($Mins, "s", 2)
+                                EndIf
+                                $TravelTime = NumToStr((Val($Hours) * 60) + Val($Mins))
+                        Else
+                                $TravelTime = $tmp
+                        EndIf
+EndSub
+
+<Data> Varname=$form
+#********************************************************************
+# Form generated by GSAK form designer on Wed 23-May-2007 08:04:02
+#********************************************************************
+
+Name = Form1
+  type = form
+  height = 275
+  width = 300
+  caption = Travel Time Options
+  
+
+Name = FrmLbl2
+  type = Label
+  left = 75
+  top = 60
+  height = 13
+  width = 63
+  caption = Save Results
+
+Name = FrmLbl1
+  type = Label
+  left = 75
+  top = 100
+  height = 13
+  width = 91
+  caption = Use Saved Results
+
+Name = FrmLbl3
+  type = Label
+  left = 75
+  top = 140
+  height = 13
+  width = 149
+  caption = Force Update of Saved Results
+
+Name = frmChkSaveResults
+  type = CheckBox
+  left = 55
+  top = 60
+  height = 17
+  width = 15
+
+Name = frmChkUseCache
+  type = CheckBox
+  left = 55
+  top = 100
+  height = 17
+  width = 15
+
+Name = frmChkForceUpdate
+  type = CheckBox
+  left = 55
+  top = 140
+  height = 17
+  width = 15
+
+Name = FrmBtnOK
+  type = Button
+  left = 51
+  top = 190
+  height = 25
+  width = 75
+  Caption = OK
+  Enter = Yes
+
+Name = FrmBtnCancel
+  type = Button
+  left = 160
+  top = 190
+  height = 25
+  width = 75
+  Caption = Cancel
+
+<EndData>
+
+<data> VarName=$GetHTML
+JyBWQlMgZmlsZSB0byBnZXQgdGhlIHNvdXJjZSBodG1sIG9mIGEgd2ViIHBhZ2UNCicgDQonIFRha2Vz
+IHR3byBjb21tYW5kIGxpbmUgcGFyYW1ldGVyczoNCicgRmlyc3QgaXMgdGhlIGZ1bGwgVVJMIG9mIHRo
+ZSBwYWdlIHRvIGdldA0KJyBTZWNvbmQgaXMgdGhlIGZ1bGwgcGF0aCB0byB0aGUgZmlsZSB0byBzdG9y
+ZSBpdCBpbg0KJyBUaGF0J3MgaXQgLSBubyBmcmlsbHMuDQonIEZyZWUgZm9yIHVzZSB1bmRlciBHTlUg
+R1BMDQonIExpZ251bWFxdWENCicgNC0yOS0wNyBWMC4xIEINCg0KDQoNCg0KU2V0IG9iakFyZ3MgPSBX
+U2NyaXB0LkFyZ3VtZW50cw0KcmVxdWlyZWRVUkwgPSBvYmpBcmdzKDApDQpyZXF1aXJlZEZpbGUgPSBv
+YmpBcmdzKDEpDQoNCkNhbGwgR2V0SFRNTCAocmVxdWlyZWRVUkwscmVxdWlyZWRGaWxlKQ0KDQonLS0t
+LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLQ0KDQoNCkZ1bmN0aW9uIEdldEhUTUwoZmls
+ZVVSTCxoZExvY2F0aW9uKQ0KJ2Nvbm5lY3QgdG8gYSBVUkwgYW5kIGRvd25sb2FkcyB0aGUgZmlsZQ0K
+DQoJU2V0IHhtbEhUVFAgPSBDcmVhdGVPYmplY3QoIk1TWE1MMi5TZXJ2ZXJYTUxIVFRQIikNCg0KCQl4
+bWxIVFRQLm9wZW4gIkdFVCIsIGZpbGVVUkwsIGZhbHNlDQoJICAgIAl4bWxIVFRQLnNlbmQoKQ0KCQkN
+CglzZXQgbXlTdHJlYW0gPSBDcmVhdGVPYmplY3QoIkFET0RCLlN0cmVhbSIpDQoNCgkJbXlTdHJlYW0u
+T3Blbg0KCQlteVN0cmVhbS5UeXBlID0gMSAnYWRUeXBlQmluYXJ5DQoJIA0KCQlteVN0cmVhbS5Xcml0
+ZSB4bWxIVFRQLlJlc3BvbnNlQm9keSAJJ0dpdmUgdGhlIFhNTCBzdHJpbmcgdG8gdGhlIEFETyBTdHJl
+YW0NCgkJbXlTdHJlYW0uUG9zaXRpb24gPSAwICAgIAkJJ1NldCB0aGUgc3RyZWFtIHBvc2l0aW9uIHRv
+IHRoZSBzdGFydA0KDQoJc2V0IEZTTyA9IENyZWF0ZW9iamVjdCgiU2NyaXB0aW5nLkZpbGVTeXN0ZW1P
+YmplY3QiKQ0KDQoJCWlmIGZzby5GaWxlZXhpc3RzKGhkTG9jYXRpb24pIHRoZW4gDQoNCgkJCUZzby5E
+ZWxldGVGaWxlIGhkTG9jYXRpb24NCg0KCQlFbmQgSWYJCQ0KCQ0KCQlteVN0cmVhbS5TYXZlVG9GaWxl
+IGhkTG9jYXRpb24NCgkJbXlTdHJlYW0uQ2xvc2UNCg0KCXNldCBGU08gPSBOb3RoaW5nDQoJU2V0IG15
+U3RyZWFtID0gTm90aGluZw0KCVNldCB4bWxIVFRQID0gTm90aGluZw0KDQpFbmQgRnVuY3Rpb24=
+<enddata>
+

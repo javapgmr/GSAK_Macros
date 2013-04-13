@@ -1,0 +1,2994 @@
+###################################################################################
+# MacFileName	    = PqLoader.gsk
+# MacVersion      = 2.28
+# DevVersion      = 2.28
+# MacAuthor	      = Wayne (Red Roo)
+# MacDescription  = For loading PQ's to a database named in their subjectline.
+# MacUrl          = http://gsak.net/board/index.php?showtopic=10201
+###################################################################################
+   NOERROR Commands=GCREFRESH;GCGETPQ;UPDATECHECK 
+   UPDATECHECK Frequency=5
+
+   OPTION Explicit=Yes
+   VERCHECK Version=7.7.4.36 (Please update your version of GSAK At http://gsak.net)
+###############################################################################
+# DevUser does not download Pq's from Online.
+# =============================================================================
+#  Changes from v2.27
+# ====================
+# Removed references to the Colorization routine(s) and Color variables.
+# Lockable fields routine now allows more flexibility - Users can now input the names of fields that they want to lock during updates.
+# Databases that have been updated are now also added to the string variable $LoadedDbs and written to UpdatedDbs.xml
+# 
+###################################################################################
+#  It would be nice if...
+# ========================
+# The 'No Update' routine was removed in preference for a proper GC Refresh.
+#
+###############################################################################
+
+   GOSUB Name=Initialise
+   GOSUB Name=FindOwnerName
+
+   $Forma=EditForm($Forma,"RegName","Caption","$OwnerName")
+   $OperatorAction=TRUE
+   $StatMsg=""
+   WHILE TRUE
+     $FormExit = Form($Forma,"")
+     BEGINCASE 
+       CASE $FormExit="PqLoadFldr" OR $FormExit="PqLoadFile"
+         IF $FormExit="PqLoadFldr"
+           $FormA=EditForm($FormA,"ClrB4LOAD","Enabled","No")
+         ELSE 
+           $FormA=EditForm($FormA,"ClrB4LOAD","Enabled","Yes")
+         ENDIF 
+         GOSUB Name=SetOptionDisplays
+       CASE $FormExit="Exit"
+         BREAK 
+       CASE $FormExit="SystemExit"
+         CANCEL 
+       CASE $FormExit = "DelayExit"
+         $OperatorAction=FALSE
+         GOSUB Name=PqGetMail
+         BREAK 
+       CASE $FormExit="MainCfg"
+         GOSUB Name=DisplaySvrCfg
+       CASE $FormExit="ColorConfig"
+         GOSUB Name=DisplayColorCfg
+       CASE $FormExit="ArchiveCfg"
+         GOSUB Name=NoUpdateConfig
+       CASE $FormExit="Process"
+         GOSUB Name=PqGetMail
+         IF Not($PqlRap)
+           BREAK 
+         ENDIF 
+       CASE $FormExit="Freset"
+         $FormA=EditForm($FormA,"Form1","Top","")
+         $FormA=EditForm($FormA,"Form1","Left","")
+       OTHERWISE 
+         $FormA=EditForm($FormA,"Form1","Delay","0")
+         GOSUB Name=SetNoUpdateActions
+         GOSUB Name=SetNoUpdateDisplay
+         GOSUB Name=SetOptionDisplays
+     ENDCASE 
+     $OperatorAction=TRUE
+     GOSUB Name=ShowStat
+   ENDWHILE 
+
+   GOSUB Name=SaveSettings
+   MACSETTINGS Type=S Vars=p_PqLoaded,p_LoadedDbs File="$MacroFolder\PqLoaderResult.Xml"
+   MACSETTINGS Type=S Vars=LoadedDbs File="$MacroFolder\UpdatedDbs.xml"
+
+   IF $DbCb AND $DbBox <> $Ns                            # If a Database is selected when exitting
+     IF $_CurrentDatabase <> $DbBox                      # Save time if it's already selected.
+       $StatMsg=" > Changing to $DbBox < "
+       GOSUB Name=ShowStat
+       DATABASE Name=$DbBox Action=Select
+     ENDIF 
+   ENDIF 
+
+   IF $FilterCb AND $FilterBox <> $Ns                      # If a filter is selected when exitting
+     $StatMsg=" > Selecting your $FilterBox filter < "
+     GOSUB Name=ShowStat
+     FILTER Name=$FilterBox
+   ENDIF 
+
+   IF $MacroCb AND $MacroBox <> ""                         # If a macro has been selected to run when exitting
+     IF $RunIfUpdated                                      # If checked
+       IF $p_PqLoaded                                      # An update has occurred
+         $StatMsg=" > Updates have occurred - running the set macro < "
+         GOSUB Name=ShowStat
+         MACRO File=$MacroBox VarScope=Local
+       ENDIF 
+     ENDIF 
+
+     IF $RunMacro       	                                # If checked, run the macro
+       $StatMsg=" > Running $MacroBox < "
+       GOSUB Name=ShowStat
+       MACRO File=$MacroBox Scope=Local
+     ENDIF 
+   ENDIF 
+
+   GOSUB Name=ShowStat
+   OPTION Explicit=No
+
+   RETURN 
+###################################################################################
+###############################    End of Macro    ###############################
+###################################################################################
+   BEGINSUB Name=PqGetMail               # TRANS ACTION commented out because of unbalance
+     DECLARE Var=$FilePart Type=String
+     DECLARE Var=$Cnt Type=Numeric 
+     DECLARE Var=$Cntr Type=Numeric
+#
+     $LockStr=""
+     IF $LockFields<>""
+       $LockFields=REPLACE(",",";",$LockFields)
+       $LockFields=REPLACE("$d_","",$LockFields)
+       IF Right($LockFields,1)<>";"
+       	 $LockFields=$LockFields+";"
+       ENDIF 
+     	 $Cnt=RegExCount(";",$LockFields)
+     	 $Cntr=0
+     	 WHILE $Cntr<$Cnt
+     	 	 $Cntr=$Cntr+1
+         VSUB Status=OFF
+     	 	 $LockStr=$LockStr+"$d_"+Extract($LockFields,";",$Cntr)+";"
+         VSUB Status=On
+     	 ENDWHILE 
+     ENDIF 
+#
+     $ServerBug=FALSE
+     BEGINCASE 
+       CASE $MacroSvr
+         IF ($MailServer="" OR $LoginName="" OR $Password="" OR $PqFolder="" OR $Port="") AND NOT ($AltSettings)
+           $ServerBug=True
+         ENDIF 
+       CASE $AltSettings
+         IF $AltSettings AND $PqFolder=""
+           $ServerBug=True
+         ENDIF 
+     ENDCASE 
+     IF $ServerBug
+       $Msg0="GetMail configuration is incomplete."+$_NewLine
+       $Msg0=$Msg0+"Please check blank fields."
+       MSGOK Msg=$Msg0
+       GOSUB Name=DisplaySvrCfg
+       EXITSUB 
+     ELSE 
+       $FormA=EditForm($FormA,"Form1","Delay","0")
+     ENDIF 
+
+     $OnLine = StrToBool(SysInfo("Internet"))                         # Test for Online state
+     IF Not($DevUser)                                                 # DevUser does not download Pq's
+       IF Not($_ShiftKey)                                            # Holding down the Shift key bypasses this routine
+         IF $OnLine
+           BEGINCASE 
+             CASE $MacroSvr
+               $Dgm=$StaticGetMail
+               $Dgm=$Dgm+"edtHost.Text=$MailServer"+$_NewLine
+               $Dgm=$Dgm+"edtUser.Text=$LoginName"+$_NewLine
+               $Dgm=$Dgm+"edtPass.Text=$Password"+$_NewLine
+               $Dgm=$Dgm+"edtFolder.Text=$PqFolder"+$_NewLine
+               $Dgm=$Dgm+"edtPort.Text=$Port"+$_NewLine
+               $Dgm=$Dgm+"chkSSL.Checked=$SSL"+$_NewLine
+               $Dgm=$Dgm+"chkNewMsg.Checked=$NewMsgs"+$_NewLine
+               MACROSET Dialog=GETMAIL VarName=$Dgm
+               GETMAIL SETTINGS=<MACRO>
+             CASE $AltSettings
+               GETMAIL Settings=$SettingsLst
+             CASE $GcSetting
+               $Dgm=$StaticGcLoad
+               $Dgm=$Dgm+"edtFolder.Text=$PqFolder"+$_NewLine
+               MACROSET Dialog=PqLoad VarName=$Dgm
+               GCGETPQ Settings=<MACRO>
+             CASE $BypassGetmail
+           ENDCASE 
+         ELSE 
+           MSGOK Msg="You are not connected to the Internet" Caption="Oops"
+           EXITSUB 
+         ENDIF 
+       ENDIF 
+     ENDIF 
+###
+     IF $_CtrlKey                                          # If the Control key is pressed, go back to the main form
+       GOSUB Name=TransactionEnd
+       EXITSUB 
+     ENDIF 
+###
+     IF $RunAgm AND FileExists($MacroAgm)                  # Run this macro before processing PQ's
+       MACRO File=$MacroAgm Scope=Local
+     ENDIF 
+     GOSUB Name=LoadPqs                                    # Process any Pq's found in the folder
+
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=LoadPqs
+     GOSUB Name=TransactionBegin
+     GOSUB Name=GetDirListing
+     GOSUB Name=RenNsPqs                         # Rename all .zip files in the download folder when the filename includes separator string(s)
+     GOSUB Name=RenMfPq                          # Rename the My Finds Pocket Query with the correct database name
+
+     IF $PqLoadFldr
+       GOSUB Name=LoadPqsByFolder
+     ELSE 
+       GOSUB Name=LoadPqsByFileName
+     ENDIF 
+#
+     IF $FileDelCbx AND $DefaultLoadCb AND $DefaultDb <> $Ns                    # Delete after Load Cb / Default Load Cb / Database not 'Not Selected'
+       $Db=$DefaultDb
+       IF $_CurrentDataBase <> $Db                                             # Change databases if necessary
+         DATABASE Name=$Db Action=Select
+       ENDIF 
+       DATASAVE Data=$d_UserFlag                                               # Must happen each time the database is changed
+       $Pattern="$PqFolder\*.*"
+       $FilePattern="$PqFolder\*.*"
+       GOSUB Name=GetFileList
+       IF $DefaultLoadClear
+         GOSUB Name=ClearUserField
+       ENDIF 
+       IF $PqLoadFldr
+         $DbPtr=$DbPtr+1
+         $Pq="$Db "                                               # Pq must have a space after the dataBase name
+         $Step=$Step+1
+         $Extn="Zip"
+         $FilePart="C"
+         $Pattern="$PqFolder\*.$Extn"
+         GOSUB Name=FolderLoad
+         $Extn="Gpx"
+         $FilePart="D"
+         $Pattern="$PqFolder\*.$Extn"
+         GOSUB Name=FolderLoad
+       ELSE 
+         WHILE RegEx(".Zip",$FileList) OR RegEx(".Gpx",$FileList)              # $FileList is a sorted list - the file being loaded is now known
+           $Ftl=Extract($FileList,";",1)                                       # Ftl: File to load
+           $StatMsg=">>>  Processing $Ftl  <<<"
+           GOSUB Name=ShowStat
+           IF RegEx(".Zip",$Ftl) OR RegEx(".Gpx",$Ftl)
+             $Pattern="$PqFolder\$Ftl"
+             $DynLoad=Replace("**FileDel**","$FileDelCbx",$StaticLoad)
+             $DynLoad=Replace("**Pattern**","$Pattern",$DynLoad)
+             IF $PqLoadFile
+               $DynLoad=Replace("**SetUser**","TRUE",$DynLoad)                 # Should be set to True for individual file loads
+             ENDIF 
+             $DynLoad=Replace("**ClrUser**","TRUE",$DynLoad)                   # Should be set to True for individual file loads
+             MACROSET Dialog=LOAD VarName=$DynLoad
+             IF $StatsCbx
+               LOAD Settings=<macro> ShowStats=YES Lock=$LockStr
+             ELSE 
+               LOAD Settings=<macro> ShowStats=NO  Lock=$LockStr
+             ENDIF 
+             $FileList=Replace("$Ftl;","",$FileList)                           # Clean up $FileList by removing the name of the loaded Pq
+             GOSUB Name=LoadPqNameToUserField                                  # Update the user field of caches in the Pq
+             GOSUB Name=BackupLog
+           ENDIF 
+         ENDWHILE 
+       ENDIF 
+       GOSUB Name=FinishUpDb                                                   # Update permanent variables and run other checks/updates
+       DATARESTORE Data=$d_UserFlag                                            # Restore UserFlag after all files for that database are loaded
+     ENDIF 
+     $ClrB4LOAD=FALSE                                                           # Reset to False for a next run.
+     $DefaultLoadClear=FALSE                                                    # Reset to False for a next run.
+
+     GOSUB Name=TransactionEnd
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=LoadPqsByFileName   # Uses TRANSACTION (Balanced but open on entry)
+     DECLARE Var=$Ufld Type=String
+     DECLARE Var=$Ftl Type=String
+     $Step=0
+     $DbPtr=0
+     $NumDbs=RegExCount(";",$DbList)
+     GOSUB Name=TransactionEnd
+     GOSUB Name=TransactionBegin
+     WHILE $DbPtr < $NumDbs
+       $DbPtr=$DbPtr+1
+       $Db=Extract($DbList,";",$DbPtr)
+       $Pattern="$PqFolder\$Db *.Zip"
+       IF FileExists("$Pattern")
+         IF $_CurrentDataBase <> $Db                                # Change database
+           DATABASE Name=$Db Action=Select
+         ENDIF 
+         IF $ClrB4LOAD                                              # Clear the selected User Field
+           GOSUB Name=ClearUserField
+         ENDIF 
+         DATASAVE Data=$d_UserFlag                                            # Must happen each time the database is changed
+         $FilePattern="$PqFolder\$Db *.*"
+         GOSUB Name=GetFileList
+         WHILE RegEx("^$Db",$FileList)                                        # $FileList is a sorted list - the file being loaded is now known
+           $Ftl=Extract($FileList,";",1)                                      # Ftl: File to load
+           $StatMsg=">>>  Processing $Ftl  <<<"
+           GOSUB Name=ShowStat
+# We only want to load .Zip or .Gpx files
+           IF RegEx(".Zip",$Ftl) OR RegEx(".Gpx",$Ftl)
+             $Pattern="$PqFolder\$Ftl"
+             $DynLoad=Replace("**FileDel**","$FileDelCbx",$StaticLoad)
+             $DynLoad=Replace("**Pattern**","$Pattern",$DynLoad)
+             $DynLoad=Replace("**SetUser**","TRUE",$DynLoad)                   # Should be set to True for individual file loads
+             $DynLoad=Replace("**ClrUser**","TRUE",$DynLoad)                   # Should be set to True for individual file loads
+             MACROSET Dialog=LOAD VarName=$DynLoad
+             IF $StatsCbx
+               LOAD Settings=<macro> ShowStats=YES Lock=$LockStr
+             ELSE 
+               LOAD Settings=<macro> ShowStats=NO  Lock=$LockStr
+             ENDIF 
+             $FileList=Replace("$Ftl;","",$FileList)                           # Clean up $FileList by removing the name of the loaded Pq
+             GOSUB Name=LoadPqNameToUserField                                  # Update the user field of caches in the Pq
+             GOSUB Name=BackupLog
+           ENDIF 
+         ENDWHILE 
+         GOSUB Name=FinishUpDb                                                # Update permanent variables and run other checks/updates
+         DATARESTORE Data=$d_UserFlag                                         # Restore UserFlag after all files for that database are loaded
+       ENDIF 
+     ENDWHILE 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=LoadPqNameToUserField
+     IF $PqLoadFile
+       $StatMsg=">>>  Inserting Pq name into $UserField  <<<"
+       GOSUB Name=ShowStat
+       MFILTER Where=USERFLAG
+
+       IF RegEx($MfPqFile,$Ftl)
+         $Ftl=$MfPqFile
+       ENDIF 
+
+       IF $_FilterCount>0
+         $Ftl=Left($Ftl,At(".",$Ftl)-1)                                          # Remove the extension from the Pq name
+#@       NOT(g_Regex('.*\$Ftl\s',$UserField))          Tests for a exact $Ftl followed by a 'WhiteSpace' character
+         IF RegEx($UserField,$cList)
+           $_sql="UPDATE Custom SET $UserField = $UserField || '$Ftl;' WHERE ccode in (select code from caches where UserFlag) and NOT g_contains('$ftl;',$UserField)"
+         ELSE 
+           $_sql="UPDATE Caches SET $UserField = $UserField || '$Ftl;' WHERE userflag AND NOT g_contains('$ftl;',$UserField)"
+         ENDIF 
+         $TempStr=Sqlite("SQL",$_sql,"")
+         GOSUB Name=TransactionEnd
+         RESYNC 
+         GOSUB Name=TransactionBegin
+         USERFLAG Type=Clear Range=All                                           # Effectively cancels the filter - still ideal though Clear User Flag is checked
+       ENDIF 
+       GOTO Position=Top
+     ENDIF 
+#     RETURN                                                                    # Quit after loading one database
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=GetFileList
+     DECLARE Var=$FilePattern Type=String
+     $FileList=""
+     IF FileExists($Pattern)
+       $Comspec=""
+       $Comspec=GetEnvV("comspec")
+       IF AllTrim($Comspec) = ""
+         $Comspec="cmd.exe"
+       ENDIF 
+       $TempFile="$_AppData\Temp\DirList.Txt"
+       $Parms="/c Dir $_Quote$FilePattern$_Quote /B > $_Quote$TempFile$_Quote"
+       $Command="$ComSpec Parms=$Parms"
+       RUNPGM Pgm=$Command Wait=Yes Hide=Yes
+       $FileList=GetFile($TempFile)
+       $FileList=Replace($_NewLine,";",$FileList)
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=LoadPqsByFolder
+#    Step 2 - step through the database list and call the FileLoad subroutine for each Db
+     $Step=0
+     $NumDbs=RegExCount(";",$DbList)
+     $DbPtr=0
+     WHILE $DbPtr < $NumDbs
+       $DbPtr=$DbPtr+1
+       $Db=Extract($DbList,";",$DbPtr)
+       $Pq="$Db "                                               # Pq must have a space after the dataBase name
+       $Step=$Step+1
+       $Extn="Zip"
+       $FilePart="A"
+       $Pattern="$PqFolder\$Pq*.$Extn"
+       GOSUB Name=FolderLoad
+       $Extn="Gpx"
+       $FilePart="B"
+       $Pattern="$PqFolder\$Pq*.$Extn"
+       GOSUB Name=FolderLoad
+     ENDWHILE 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=FolderLoad          # Uses TRANSACTION (Balanced but open on entry)
+     $StatMsg=" >> PqLoader Step $DbPtr$FilePart/$NumDbs - $Db << "
+     GOSUB Name=ShowStat
+     IF FileExists("$Pattern")
+       GOSUB Name=TransactionEnd
+       IF $_CurrentDataBase <> $Db
+         DATABASE Name=$Db Action=Select
+       ENDIF 
+       GOSUB Name=FindOwnerName
+       $StatMsg=" >> $Step: Loading $Extn PQ data to $Db << "
+       GOSUB Name=ShowStat
+       $DynLoad=Replace("**FileDel**","$FileDelCbx",$StaticLoad)
+       $DynLoad=Replace("**Pattern**","$Pattern",$DynLoad)
+       $DynLoad=Replace("**SetUser**","FALSE",$DynLoad)
+       $DynLoad=Replace("**ClrUser**","FALSE",$DynLoad)
+       MACROSET Dialog=LOAD VarName=$DynLoad
+       IF $StatsCbx
+         LOAD Settings=<macro> ShowStats=YES Lock=$LockStr
+       ELSE 
+         LOAD Settings=<macro> ShowStats=NO  Lock=$LockStr
+       ENDIF 
+       GOSUB Name=BackupLog
+       GOSUB Name=FinishUpDb                                                   # Update permanent variables and run other checks/updates
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=FinishUpDb
+     GOSUB Name=TransactionBegin
+     $p_PqLoaded=TRUE
+     $p_LoadedDbs=$p_LoadedDbs+"$Db;"
+
+     IF NOT(RegEx($Db,$LoadedDbs))                               # This var comes from the PqLoaderGdakCloud.xml file
+       $LoadedDbs=$LoadedDbs+"$Db;"
+     ENDIF 
+     
+     $RunColor=FALSE
+     IF Not($StatsCbx)
+       GOSUB Name=CheckLogFile
+     ENDIF 
+     GOSUB Name=NoUpdate
+     GOSUB Name=Refresh
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=RenMfPq                   # Rename the My Finds Pocket Query
+     $MfPqFile="My Finds Pocket Query.zip"
+     IF FileExists("$PqFolder\$MfPqFile") AND NOT($MfPqDb=$Ns)
+       $Parms="/c Ren $_Quote$PqFolder\$MfPqFile$_Quote $_Quote$MfPqDb - $MfPqFile$_Quote"
+       GOSUB Name=RenameThePq
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=RenNsPqs                  # Rename other PQs that include separators in their names.
+     DECLARE Var=$FieldCnt Type=Numeric
+     DECLARE Var=$Field Type=String
+     DECLARE Var=$File1 Type=String
+     DECLARE Var=$File2 Type=String
+     DECLARE Var=$NsSeparatorStr Type=String
+     DECLARE Var=$FileList Type=String
+     DECLARE Var=$NumFiles Type=Numeric
+     DECLARE Var=$RemNonLtrs Type=Boolean
+
+# Prepare the $NsSeparator string for use
+     $NsSeparatorStr=Replace(Chr(39),"",$NsSeparatorStr)             # Deletes '
+     $NsSeparatorStr=Replace($_Quote,"",$NsSeparatorStr)             # Deletes "
+
+     IF Right($NsSeparatorStr,1)<>";"                                # Add a ; to the end
+       $NsSeparatorStr=$NsSeparatorStr+";"
+     ENDIF 
+     $FieldCnt=RegExCount(";",$NsSeparatorStr)
+
+# Get a list of .zip and .gpx files from the download folder
+     $TempStr="$_AppData\Temp\Dirtext.Txt"
+     $Parms=$PqFolder + "\*.zip"
+     RUNPGM Pgm=$comspec parms=/C dir /a-d-h-s /b "$Parms" >"$TempStr" Wait=Yes Hide=yes
+     $Parms=$PqFolder + "\*.gpx"
+     RUNPGM Pgm=$comspec parms=/C dir /a-d-h-s /b "$Parms" >> "$TempStr" Wait=Yes Hide=yes
+     $FileList = GetFile($TempStr)
+     IF Left($FileList,7) = "*Error*"
+       $StatMsg=" >> No files to process << "
+       GOSUB Name=ShowStat
+       DELAY MS=2000
+       EXITSUB 
+     ENDIF 
+     $FileList = Replace($_Newline,";",$FileList,True)
+     $NumFiles=RegExCount(";",$FileList)
+
+     $Cnt1=0
+     WHILE $Cnt1<$NumFiles                       # Loop through the file list one by one
+       $Cnt1=$Cnt1+1
+       $File1=Extract($FileList,";",$Cnt1)
+       $File2=$File1
+       IF $RemNonLtrs                           # Remove all characters at the start of the name that are not valid letters
+         WHILE Not(RegEx("[a-z]",Left($File2,1)))
+           $File2=Right($File2,Len($File2)-1)
+         ENDWHILE 
+       ENDIF 
+       $Cnt2=0
+       WHILE $Cnt2 < $FieldCnt                  # Loop through the Separator list value by value and change each field in $File2 to a space
+         $Cnt2=$Cnt2+1
+         $Field=Extract($NsSeparatorStr,";",$Cnt2)
+         $File2=Replace($Field," ",$File2)
+       ENDWHILE # End of loop 2
+       $File2=AllTrim($File2)+" "
+       $Parms="/c Ren $_Quote$PqFolder\$File1$_Quote $_Quote$File2$_Quote"
+       GOSUB Name=RenameThePq
+     ENDWHILE # End of loop 1
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=RenameThePq
+     $Comspec=""
+     $Comspec=GetEnvV("comspec")
+     IF AllTrim($Comspec) = ""
+       $Comspec="cmd.exe"
+     ENDIF 
+     $Command="$ComSpec Parms=$Parms"
+     RUNPGM Pgm=$Command Wait=Yes Hide=Yes
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=Refresh
+     DECLARE Var=$Date Type=Date
+     MACROFLAG Type=Clear Range=All
+     IF $CheckNotRefreshed OR $StatusNotUpdated
+       $StatMsg=" >> Checking caches that have not been updated << "
+       GOSUB Name=ShowStat
+       $Date=$_Today-Val($GcDays)
+       CANCELFILTER 
+       MFILTER Where=lastgpxdate<$Date
+       IF $_FilterCount>0
+         MFILTER Where=Not Status='X' Join=AND
+         IF $_FilterCount>0
+           MFILTER Where=Source='GC' Join=AND
+           IF $_FilterCount>0
+             MACROFLAG Type=SET Range=FILTER
+             MFILTER Where=MACROFLAG
+             IF $_FilterCount > 0
+               IF $CheckNotRefreshed
+                 $StatMsg=" >> Refreshing $_Filtercount caches << "
+                 GOSUB Name=ShowStat
+# Refresh the filtered records if this database is selected to be refreshed
+                 IF RegEx($_CurrentDatabase,$UpdateList)
+                   $DynLoad=$StaticV8Load
+                   $DynLoad=$DynLoad+"chkSummary.Checked=$StatsCbx"+$_NewLine
+                   MACROSET Dialog=LOAD VarName=$DynLoad
+                   GCREFRESH Scope=FILTER LogsPerCache=30 LoadSettings=<MACRO>
+                 ENDIF 
+
+               ENDIF 
+               IF $StatusNotUpdated
+                 $StatMsg=" >> Checking Status on $_Filtercount caches << "
+                 GOSUB Name=ShowStat
+                 IF $StatsCbx
+                   GCSTATUSCHECK Scope=FILTER ShowSummary=Y
+                 ELSE 
+                   GCSTATUSCHECK Scope=FILTER ShowSummary=N
+                 ENDIF 
+               ENDIF 
+             ENDIF 
+           ENDIF 
+         ENDIF 
+       ENDIF 
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=CheckLogFile
+     $LogFile="$_CurrentDataPath\Log.Htm"
+     $Msg=""
+     $LineCnt1=0
+     FILEREAD File=$LogFile
+       $LineCnt1=$LineCnt1+1
+       IF Frac($LineCnt1/25) = 0
+         $StatMsg=" >> Checking LogFile: line $LineCnt1 << "
+         GOSUB Name=ShowStat
+       ENDIF 
+       IF Not($RunColor)
+         IF RegEx("New waypoints added",$line)
+           $TmpS=Extract($line,">",5)
+           $TmpS=Extract($TmpS,"<",1)
+           $StatMsg=" >> $TmpS New caches have been added << "
+           $RunColor= TRUE
+         ENDIF 
+         IF RegEx("Status from",$line) OR RegEx("Additional child",$line)
+           $StatMsg=$Msg+" >> Status change(s) have been found << "
+           $RunColor= TRUE
+         ENDIF 
+       ELSE 
+         STOPREAD 
+       ENDIF 
+     ENDREAD 
+     GOSUB Name=ShowStat
+#    Parse the Log file a second time looking for the limit having been reached in any of the PQ's
+#      $Msg0=""
+     $TmpS=GetFile($LogFile)
+     $Cnt1=RegExCount("gpxlimit",$TmpS)
+     IF $Cnt1 > 2
+       $Cnt1 = 0
+       FILEREAD File=$LogFile
+         IF RegEx("gpxlimit",$line)
+           $Cnt1=$Cnt1+1
+           IF $Cnt1 > 2
+             $TmpS=Extract($line,")",1)
+             $PqName=Extract($TmpS,"<td>",2)
+             $TmpS2=Extract($line,">",5)
+             $PqCnt=AllTrim(Extract($TmpS2,"<",1))
+             $StatMsg=$StatMsg+$_NewLine+" >> $PqName reports $PqCnt waypoints << "
+           ENDIF 
+         ENDIF 
+       ENDREAD 
+     ENDIF 
+     IF $OperatorAction
+       IF $StatsCbx
+         MSGOK Msg=$StatMsg
+       ELSE 
+         GOSUB Name=ShowStat
+         DELAY MS=3000
+       ENDIF 
+     ELSE 
+       GOSUB Name=ShowStat
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=NoUpdate
+# On entry the following variables need to be defined and set...
+# $DaysOld (string)  - defined on the Cfg form
+# $AutoArc (boolean) - defined on the Cfg form
+# DaysOld (string) from MacSettings.
+#      DECLARE Var=$Difference Type=Numeric
+     IF $AutoArc
+       $Days=Val($DaysOld)
+       CANCELFILTER 
+       $DbCnt=$_DbCount
+       MFILTER Where= Source = 'GC' AND Not Status='X' AND Not Lock AND Not Found
+       SQLSORT OrderBy=LastGPXDate
+       GOTO Position=Top
+       $Oldest=$d_LastGPXDate
+       GOTO Position=Bottom
+       $MostRecent=$d_LastGPXDate
+#         $Difference=DateDiff($Oldest,$_Today)
+       $TempVal=$MostRecent-$Days
+       IF DateDiff($Oldest,$_Today) > $Days
+         MACROFLAG Type=CLEAR Range=ALL
+         MFILTER Where=LastGPXDate<$TempVal Join=AND
+         IF $_FilterCount > 0 AND $_FilterCount < $_DbCount
+           MACROFLAG TYPE=SET Range=FILTER
+         ENDIF 
+         SPEEDMODE Status=OFF
+           MFILTER Where=MACROFLAG
+         SPEEDMODE Status=On
+         IF $_FilterCount=0
+           $StatMsg="No Update routine is cancelling - 0 records"
+           GOSUB Name=ShowStat
+           DELAY Ms=1000
+         ELSE 
+           BEGINCASE 
+             CASE $NothingBtn
+             CASE $ArchiveBtn
+               GOSUB Name=ArchiveSub
+             CASE $DeleteBtn
+               GOSUB Name=DeleteSub
+           ENDCASE 
+           IF $MoveCb
+             IF $ArchiveDb <> $Ns
+               GOSUB Name=MoveSub
+             ENDIF 
+           ENDIF 
+         ENDIF 
+       ENDIF 
+#        SPEEDMODE Status=On
+       CANCELFILTER 
+       SQLSORT OrderBy=Distance
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=ArchiveSub
+     GOTO Position=Top
+     IF $QuietMode
+       $StatMsg="Auto-Archiving $_FilterCount cache(s)"
+       GOSUB Name=ShowStat
+       WHILE Not ($_Eol)
+       	 IF Left($d_Code,2)="GC"
+           $d_Status="X"
+         ENDIF 
+         GOTO Position=Next
+       ENDWHILE 
+       $RunColor=TRUE
+       DELAY MS=1500
+     ELSE # Caches archived or disabled here manually.
+       GOSUB Name=ShowStat
+       $Msg0="Caches Not updated in the last $Days days ($_Count of $DbCnt)?"
+       $Msg1="Do nothing"
+       $Msg2="Mark these caches as Archived"
+       $Msg3="Mark these caches as Unavailable"
+       $Msg4="Delete the caches"
+       CHOOSE Msg=$Msg0 Opt1=$Msg1 Opt2=$Msg2 Opt3=$Msg3 DELAY=10
+       BEGINCASE 
+         CASE $Result=2
+           WHILE NOT ($_Eol)
+       	     IF Left($d_Code,2)="GC"
+               $d_Status="X"
+             ENDIF 
+             GOTO Position=Next
+           ENDWHILE 
+           $RunColor=TRUE
+         CASE $Result=3
+           WHILE NOT ($_Eol)
+       	     IF Left($d_Code,2)="GC"
+               $d_Status="T"
+             ENDIF 
+             GOTO Position=Next
+           ENDWHILE 
+           $RunColor=TRUE
+       ENDCASE 
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=DeleteSub
+     $Losem=FALSE
+     IF $QuietMode
+       $StatMsg="Auto-Deleting $_FilterCount cache(s)"
+       GOSUB Name=ShowStat
+       $Losem=TRUE
+     ELSE 
+       GOSUB Name=ShowStat
+       $Msg0="Caches Not updated in the last $Days days ($_Count of $DbCnt)?"
+       $Msg1="Do nothing"
+       $Msg2="Delete these caches"
+       CHOOSE Msg=$Msg0 Opt1=$Msg1 Opt2=$Msg2 Opt3=$Msg3 DELAY=10
+       BEGINCASE 
+         CASE $Result=2
+           $Losem=TRUE
+       ENDCASE 
+     ENDIF 
+     IF $Losem
+       TABLE Active=Caches
+       MACRODELETE Action=DelScope
+       MACRODELETE Action=Commit
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=MoveSub               # Uses TRANSACTION (Balanced)
+     $Movem=FALSE
+     IF $QuietMode
+       $StatMsg="Auto-Moving $_FilterCount cache(s)"
+       GOSUB Name=ShowStat
+       $Movem=TRUE
+     ELSE 
+       GOSUB Name=ShowStat
+       $Msg0="Caches Not updated in the last $Days days ($_Count of $DbCnt)?"
+       $Msg1="Do nothing"
+       $Msg2="Move these caches to the $ArchiveDb database"
+       CHOOSE Msg=$Msg0 Opt1=$Msg1 Opt2=$Msg2 Opt3=$Msg3 DELAY=10
+       BEGINCASE 
+         CASE $Result=2
+           $Movem=TRUE
+       ENDCASE 
+     ENDIF 
+     IF $Movem
+       GOSUB Name=TransactionEnd
+       $DynMoveCopy=$StaticMoveCopy+$_NewLine+"cbxDestination.Text=$ArchiveDb"+$_NewLine
+       MACROSET Dialog=MOVECOPY VarName=$DynMoveCopy
+       MOVECOPY Settings=<MACRO>
+       GOSUB Name=TransactionBegin
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=BackupLog
+     IF $BackupCbx
+       $LogFldr="$_CurrentDataPath"
+       $NewLogFldr="$_AppData\PQ Log Backups"
+       $Fldr=$NewLogFldr
+       GOSUB Name=CreateFolder                                # Ensure that the folder exists
+       $DateStr=DatetoString($_Today)
+       $OldLogFile="$LogFldr\Log.Htm"
+       $NewLogFile="$NewLogFldr\$DateStr $_CurrentDatabase Db - PQ Log.Htm"
+       IF FileExists($NewLogFile)
+         $Cnt1=1
+         WHILE FileExists($NewLogFile)
+           $Cnt1=$Cnt1+1
+           $Cstr=Alltrim(Str($Cnt1,2,0))
+           $NewLogFile="$NewLogFldr\$DateStr $_CurrentDatabase Db - PQ Log ($Cstr).Htm"
+         ENDWHILE 
+       ENDIF 
+       FILECOPY From=$OldLogFile To=$NewLogFile OnError=Prompt
+     ENDIF 
+   ENDSUB 
+##################################################################################
+   BEGINSUB Name=CreateFolder
+     IF NOT(FolderExists($Fldr))
+       $ResultStr=PutFile("$_AppData\Temp\Temp.Bat","MD "+ Quote("$Fldr"))
+       FILEOPEN File="$_AppData\Temp\Temp.Bat" Wait=YES
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=DisplaySvrCfg
+     $Y=Len($Password)
+     $X=0
+     $HdnPassword=""
+     WHILE $X < $Y
+       $X=$X+1
+       $HdnPassword=$HdnPassword+"*"
+     ENDWHILE 
+     $FormA=EditForm($FormA,"Form1","Delay","0")
+     GOSUB Name=UpdateGetMailCfg
+     WHILE TRUE
+       $FormExit = Form($Formb,"")
+       BEGINCASE 
+         CASE $FormExit="CheckNotRefreshed"
+           $StatusNotUpdated=FALSE
+         CASE $FormExit="StatusNotUpdated"
+           $CheckNotRefreshed=FALSE
+         CASE $FormExit="SystemExit" AND $DevUser
+           CANCEL 
+         CASE $FormExit="ExitF2"
+           BREAK 
+         OTHERWISE 
+           GOSUB Name=UpdateGetMailCfg
+       ENDCASE 
+     ENDWHILE 
+     $HdnPassword = Replace("*","",$HdnPassword)
+     IF Replace(" ","",$HdnPassword) = ""
+       $HdnPassWord = ""
+     ENDIF 
+     IF $HdnPassWord <> ""
+       $Password=$HdnPassword
+     ENDIF 
+     IF $SettingsLst="" OR Upper($SettingsLst)="<MACRO>" OR ($SettingsLst="None Selected")    # some protection...
+       $SettingsLst="None Selected"
+       $AltSettings=FALSE
+     ENDIF 
+     BEGINCASE 
+         $FormA=EditForm($FormA,"AltLbl","Visible","Yes")
+       CASE $AltSettings
+         $FormA=EditForm($FormA,"AltLbl","Caption","Alternate setting in use: $SettingsLst")
+       CASE $MacroSvr
+         $FormA=EditForm($FormA,"AltLbl","Caption","Download emails from my own server")
+       CASE $GcSetting
+         $FormA=EditForm($FormA,"AltLbl","Caption","Download Pq's directly from GC.COM")
+       CASE $BypassGetMail
+         $FormA=EditForm($FormA,"AltLbl","Caption","Getmail routines are in Bypass mode")
+     ENDCASE 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=UpdateGetMailCfg
+     BEGINCASE 
+       CASE $MacroSvr
+         $FormB=EditForm($FormB,"Label15","Enabled","No")
+         $FormB=EditForm($FormB,"SettingsLst","Enabled","No")
+         $FormB=EditForm($FormB,"Label18","Enabled","No")
+
+         $FormB=EditForm($FormB,"Label2","Enabled","Yes")
+         $FormB=EditForm($FormB,"Label3","Enabled","Yes")
+         $FormB=EditForm($FormB,"Label4","Enabled","Yes")
+         $FormB=EditForm($FormB,"Label9","Enabled","Yes")
+         $FormB=EditForm($FormB,"Label13","Enabled","Yes")
+         $FormB=EditForm($FormB,"MailServer","Enabled","Yes")
+         $FormB=EditForm($FormB,"LoginName","Enabled","Yes")
+         $FormB=EditForm($FormB,"HdnPassword","Enabled","Yes")
+         $FormB=EditForm($FormB,"EncrPwrd","Enabled","Yes")
+         $FormB=EditForm($FormB,"Label11","Enabled","Yes")
+         $FormB=EditForm($FormB,"SSL","Enabled","Yes")
+         $FormB=EditForm($FormB,"NewMsgs","Enabled","Yes")
+         $FormB=EditForm($FormB,"Port","Enabled","Yes")
+         $FormB=EditForm($FormB,"Label6","Enabled","Yes")
+         $FormB=EditForm($FormB,"Label7","Enabled","Yes")
+
+       CASE $AltSettings
+         $FormB=EditForm($FormB,"Label15","Enabled","Yes")
+         $FormB=EditForm($FormB,"SettingsLst","Enabled","Yes")
+         $FormB=EditForm($FormB,"Label18","Enabled","No")
+
+         $FormB=EditForm($FormB,"Label2","Enabled","No")
+         $FormB=EditForm($FormB,"Label3","Enabled","No")
+         $FormB=EditForm($FormB,"Label4","Enabled","No")
+         $FormB=EditForm($FormB,"Label9","Enabled","No")
+         $FormB=EditForm($FormB,"Label13","Enabled","No")
+         $FormB=EditForm($FormB,"MailServer","Enabled","No")
+         $FormB=EditForm($FormB,"LoginName","Enabled","No")
+         $FormB=EditForm($FormB,"HdnPassword","Enabled","No")
+         $FormB=EditForm($FormB,"EncrPwrd","Enabled","No")
+         $FormB=EditForm($FormB,"Label11","Enabled","No")
+         $FormB=EditForm($FormB,"SSL","Enabled","No")
+         $FormB=EditForm($FormB,"NewMsgs","Enabled","No")
+         $FormB=EditForm($FormB,"Port","Enabled","No")
+         $FormB=EditForm($FormB,"Label6","Enabled","No")
+         $FormB=EditForm($FormB,"Label7","Enabled","No")
+
+       CASE $GcSetting
+         $formb=EditForm($formb,"PqLbl","Visible","Yes")
+         $formb=EditForm($formb,"CheckNotRefreshed","Visible","Yes")
+         $formb=EditForm($formb,"GcDays","Visible","Yes")
+         $formb=EditForm($formb,"DaysLbl","Visible","Yes")
+
+       CASE $BypassGetMail
+         $FormB=EditForm($FormB,"Label15","Enabled","No")
+         $FormB=EditForm($FormB,"SettingsLst","Enabled","No")
+         $FormB=EditForm($FormB,"Label18","Enabled","Yes")
+
+         $FormB=EditForm($FormB,"Label2","Enabled","No")
+         $FormB=EditForm($FormB,"Label3","Enabled","No")
+         $FormB=EditForm($FormB,"Label4","Enabled","No")
+         $FormB=EditForm($FormB,"Label9","Enabled","No")
+         $FormB=EditForm($FormB,"Label13","Enabled","No")
+         $FormB=EditForm($FormB,"MailServer","Enabled","No")
+         $FormB=EditForm($FormB,"LoginName","Enabled","No")
+         $FormB=EditForm($FormB,"HdnPassword","Enabled","No")
+         $FormB=EditForm($FormB,"EncrPwrd","Enabled","No")
+         $FormB=EditForm($FormB,"Label11","Enabled","No")
+         $FormB=EditForm($FormB,"SSL","Enabled","No")
+         $FormB=EditForm($FormB,"NewMsgs","Enabled","No")
+         $FormB=EditForm($FormB,"Port","Enabled","No")
+         $FormB=EditForm($FormB,"Label6","Enabled","No")
+         $FormB=EditForm($FormB,"Label7","Enabled","No")
+
+     ENDCASE 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=NoUpdateConfig                            # Display No Update Config
+     $FormA=EditForm($FormA,"Form1","Delay","0")
+     WHILE TRUE
+       $FormExit = Form($Formd,"")
+       BEGINCASE 
+         CASE $FormExit="ExitF4"
+           BREAK 
+         OTHERWISE 
+           GOSUB Name=SetForm4
+       ENDCASE 
+#        IF $NothingBtn
+#           $QuietMode=FALSE
+#        ENDIF
+     ENDWHILE 
+     GOSUB Name=SetNoUpdateActions
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=SetForm4
+     IF $DeleteBtn
+       $MoveCb=FALSE
+       $Formd=EditForm($Formd,"Label8","Enabled","No")
+       $Formd=EditForm($Formd,"MoveCb","Enabled","No")
+       $Formd=EditForm($Formd,"ArchiveDb","Enabled","No")
+     ELSE 
+       $Formd=EditForm($Formd,"Label8","Enabled","Yes")
+       $Formd=EditForm($Formd,"MoveCb","Enabled","Yes")
+       $Formd=EditForm($Formd,"ArchiveDb","Enabled","Yes")
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=SetNoUpdateActions
+     $Forma=EditForm($Forma,"ActionLb2","Visible","Yes")
+     $TempStr="After $DaysOld days - "
+     IF $QuietMode
+       $TempStr=$TempStr+"Quietly "
+     ENDIF 
+     BEGINCASE 
+       CASE $NothingBtn
+         $TempStr=$TempStr+"do nothing "
+       CASE $ArchiveBtn
+         $TempStr=$TempStr+"archive them "
+       CASE $DeleteBtn
+         $TempStr=$TempStr+"delete them "
+         $Forma=EditForm($Forma,"ActionLb2","Visible","No")
+     ENDCASE 
+     IF $MoveCb
+       $TempStr2="then move them to the $ArchiveDb Db."
+     ELSE 
+       $TempStr2="and leave them where they are."
+     ENDIF 
+     $Forma=EditForm($Forma,"ActionLbl","Caption",$TempStr)
+     $Forma=EditForm($Forma,"ActionLb2","Caption",$TempStr2)
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=FindOwnerName
+     $ResultStr = sqlite("open","$_CurrentDataPath\sqlite.db3")
+     $OwnerName = sqlite("sql","select distinct lby from logs where lisowner limit 1")
+     $ResultStr = sqlite("close","")
+     IF $OwnerName=""
+       $OwnerName=$UnknownUser
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=GetDirListing                # to be stored in the MacSettings file
+     IF FileExists("$PqFolder\*.*")
+       $Comspec=""
+       $Comspec=GetEnvV("comspec")
+       IF AllTrim($Comspec) = ""
+         $Comspec="cmd.exe"
+       ENDIF 
+       $TempFile="$_AppData\Temp\DirList.Txt"
+       $Parms="/c Dir $_Quote$PqFolder\*.*$_Quote > $_Quote$TempFile$_Quote"
+       $Command="$ComSpec Parms=$Parms"
+       RUNPGM Pgm=$Command Wait=Yes Hide=Yes
+       $FldrListAfterLastDownLoad=GetFile($TempFile)
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=SetOptionDisplays
+# Enable or Disable the Default DataBase box
+     IF $FileDelCbx
+       $Forma=EditForm($Forma,"GroupBox2","Enabled","Yes")
+       $Forma=EditForm($Forma,"DefaultLoadCb","Enabled","Yes")
+       $Forma=EditForm($Forma,"DefaultLoadCb","Enabled","Yes")
+       IF $PqLoadFile AND $DefaultLoadCb
+         $Forma=EditForm($Forma,"DefaultLoadClear","Enabled","Yes")
+       ELSE 
+         $Forma=EditForm($Forma,"DefaultLoadClear","Enabled","No")
+       ENDIF 
+       $Forma=EditForm($Forma,"Label20","Visible","Yes")
+       $Forma=EditForm($Forma,"Label21","Visible","Yes")
+       $Forma=EditForm($Forma,"Label23","Visible","No")
+       IF Not($DefaultLoadCb)
+         $Forma=EditForm($Forma,"DefaultDb","Enabled","No")
+       ELSE 
+         $Forma=EditForm($Forma,"DefaultDb","Enabled","yes")
+       ENDIF 
+     ELSE 
+       $Forma=EditForm($Forma,"GroupBox2","Enabled","No")
+       $Forma=EditForm($Forma,"DefaultDb","Enabled","No")
+       $Forma=EditForm($Forma,"DefaultLoadCb","Enabled","No")
+#        IF $DefaultLoadCb
+#           $Forma=EditForm($Forma,"DefaultLoadClear","Enabled","Yes")
+#        ELSE
+       $Forma=EditForm($Forma,"DefaultLoadClear","Enabled","No")
+#        ENDIF
+       $DefaultLoadCb=FALSE
+       $Forma=EditForm($Forma,"Label20","Visible","No")
+       $Forma=EditForm($Forma,"Label21","Visible","No")
+#        $Forma=EditForm($Forma,"Label22","Enabled","No")
+       $Forma=EditForm($Forma,"Label23","Visible","Yes")
+     ENDIF 
+# Enable or Disable the DataBase box
+     IF Not($DbCb)
+       $Forma=EditForm($Forma,"DbBox","Enabled","No")
+     ELSE 
+       $Forma=EditForm($Forma,"DbBox","Enabled","yes")
+     ENDIF 
+# Enable or Disable the Filter box
+     IF Not($FilterCb)
+       $Forma=EditForm($Forma,"FilterBox","Enabled","No")
+     ELSE 
+       $Forma=EditForm($Forma,"FilterBox","Enabled","yes")
+     ENDIF 
+# Enable or Disable the Macro box and variables
+     IF Not($MacroCb)
+       $Forma=EditForm($Forma,"MacroBox","Enabled","No")
+       $Forma=EditForm($Forma,"RunMacro","Enabled","No")
+       $Forma=EditForm($Forma,"RunIfUpdated","Enabled","No")
+       $RunMacro=FALSE
+       $RunIfUpdated=FALSE
+     ELSE 
+       $Forma=EditForm($Forma,"MacroBox","Enabled","yes")
+       $Forma=EditForm($Forma,"RunMacro","Enabled","Yes")
+       $Forma=EditForm($Forma,"RunIfUpdated","Enabled","Yes")
+     ENDIF 
+# Enable or Disable the 'then' labels
+     IF $DbCb AND $FilterCb
+       $Forma=EditForm($Forma,"ThenA","Visible","Yes")
+     ELSE 
+       $Forma=EditForm($Forma,"ThenA","Visible","No")
+     ENDIF 
+     IF $MacroCb AND ($DbCb OR $FilterCb)
+       $Forma=EditForm($Forma,"ThenB","Visible","Yes")
+     ELSE 
+       $Forma=EditForm($Forma,"ThenB","Visible","No")
+     ENDIF 
+     GOSUB Name=SetNoUpdateDisplay
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=SetNoUpdateDisplay
+# Enable or Disable No Update options
+     IF $AutoArc
+       $Forma=EditForm($Forma,"ArchiveCfg","Enabled","Yes")
+       $Forma=EditForm($Forma,"ActionLbl","Visible","Yes")
+       $Forma=EditForm($Forma,"ActionLb2","Visible","Yes")
+       $Forma=EditForm($Forma,"Label10","Visible","No")
+     ELSE 
+       $Forma=EditForm($Forma,"ArchiveCfg","Enabled","No")
+       $Forma=EditForm($Forma,"ActionLbl","Visible","No")
+       $Forma=EditForm($Forma,"ActionLb2","Visible","No")
+       $Forma=EditForm($Forma,"Label10","Visible","Yes")
+       $QuietMode=FALSE
+       $NothingBtn=TRUE
+       $ArchiveBtn=FALSE
+       $DeleteBtn=FALSE
+       $MoveCb=FALSE
+       $ArchiveDb=$Ns
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=SaveSettings                                # Can only be saved here because of password encryption.
+     $StatMsg="Saving configuration"
+     GOSUB Name=ShowStat
+     $Ft=$_FormTop
+     $Fl=$_FormLeft
+
+     IF $EncrPwrd
+       $Password=MimeEncode($Password)
+     ENDIF 
+     MACSETTINGS Type=S Vars=MailServer,LoginName,Password File="$MacroFolder\PqLoaderServerData.Xml"
+     MACSETTINGS Type=S Vars=WindowsVersion,GsakVers,MacName,_exePath,MailServer,Port,SSL,RunCount,EncrPwrd,StatsCBx,FileDelCbx,BackupCbx,AutoArc,QuietMode,DaysOld,MfDelay,NewMsgs,DbCb,DbBox,FilterCb,FilterBox,MacroCb,MacroBox,LockFields,DefaultLoadCb,DefaultDb,NothingBtn,ArchiveBtn,DeleteBtn,MoveCb,ArchiveDb,RunIfUpdated,RunMacro,Fl,Ft,SettingsLst,AltSettings,BypassGetMail,PqFolder,FldrListAfterLastDownLoad,DbXmlList,MfPqDb,MacroSvr,NsSeparatorStr,RemNonLtrs,PqlRap,RunAgm,MacroAgm,GcSetting,GcDays,CheckNotRefreshed,StatusNotUpdated,UserField,PqLoadFldr,PqLoadFile,UpdateList
+     IF $EncrPwrd
+       $Password=MimeDecode($Password)
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=GetWindowsVersion                   # Only goes back To Windows 95
+
+     DECLARE Var=$comspec Type=String
+     DECLARE Var=$TempFile Type=String
+     DECLARE Var=$TempStr Type=String
+     DECLARE Var=$MsVersion Type=Numeric
+     DECLARE Var=$WindowsVersion Type=String
+
+     $comspec = GetEnvV("comspec")
+     IF AllTrim($comspec)=""
+       $comspec="cmd.exe"
+     ENDIF 
+     $TempFile="$_AppData\Temp\DosVersion.Txt"
+     RUNPGM pgm=$comspec parms=/C ver  >"$TempFile" Wait=Yes Hide=yes
+     $TempStr=Replace($_NewLine,"",GetFile($TempFile))
+     $TempStr=Replace("[","",$TempStr)
+     $TempStr=Replace("]","",$TempStr)
+     $MsVersion=Val(RegExData("\d*",$TempStr,0))
+     BEGINCASE 
+       CASE $MsVersion >= 617600
+         $WindowsVersion="Windows 7"
+       CASE $MsVersion >= 606002
+         $WindowsVersion="Windows Vista SP2"
+       CASE $MsVersion >= 606000
+         $WindowsVersion="Windows Vista SP1"
+       CASE $MsVersion >= 523790
+         $WindowsVersion="Windows XP Pro x64"
+       CASE $MsVersion >= 512600
+         $WindowsVersion="Windows XP SP3"
+       CASE $MsVersion >= 502195
+         $WindowsVersion="Windows 2000 Professional"
+       CASE $MsVersion >= 4903000
+         $WindowsVersion="Windows Me"
+       CASE $MsVersion >= 412222
+         $WindowsVersion="Windows 98 SE"
+       CASE $MsVersion >= 411998
+         $WindowsVersion="Windows 98"
+       CASE $MsVersion >= 401381
+         $WindowsVersion="Windows NT Workstation 4.0"
+       CASE $MsVersion >= 40950
+         $WindowsVersion="Windows 95"
+       OTHERWISE 
+         $WindowsVersion="MS Windows Version not established"
+     ENDCASE 
+     $WindowsVersion=$WindowsVersion+" - $TempStr"
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=ShowStat         # Place the Showstatus Msg box in center of screen width
+     DECLARE Var=$StatMsg Type=String
+     DECLARE Var=$Width Type=Numeric
+     DECLARE Var=$Left Type=Numeric
+     IF $StatMsg<>""
+       $Width=Len($StatMsg)*6
+       IF $Width<200
+         $Width=200
+       ENDIF 
+       $left=(Val(Extract(SysInfo("ScreenResolution"),",",1)))/2 - ($Width/2)
+       SHOWSTATUS Msg=$StatMsg Width=$Width Left=$left Top=25
+       $StatMsg=""
+     ELSE 
+       SHOWSTATUS Msg="" Display=Off
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=TransactionBegin
+     IF Not(InTransaction)
+       TRANSACTION Action=Begin
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=TransactionEnd
+     IF InTransaction
+       TRANSACTION Action=End
+     ENDIF 
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=IncludeCustomFields
+     $DataFile=$_AppData + "\Temp\tmplist.txt"
+     $_sql="PRAGMA table_info(Custom)"
+     $ResultStr=Sqlite("sql",$_sql)                            # Thanks to Bob (KT) for the following code (variables changed)
+     $ResultStr=PutFile($DataFile,$ResultStr)
+     IF Left($ResultStr,7) = "*Error*"
+       PAUSE Msg="$ResultStr"
+       CANCEL 
+     ENDIF 
+     $cList=""
+     FILEREAD File=$DataFile
+       IF Regex("text",Extract($line,";",3))
+         $cList=$cList + Extract($Line,";",2) + ";"
+       ENDIF 
+     ENDREAD 
+     $cList=Replace("cCode;","",$cList)
+     $ResultStr="UserData;User2;User3;User4;"
+     IF $cList<>""
+       $ResultStr=$ResultStr+"----;"+$cList
+     ENDIF 
+     $FormA=EditForm($FormA,"UserField","Values",$ResultStr)
+
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=ClearUserField
+     $StatMsg=">>>  Clearing $UserField  <<<"
+     GOSUB Name=ShowStat
+     GOSUB Name=TransactionEnd
+     $_sql="PRAGMA table_info(Caches)"
+     $ResultStr=Sqlite("sql",$_sql)
+     IF RegEx($UserField,$ResultStr)
+       $_sql="UPDATE Caches SET $UserField = ''"
+     ELSE 
+       $_sql="UPDATE Custom SET $UserField = ''"
+     ENDIF 
+     $ResultStr=Sqlite("SQL",$_sql,"")
+     RESYNC 
+     GOSUB Name=TransactionBegin
+   ENDSUB 
+###################################################################################
+   BEGINSUB Name=Initialise
+
+     INCLUDE File="\DevUser.Gsk" FileCheck=N
+
+     $FormA=EditForm($FormA,"Form1","Caption",SysInfo("Macrofile")+" - v"+AllTrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath") + "\" + SysInfo("Macrofile")),1,1)))
+
+# Variables not associated directly with a form.
+     GOSUB Name=GetWindowsVersion
+     $Ns = "Not Selected"
+     $MfPqDb=$Ns
+     $UnknownUser="Unknown User"
+     $FldrListAfterLastDownLoad=""                                   # Dbug data saved in .Xml file
+     $MacroFolder=Sysinfo("macroPath")
+     $RunCount=0
+
+# Reset Persistent Variables
+     $p_PqLoaded=FALSE
+     $p_LoadedDbs=""
+
+#   The following variables are form variables. An error may occur when using these variables if the variable
+#   has not been initialised or if the form has not been displayed. These variables must be initialised prior
+#   to the MACSETTINGS command below to allow MACSETTINGS to change them if they have been saved, or to define
+#   them if they have not been saved.
+#
+# FormA - Form1
+     $StatsCbx= FALSE
+     $FileDelCbx= TRUE
+     $BackupCbx= FALSE
+     $RunColor= FALSE
+     $AutoArc=FALSE
+     $DefaultLoadCb=FALSE
+     $DbCb=FALSE
+     $FilterCb=FALSE
+     $MacroCb=FALSE
+     $OwnerName=$UnknownUser
+     $DaysOld="7"                                                    # Default value for 1st time users
+     $MfDelay="0"                                                    # Default value for 1st use.
+     $DefaultDb=""
+     $MacroBox=""
+
+#    Settings associated with FormA
+     $FilterList=$Ns+";"+SysInfo("Filters")
+     $FilterList=Replace("<macro>;","",$FilterList)
+     $FilterList=Replace("...Last active filter;","",$FilterList)
+
+# FormB - Form2       Mail Server Settings / Alternate GetMail Settings
+     $MailServer=""
+     $LoginName=""
+     $Password=""
+     $PqFolder=""
+     $Port="110"
+     $SSL=FALSE
+     $EncrPwrd=FALSE
+     $SettingsLst=""
+     $NewMsgs=FALSE
+     $MacroSvr=TRUE
+     $AltSettings=FALSE
+     $BypassGetMail=FALSE
+     $GcSetting=FALSE
+
+     $GmSettings="None Selected;"+Sysinfo("S_GetMail")
+     $GmSettings=Replace("<macro>;","",$GmSettings)
+     $CheckNotRefreshed=FALSE
+     $GcDays="14"
+
+     $NsSeparatorStr=""
+     $RemNonLtrs=FALSE
+     $RunAgm=FALSE
+     $MacroAgm=""
+     $PqLoadFldr=TRUE
+     $PqLoadFile=FALSE
+     $ClrB4LOAD=FALSE
+     $DefaultLoadClear=FALSE
+     $StatusNotUpdated=FALSE
+
+# Form D - Form 4     Archiver Configuration
+     $NothingBtn=TRUE
+     $ArchiveBtn=FALSE
+     $DeleteBtn=FALSE
+     $MoveCb=FALSE
+     $ArchiveDb=""
+     $Fl=""
+     $Ft=""
+
+     $StartupDb=$_CurrentDatabase
+
+##    Now that those variables have been initialised - recover all last use values
+     MACSETTINGS Type=R FileCheck=N                                                 # Main configuration data.
+     MACSETTINGS Type=R FileCheck=N File="$MacroFolder\PqLoaderServerData.Xml"      # Server login data
+
+     $LoadedDbs=""
+     MACSETTINGS Type=R FileCheck=N File="$MacroFolder\UpdatedDbs.xml"            # Flag and list of updated databases.
+
+     IF $PqLoadFldr
+       $FormA=EditForm($FormA,"ClrB4LOAD","Enabled","No")
+     ELSE 
+       $FormA=EditForm($FormA,"ClrB4LOAD","Enabled","Yes")
+     ENDIF 
+
+     IF $_Version>="8.0.0.133"
+       $TempStr="<p align="+$_Quote+"center"+$_Quote+">Load and Process PQ's<br>Press &lt;Shift&gt; to bypass Getmail"
+       $FormA=EditForm($FormA,"Process","Caption","$TempStr")
+       $FormA=EditForm($FormA,"label11","Visible","No")
+
+       IF Not($GcSetting)
+         $formb=EditForm($formb,"PqLbl","Visible","No")
+         $formb=EditForm($formb,"CheckNotRefreshed","Visible","No")
+         $formb=EditForm($formb,"GcDays","Visible","No")
+         $formb=EditForm($formb,"DaysLbl","Visible","No")
+       ENDIF 
+     ELSE 
+       $formb=EditForm($formb,"GcSetting","Enabled","No")
+       $formb=EditForm($formb,"PqLbl","Visible","No")
+       $formb=EditForm($formb,"CheckNotRefreshed","Visible","No")
+       $formb=EditForm($formb,"GcDays","Visible","No")
+       $formb=EditForm($formb,"DaysLbl","Visible","No")
+       IF $GcSetting
+         MSGOK Msg="You are running Gsak v$_Version.$_NewLine GC.COM Pq downloads require Gsak v8.0.0.133 or higher.$_NewLine Your Mail Configuration method has been reset."
+         $GcSetting=FALSE
+         $CheckNotRefreshed=FALSE
+       ENDIF 
+     ENDIF 
+
+     IF $Fl<>"" AND $Ft<>""                                               # If Form positioning values are in the
+       $FormA=EditForm($FormA,"Form1","Top",$Ft)                         # settings file, adjust the form position.
+       $FormA=EditForm($FormA,"Form1","Left",$Fl)
+     ENDIF 
+
+     $FormA=EditForm($FormA,"Form1","Delay","$MfDelay")
+     $DbXmlList=Sysinfo("databases")+";"                                  # Dbug data saved in .Xml file
+     $DbList=$Ns+";"+Sysinfo("databases")+";"
+     $FormB=EditForm($FormB,"UpdateList","Values","$DbList")
+     GOSUB Name=SetOptionDisplays                                         # Enable active Options boxes
+     IF $EncrPwrd
+       IF $RunCount=0
+         $Password=Rot13($Password)
+       ELSE 
+         $Password=MimeDecode($Password)
+       ENDIF 
+     ENDIF 
+     $RunCount=$RunCount+1
+
+     $MacName=Sysinfo("Macrofile")
+     $MacName="$MacName -$MacVers"
+     $GsakVers="Gsak $_Version"
+
+     BEGINCASE 
+         $FormA=EditForm($FormA,"AltLbl","Visible","Yes")
+       CASE $AltSettings
+         $FormA=EditForm($FormA,"AltLbl","Caption","Alternate setting in use: $SettingsLst")
+       CASE $MacroSvr
+         $FormA=EditForm($FormA,"AltLbl","Caption","Download emails from my own server")
+       CASE $GcSetting
+         $FormA=EditForm($FormA,"AltLbl","Caption","Download PQ's directly from GC.COM")
+       CASE $BypassGetMail
+         $FormA=EditForm($FormA,"AltLbl","Caption","Getmail routines are in Bypass mode")
+     ENDCASE 
+     GOSUB Name=SetNoUpdateActions
+     GOSUB Name=SetForm4
+
+     $TempStr="UserData;User2;User3;User4;"
+     $FormA=EditForm($FormA,"UserField","Values",$TempStr)
+     GOSUB Name=IncludeCustomFields
+
+   ENDSUB 
+###################################################################################
+# Variable declarations
+
+   DECLARE Var=$DevUser Type=Boolean
+   DECLARE Var=$LoadedDbs Type=String
+
+   DECLARE Var=$LockFields Type=String
+   
+   DECLARE Var=$PqSetting Type=String
+
+   DECLARE Var=$AgeDays Type=String
+   DECLARE Var=$AltSettings Type=Boolean
+   DECLARE Var=$ArchiveBtn Type=Boolean
+   DECLARE Var=$ArchiveDb Type=String
+   DECLARE Var=$AutoArc Type=Boolean
+   DECLARE Var=$BackupCbx Type=Boolean
+   DECLARE Var=$BypassGetMail Type=Boolean
+   DECLARE Var=$Ccodes Type=String
+   DECLARE Var=$CheckNotRefreshed Type=Boolean
+   DECLARE Var=$ClrB4LOAD Type=Boolean
+   DECLARE Var=$ClrCnt Type=Numeric
+   DECLARE Var=$Cnt1 Type=Numeric
+   DECLARE Var=$Cnt2 Type=Numeric
+   DECLARE Var=$Color Type=String
+   DECLARE Var=$Colors Type=String
+   DECLARE Var=$Command Type=String
+   DECLARE Var=$Comspec Type=String
+   DECLARE Var=$Cstr Type=String
+   DECLARE Var=$cList Type=String
+   DECLARE Var=$DataFile Type=String
+   DECLARE Var=$DateStr Type=String
+   DECLARE Var=$Days Type=Numeric
+   DECLARE Var=$DaysOld Type=String
+   DECLARE Var=$Db Type=String
+   DECLARE Var=$DbCb Type=Boolean
+   DECLARE Var=$DbCnt Type=Numeric
+   DECLARE Var=$DbList Type=String
+   DECLARE Var=$NumDbs Type=Numeric
+   DECLARE Var=$DbPtr Type=Numeric
+   DECLARE Var=$DbXmlList Type=String
+   DECLARE Var=$DefaultDb Type=String
+   DECLARE Var=$DefaultLoadCb Type=Boolean
+   DECLARE Var=$DefaultLoadClear Type=Boolean
+   DECLARE Var=$DelayCnt Type=String
+   DECLARE Var=$DeleteBtn Type=Boolean
+   DECLARE Var=$Dgm Type=String
+   DECLARE Var=$DynLoad Type=String
+   DECLARE Var=$DynMoveCopy Type=String
+   DECLARE Var=$EncrPwrd Type=Boolean
+   DECLARE Var=$Extn Type=String
+   DECLARE Var=$FileDelCbx Type=Boolean
+   DECLARE Var=$FilterCb Type=Boolean
+   DECLARE Var=$FilterList Type=String
+   DECLARE Var=$Fl Type=String
+   DECLARE Var=$Fldr Type=String
+   DECLARE Var=$FldrListAfterLastDownLoad Type=String
+   DECLARE Var=$Forma Type=String
+   DECLARE Var=$formb Type=String
+   DECLARE Var=$formc Type=String
+   DECLARE Var=$Formd Type=String
+   DECLARE Var=$FormExit Type=String
+   DECLARE Var=$Ft Type=String
+   DECLARE Var=$GcDays Type=String
+   DECLARE Var=$GcSetting Type=Boolean
+   DECLARE Var=$GmSettings Type=String
+   DECLARE Var=$GsakVers Type=String
+   DECLARE Var=$HdnPassword Type=String
+   DECLARE Var=$LCnt Type=Numeric
+   DECLARE Var=$LineCnt1 Type=Numeric
+   DECLARE Var=$PqLoadFile Type=Boolean
+   DECLARE Var=$PqLoadFldr Type=Boolean
+   DECLARE Var=$LockStr Type=String
+   DECLARE Var=$LogFile Type=String
+   DECLARE Var=$LogFldr Type=String
+   DECLARE Var=$LoginName Type=String
+   DECLARE Var=$Losem Type=Boolean
+   DECLARE Var=$M1 Type=String
+   DECLARE Var=$M2 Type=String
+   DECLARE Var=$M3 Type=String
+   DECLARE Var=$MacName Type=String
+   DECLARE Var=$MacVers Type=String
+   DECLARE Var=$MacroBox Type=String
+   DECLARE Var=$MacroCb Type=Boolean
+   DECLARE Var=$MacroFolder Type=String
+   DECLARE Var=$MacroSvr Type=Boolean
+   DECLARE Var=$MailServer Type=String
+   DECLARE Var=$MfDelay Type=String
+   DECLARE Var=$MfPqDb Type=String
+   DECLARE Var=$MfPqFile Type=String
+   DECLARE Var=$MostRecent Type=Date
+   DECLARE Var=$MoveCb Type=Boolean
+   DECLARE Var=$Movem Type=Boolean
+   DECLARE Var=$Msg Type=String
+   DECLARE Var=$Msg0 Type=String
+   DECLARE Var=$Msg1 Type=String
+   DECLARE Var=$Msg2 Type=String
+   DECLARE Var=$Msg3 Type=String
+   DECLARE Var=$Msg4 Type=String
+   DECLARE Var=$NewColor Type=Numeric
+   DECLARE Var=$NewLogFile Type=String
+   DECLARE Var=$NewLogFldr Type=String
+   DECLARE Var=$NewMsgs Type=Boolean
+   DECLARE Var=$NothingBtn Type=Boolean
+   DECLARE Var=$Ns Type=String
+   DECLARE Var=$Oldest Type=Date
+   DECLARE Var=$OldLogFile Type=String
+   DECLARE Var=$OnLine Type=Boolean
+   DECLARE Var=$OperatorAction Type=Boolean
+   DECLARE Var=$OpSystem Type=String
+   DECLARE Var=$OwnerName Type=String
+   DECLARE Var=$p_LoadedDbs Type=String
+   DECLARE Var=$p_PqLoaded Type=Boolean
+   DECLARE Var=$Parms Type=String
+   DECLARE Var=$Password Type=String
+   DECLARE Var=$Pattern Type=String
+   DECLARE Var=$Port Type=String
+   DECLARE Var=$Pq Type=String
+   DECLARE Var=$PqFolder Type=String
+   DECLARE Var=$PqlRap Type=Boolean
+   DECLARE Var=$QuietMode Type=Boolean
+   DECLARE Var=$ResultStr Type=String
+   DECLARE Var=$Routine Type=String
+   DECLARE Var=$RunAgm Type=Boolean
+   DECLARE Var=$MacroAgm Type=String
+   DECLARE Var=$RunColor Type=Boolean
+   DECLARE Var=$RunCount Type=Numeric
+   DECLARE Var=$RunIfUpdated Type=Boolean
+   DECLARE Var=$RunMacro Type=Boolean
+   DECLARE Var=$ServerBug Type=Boolean
+   DECLARE Var=$SettingsLst Type=String
+   DECLARE Var=$SSL Type=Boolean
+   DECLARE Var=$StartupDb Type=String
+   DECLARE Var=$StaticGetMail Type=String
+   DECLARE Var=$StaticLoad Type=String
+   DECLARE Var=$StaticV8LOAD Type=String
+   DECLARE Var=$StaticMoveCopy Type=String
+   DECLARE Var=$StatusNotUpdated Type=Boolean
+   DECLARE Var=$StatsCbx Type=Boolean
+   DECLARE Var=$Step Type=Numeric
+   DECLARE Var=$TempFile Type=String
+   DECLARE Var=$TempStr Type=String
+   DECLARE Var=$TempStr2 Type=String
+   DECLARE Var=$TempVal Type=Date
+   DECLARE Var=$ThisColor Type=Numeric
+   DECLARE Var=$TmpS Type=String
+   DECLARE Var=$TmpS2 Type=String
+   DECLARE Var=$PqCnt Type=String
+   DECLARE Var=$PqName Type=String
+   DECLARE Var=$UnknownUser Type=String
+   DECLARE Var=$UpdateList Type=String
+   DECLARE Var=$X Type=Numeric
+   DECLARE Var=$Y Type=Numeric
+
+###################################################################################
+<DATA> VarName=$AgeDays
+1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;20;25;30;
+<ENDDATA>
+###################################################################################
+<DATA> VarName=$DelayCnt
+0;1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;20;25;30;45;60;
+<ENDDATA>
+###################################################################################
+<DATA> VarName=$Colors
+White;Pink;Red;Gold;Burnt Gold;Pale Yellow;Green;Bright Green;Lt Green;Dk Green;Pea Green;Blue;Aqua;Pale Blue;Khaki;Mauve;Grey;
+<ENDDATA>
+###################################################################################
+<DATA> VarName=$Ccodes
+16777215;13749501;255;458738;439807;11599871;65280;65280;12713921;4755787;4049461;16692342;16776960;14671010;10476511;16761024;12632256;
+<ENDDATA>
+###################################################################################
+<data> VarName=$ReplaceGlobalField
+[TfmReplace]
+cbxFields.Text=**UserField**
+cbxWith.Text=Available
+edtDate.Text=/  /
+edtString.Text=
+rbtAdd.Checked=False
+rbtRemove.Checked=False
+rbtReplace.Checked=True
+rbtSwap.Checked=False
+chkClose.Checked=True
+rbtAddBefore.Checked=False
+<enddata>
+###################################################################################
+<DATA> VarName=$StaticLoad
+[TfmGpxLoad]
+chkGpx.Checked=False
+chkLoc.Checked=False
+chkZip.Checked=True
+cbxZap.Checked=False
+chkClearUser.Checked=**ClrUser**
+chkDefault.Checked=False
+chkDelete.Checked=**FileDel**
+chkSetUser.Checked=**SetUser**
+chkUserOnly.Checked=False
+rbtAddOnly.Checked=False
+rbtAlways.Checked=True
+rbtExists.Checked=False
+rbtExtraChild.Checked=True
+rbtExtraExclude.Checked=False
+rbtExtraParent.Checked=False
+rbtFoundAlways.Checked=False
+rbtFoundNever.Checked=True
+rbtFoundOnly.Checked=False
+rbtNewer.Checked=False
+rbtLoadFile.Checked=True
+rbtLoadFolder.Checked=False
+edtFoundSymbol.Text=Geocache Found
+chkUpdateSymbol.Checked=True
+cbxDataBases.Text=Default
+edtCounty.Text=
+cbxFileType.Text=GPX/LOC (including inside zip)
+edtState.Text=
+chkKeepFocus.Checked=False
+chkDecodeEntity.Checked=True
+chkSummary.Checked=False
+edtFolder.Text=
+fnmFrom.Text=**Pattern**                              
+[General]
+cbxlock.Text=
+chkSaveFile.Checked=True
+chkSaveDatabase.Checked=False
+<ENDDATA>
+###################################################################################
+<DATA> VarName=$StaticGetMail
+[TfmMail]
+cbxMatch.Text=RegEx
+chkIgnore.Checked=True
+edtMatch.Text=\[GEO\] Pocket Query: (.*)
+rbtDelete.Checked=True
+rbtLeave.Checked=False
+rbtOver.Checked=False
+rbtRenumber.Checked=True
+chkLoadYes.Checked=False
+cbxLoadSettings.Text=... Last active
+chkRename.Checked=True
+chkForceRead.Checked=False
+RbtOnlyAttach.Checked=True
+rbtHeaderBody.Checked=False
+File1.Filename=
+<ENDDATA>
+###################################################################################
+<DATA> VarName=$StaticMoveCopy
+[TfmMove]
+rbtAdd.Checked=True
+rbtAddFlag.Checked=False
+rbtAddIgnore.Checked=False
+rbtCopy.Checked=False
+rbtExistIgnore.Checked=False
+rbtFlagOnly.Checked=False
+rbtMove.Checked=True
+rbtReplace.Checked=True
+rbtReplaceFlag.Checked=False
+chkDisplay.Checked=False
+<ENDDATA>
+###################################################################################
+<data> VarName=$StaticGcLoad
+[TfmgcGetPq]
+grpLoad.CheckBoxAction=caDisable
+grpLoad.CheckBoxAllowGrayed=False
+grpLoad.CheckBoxChecked=False
+grpLoad.CheckBoxHint=
+grpLoad.CheckBoxPosition=cpLeft
+grpLoad.CheckBoxState=cbUnchecked
+grpLoad.CheckBoxThemed=True
+grpLoad.CheckBoxVisible=True
+cbxLoadSettings.Text=* Use GSAK defaults *
+cbxMatch.Text=Contains
+cbxSettings.Text=V8PqLoader
+edtMatch.Text=
+chkIgnore.Checked=True
+grpMatch.CheckBoxAction=caDisable
+grpMatch.CheckBoxAllowGrayed=False
+grpMatch.CheckBoxChecked=False
+grpMatch.CheckBoxHint=
+grpMatch.CheckBoxPosition=cpLeft
+grpMatch.CheckBoxState=cbUnchecked
+grpMatch.CheckBoxThemed=True
+grpMatch.CheckBoxVisible=True
+chkDownload.Checked=True
+<enddata>
+###################################################################################
+<data> VarName=$StaticV8Load
+[General]
+cbxlock.Text=
+chkSaveFile.Checked=True
+chkSaveDatabase.Checked=False
+[TfmGpxLoad]
+chkGpx.Checked=True
+chkLoc.Checked=False
+chkZip.Checked=False
+cbxZap.Checked=False
+chkClearUser.Checked=False
+chkDefault.Checked=False
+chkSetUser.Checked=False
+chkUserOnly.Checked=False
+rbtAddOnly.Checked=False
+rbtAlways.Checked=False
+rbtExists.Checked=False
+rbtExtraChild.Checked=True
+rbtExtraExclude.Checked=False
+rbtExtraParent.Checked=False
+rbtFoundAlways.Checked=False
+rbtFoundNever.Checked=True
+rbtFoundOnly.Checked=False
+rbtNewer.Checked=True
+rbtLoadFile.Checked=False
+rbtLoadFolder.Checked=True
+edtFoundSymbol.Text=Geocache Found
+chkUpdateSymbol.Checked=True
+cbxDataBases.Text=Default
+edtCounty.Text=
+cbxFileType.Text=GPX/LOC (including inside zip)
+edtState.Text=
+chkKeepFocus.Checked=False
+chkDecodeEntity.Checked=True
+edtFolder.Text=C:\Documents and Settings\Wayne\Desktop
+<enddata>
+###################################################################################
+#  Form Notes
+# ============
+# Form 1 - Main form
+# Form 2 - GetMail Configuration
+# Form 3 - Color Configuration
+# Form 4 - Archive Configuration
+#
+###################################################################################
+<DATA> VarName=$forma
+#********************************************************************
+# Form generated by GSAK form designer on Fri 04-Jan-2013 08:32:39
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Color = 15138815
+  Height = 552
+  Top = 104
+  Width = 610
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Options and configuration
+  Color = 14286847
+  Height = 386
+  Left = 43
+  Top = 72
+  Width = 526
+  Taborder = 2
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = Default PQ Load Setup
+  Container = Groupbox1
+  Height = 96
+  Left = 242
+  Top = 135
+  Width = 273
+  Taborder = 8
+
+Name = Groupbox3
+  Type = Groupbox
+  Container = Groupbox1
+  Height = 280
+  Left = 11
+  Top = 22
+  Width = 220
+  Taborder = 12
+
+Name = Process
+  Type = Button
+  Height = 45
+  Left = 43
+  Top = 465
+  Width = 188
+  Taborder = 0
+  Caption = Load and Process PQ's
+
+Name = Exit
+  Type = Button
+  Escape = Yes
+  Height = 35
+  Left = 468
+  Top = 476
+  Width = 101
+  Taborder = 1
+  Caption = Quit / Exit
+
+Name = Label1
+  Type = Label
+  Color = 4210816
+  Container = Groupbox1
+  Height = 13
+  Left = 255
+  Style = bold;underline
+  Top = 20
+  Width = 238
+  Caption = Action to take if caches are not updated
+
+Name = StatsCbx
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 32768
+  Height = 17
+  Left = 10
+  Top = 27
+  Width = 200
+  Taborder = 0
+  Caption = Display Load Statistics after each load
+
+Name = FileDelCbx
+  Type = Checkbox
+  Container = Groupbox3
+  Exitonchange = Yes
+  Fontcolor = 32768
+  Height = 17
+  Left = 10
+  Top = 44
+  Width = 200
+  Taborder = 1
+  Caption = Delete PQ Files after Load
+
+Name = BackupCbx
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 32768
+  Height = 17
+  Left = 10
+  Top = 61
+  Width = 200
+  Taborder = 2
+  Caption = Backup the logfile after each load
+
+Name = Label9
+  Type = Label
+  Color = 16711680
+  Font = Comic Sans MS
+  Height = 35
+  Left = 163
+  Size = 18
+  Style = bold
+  Top = 3
+  Width = 155
+  Caption = PQ Loader -
+
+Name = AutoArc
+  Type = Checkbox
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 17
+  Left = 255
+  Top = 38
+  Width = 15
+  Taborder = 0
+
+Name = Label10
+  Type = Label
+  Color = 16512
+  Container = Groupbox1
+  Height = 13
+  Left = 282
+  Top = 40
+  Width = 88
+  Caption = Enable an action
+
+Name = MainCfg
+  Type = Button
+  Container = Groupbox1
+  Height = 25
+  Left = 40
+  Top = 334
+  Width = 157
+  Taborder = 1
+  Caption = Mail Configuration
+
+Name = RegName
+  Type = Label
+  Color = 255
+  Font = Times New Roman
+  Height = 27
+  Left = 320
+  Size = 18
+  Style = italic
+  Top = 10
+  Width = 63
+
+Name = Label12
+  Type = Label
+  Color = 32768
+  Container = Groupbox3
+  Height = 13
+  Left = 6
+  Style = bold;underline
+  Top = 9
+  Width = 83
+  Caption = Load Options
+
+Name = MfdLabel
+  Type = Label
+  Color = 16711680
+  Height = 13
+  Left = 277
+  Top = 464
+  Width = 106
+  Caption = Main form auto delay
+
+Name = MfDelay
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 298
+  Top = 480
+  Values = $DelayCnt
+  Width = 56
+  Taborder = 3
+
+Name = MfdLabel2
+  Type = Label
+  Color = 16711680
+  Height = 13
+  Left = 294
+  Top = 503
+  Width = 71
+  Caption = ( 0 to disable)
+
+Name = AltLbl
+  Type = Label
+  Color = 32768
+  Font = Comic Sans MS
+  Height = 23
+  Left = 161
+  Size = 12
+  Style = bold
+  Top = 42
+  Width = 198
+  Caption = Alternate Setting in use
+
+Name = Label15
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 249
+  Style = bold;underline
+  Top = 258
+  Width = 245
+  Caption = Extra tasks when all Pq loads are finished
+
+Name = FilterCb
+  Type = Checkbox
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 17
+  Left = 250
+  Top = 307
+  Width = 15
+  Taborder = 2
+
+Name = Label16
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 285
+  Top = 309
+  Width = 69
+  Caption = Run this filter
+
+Name = FilterBox
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 361
+  Top = 306
+  Values = $FilterList
+  Width = 149
+  Taborder = 3
+
+Name = MacroCb
+  Type = Checkbox
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 17
+  Left = 250
+  Top = 333
+  Width = 15
+  Taborder = 4
+
+Name = Label17
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 286
+  Top = 335
+  Width = 79
+  Caption = Run this macro
+
+Name = MacroBox
+  Type = File
+  Container = Groupbox1
+  Height = 21
+  Left = 361
+  Top = 332
+  Width = 149
+  Taborder = 5
+
+Name = DbCb
+  Type = Checkbox
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 17
+  Left = 250
+  Top = 281
+  Width = 15
+  Taborder = 6
+
+Name = Label13
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 285
+  Top = 283
+  Width = 74
+  Caption = Select this Db
+
+Name = DbBox
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 361
+  Top = 280
+  Values = $DbList
+  Width = 149
+  Taborder = 7
+
+Name = ThenA
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 305
+  Top = 296
+  Visible = No
+  Width = 29
+  Caption = then
+
+Name = ThenB
+  Type = Label
+  Color = 4227200
+  Container = Groupbox1
+  Height = 13
+  Left = 305
+  Top = 322
+  Visible = No
+  Width = 29
+  Caption = then
+
+Name = Label14
+  Type = Label
+  Color = 33023
+  Container = Groupbox3
+  Height = 13
+  Left = 6
+  Style = bold;underline
+  Top = 117
+  Width = 204
+  Caption = Fields to be locked during updates
+
+Name = DefaultLoadCb
+  Type = Checkbox
+  Container = Groupbox2
+  Exitonchange = Yes
+  Fontcolor = 255
+  Height = 17
+  Left = 10
+  Top = 51
+  Width = 90
+  Taborder = 0
+  Caption = Default Db
+
+Name = DefaultDb
+  Type = Combobox
+  Color = 16777215
+  Container = Groupbox2
+  Height = 21
+  Left = 105
+  Top = 49
+  Values = $DbList
+  Width = 158
+  Taborder = 1
+
+Name = Label20
+  Type = Label
+  Color = 255
+  Container = Groupbox2
+  Height = 13
+  Left = 15
+  Top = 16
+  Width = 246
+  Caption = Check the box and set the database below to load
+
+Name = Label21
+  Type = Label
+  Color = 255
+  Container = Groupbox2
+  Height = 13
+  Left = 15
+  Top = 29
+  Width = 228
+  Caption = ALL remaining PQ's into the selected database
+
+Name = Label23
+  Type = Label
+  Color = 32768
+  Container = Groupbox2
+  Height = 13
+  Left = 2
+  Top = 24
+  Width = 269
+  Caption = Disabled - to enable, check 'Delete PQ Files after Load'
+
+Name = ArchiveCfg
+  Type = Button
+  Container = Groupbox1
+  Height = 25
+  Left = 307
+  Top = 85
+  Width = 157
+  Taborder = 9
+  Caption = No Update Configuration
+
+Name = ActionLbl
+  Type = Label
+  Color = 16512
+  Container = Groupbox1
+  Height = 13
+  Left = 320
+  Top = 40
+  Width = 34
+
+Name = ActionLb2
+  Type = Label
+  Color = 16512
+  Container = Groupbox1
+  Height = 13
+  Left = 320
+  Top = 53
+  Width = 34
+
+Name = Label2
+  Type = Label
+  Color = 32896
+  Container = Groupbox1
+  Height = 13
+  Left = 288
+  Top = 355
+  Width = 222
+  Caption = Only run the Macro if updates have occurred.
+
+Name = RunMacro
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 266
+  Top = 334
+  Width = 15
+  Taborder = 10
+
+Name = RunIfUpdated
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 266
+  Top = 353
+  Width = 15
+  Taborder = 11
+
+Name = Label8
+  Type = Label
+  Color = 16512
+  Container = Groupbox3
+  Height = 13
+  Left = 6
+  Style = bold;underline
+  Top = 184
+  Width = 86
+  Caption = Other Options
+
+Name = PqlRap
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 16512
+  Height = 17
+  Left = 10
+  Top = 254
+  Width = 199
+  Taborder = 3
+  Caption = Return to this form after processing
+
+Name = Freset
+  Type = Button
+  Height = 25
+  Left = 618
+  Top = 378
+  Visible = Yes
+  Width = 75
+  Taborder = 4
+  Caption = &Reset
+
+Name = Label11
+  Type = Label
+  Color = 16711680
+  Height = 17
+  Left = 60
+  Top = 509
+  Width = 145
+  Caption = Press Shift to bypass GetMail
+
+Name = PqLoadFldr
+  Type = Radiobutton
+  Container = Groupbox3
+  Exitonchange = Yes
+  Fontcolor = 16512
+  Height = 20
+  Left = 10
+  Top = 201
+  Width = 153
+  Taborder = 4
+  Caption = Original PQ Load (faster)
+
+Name = PqLoadFile
+  Type = Radiobutton
+  Container = Groupbox3
+  Exitonchange = Yes
+  Fontcolor = 16512
+  Height = 20
+  Left = 10
+  Top = 219
+  Width = 117
+  Taborder = 5
+  Caption = Insert Pq Name into
+
+Name = ClrB4Load
+  Type = Checkbox
+  Container = Groupbox3
+  Fontcolor = 16512
+  Height = 20
+  Left = 22
+  Top = 237
+  Width = 191
+  Taborder = 6
+  Caption = Clear User Field before Loading Pq's
+
+Name = UserField
+  Type = Combobox
+  Container = Groupbox3
+  Height = 21
+  Left = 127
+  Top = 220
+  Width = 85
+  Taborder = 7
+
+Name = DefaultLoadClear
+  Type = Checkbox
+  Container = Groupbox2
+  Fontcolor = 16512
+  Height = 20
+  Left = 24
+  Top = 70
+  Width = 241
+  Taborder = 2
+  Caption = Clear User Field before Loading Pq's
+
+Name = LockFields
+  Type = Edit
+  Container = Groupbox3
+  Height = 21
+  Left = 6
+  Top = 134
+  Width = 206
+  Taborder = 8
+
+<enddata>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###################################################################################
+<DATA> VarName=$formb
+#********************************************************************
+# Form generated by GSAK form designer on Mon 31-Dec-2012 08:33:51
+#********************************************************************
+
+Name = Form2
+  Type = Form
+  Caption = GetMail Configuration
+  Color = 13099497
+  Height = 562
+  Top = 129
+  Width = 721
+
+Name = Groupbox2
+  Type = Groupbox
+  Height = 362
+  Left = 32
+  Top = 6
+  Width = 648
+  Taborder = 2
+
+Name = Label2
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 45
+  Top = 75
+  Width = 68
+  Caption = Server name
+
+Name = Label3
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 45
+  Top = 103
+  Width = 63
+  Caption = Login name
+
+Name = Label4
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 45
+  Top = 131
+  Width = 82
+  Caption = Login password
+
+Name = Label5
+  Type = Label
+  Color = 16711680
+  Height = 13
+  Left = 37
+  Top = 467
+  Width = 63
+  Caption = Local folder
+
+Name = MailServer
+  Type = Edit
+  Container = Groupbox2
+  Height = 21
+  Left = 132
+  Top = 72
+  Width = 168
+  Taborder = 0
+
+Name = LoginName
+  Type = Edit
+  Container = Groupbox2
+  Height = 21
+  Left = 132
+  Top = 100
+  Width = 168
+  Taborder = 1
+
+Name = HdnPassword
+  Type = Edit
+  Container = Groupbox2
+  Height = 21
+  Left = 132
+  Top = 127
+  Width = 168
+  Taborder = 2
+
+Name = PqFolder
+  Type = Folder
+  Height = 21
+  Left = 125
+  Top = 464
+  Width = 471
+  Taborder = 0
+
+Name = ExitF2
+  Type = Button
+  Enter = Yes
+  Height = 30
+  Left = 288
+  Top = 496
+  Width = 138
+  Taborder = 1
+  Caption = Return to Main Form
+
+Name = Label6
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 333
+  Top = 76
+  Width = 59
+  Caption = Port to use
+
+Name = Port
+  Type = Edit
+  Container = Groupbox2
+  Height = 21
+  Left = 420
+  Top = 72
+  Width = 32
+  Taborder = 3
+
+Name = Label7
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 463
+  Top = 77
+  Width = 108
+  Caption = (995  for Google mail)
+
+Name = Label8
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 333
+  Top = 105
+  Width = 57
+  Caption = SSL Login
+
+Name = SSL
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 17
+  Left = 420
+  Top = 104
+  Width = 15
+  Taborder = 4
+
+Name = Label9
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 463
+  Top = 106
+  Width = 130
+  Caption = (Required for Google mail)
+
+Name = Label10
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 45
+  Top = 153
+  Width = 54
+  Caption = Password
+
+Name = EncrPwrd
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 17
+  Left = 132
+  Top = 151
+  Width = 15
+  Taborder = 6
+
+Name = Label11
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 175
+  Top = 154
+  Width = 139
+  Caption = Encrypt when storing locally
+
+Name = NewMsgs
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 17
+  Left = 420
+  Top = 128
+  Width = 15
+  Taborder = 5
+
+Name = Label12
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 333
+  Top = 131
+  Width = 80
+  Caption = New messages
+
+Name = Label13
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 463
+  Top = 131
+  Width = 181
+  Caption = Check server for new messages only
+
+Name = SettingsLst
+  Type = Combobox
+  Container = Groupbox2
+  Height = 21
+  Left = 488
+  Top = 176
+  Values = $GmSettings
+  Width = 145
+  Taborder = 7
+
+Name = Label15
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 270
+  Top = 179
+  Width = 214
+  Caption = Use this setting instead of the setting above
+
+Name = Label16
+  Type = Label
+  Color = 16711680
+  Height = 13
+  Left = 612
+  Top = 469
+  Width = 57
+  Caption = (Required)
+
+Name = Label18
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 13
+  Left = 167
+  Top = 205
+  Width = 390
+  Caption = Do not use GetMail to download Pq's - I will downloaded and save them manually
+
+Name = Label20
+  Type = Label
+  Color = 16711680
+  Font = Microsoft Sans Serif
+  Height = 13
+  Left = 37
+  Size = 8
+  Top = 403
+  Width = 117
+  Caption = My Finds PQ Database
+
+Name = MfPqDb
+  Type = Combobox
+  Height = 21
+  Left = 156
+  Top = 398
+  Values = $DbList
+  Width = 186
+  Taborder = 3
+
+Name = MacroSvr
+  Type = Radiobutton
+  Container = Groupbox2
+  Exitonchange = Yes
+  Font = Arial
+  Fontcolor = 255
+  Fontsize = 13
+  Fontstyle = bold
+  Height = 29
+  Left = 15
+  Top = 43
+  Width = 213
+  Taborder = 8
+  Caption = Server Configuration
+
+Name = Label1
+  Type = Label
+  Color = 32768
+  Container = Groupbox2
+  Font = Comic Sans MS
+  Height = 30
+  Left = 139
+  Size = 16
+  Style = bold
+  Top = 11
+  Width = 369
+  Caption = GetMail / Get GC PQ Configuration
+
+Name = AltSettings
+  Type = Radiobutton
+  Container = Groupbox2
+  Exitonchange = Yes
+  Font = Arial
+  Fontcolor = 255
+  Fontsize = 13
+  Fontstyle = bold
+  Height = 30
+  Left = 15
+  Top = 173
+  Width = 250
+  Taborder = 9
+  Caption = Alternate GetMail Setting
+
+Name = BypassGetMail
+  Type = Radiobutton
+  Container = Groupbox2
+  Exitonchange = Yes
+  Font = arial
+  Fontcolor = 255
+  Fontsize = 13
+  Fontstyle = bold
+  Height = 27
+  Left = 15
+  Top = 197
+  Width = 152
+  Taborder = 10
+  Caption = Getmail Bypass
+
+Name = Label14
+  Type = Label
+  Color = 16711680
+  Height = 13
+  Left = 37
+  Top = 425
+  Width = 245
+  Caption = Pq filename separators to be replaced with spaces
+
+Name = NsSeparatorStr
+  Type = Edit
+  Height = 21
+  Left = 289
+  Top = 422
+  Width = 181
+  Taborder = 6
+
+Name = RemNonLtrs
+  Type = Checkbox
+  Captionposition = Left
+  Fontcolor = 16711680
+  Height = 17
+  Left = 38
+  Top = 442
+  Width = 267
+  Taborder = 7
+  Caption = Pq filename must begin with a letter [a-z,A-Z]
+
+Name = MacroAgm
+  Type = File
+  Enabled = Yes
+  Height = 21
+  Left = 357
+  Top = 374
+  Width = 326
+  Taborder = 8
+
+Name = RunAgm
+  Type = Checkbox
+  Fontcolor = 16711680
+  Height = 17
+  Left = 35
+  Top = 376
+  Width = 313
+  Taborder = 9
+  Caption = Run this Macro after downloading Mail but before processing.
+
+Name = GcSetting
+  Type = Radiobutton
+  Container = Groupbox2
+  Exitonchange = Yes
+  Fontcolor = 255
+  Fontsize = 13
+  Fontstyle = bold
+  Height = 29
+  Left = 15
+  Top = 221
+  Width = 293
+  Taborder = 11
+  Caption = Geocaching.Com PQ downloads
+
+Name = PqLbl
+  Type = Label
+  Color = 16711680
+  Container = Groupbox2
+  Height = 17
+  Left = 310
+  Top = 229
+  Width = 201
+  Caption = - For Pocket Queries not yet downloaded
+
+Name = CheckNotRefreshed
+  Type = Checkbox
+  Container = Groupbox2
+  Exitonchange = Yes
+  Fontcolor = 32768
+  Height = 20
+  Left = 33
+  Top = 247
+  Width = 90
+  Taborder = 12
+  Caption = Refresh
+
+Name = GcDays
+  Type = Combobox
+  Container = Groupbox2
+  Display = 20
+  Height = 21
+  Left = 32
+  Top = 289
+  Values = $AgeDays
+  Width = 50
+  Taborder = 13
+
+Name = DaysLbl
+  Type = Label
+  Color = 32768
+  Container = Groupbox2
+  Enabled = Yes
+  Height = 17
+  Left = 91
+  Top = 292
+  Width = 32
+  Caption = Days
+
+Name = StatusNotUpdated
+  Type = Checkbox
+  Container = Groupbox2
+  Exitonchange = Yes
+  Fontcolor = 32768
+  Height = 20
+  Left = 33
+  Top = 265
+  Width = 91
+  Taborder = 14
+  Caption = Status check
+
+Name = Label17
+  Type = Label
+  Color = 32768
+  Container = Groupbox2
+  Height = 17
+  Left = 34
+  Top = 337
+  Width = 323
+  Caption = available caches not included in the download and not updated for
+
+Name = UpdateList
+  Type = Checklistbox
+  Columns = 3
+  Container = Groupbox2
+  Height = 88
+  Left = 122
+  Top = 249
+  Values = $DbList
+  Width = 514
+  Taborder = 15
+
+<enddata>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###################################################################################
+<DATA> VarName=$FormD
+#********************************************************************
+# Form generated by GSAK form designer on Tue 28-Apr-2009 21:54:43
+#********************************************************************
+
+Name = Form4
+  Type = Form
+  Caption = Archive Configuration
+  Color = 16771022
+  Height = 354
+  Top = 5
+  Width = 374
+
+Name = Label1
+  Type = Label
+  Color = 16512
+  Height = 13
+  Left = 52
+  Style = bold;underline
+  Top = 13
+  Width = 253
+  Caption = Action to take when caches are not updated
+
+Name = Label2
+  Type = Label
+  Color = 32768
+  Height = 13
+  Left = 112
+  Top = 229
+  Width = 196
+  Caption = Enable 'Quiet mode' (no user intervention)
+
+Name = DaysOld
+  Type = Combobox
+  Height = 21
+  Left = 107
+  Top = 40
+  Values = $AgeDays
+  Width = 48
+  Taborder = 0
+
+Name = Label3
+  Type = Label
+  Color = 32768
+  Height = 13
+  Left = 71
+  Top = 45
+  Width = 22
+  Caption = After
+
+Name = QuietMode
+  Type = Checkbox
+  Exitonchange = Yes
+  Height = 17
+  Left = 85
+  Top = 227
+  Width = 15
+  Taborder = 1
+
+Name = Label4
+  Type = Label
+  Color = 32768
+  Height = 13
+  Left = 159
+  Top = 43
+  Width = 126
+  Caption = days without a Gpx update
+
+Name = ExitF4
+  Type = Button
+  Height = 25
+  Left = 91
+  Top = 267
+  Width = 164
+  Taborder = 8
+  Caption = Return to the Main Screen
+
+Name = Label5
+  Type = Label
+  Height = 16
+  Left = 89
+  Size = 10
+  Style = bold;underline
+  Top = 74
+  Width = 48
+  Caption = Do this
+
+Name = Label6
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 111
+  Top = 119
+  Width = 92
+  Caption = Archive the caches
+
+Name = Label7
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 110
+  Top = 138
+  Width = 87
+  Caption = Delete the caches
+
+Name = Label8
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 111
+  Top = 160
+  Width = 203
+  Caption = Move caches not updated to this database
+
+Name = ArchiveBtn
+  Type = Radiobutton
+  Exitonchange = Yes
+  Height = 17
+  Left = 86
+  Top = 117
+  Width = 15
+  Taborder = 11
+
+Name = DeleteBtn
+  Type = Radiobutton
+  Exitonchange = Yes
+  Height = 17
+  Left = 86
+  Top = 137
+  Width = 15
+  Taborder = 12
+
+Name = MoveCb
+  Type = Checkbox
+  Exitonchange = Yes
+  Height = 17
+  Left = 87
+  Top = 159
+  Width = 15
+  Taborder = 13
+
+Name = NothingBtn
+  Type = Radiobutton
+  Exitonchange = Yes
+  Height = 17
+  Left = 86
+  Top = 97
+  Width = 15
+  Taborder = 14
+
+Name = Label9
+  Type = Label
+  Color = 32768
+  Height = 13
+  Left = 110
+  Top = 98
+  Width = 37
+  Caption = Nothing
+
+Name = ArchiveDb
+  Type = Combobox
+  Height = 21
+  Left = 111
+  Top = 179
+  Values = $DbList
+  Width = 204
+  Taborder = 15
+
+<enddata>
+

@@ -1,0 +1,36 @@
+#*******************************************
+# MacDescription = Print from a macro
+# MacFileName = MacroPrint.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.76
+# MacUrl=http://gsak.net/board/index.php?showtopic=10967&view=findpost&p=71901
+#*******************************************
+VERCHECK Version=7.7.1.0 (please update GSAK to version 7.7.2.0 or later to run this macro - see http://gsak.net)
+#Change "FALSE" to "TRUE" (without the quotes) if you want the macro to print without a preview
+$PrintSetting=FALSE
+
+$status = sqlite("sql","drop table if exists gsak_mem.working")
+$status = sqlite("sql","create table gsak_mem.working as select code,name,placedby,lastlog,lastfounddate,cachetype,container,difficulty,terrain,hints,usersort,usernote from cachesall where $_where")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'APE' WHERE cachetype = 'A'")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'LBX' WHERE cachetype = 'B'")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'CIT' WHERE cachetype = 'C'")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'EVT' WHERE cachetype = 'E'")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'BMK' WHERE cachetype = 'G'")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'WGO' WHERE cachetype = 'I'")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'LCL' WHERE cachetype = 'L'")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'MLT' WHERE cachetype = 'M'")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'OTH' WHERE cachetype = '0'")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'ERT' WHERE cachetype = 'R'")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'TRD' WHERE cachetype = 'T'")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'UNK' WHERE cachetype = 'U'")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'VRT' WHERE cachetype = 'V'")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'WEB' WHERE cachetype = 'W'")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'MZE' WHERE cachetype = 'X'")
+$data=Sqlite("sql", "UPDATE Working SET cachetype = 'MEG' WHERE cachetype = 'Z'")
+$data=Sqlite("sql","select code as Code,name as 'Cache Name',cachetype as Type,container as Con,difficulty as Dif,terrain as Ter,placedby as 'Owner',lastlog as 'Last Log',lastfounddate as 'Last Found',userSort as 'USort', hints as 'Hint',replace(usernote,'$~','<BR><BR>') AS 'Notes' from Working","headings=yes")
+$out=SqlToHtml($data,"Selected caches","y")
+
+IF $PrintSetting=TRUE
+    $PrintFile = $_Install + "\temp\SqlToHtml.html"
+    RUNPGM pgm="rundll32.exe" parms=MSHTML.DLL,PrintHTML "$PrintFile"
+ENDIF

@@ -1,0 +1,43 @@
+# MacDescription = Copy Databses to Dropbox
+# MacFileName = CopyToDropbox.gsk
+# MacAuthor = Lignumaqua
+# MacVersion=0.2aa
+# MacUrl = 
+
+#==============================================================================#
+#   GSAK Copy Databases to Dropbox
+#   Lignumaqua
+#   ONLY runs in GSAK V7.7 or above of GSAK
+#   ONLY runs in Windows 7 or later
+#
+#==============================================================================#
+#   Copy to Dropbox Version History
+# V0.1 2-18-13 First trial release
+
+# Get Dropbox path
+$Dropbox = GetEnvV("APPDATA") + "\Dropbox\host.db"
+$Dropboxfile = GetFile($Dropbox)
+$Dropboxpath = MimeDecode(Extract($Dropboxfile,Chr(10),RegExCount("\n",$Dropboxfile) + 1))
+$Exclude = ""
+
+$From = $_dbPath
+$FromMacros = $_AppData + "\macros"
+$To = $Dropboxpath + "\GSAK\data"
+$ToMacros = $Dropboxpath + "\GSAK\macros"
+
+# Comment out the line below to include the grabbed images folder
+$Exclude = $_dbPath + "\GrabbedImages"
+$ExcludeMacros = $FromMacros + "\.git"
+
+$BatFile = $_Install + "\babel.bat"
+$result = PutFile($BatFile, "ROBOCOPY " + Quote($From) + " " + Quote($To) + " *.* /XD " + Quote($Exclude) + " /S /XO")
+FILEOPEN File="$BatFile" Wait=yes
+
+$BatFile = $_Install + "\babel.bat"
+$data = "ROBOCOPY " + Quote($FromMacros) + " " + Quote($ToMacros) + " /XD  " + Quote($ExcludeMacros) + "  " +  " /S /XO"
+$result = PutFile($BatFile, $data)
+
+FILEOPEN File="$BatFile" Wait=yes
+
+# Uncomment next line to shut down GSAK after the macro runs
+# EXIT

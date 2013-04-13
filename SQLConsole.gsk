@@ -1,0 +1,779 @@
+#*******************************************
+# MacVersion = 1.3
+# MacDescription = SQL Console
+# MacAuthor = Clyde
+# MacFileName = SQLConsole.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=5225&view=findpost&p=41911
+#*******************************************
+
+VerCheck Version=7.1.0.54
+
+GoSub Name=Setup
+
+While ShowForm($SQLForm)
+
+  If $FrmBtnCode
+    GoSub Name=InsertCode
+  EndIf
+
+  If $FrmBtnRun
+    GoSub Name=RunSQL
+  EndIf
+
+  If $FrmBtnCancel
+    break
+  EndIf
+
+#  If $FrmBtnReset
+#    GoSub Name=Reset
+#  EndIf
+
+  If $FrmBtnSettings
+    GoSub Name=Settings
+  EndIf
+
+
+
+EndWhile
+
+# commit tables to disk
+  $status = sql("commit","")
+
+# save position of form
+  $SQLFormLeft = $_FormLeft
+  $SQLFormTop = $_FormTop 
+  GOSUB Name=SaveSettings 
+ 
+BeginSub Name=Settings
+
+  While ShowForm($SettingsForm)
+    if $FrmBtnOk
+      $SettingsFormLeft = $_FormLeft
+      $SettingsFormTop = $_FormTop
+      GoSub Name=SaveSettings
+      GoSub Name=ApplySettings
+      break
+    endif
+    if $FrmBtnCancel
+      break
+    endif
+  EndWhile
+  
+EndSub
+
+BeginSub Name=SaveSettings
+  $data = "name;value" + $_NewLine
+  $data = $data + "height;" + $FrmEdtHeight + $_NewLine
+  $data = $data + "width;" + $FrmEdtWidth + $_NewLine 
+  $data = $data + "spacing;" + $FrmEdtSpacing + $_NewLine
+  $data = $data + "maxlen;" + $FrmEdtMaxLen + $_NewLine
+  $data = $data + "maxrow;" + $FrmEdtMaxRow + $_NewLine
+  $data = $data + "SQLFormLeft;" + $SQLFormLeft + $_NewLine
+  $data = $data + "SQLFormTop;" + $SQLFormTop + $_NewLine
+  $data = $data + "SettingsFormLeft;" + $SettingsFormLeft + $_NewLine
+  $data = $data + "SettingsFormTop;" + $SettingsFormTop + $_NewLine
+  $status = PutFile($MacroPath + "\SQLConsoleSettings.txt",$Data)
+  
+EndSub
+
+BeginSub Name=ApplySettings
+
+  If FileExists($MacroPath + "\SQLConsoleHistory.txt")
+    $FrmMemHistory = Getfile($MacroPath + "\SQLConsoleHistory.txt")
+  EndIf
+  
+  $status = sql("Release table SQLConsoleSettings","")
+
+# "connect to ...." probably not requred, but inserted just in case user is running macro from a folder other than the GSAK macros default
+  
+  $connect = "connect to '$MacroPath';"
+  $select = "select value from SQLConsoleSettings where name =" 
+ 
+ 
+  $FrmEdtHeight = sql("$connect $select 'height'","")
+  $FrmEdtWidth = sql("$connect $select 'width'","")
+  $FrmEdtSpacing = sql("$connect $select 'spacing'","")
+  $FrmEdtMaxLen = sql("$connect $select 'maxlen'","")
+  $FrmEdtMaxRow = sql("$connect $select 'maxrow'","")
+
+
+  $SQLFormTop = sql("$connect $select 'SQLFormTop'","")
+  if val($SQLFormTop) > 0
+    $SQLForm = editform($SQLForm,"SQLForm","top",$SQLFormTop)
+  endif
+
+  $SQLFormLeft = sql("$connect $select'SQLFormLeft'","")
+  if val($SQLFormLeft) > 0
+    $SQLForm = editform($SQLForm,"SQLForm","left",$SQLFormLeft)
+  endif
+
+  $SettingsFormTop = sql("$connect $select 'SettingsFormTop'","")
+  if val($SettingsFormTop) > 0
+    $SettingsForm = editform($SettingsForm,"SettingsForm","top",$SettingsFormTop)
+  endif
+
+  $SettingsFormLeft = sql("$connect $select'SettingsFormLeft'","")
+  if val($SettingsFormLeft) > 0
+    $SettingsForm = editform($SettingsForm,"SettingsForm","left",$SettingsFormLeft)
+  endif
+
+  $SQLForm = editform($SQLForm,"SQLForm","height",$FrmEdtHeight)
+  $SQLForm = editform($SQLForm,"SQLForm","width",$FrmEdtWidth)
+
+#resize results display
+  $Width = val($FrmEdtWidth) - 30
+  $SQLForm = editform($SQLForm,"FrmGrpResult","width","$Width")
+  $width = $width - 15
+  $SQLForm = editform($SQLForm,"FrmMemResult","width","$Width")
+  $height =val($FrmEdtHeight) - 240
+  $SQLForm = editform($SQLForm,"FrmGrpResult","height","$Height")
+  $height = $height - 30
+  $SQLForm = editform($SQLForm,"FrmMemResult","height","$Height") 
+
+#resize and position the sql input box
+  $Width = int(val($FrmEdtWidth) /2) - 20
+  $SQLForm = editform($SQLForm,"FrmGrpSQL","width","$Width")
+  $width = $width - 15
+  $SQLForm = editform($SQLForm,"FrmMemSQL","width","$Width")
+  $top =val($FrmEdtHeight) - 190
+  $SQLForm = editform($SQLForm,"FrmGrpSQL","top","$top")
+
+
+#resize and position the history window
+  $Width = int(val($FrmEdtWidth) /2) - 20
+  $SQLForm = editform($SQLForm,"FrmGrpHistory","width","$Width")
+  $left = 25 + $width
+  $SQLForm = editform($SQLForm,"FrmGrpHistory","left","$Left")
+  $width = $width - 15
+  $SQLForm = editform($SQLForm,"FrmMemHistory","width","$Width")
+  $top =val($FrmEdtHeight) - 190
+  $SQLForm = editform($SQLForm,"FrmGrpHistory","top","$top")
+
+#now position the buttons correctly
+  $top =val($FrmEdtHeight) - 70
+  $SQLForm = editform($SQLForm,"FrmBtnRun","top","$top") 
+  $SQLForm = editform($SQLForm,"FrmBtnSettings","top","$top")
+  $SQLForm = editform($SQLForm,"FrmBtnCancel","top","$top")
+  $left = int(val($FrmEdtWidth) /2) - 200
+  $SQLForm = editform($SQLForm,"FrmBtnRun","left","$left")
+  $left = $left + 100 
+  $SQLForm = editform($SQLForm,"FrmBtnSettings","left","$left")
+  $left = $left + 100 
+  $SQLForm = editform($SQLForm,"FrmBtnCancel","left","$left")
+
+#now position the "Rows in query:" label
+  $top =val($FrmEdtHeight) - 70
+  $SQLForm = editform($SQLForm,"FrmLblRows","top","$top") 
+
+EndSub 
+
+
+# create test files to play with
+BeginSub Name=Setup
+
+#*******************************************************
+#   Variable declarations for
+#   SQLConsole.gsk
+#
+#   Generated 25/05/2007 10:32:49 AM on GSAKVariables.gsk Rev V0.20 B4
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+  Declare Var=$blanks Type=String
+  Declare Var=$count Type=Numeric
+  Declare Var=$data Type=String
+  Declare Var=$dbdata Type=String
+  Declare Var=$DefaultSettings Type=String
+  Declare Var=$field Type=String
+  Declare Var=$FieldLengths Type=String
+  Declare Var=$file Type=String
+  Declare Var=$FirstLine Type=String
+  Declare Var=$flen Type=Numeric
+  Declare Var=$SQLForm Type=String
+  Declare Var=$SettingsForm Type=String
+  Declare Var=$FrmEdtHeight Type=String
+  Declare Var=$FrmEdtMaxLen Type=String
+  Declare Var=$FrmEdtMaxRow Type=String
+  Declare Var=$FrmEdtSpacing Type=String
+  Declare Var=$FrmEdtWidth Type=String
+  Declare Var=$FrmMemHistory Type=String
+  Declare Var=$FrmMemResult Type=String
+  Declare Var=$FrmMemSQL Type=String
+  Declare Var=$headings Type=String
+  Declare Var=$height Type=Numeric
+  Declare Var=$hlen Type=Numeric
+  Declare Var=$item Type=String
+  Declare Var=$justify Type=String
+  Declare Var=$left Type=Numeric
+  Declare Var=$list Type=String
+  Declare Var=$MacroPath Type=String
+  Declare Var=$max Type=String
+  Declare Var=$maxnum Type=Numeric
+  Declare Var=$RightJustify Type=String
+  Declare Var=$rows Type=Numeric
+  Declare Var=$samples Type=String
+  Declare Var=$sql Type=String
+  Declare Var=$status Type=String
+  Declare Var=$TestData1 Type=String
+  Declare Var=$TestData2 Type=String
+  Declare Var=$top Type=Numeric
+  Declare Var=$TotalCols Type=Numeric
+  Declare Var=$totlen Type=Numeric
+  Declare Var=$Width Type=Numeric
+  Declare Var=$work Type=String
+  Declare Var=$x Type=Numeric
+  Declare Var=$y Type=Numeric
+  Declare Var=$SettingsFormTop Type=String
+  Declare Var=$SettingsFormLeft Type=String
+  Declare Var=$SQLFormTop Type=String
+  Declare Var=$SQLFormLeft Type=String
+  Declare Var=$Connect Type=String
+  Declare Var=$Select Type=String
+  Declare Var=$TotalRows Type=Numeric
+  Declare Var=$Showing Type=Numeric
+  Declare Var=$Decimals Type=String
+  Declare Var=$NumDecimals Type=String
+  Declare Var=$NumBefore Type=String
+  Declare Var=$NumAfter Type=String
+
+  $file = $_Install + "\macros\sqltest1.txt"
+  If not(FileExists($file))
+    $Status = PutFile($file,$TestData1)
+  EndIf
+  $file = $_Install + "\macros\sqltest2.txt"
+  If not(FileExists($file))
+    $Status = PutFile($file,$TestData2)
+  EndIf
+
+  $MacroPath = SysInfo("MacroPath")
+  if not(FileExists($MacroPath + "\SQLConsoleSettings.txt"))
+     $status = PutFile($MacroPath + "\SQLConsoleSettings.txt",$DefaultSettings)
+  EndIf 
+  $FrmMemSQL = "Select * from sqltest1"
+  $list = List("sql","create",$_NewLine)
+  $blanks = "                                                                                                                    "
+  GoSub Name=ApplySettings
+
+EndSub
+
+# Restore the test files back to their original values
+BeginSub Name=Reset
+  $status = sql("release table sqltest1","")
+  $status = sql("release table sqltest2","") 
+  $file = $MacroPath + "\sqltest1.txt"
+  FileErase File=$file
+  $Status = PutFile($file,$TestData1)
+  $file = $MacroPath + "\sqltest2.txt"
+  FileErase File=$file
+  $Status = PutFile($file,$TestData2)
+  $FrmMemSQL = "Select * from sqltest1"
+  GoSub Name=RunSql
+EndSub
+
+# Insert template code
+BeginSub Name=InsertCode
+
+  If $FrmCbxSQL = "Basic Select"
+    $sql = "Select * from sqltest1"
+  EndIf
+
+  If $FrmCbxSQL = "Order By"
+    $sql = "Select * from sqltest1 order by name"
+  EndIf
+
+  If $FrmCbxSQL = "Group By"
+    $sql = "Select Product,Sum(qty) as TotalQty  from sqltest1 " + $_NewLine
+    $sql = $sql + "GROUP by product" + $_NewLine
+    $sql = $sql + "ORDER by Product"
+  EndIf
+  
+  If $FrmCbxSQL = "Having"
+    $sql = "Select Product,Sum(qty) as TotalQty  from sqltest1 " + $_NewLine
+    $sql = $sql + "GROUP by product" + $_NewLine
+    $sql = $sql + "HAVING TotalQty > 5" + $_NewLine
+    $sql = $sql + "ORDER by Product"
+  EndIf
+
+  If $FrmCbxSQL = "Join 2 Tables"
+    $sql = "SELECT sqltest1.name as Name, sqltest1.product as Product, sqltest2.descr as Descr, sqltest1.qty as Qty" + $_NewLine
+    $sql = $sql + "FROM sqltest1,sqltest2" + $_NewLine
+    $sql = $sql + "WHERE sqltest1.product=sqltest2.product"
+  EndIf
+
+  If $FrmCbxSQL = "Insert Into"
+    $sql = "INSERT INTO sqltest1 VALUES ('NewGuy',4,4);" + $_NewLine
+    $sql = $sql + "Select * from sqltest1"
+  EndIf
+
+  If $FrmCbxSQL = "Delete"
+    $sql = "DELETE FROM sqltest1 WHERE name='NewGuy';" + $_NewLine
+    $sql = $sql + "Select * from sqltest1"
+  EndIf
+
+ If $FrmCbxSQL = "Update"
+    $sql = "UPDATE sqltest1 SET qty=20" + $_NewLine
+    $sql = $sql + "WHERE name='Clyde';" + $_NewLine
+    $sql = $sql + "Select * from sqltest1"
+  EndIf
+
+ If $FrmCbxSQL = "Calculated Fields"
+    $sql = "Select Upper(Name) as Name,Product,Qty, fix((qty * 2.5),2) as Value from sqltest1"
+  EndIf
+
+  If $FrmCbxSQL = "Alter table add column"
+    $sql = "ALTER TABLE sqltest1 ADD COLUMN email;" + $_NewLine
+    $sql = $sql + "Select * from sqltest1"
+  EndIf
+
+  If $FrmCbxSQL = "Alter table drop column"
+    $sql = "ALTER TABLE sqltest1 DROP COLUMN email;" + $_NewLine
+    $sql = $sql + "Select * from sqltest1"
+  EndIf
+
+ If $FrmCbxSQL = "Insert into select"
+    $sql = "INSERT INTO sqltest1 SELECT * FROM sqltest1;" + $_NewLine
+    $sql = $sql + "Select * from sqltest1"
+  EndIf
+
+ If $FrmCbxSQL = "Update with calculation"
+    $sql = "UPDATE sqltest1 SET qty=2*qty where name='Clyde';" + $_NewLine
+    $sql = $sql + "Select * from sqltest1"
+  EndIf
+
+  $FrmMemSQL = $sql
+  
+EndSub
+
+# Run the current SQL command
+BeginSub Name=RunSql
+  showstatus msg=Running Sql command...
+#  timer status=on 
+  $dbdata = Sql($FrmMemSQL,"H")
+#  timer status=off
+  $FrmMemHistory = $frmMemSql + $_NewLine + $FrmMemHistory
+  If not(RegEx(";",$dbdata)) and Regexcount("\r\n",$dbdata) < 3
+    $FrmMemResult = $dbdata
+    $SQLForm = editform($SQLForm,"FrmLblRows","caption","Showing:") 
+    showstatus msg=x Display=off
+    ExitSub
+  EndIf
+
+#  Timer status=on
+  GoSub Name=SetGrid
+#  Timer status=off
+
+  $list = list("sql","replace",$dbdata)
+  $count = val(list("sql","count",""))
+  $showing = $count - 1
+  $SQLForm = editform($SQLForm,"FrmLblRows","caption","Showing: $showing of $TotalRows") 
+  $x = 0
+  $work = ""
+
+#  Timer status=on 
+  While $x < $count
+     $x = $x + 1
+     IF frac($x/10) = 0
+       showstatus msg=Rendering display for row: $x
+     EndIf
+     $item = list("sql","item","$x")
+     $y = 0
+
+     $TotalCols = RegExCount(";",$item) + 1
+  
+
+     # set up the column lengths
+     While $y < $TotalCols
+       $y = $y + 1
+       $field = extract($item, ";", $y)
+       $flen = val(extract($FieldLengths,";",$y))
+       $justify = extract($RightJustify,";",$y)
+       if $justify = "Y" and $x > 1 # don't right justify headings
+         If at(".",$field) > 0    # right justify on the decimal point by adding zeros as required 
+           $NumDecimals = extract($decimals,";",$y) 
+           $NumBefore = extract($field,".",1)
+           $NumAfter = extract($field,".",2)
+           $field = $numbefore + "." + left($NumAfter + "00000000000000",val($NumDecimals))
+         EndIf
+         
+         $work = $work + Right($blanks + $field,$flen - val($FrmEdtSpacing)) + left("                  ",val($FrmEdtSpacing))
+       else
+         #$flen = 15  
+         $work = $work + left(left($field,val($FrmEdtMaxLen)) + $blanks,$flen) # pad out required spaces
+       endif
+     EndWhile
+     $work = $work + $_NewLine
+     if $x = 1 # add extra line break after headings
+       $work = $work + $_NewLine
+     EndIf
+  EndWhile
+  ShowStatus msg=x Display=off
+#  Timer status=off
+ 
+  
+  $FrmMemResult = $work
+  $status = PutFile($MacroPath + "\SQLConsoleHistory.txt",left($FrmMemHistory,5000))
+
+# reposition form if any changes made
+  $SQLForm = editform($SQLForm,"SQLForm","top",$_FormTop)
+  $SQLForm = editform($SQLForm,"SQLForm","left",$_FormLeft)
+
+EndSub
+
+BeginSub Name=SetGrid
+  showstatus msg=Preparing to render grid...
+  $status = sql("drop table SqlConsoleTemp1","")
+
+  $TotalRows = RegExCount("\r\n",$dbdata)
+  
+  
+# if we have more lines of data than max to display then trim down the data to max size
+  If RegExCount("\r\n",$dbdata) > val($FrmEdtMaxRow) 
+    $y = 0 
+    $x = 0
+    $work = ""
+    while $y < val($FrmEdtMaxRow) + 1
+      $x = atstart($_newline,$dbdata,$x) + 2
+      $y = $y + 1
+    EndWhile
+    $dbdata = left($dbdata,$x - 3) # drop trailing crlf
+  EndIf
+       
+  $status = PutFile($MacroPath +  "\SqlConsoletemp1.txt",$dbdata)
+  $headings = extract($dbdata,$_NewLine,1)
+  $FirstLine = extract($dbdata,$_NewLine,2)
+
+  $TotalCols = RegExCount(";",$headings) + 1
+  $y = 0
+  $FieldLengths = ""
+  $RightJustify = ""
+  $Decimals = "" 
+  
+  while $y < $TotalCols
+    $y = $y + 1
+    $field = extract($headings,";",$y)
+
+    # get the max length for each field in the database   
+    $max = sql("select max((length($field)) from SqlConsoleTemp1","")
+    $maxnum = val($max)
+    if $maxnum < len($field) # use field title length if greater than max
+       $maxnum = len($field)
+    endif
+
+    
+
+    # reduce to max allowed length if exceeded
+    if $maxnum > val($FrmEdtMaxLen)
+      $maxnum = val($FrmEdtMaxLen)
+    endif 
+
+    $maxnum = $maxnum + val($FrmEdtSpacing) # add in configured spacing
+    $FieldLengths = $FieldLengths + "$maxnum" + ";"
+
+    # now see if data is numeric so can be right justified
+    $work = extract($FirstLine,";",$y)
+    if RegEx("^(\d|\.|\-)*$",$work)
+       $RightJustify = $RightJustify + "Y;"
+       # if a decimal point found, then align on the decimal point
+       if at(".",$work) > 0
+         $max = sql("select max((length((substr_after($field,chr(46)))))) from SqlConsoleTemp1","")
+         if val($max) > 7
+           $max = "7"
+         endif
+         $decimals = $decimals + $max + ";"
+       else 
+         $decimals = $decimals + "0;" 
+       endif
+    else
+       $RightJustify = $RightJustify + "0;"
+       $decimals = $decimals + "0;" 
+    endif
+
+    
+    
+  EndWhile 
+
+EndSub
+
+<Data> VarName=$samples
+Basic Select;Order By;Group By;Having;Join 2 Tables;Insert Into;Delete;Update;Calculated Fields;Alter table add column;Alter table drop column;Insert into select;Update with calculation
+<EndData>
+
+<Data> VarName=$TestData1
+Name;Product;Qty
+Clyde;1;5
+Mike;1;4
+Bob;2;7
+Peter;2;3
+Sam;2;4
+Samantha;3;1
+John;4;2
+<EndData>
+
+<Data> VarName=$TestData2
+Product;Descr
+1;Coins
+2;Bugs
+3;Cards
+4;Other
+<EndData>
+
+<Data> Varname=$DefaultSettings
+name;value
+height;600
+width;800
+spacing;2
+maxlen;30
+maxrow;500
+SQLFormTop;0
+SQLFormLeft;0
+SettingsFormTop;0
+SettingsFormLeft;0
+<EndData>
+
+
+<Data> Varname=$SQLForm
+#********************************************************************
+# Form generated by GSAK form designer on Thu 24-May-2007 11:36:55
+#********************************************************************
+
+Name = SQLForm
+  type = form
+  height = 700
+  width = 1200
+  caption = SQL Console V1.2
+
+Name = FrmGrpSQL
+  type = GroupBox
+  left = 15
+  top = 357
+  height = 116
+  width = 549
+  Caption = SQL Code
+  
+
+Name = FrmCbxSQL
+  type = ComboBox
+  left = 16
+  top = 17
+  height = 21
+  width = 312
+  Values = $samples
+  Display = 15
+
+Name = FrmBtnCode
+  type = Button
+  left = 350
+  top = 16
+  height = 25
+  width = 90
+  Caption = Insert Template
+
+Name = FrmMemSQL
+  type = Memo
+  left = 7
+  top = 15
+  height = 92
+  width = 531
+  container = FrmGrpSQL
+
+Name = FrmGrpHistory
+  type = GroupBox
+  left = 572
+  top = 357
+  height = 116
+  width = 602
+  Caption = SQL History
+
+Name = FrmMemHistory
+  type = Memo
+  left = 7
+  top = 15
+  height = 93
+  width = 578
+  container = FrmGrpHistory
+  scrollbars = vertical
+
+Name = FrmGrpResult
+  type = GroupBox
+  left = 13
+  top = 46
+  height = 300
+  width = 1160
+  Caption = Results
+
+Name = FrmMemResult
+  type = Memo
+  left = 7
+  top = 22
+  height = 257
+  width = 1140
+  Readonly = yes
+  Font = Courier
+  container = FrmGrpResult
+  scrollbars = both
+  wrap = no
+
+Name = FrmBtnCancel
+  type = Button
+  left = 597
+  top = 486
+  height = 25
+  width = 75
+  Caption = &Cancel
+  
+
+Name = FrmBtnRun
+  type = Button
+  left = 372
+  top = 484
+  height = 27
+  width = 75
+  caption = &Run SQL
+
+
+Name = FrmBtnSettings
+  type = Button
+  left = 486
+  top = 485
+  height = 27
+  width = 75
+  caption = &Settings
+
+Name = FrmLblRows
+  type = Label
+  left = 15
+  top = 31
+  height = 13
+  width = 37
+  caption = Rows in query: 
+
+<EndData>
+
+<Data> Varname=$SettingsForm
+#********************************************************************
+# Form generated by GSAK form designer on Fri 25-May-2007 10:15:25
+#********************************************************************
+
+Name = SettingsForm
+  type = form
+  height = 265
+  width = 266
+  caption = SQL Console Settings
+
+Name = FrmLblSpaces
+  type = Label
+  left = 11
+  top = 68
+  height = 13
+  width = 75
+  caption = Column spacing
+
+Name = FrmLblMaxLen
+  type = Label
+  left = 10
+  top = 105
+  height = 13
+  width = 85
+  caption = Max column width
+
+Name = FrmGrp1
+  type = GroupBox
+  left = 10
+  top = 4
+  height = 54
+  width = 228
+  caption = Form size in pixels
+
+Name = FrmLblWidth
+  type = Label
+  left = 8
+  top = 22
+  height = 13
+  width = 28
+  container = FrmGrp1
+  caption = Width 
+
+Name = FrmLblHeight
+  type = Label
+  left = 113
+  top = 21
+  height = 13
+  width = 31
+  container = FrmGrp1
+  caption = Height
+
+Name = FrmEdtWidth
+  type = Edit
+  left = 49
+  top = 19
+  height = 21
+  width = 53
+  container = FrmGrp1
+
+Name = FrmEdtHeight
+  type = Edit
+  left = 159
+  top = 19
+  height = 21
+  width = 41
+  container = FrmGrp1
+
+Name = FrmBtnOK
+  type = Button
+  left = 33
+  top = 188
+  height = 25
+  width = 75
+  Caption = OK
+
+Name = FrmBtnCancel
+  type = Button
+  left = 143
+  top = 190
+  height = 25
+  width = 75
+  caption = Cancel
+
+Name = FrmEdtSpacing
+  type = Edit
+  left = 125
+  top = 66
+  height = 21
+  width = 54
+
+Name = FrmEdtMaxLen
+  type = Edit
+  left = 125
+  top = 98
+  height = 21
+  width = 54
+
+Name = FrmLblMaxRow
+  type = Label
+  left = 8
+  top = 137
+  height = 13
+  width = 37
+  caption = Max rows to display
+
+Name = FrmEdtMaxRow
+  type = Edit
+  left = 125
+  top = 129
+  height = 21
+  width = 58
+  
+
+<EndData>
+
+
+
+
+
+
+
+
+

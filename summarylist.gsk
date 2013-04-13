@@ -1,0 +1,397 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Export Geocaching Summary List
+# MacAuthor = weedboer
+# MacFileName = summarylist.gsk
+# MacUrl =
+#*******************************************
+
+#*******************************************
+# DECLARATION OF THE VARIABLES
+#*******************************************
+
+$recordline =""
+
+WHILE True # Infinite loop to redisplay form as required
+  $FormExit = form($form,"")
+  BeginCase
+    Case $FormExit = "SystemExit"
+      MsgOk msg="Macro cancelled."
+      BREAK
+    Case $FormExit = "btn_create"
+       GOSUB Name=CreateSummaryList
+       BREAK 
+    Case $FormExit = "btn_exit"
+      MsgOk msg="Macro cancelled."
+      break
+  EndCase
+ENDWHILE
+
+
+#*******************************************
+# START PROCESS
+#*******************************************
+
+
+#TODO: CHECK IF FILTER IS EMPTY
+
+BEGINSUB Name=CreateSummaryList
+IF $fld_destination = ""
+	$File = $_Install + "\summarylist.htm"
+ELSE
+	$File = $fld_destination + "\summarylist.htm"	
+ENDIF
+
+IF FileExists($File)
+	FILEERASE File=$file
+ENDIF
+
+$htmloutput =               "<HTML>"
+$htmloutput = $htmloutput + "<STYLE TYPE=""text/css"">td {font-size: x-small;vertical-align: top;} </STYLE>"  + $_NewLine
+$htmloutput = $htmloutput + "<TITLE>List of Geocaches - Summary</TITLE>" + $_NewLine
+$htmloutput = $htmloutput + "<BODY><H3>List of Geocaches - Summary</H3>" + $_NewLine
+$htmloutput = $htmloutput + "<TABLE Border='1' celspacing='0' width='100%' align='center'>" + $_NewLine
+$htmloutput = $htmloutput + "<TR>" + $_NewLine
+
+IF $cb_code
+$htmloutput = $htmloutput + "<TD width='50'>Code</td>" + $_NewLine
+ENDIF
+IF $cb_gcname
+$htmloutput = $htmloutput + "<TD width='400'>Geocache name</td>" + $_NewLine
+ENDIF
+IF $cb_coords
+$htmloutput = $htmloutput + "<TD width='200'>Coordinates</td>" + $_NewLine
+ENDIF
+IF $cb_container
+$htmloutput = $htmloutput + "<TD width='100'>Container</td>" + $_NewLine
+ENDIF
+IF $cb_difficulty
+$htmloutput = $htmloutput + "<TD width='50'>Diff.</td>" + $_NewLine
+ENDIF
+IF $cb_terrain
+$htmloutput = $htmloutput + "<TD width='50'>Terr.</td>" + $_NewLine
+ENDIF
+IF $cb_hint
+$htmloutput = $htmloutput + "<TD>Hint</td>" + $_NewLine
+ENDIF
+IF $cb_usernotes
+	$htmloutput = $htmloutput + "<TD>User Notes</td>" + $_NewLine
+ENDIF
+$htmloutput = $htmloutput + "</TR>" + $_NewLine
+
+TABLE active=caches
+BeginCase
+	Case $cbb_sort = "Gsak Grid"
+		#No sort needed
+	Case $cbb_sort = "GC Code"
+		SORT By="code" Sequence="A"
+	Case $cbb_sort = "GC Name"
+		SORT By="name" Sequence="A"
+	Case $cbb_sort = "Container"
+		SORT By="container" Sequence="A"
+	Case $cbb_sort = "Difficulty"
+		SORT By="difficulty" Sequence="A"
+	Case $cbb_sort = "Terrain"
+		SORT By="terrain" Sequence="A"
+EndCase
+GOTO Position=top
+
+WHILE not ($_eol)
+	$data = $d_latitude + " " + $d_Longitude
+	$coords = GCalc($data,"FormatMinutes")
+	$coords = Replace(";"," ",$coords,true)
+	
+	
+	$recordline = $recordline + "<TR>"
+	
+	IF $cb_code
+		$recordline = $recordline + "<TD>" + $d_Code + "</TD>"
+	ENDIF
+	
+	IF $cb_gcname
+		$recordline = $recordline + "<TD>" + $d_Name + "</TD>"
+	ENDIF
+	
+	IF $cb_coords
+		$recordline = $recordline + "<TD>" + $coords + "</TD>"
+	ENDIF
+	
+	IF $cb_container
+		$recordline = $recordline + "<TD>" + $d_Container  + "</TD>"
+	ENDIF
+	
+	IF $cb_difficulty
+		$recordline = $recordline + "<TD>" + NumToStr($d_Difficulty) + "</TD>"
+	ENDIF
+	
+	IF $cb_terrain
+		$recordline = $recordline + "<TD>" + NumToStr($d_Terrain)  + "</TD>"
+	ENDIF
+	
+	IF $cb_hint
+		IF $d_Hints = ""
+			$recordline = $recordline + "<TD>&nbsp;</TD>"
+		ELSE
+			$recordline = $recordline + "<TD>" + $d_Hints  + "</TD>"
+		ENDIF
+	ENDIF
+	IF $cb_usernotes
+		IF $d_HasUserNote
+			$usernote2HTML = $d_UserNote
+			GOSUB Name=ConvertUsernote2HTML
+			$recordline = $recordline + "<TD>" + $usernote2HTML  + "</TD>"
+		ELSE
+			$recordline = $recordline + "<TD>&nbsp;</TD>"
+		ENDIF
+	ENDIF
+	$recordline = $recordline + "</TR>"
+	GOTO position=Next
+ENDWHILE
+
+
+$htmloutput = $htmloutput + $recordline
+GOTO position=Top
+
+
+
+$htmloutput = $htmloutput + "</TABLE>"
+$htmloutput = $htmloutput + "</BODY></HTML>"
+
+$ret = PutFile($file,$htmloutput)
+IF Left($ret,7) = "*Error*"
+	Pause Msg="$ret"
+	Cancel
+ENDIF
+
+MSGOK MSG=Process ended successfully. $_NewLine File saved as $File
+FileOpen File="$file"
+ENDSUB
+
+BEGINSUB Name=ConvertUsernote2HTML
+  $usernote2HTML = Replace("<br>", "~.~", $usernote2HTML, true) # exception, do not replace <br>
+  #$usernote2HTML = Replace("&", "&amp;", $usernote2HTML, false)
+  #$usernote2HTML = Replace("<","&lt;", $usernote2HTML, false)
+  #$usernote2HTML = Replace(">", "&gt;", $usernote2HTML, false)
+  $usernote2HTML = Replace($_quote, "&quot;", $usernote2HTML, false)
+  $usernote2HTML = Replace("~.~", "<br>", $usernote2HTML, false)
+  $usernote2HTML = Replace($_Newline,"<br>",$usernote2HTML,false) 
+ENDSUB
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on di 02-sep-2008 11:22:26
+#********************************************************************
+
+Name = frm_summarylist
+  Type = Form
+  Caption = Summary List
+  Height = 314
+  Width = 252
+
+Name = Container
+  Type = Label
+  Height = 13
+  Left = 16
+  Top = 104
+  Width = 57
+  Caption = Container
+
+Name = cb_container
+  Type = Checkbox
+  Enabled = Yes
+  Height = 17
+  Left = 80
+  Top = 104
+  Width = 14
+  Taborder = 3
+
+Name = Difficulty
+  Type = Label
+  Height = 13
+  Left = 152
+  Top = 32
+  Visible = Yes
+  Width = 40
+
+Name = cb_difficulty
+  Type = Checkbox
+  Enabled = Yes
+  Height = 17
+  Left = 216
+  Top = 32
+  Width = 14
+  Taborder = 4
+
+Name = Terrain
+  Type = Label
+  Height = 13
+  Left = 152
+  Top = 56
+  Width = 33
+  Caption = Terrain
+
+Name = cb_terrain
+  Type = Checkbox
+  Enabled = Yes
+  Height = 17
+  Left = 216
+  Top = 56
+  Width = 14
+  Taborder = 5
+
+Name = Hint
+  Type = Label
+  Height = 13
+  Left = 152
+  Top = 80
+  Width = 19
+  Caption = Hint
+
+Name = cb_hint
+  Type = Checkbox
+  Enabled = Yes
+  Height = 17
+  Left = 216
+  Top = 80
+  Width = 14
+  Taborder = 6
+
+Name = gc_code
+  Type = Label
+  Height = 13
+  Left = 16
+  Top = 32
+  Width = 43
+  Caption = GC Code
+
+Name = cb_code
+  Type = Checkbox
+  Enabled = Yes
+  Height = 17
+  Left = 80
+  Top = 32
+  Width = 14
+  Taborder = 0
+
+Name = gc_name
+  Type = Label
+  Height = 13
+  Left = 16
+  Top = 56
+  Width = 46
+  Caption = GC Name
+
+Name = cb_gcname
+  Type = Checkbox
+  Enabled = Yes
+  Height = 17
+  Left = 80
+  Top = 56
+  Width = 14
+  Taborder = 1
+
+Name = cbb_sort
+  Type = Combobox
+  Directinput = No
+  Height = 21
+  Left = 104
+  Top = 136
+  Values = Gsak Grid;GC Code;GC Name;Container;Difficulty;Terrain
+  Width = 128
+  Taborder = 9
+
+Name = lbl_sort
+  Type = Label
+  Height = 13
+  Left = 16
+  Top = 136
+  Width = 33
+  Caption = Sort by
+
+Name = Label1
+  Type = Label
+  Height = 13
+  Left = 136
+  Top = 256
+  Width = 100
+  Caption = created by weedboer
+
+Name = btn_create
+  Type = Button
+  Height = 25
+  Left = 16
+  Top = 208
+  Width = 137
+  Taborder = 11
+  Caption = Create summary list
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 16
+  Style = bold;underline
+  Top = 8
+  Width = 119
+  Caption = Fields in summary list
+
+Name = btn_exit
+  Type = Button
+  Escape = Yes
+  Height = 25
+  Left = 160
+  Top = 208
+  Width = 75
+  Taborder = 12
+  Caption = Quit
+
+Name = cb_coords
+  Type = Checkbox
+  Enabled = Yes
+  Height = 17
+  Left = 80
+  Top = 80
+  Width = 15
+  Taborder = 2
+
+Name = lbl_coords
+  Type = Label
+  Height = 13
+  Left = 16
+  Top = 80
+  Width = 56
+  Caption = Coordinates
+
+Name = lbl_usernotes
+  Type = Label
+  Height = 13
+  Left = 152
+  Top = 104
+  Width = 53
+  Caption = User Notes
+
+Name = cb_usernotes
+  Type = Checkbox
+  Enabled = Yes
+  Height = 17
+  Left = 216
+  Top = 104
+  Width = 15
+  Taborder = 7
+
+Name = fld_destination
+  Type = Folder
+  Height = 21
+  Left = 104
+  Top = 168
+  Width = 129
+  Taborder = 10
+
+Name = Label3
+  Type = Label
+  Height = 13
+  Left = 16
+  Top = 168
+  Width = 85
+  Caption = Destination Folder
+
+<enddata>

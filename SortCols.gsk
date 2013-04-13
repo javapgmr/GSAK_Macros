@@ -1,0 +1,679 @@
+#*******************************************
+# MacVersion = 1.01
+# MacDescription = Multicolumn Sort of Display Grid
+# MacAuthor = Hynr
+# MacFileName = SortCols.gsk
+# MacUrl =
+#*******************************************
+
+# This macro sorts the display grid by multiple columns even for columns that are not in the current View
+# for simple one-column sort you don't need this macro because you can just click on column header
+# But this macro can do that as well (simply only the first sort)
+
+# ==== Initialization =======
+# Get list of variables (fields and calculated fields) which the user's verion of GSAK
+# has available for sorting
+
+# call for one line of the cachesall table with the headings to parse out the variable list
+# Note that cachesall also includes all custom fields
+  $_SQL= "Select * from cachesall Limit 1"
+  $CacheVars = extract(sqlite("sql",$_SQL,"headings=Yes"),$_NewLine,1)
+
+# remove fields not suitable for sorting
+  $CacheVars = replace(";cCode;" , ";", $CacheVars)
+  $CacheVars = replace(";Code:1;", ";", $CacheVars)
+
+# Now sort the list alphabetically
+  $TMPlist=List("vars","Create",";")
+  $TMPlist=List("vars","Replace",$Cachevars)
+  $Cachevars=List("vars","Sort","")
+
+#add on calculated variables to front of list (in this version there are none - yet?)
+#  Anticipating that user might add own items here
+#  format needs to be item in sqlsort (do not include delimiters)
+<data> VarName=$ListTop
+<enddata>
+
+# add onto the list any additional items, perhaps calculated,not used much
+#  format needs to be item in sqlsort (do not include delimiters)
+#  We want at least one item here
+<data> VarName=$ListBottom
+length(ShortDescription)
+length(LongDescription)
+<enddata>
+
+  $CacheVars = Replace($_NewLine,";",$ListTop) +";$CacheVars;"+ Replace($_NewLine,";",$ListBottom)
+  # for Code also provide sorting that is more natural
+  $CacheVars = replace(";Code;" , ";Code;g_CodeSort(Code);", $CacheVars)
+  # for Name provide special sorting that ignores spaces
+  $CacheVars = replace(";Name;" , ";Name;g_NameSort(Name);length(Name);", $CacheVars)
+  $CacheVars = replace(";Hints;" , ";Hints;length(Hints);", $CacheVars)
+  # provide alphabetical bearing sort and also the GSAK-special bearing sort
+  $CacheVars = replace(";Bearing;" , ";Bearing;g_BearingSort(Bearing);", $CacheVars)
+  # we want ability to sort by lat and lon in way user finds natural
+  $CacheVars = replace(";Latitude;" , ";Latitude;g_SortLatorLon(Latitude);", $CacheVars)
+  $CacheVars = replace(";Longitude;" , ";Longitude;g_SortLatorLon(Longitude);", $CacheVars)
+  $CacheVars = replace(";LatOriginal;" , ";LatOriginal;g_SortLatorLon(LatOriginal);", $CacheVars)
+  $CacheVars = replace(";LonOriginal;" , ";LonOriginal;g_SortLatorLon(LonOriginal);", $CacheVars)
+
+  # the following is the last of the list processing of the fields: some of the above 
+  # could have resulted in double semicolons - convert those to just one
+  $CacheVars = replace(";;","",$CacheVars) #remove blanks from list
+
+  $Ordering=""
+
+  $AllVars=$CacheVars
+  # initilly just install the list in the first three groups of components
+  # these will be changed later
+  $SortForm1=Editform($SortForm,"Variable1","Values",$AllVars)
+  $SortForm1=Editform($SortForm1,"Variable2","Values",";$AllVars")
+  $SortForm1=Editform($SortForm1,"Variable3","Values",";$AllVars")
+
+  # Get the current sort order in the grid and implement that as the starting point
+  $CurrentSort = $_OrderBy
+
+  IF not($CurrentSort="")
+   If regex(",",$CurrentSort)
+   # There are commas in teh current sort order so more than one sort column is in use
+   # Set the first column to the exsiting highest order of sorting,... up to 6
+     $Sort1=extract($CurrentSort,",",1)
+     $Sort2=extract($CurrentSort,",",2)
+     $Sort3=extract($CurrentSort,",",3)
+     $Sort4=extract($CurrentSort,",",4)
+     $Sort5=extract($CurrentSort,",",5)
+     $Sort6=extract($CurrentSort,",",6)
+    Else #no commas, only one sort field - don't parse with commas
+     $Sort1=$CurrentSort
+     $Sort2=""
+     $Sort3=""
+     $Sort4=""
+     $Sort5=""
+     $Sort6=""
+   Endif
+   # If there is a space in the sort string then order is provided; else not
+   IF regex(" ",$Sort1)
+     # order is specified
+     $Variable1=extract($Sort1," ",1)
+     $Order1=extract($Sort1," ",2) + "ending"
+    Else
+     # no order is specified - default ASCending will be used
+     $Variable1=$Sort1
+   endif
+    # Now do same as what would be done if/when user modifies first sort level
+   Gosub Name=FirstGroupSet
+   # if a second sort level was found then set that up on the dialog
+   IF not($Sort2="")
+    IF regex(" ",$Sort2)
+      # order is specified
+      $Variable2=extract($Sort2," ",1)
+      $Order2=extract($Sort2," ",2) + "ending"
+    Else
+      # no order is specified
+      $Variable2=$Sort2
+    endif
+    gosub Name=SecondGroupSet
+   endif
+   # if a third sort level was found then set that up on the dialog
+   IF not($Sort3="")
+    IF regex(" ",$Sort3)
+      # order is specified
+      $Variable3=extract($Sort3," ",1)
+      $Order3=extract($Sort3," ",2) + "ending"
+    Else
+      # no order is specified
+      $Variable3=$Sort3
+    endif
+    gosub Name=ThirdGroupSet
+   else #no second sort column
+   endif
+   # if a fourth sort level was found then set that up on the dialog
+   IF not($Sort4="")
+    IF regex(" ",$Sort4)
+      # order is specified
+      $Variable4=extract($Sort4," ",1)
+      $Order4=extract($Sort4," ",2) + "ending"
+    Else
+      # no order is specified
+      $Variable4=$Sort4
+    endif
+    gosub Name=FourthGroupSet
+   endif
+   # if a fifth sort level was found then set that up on the dialog
+   IF not($Sort5="")
+    IF regex(" ",$Sort5)
+      # order is specified
+      $Variable5=extract($Sort5," ",1)
+      $Order5=extract($Sort5," ",2) + "ending"
+    Else
+      # no order is specified
+      $Variable5=$Sort5
+    endif
+    gosub Name=FifthGroupSet
+   endif
+   # if a Sixth sort level was found then set that up on the dialog
+   IF not($Sort6="")
+    IF regex(" ",$Sort6)
+      # order is specified
+      $Variable6=extract($Sort6," ",1)
+      $Order6=extract($Sort6," ",2) + "ending"
+    Else
+      # no order is specified
+      $Variable6=$Sort6
+    endif
+   endif
+  endif # $CurrentSort has content; it is now implemented on the dialog
+
+  # Display the form; note that some components are not enabled at the start
+  # as each level is filled in with some sort spec, the next is turned on 
+  # to accept sort specification
+  $KeepRunning=true
+  While $KeepRunning
+   $FormExit = form($SortForm1,"")
+   BeginCase
+    Case $FormExit = "SystemExit"  # rex x on dialog handle
+    	break
+
+    Case $FormExit = "ClipButton"  # button to copy sort string to clipboard
+	Clip data=$SortStringEdit
+
+    Case $FormExit = "Variable1"  # First Sort level combobox has changed
+	# User has made change in this combobox fix up the others 
+	 gosub Name=FirstGroupSet
+	 Gosub Name=SetOrder
+
+    Case $FormExit = "Variable2"
+	# User has made change in this combobox fix up the others 
+	 gosub Name=SecondGroupSet
+	 Gosub Name=SetOrder
+
+    Case $FormExit = "Variable3"
+	 gosub Name=ThirdGroupSet
+	 Gosub Name=SetOrder
+
+    Case $FormExit = "Variable4"
+	 gosub Name=FourthGroupSet
+	 Gosub Name=SetOrder
+
+    Case $FormExit = "Variable5"
+	 gosub Name=FifthGroupSet
+	 Gosub Name=SetOrder
+
+    Case $FormExit = "Variable6"
+	 Gosub Name=SetOrder
+
+    Case regex("Order",$FormExit)
+	#If any of the "Order#" comboboxes was changed then resort
+	 Gosub Name=SetOrder
+
+    Case $FormExit = "ImposeButton"
+	 Gosub Name=SetOrder
+	 $KeepRunning=False
+  EndCase
+
+EndWhile
+
+Cancel
+
+# =========  Subroutines ===========
+Beginsub Name=FirstGroupSet
+  # set up other combobox groups after the first one
+  # remove the selected variable from the next sort level combobox since sorting on same is nonsense
+  $Level2Vars=Replace(";;",";",Replace(";$Variable1;",";",";$AllVars"))
+  $SortForm1=Editform($SortForm1,"Variable2","Values",$Level2Vars)
+  if not ($Variable1="")
+    $SortForm1=Editform($SortForm1,"Groupbox2","Enabled","Yes")
+  Else
+    #we are here because this level was changed and now is blank - turn off later levels
+    $SortForm1=Editform($SortForm1,"Groupbox2","Enabled","No")
+    $Variable2=""
+    $SortForm1=Editform($SortForm1,"Groupbox3","Enabled","No")
+    $Variable3=""
+    $SortForm1=Editform($SortForm1,"Groupbox4","Enabled","No")		
+    $Variable4=""
+    $SortForm1=Editform($SortForm1,"Groupbox5","Enabled","No")
+    $Variable5=""
+    $SortForm1=Editform($SortForm1,"Groupbox6","Enabled","No")		
+    $Variable6=""
+  endif
+endsub
+
+Beginsub Name=SecondGroupSet
+  #remove the selected variable from the next combobox
+  $Level3Vars=Replace(";;",";",Replace(";$Variable2;",";",";$Level2Vars"))
+  $SortForm1=Editform($SortForm1,"Variable3","Values",$Level3Vars)
+  if not ($Variable2="")
+    $SortForm1=Editform($SortForm1,"Groupbox3","Enabled","Yes")
+   Else
+    #we are here because this level was changed and now is blank - turn off later levels
+    $SortForm1=Editform($SortForm1,"Groupbox3","Enabled","No")
+    $Variable3=""
+    $SortForm1=Editform($SortForm1,"Groupbox4","Enabled","No")		
+    $Variable4=""
+    $SortForm1=Editform($SortForm1,"Groupbox5","Enabled","No")
+    $Variable5=""
+    $SortForm1=Editform($SortForm1,"Groupbox6","Enabled","No")		
+    $Variable6=""
+  endif
+Endsub
+
+Beginsub Name=ThirdGroupSet
+  #remove the selected variable from the next combobox
+  $Level4Vars=Replace(";;",";",Replace(";$Variable3;",";",";$Level3Vars"))
+  $SortForm1=Editform($SortForm1,"Variable4","Values",$Level4Vars)
+   if not ($Variable3="")
+    $SortForm1=Editform($SortForm1,"Groupbox4","Enabled","Yes")
+   Else
+    #we are here because this level was changed and now is blank - turn off later levels
+    $SortForm1=Editform($SortForm1,"Groupbox4","Enabled","No")		
+    $Variable4=""
+    $SortForm1=Editform($SortForm1,"Groupbox5","Enabled","No")
+    $Variable5=""
+    $SortForm1=Editform($SortForm1,"Groupbox6","Enabled","No")		
+    $Variable6=""
+  endif
+Endsub
+
+Beginsub Name=FourthGroupSet
+  #remove the selected variable from the next combobox
+  $Level5Vars=Replace(";;",";",Replace(";$Variable4;",";",";$Level4Vars"))
+  $SortForm1=Editform($SortForm1,"Variable5","Values",$Level5Vars)
+  if not ($Variable4="")
+    $SortForm1=Editform($SortForm1,"Groupbox5","Enabled","Yes")
+   Else
+    #we are here because this level was changed and now is blank - turn off later levels
+    $SortForm1=Editform($SortForm1,"Groupbox5","Enabled","No")
+    $Variable5=""
+    $SortForm1=Editform($SortForm1,"Groupbox6","Enabled","No")		
+    $Variable6=""
+  endif
+Endsub
+
+Beginsub Name=FifthGroupSet
+  #remove the selected variable from the next combobox
+  $Level6Vars=Replace(";;",";",Replace("$Variable5","",";$Level5Vars"))
+  $SortForm1=Editform($SortForm1,"Variable6","Values",$Level6Vars)
+  if not ($Variable5="")
+    $SortForm1=Editform($SortForm1,"Groupbox6","Enabled","Yes")
+   Else
+    #we are here because this level was changed and now is blank - turn off later levels
+    $SortForm1=Editform($SortForm1,"Groupbox6","Enabled","No")		
+    $Variable6=""
+  endif
+Endsub
+
+Beginsub Name=SetOrder
+  # This is the core sorting routine
+  # Note that ALL sorts are respected 
+  # Note that both "Ascending" and "Descending" end with "ending"
+  $Ordering="$Variable1 "+Extract($Order1,"ending",1)
+  if not ($Variable2="")
+	$Ordering=$Ordering+",$Variable2 "+Extract($Order2,"ending",1)
+  endif
+  if not ($Variable3="")
+	$Ordering=$Ordering+",$Variable3 "+Extract($Order3,"ending",1)
+  endif
+  if not ($Variable4="")
+	$Ordering=$Ordering+",$Variable4 "+Extract($Order4,"ending",1)
+  endif
+  if not ($Variable5="")
+	$Ordering=$Ordering+",$Variable5 "+Extract($Order5,"ending",1)
+  endif
+  if not ($Variable6="")
+	$Ordering=$Ordering+",$Variable6 "+Extract($Order6,"ending",1)
+  endif
+  $SortStringEdit=$Ordering
+  SQLSort OrderBy=$Ordering
+endsub
+
+
+<Data> VarName=$SortForm
+#********************************************************************
+# Form generated by GSAK form designer on Wed 27-Feb-2013 13:49:47
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Sort display grid on multiple columns
+  Height = 252
+  Width = 797
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = First level sort
+  Height = 65
+  Left = 0
+  Top = 32
+  Width = 265
+  Taborder = 2
+
+Name = GroupBox2
+  Type = Groupbox
+  Caption = Second level sort
+  Height = 65
+  Left = 266
+  Top = 32
+  Width = 247
+  Taborder = 3
+
+Name = GroupBox3
+  Type = Groupbox
+  Caption = Third level sort
+  Enabled = No
+  Height = 65
+  Left = 516
+  Top = 34
+  Width = 247
+  Taborder = 5
+
+Name = GroupBox4
+  Type = Groupbox
+  Caption = Fourth level sort
+  Enabled = No
+  Height = 65
+  Left = 30
+  Top = 100
+  Width = 247
+  Taborder = 6
+
+Name = GroupBox5
+  Type = Groupbox
+  Caption = Fifth level sort
+  Enabled = No
+  Height = 65
+  Left = 280
+  Top = 100
+  Width = 247
+  Taborder = 9
+
+Name = GroupBox6
+  Type = Groupbox
+  Caption = Sixth level sort
+  Enabled = No
+  Height = 65
+  Left = 538
+  Top = 100
+  Width = 247
+  Taborder = 10
+
+Name = Label1
+  Type = Label
+  Height = 33
+  Left = 0
+  Size = 16
+  Top = 8
+  Width = 557
+  Caption = Sort Display Grid by Fields in Caches and Custom Tables
+
+Name = HTMLabel3
+  Type = Label
+  Container = Groupbox1
+  Height = 25
+  Left = 172
+  Size = 12
+  Top = 10
+  Width = 90
+  Caption = in this order
+
+Name = HTMLabel4
+  Type = Label
+  Container = Groupbox1
+  Height = 25
+  Left = 2
+  Size = 12
+  Top = 10
+  Width = 88
+  Caption = Sort first by
+
+Name = Variable1
+  Type = Combobox
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 21
+  Left = 2
+  Top = 34
+  Width = 159
+  Taborder = 1
+
+Name = Order1
+  Type = Combobox
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 21
+  Left = 170
+  Top = 34
+  Values = Ascending;Descending
+  Width = 89
+  Taborder = 0
+
+Name = HTMLabel2
+  Type = Label
+  Container = GroupBox2
+  Height = 25
+  Left = 148
+  Size = 12
+  Top = 10
+  Width = 90
+  Caption = in this order
+
+Name = HTMLabel5
+  Type = Label
+  Container = GroupBox2
+  Height = 25
+  Left = 2
+  Size = 12
+  Top = 10
+  Width = 131
+  Caption = within that sort by
+
+Name = Variable2
+  Type = Combobox
+  Container = GroupBox2
+  Exitonchange = Yes
+  Height = 21
+  Left = 2
+  Top = 34
+  Width = 135
+  Taborder = 1
+
+Name = Order2
+  Type = Combobox
+  Container = GroupBox2
+  Exitonchange = Yes
+  Height = 21
+  Left = 146
+  Top = 34
+  Values = Ascending;Descending
+  Width = 89
+  Taborder = 0
+
+Name = ImposeButton
+  Type = Button
+  Height = 25
+  Left = 576
+  Top = 168
+  Width = 209
+  Taborder = 4
+  Caption = Impose Sort Order on Grid and Quit
+
+Name = HTMLabel6
+  Type = Label
+  Container = GroupBox3
+  Height = 25
+  Left = 148
+  Size = 12
+  Top = 10
+  Width = 90
+  Caption = in this order
+
+Name = HTMLabel7
+  Type = Label
+  Container = GroupBox3
+  Height = 25
+  Left = 2
+  Size = 12
+  Top = 10
+  Width = 91
+  Caption = then sort by
+
+Name = Variable3
+  Type = Combobox
+  Container = GroupBox3
+  Exitonchange = Yes
+  Height = 21
+  Left = 2
+  Top = 34
+  Width = 135
+  Taborder = 1
+
+Name = Order3
+  Type = Combobox
+  Container = GroupBox3
+  Exitonchange = Yes
+  Height = 21
+  Left = 146
+  Top = 34
+  Values = Ascending;Descending
+  Width = 89
+  Taborder = 0
+
+Name = HTMLabel8
+  Type = Label
+  Container = GroupBox4
+  Height = 25
+  Left = 148
+  Size = 12
+  Top = 10
+  Width = 90
+  Caption = in this order
+
+Name = HTMLabel9
+  Type = Label
+  Container = GroupBox4
+  Height = 25
+  Left = 2
+  Size = 12
+  Top = 10
+  Width = 91
+  Caption = then sort by
+
+Name = Variable4
+  Type = Combobox
+  Container = GroupBox4
+  Exitonchange = Yes
+  Height = 21
+  Left = 2
+  Top = 34
+  Width = 135
+  Taborder = 1
+
+Name = Order4
+  Type = Combobox
+  Container = GroupBox4
+  Exitonchange = Yes
+  Height = 21
+  Left = 146
+  Top = 34
+  Values = Ascending;Descending
+  Width = 89
+  Taborder = 0
+
+Name = SortStringEdit
+  Type = Edit
+  Height = 21
+  Left = 0
+  Top = 200
+  Width = 785
+  Taborder = 7
+
+Name = ClipButton
+  Type = Button
+  Height = 25
+  Left = 0
+  Top = 168
+  Width = 209
+  Taborder = 8
+  Caption = Copy SortString (below) to Clipboard
+
+Name = HTMLabel10
+  Type = Label
+  Container = GroupBox5
+  Height = 25
+  Left = 148
+  Size = 12
+  Top = 10
+  Width = 90
+  Caption = in this order
+
+Name = HTMLabel11
+  Type = Label
+  Container = GroupBox5
+  Height = 25
+  Left = 2
+  Size = 12
+  Top = 10
+  Width = 91
+  Caption = then sort by
+
+Name = Variable5
+  Type = Combobox
+  Container = GroupBox5
+  Exitonchange = Yes
+  Height = 21
+  Left = 2
+  Top = 34
+  Width = 135
+  Taborder = 1
+
+Name = order5
+  Type = Combobox
+  Container = GroupBox5
+  Exitonchange = Yes
+  Height = 21
+  Left = 146
+  Top = 34
+  Values = Ascending;Descending
+  Width = 89
+  Taborder = 0
+
+Name = HTMLabel12
+  Type = Label
+  Container = GroupBox6
+  Height = 25
+  Left = 148
+  Size = 12
+  Top = 10
+  Width = 90
+  Caption = in this order
+
+Name = HTMLabel13
+  Type = Label
+  Container = GroupBox6
+  Height = 25
+  Left = 2
+  Size = 12
+  Top = 10
+  Width = 91
+  Caption = then sort by
+
+Name = Variable6
+  Type = Combobox
+  Container = GroupBox6
+  Exitonchange = Yes
+  Height = 21
+  Left = 2
+  Top = 34
+  Width = 135
+  Taborder = 1
+
+Name = Order6
+  Type = Combobox
+  Container = GroupBox6
+  Exitonchange = Yes
+  Height = 21
+  Left = 146
+  Top = 34
+  Values = Ascending;Descending
+  Width = 89
+  Taborder = 0
+
+<enddata>

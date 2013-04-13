@@ -1,0 +1,49 @@
+############################################
+# MacVersion = 1.00
+# MacDescription =  Renames Downloaded PQ's to proper name and moves correctly
+# MacFileName = RenameDownloadedGPXFiles.gsk
+# MacAuthor = javapgmr
+############################################
+
+# Pocket Queries
+#*******************************************************
+#   Variable declarations for
+#   renameDownloadedGPXFiles.gsk
+#
+#   Generated 06/28/2010 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$Count Type=Numeric
+Declare Var=$FFile Type=String
+Declare Var=$FromFile Type=String
+Declare Var=$LCount Type=Numeric
+Declare Var=$p_FoundFiles Type=String
+Declare Var=$strPathFileList Type=String
+Declare Var=$StrRoutePath Type=String
+Declare Var=$StrToRoutePath Type=String
+Declare Var=$TFile Type=String
+Declare Var=$ToFile Type=String
+
+
+
+# GPX Files
+
+$StrRoutePath = "C:\data\staging"
+$StrToRoutePath="C:\data\da"
+$strPathFileList = Dir($strRoutePath + "\*.gpx", "F")
+$Count = RegExCount("\n",$StrPathFileList)
+
+$LCount=1
+WHILE $LCount <= $Count
+  $FFile= Extract($StrPathFileList,$_NewLine,$LCount)
+  $FromFile = SlashAdd($StrRoutePath)+$FFile 
+  $TFile= $FFile
+  $ToFile = SlashAdd($StrToRoutePath) + $TFile
+  FILECOPY From=$FromFile To=$ToFile OnError=Prompt
+  FILEERASE File=$FromFile OnError=Prompt
+  $LCount=$LCount+1
+ENDWHILE

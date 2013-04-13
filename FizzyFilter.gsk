@@ -1,0 +1,2252 @@
+#---------------------------------------------------------------------------------------------
+#                                     Fizzy Filter
+#
+# This macro makes it easy to see D/T combinations that are needed to complete the Fizzy
+# Challenge by filling and highlighting only those cells. After you complete the challenge,
+# you can select a different threshold so that it is easy to see what D/T combinations you
+# need for the Double Fizzy, Triple Fizzy, and so on. This macro supports each Fizzy level
+# up to 100 (the Centuple Fizzy), but if you get the point of actually needing that level,
+# then I urge you to seek psychological counseling.
+#
+# To start, select the type of Fizzy you will be working on, then select a database containing
+# all your finds. The grid will be updated automatically.
+#
+# By selecting a database containing unfound caches and clicking the Filter button, the
+# database will be filtered to display only caches that correspond to the D/T combinations
+# you need. You can choose to automatically run a macro after the database is filtered, which
+# is useful to display a map of the filtered databases (e.g., Google_Map_V3.gsk).
+#
+# This macro does not take into account the requirements of specific instances of a Fizzy
+# challenge, nor does it filter against cache type. (e.g., the FizzyBrowser.gsk macro does a
+# good job of that already.)
+#
+# MacVersion = 1.1.0
+# MacDescription = Filter on difficulty/terrain combinations for different thresholds
+# MacAuthor = longtrails
+# MacFileName = FizzyFilter.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=20392&view=getlastpost
+#
+# Version History:
+# v1.0.0 11/25/2011 - Initial release.
+# v1.0.1 11/26/2011 - Fixed initialization errors.
+# v1.0.2 11/30/2011 - Stop Unfound database postback. Suppress startup macros. Added MacUrl.
+#                     Ensure post macro exists before running.
+# v1.1.0 09/28/2012 - Added ability to filter by state. Moved settings to separate dialog.
+#                     Added "Save Settings" button. Don't exit after clicking "Filter" button.
+#                     Show finds needed instead of finds already made.
+#---------------------------------------------------------------------------------------------
+
+# Initialize the macro.
+GoSub Name=Startup
+GoSub Name=InitSettingsDisplay
+GoSub Name=BuildDifficultyTerrainArray
+GoSub Name=UpdateDifficultyTerrainGrid
+
+# Display the main window.
+While True
+  ShowStatus Display=Off
+  $dialogResult = Form($MainForm, "")
+  BeginCase
+
+    # Settings.
+    Case $dialogResult = "ButtonSettings"
+      GoSub Name=ShowSettingsForm
+
+    # Other.
+    Case $dialogResult = "ButtonFilter"
+      If $numNeededCells = 0
+        $message = "There are no cells with fewer than " + NumToStr($maxCellCount + 1) + " finds"
+        MsgOK Msg=$message
+      Else
+        $IsValid = True
+        GoSub Name=ValidateApplyFilter1
+        If $IsValid = True
+          GoSub Name=ApplyFilter
+          GoSub Name=RunMacro
+          # Break
+        EndIf
+      EndIf
+
+    # Save Settings
+    Case $dialogResult = "ButtonSaveSettings"
+      GoSub Name=SaveSettings
+
+    # Exit macro.
+    Case $dialogResult = "ButtonClose"
+      Cancel
+    Case $dialogResult = "SystemExit"
+      Cancel
+
+   EndCase
+EndWhile
+
+#---------------------------------------------------------------------------------------------
+# Show Settings form.
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=ShowSettingsForm
+
+  GoSub Name=CopyFromCurSettingsToControls
+
+  # Display the main window.
+  While True
+    ShowStatus Display=Off
+    $dialogResult = Form($SettingsForm, "")
+    BeginCase
+
+      # Save settings.
+      Case $dialogResult = "ButtonOk"
+
+        $IsValid = True
+        GoSub Name=ValidateApplyFilter2
+        If $IsValid = True
+
+          # Figure out what parts of the UI need to be updated.
+          $NeedArrayUpdate = False
+          $NeedGridUpdate = False
+          If $CurFizzyType <> $ComboboxFizzyType
+            $NeedGridUpdate = True
+          EndIf
+          If $CurFoundCachesDatabase <> $ComboboxFoundCachesDatabase
+            $NeedArrayUpdate = True
+            $NeedGridUpdate = True
+          EndIf
+          If $CurStates <> $ComboboxStates
+            $NeedArrayUpdate = True
+            $NeedGridUpdate = True
+          EndIf
+          GoSub Name=CopyFromControlsToCurSettings
+          GoSub Name=InitSettingsDisplay
+          If $NeedArrayUpdate = True
+            GoSub Name=BuildDifficultyTerrainArray
+          EndIf
+          If $NeedGridUpdate = True
+            GoSub Name=UpdateDifficultyTerrainGrid
+          EndIf
+
+          # Close the dialog.
+          Break
+
+        EndIF
+
+      # Exit dialog.
+      Case $dialogResult = "ButtonCancel"
+        Break
+      Case $dialogResult = "SystemExit"
+        Break
+
+     EndCase
+  EndWhile
+
+EndSub # Name=ShowSettingsForm
+
+#---------------------------------------------------------------------------------------------
+# Startup
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=Startup
+
+  # Build the uples list.
+  $uples = Replace($_NewLine, ";", $uples, true)
+  $void = List("ListUples", "Create", ";")
+  $void = List("ListUples", "Replace", $uples)
+
+  # Build the states list.
+  $stateList = Replace($_NewLine, ";", $stateList, true)
+  $void = List("ListStates", "Create", ";")
+  $void = List("ListStates", "Replace", $stateList)
+
+  # Build the list of databases.
+  $databaseList = SysInfo("databases")
+  $databaseList = "Currently selected database;" + $databaseList
+
+  # Dispay current version number.
+  $MainForm = EditForm($MainForm, "LabelVersion", "Caption", "version " + MacHeader("MacVersion"))
+
+  # Initialize default values.
+  $ComboboxFizzyType = "1 - Single"
+  $ComboboxFoundCachesDatabase = "Currently selected database"
+  $ComboboxUnfoundCachesDatabase = "Currently selected database"
+  $ComboboxStates = "Ignore"
+  $CheckboxPostMacro = False
+  $FilePostMacro = ""
+  $ComboboxWhichFizzy = ""  # Backward compatibility with version 1.0.2.
+
+  # Restore settings from the configuration file.
+  MacSettings Type=R File="FizzyFilter.data" FileCheck=N
+
+  # Backward compatibility with version 1.0.2.
+  If $ComboboxWhichFizzy <> ""
+    $ComboboxFizzyType = $ComboboxWhichFizzy
+  EndIf
+
+  # Save settings in separate variables so the settings dialog can operate
+  # independently.
+  GoSub Name=CopyFromControlsToCurSettings
+  GoSub Name=CopyFromCurSettingsToSavedSettings
+
+EndSub # Name=Startup
+
+#---------------------------------------------------------------------------------------------
+# Build D/T array
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=BuildDifficultyTerrainArray
+
+  # Show status.
+  ShowStatus Msg="Calculating D/T counts..." Display=On
+
+  # Select the database. Remember the currently selected database so we can set
+  # it back when we're done.
+  $prevDatabase = $_CurrentDatabase
+  If DataBaseExists($CurFoundCachesDatabase)
+    Database Name=$CurFoundCachesDatabase Action=Select StopStartupMacro=Y
+  EndIf
+  $result = SQLite("open", "$_CurrentDataPath\sqlite.db3")
+
+  # Initialize the array.
+  $x = 1
+  While $x <= 9             # Make 9 arrays; one for each difficulty rating.
+    Array($x, 0) = "9"      # Make 9 elements in each array; one for each terrain rating.
+    $x = $x + 1
+  EndWhile
+
+  # Fill array with cell counts.
+  $indexDifficulty = 1
+  $indexTerrain  = 1
+	While $indexDifficulty <= 9
+		While $indexTerrain <= 9
+      GoSub Name=ConvertIndexToRating
+      $_sql = "SELECT COUNT(Code) FROM Caches WHERE Difficulty=$difficulty AND Terrain=$terrain"
+      If $ComboboxStates <> "Ignore"
+        $_sql = $_sql + " AND State='$ComboboxStates'"
+      EndIf
+      Array($indexDifficulty, $indexTerrain) = Sqlite("sql", $_sql)
+      $indexTerrain = $indexTerrain + 1
+    EndWhile
+    $indexDifficulty = $indexDifficulty + 1
+    $indexTerrain = 1
+  EndWhile
+
+  # Set the current database back to what was selected originally.
+  Database Name=$prevDatabase Action=Select StopStartupMacro=Y
+
+EndSub # Name=BuildDifficultyTerrainArray
+
+#---------------------------------------------------------------------------------------------
+# Update D/T grid
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=UpdateDifficultyTerrainGrid
+  
+  # Show status.
+  ShowStatus Msg="Updating D/T grid..." Display=On
+
+  # Initialize variables.
+  $numNeededCells = 0
+  GoSub Name=ConvertUpleToMaxCellCount
+  
+  # Assign a number and a color to each cell.
+	$indexDifficulty = 1
+	$indexTerrain = 1
+	While $indexDifficulty <= 9
+		While $indexTerrain <= 9
+      $numFound = Val(Array($indexDifficulty, $indexTerrain))
+      GoSub Name=GetCellName
+      If $numFound <= $maxCellCount
+        $numNeededCells = $numNeededCells + 1
+        $MainForm = EditForm($MainForm, $cellName, "Color", "65408")
+        $cellText = " " + NumToStr($maxCellCount - $numFound + 1)
+      Else
+        $MainForm = EditForm($MainForm, $cellName, "Color", "16777215")
+        $cellText = ""
+      EndIf
+      GoSub Name=SetCellText
+      $indexTerrain = $indexTerrain + 1
+		EndWhile
+		$indexDifficulty = $indexDifficulty + 1
+		$indexTerrain = 1
+	EndWhile
+
+  # Update groupbox caption.
+  BeginCase
+    Case $numNeededCells = 0
+      $message = "There are no cells with fewer than "
+    Case $numNeededCells = 1
+      $message = "There is 1 cell with fewer than "
+    OtherWise
+      $message = "There are " + NumToStr($numNeededCells) + " cells with fewer than "
+  EndCase
+  BeginCase
+    Case $maxCellCount = 0
+      $message = $message + "1 find"
+    OtherWise
+      $message = $message + NumToStr($maxCellCount + 1) + " finds"
+  EndCase
+  $MainForm = EditForm($MainForm, "GroupboxFizzyGrid", "Caption", $message)
+
+  # Update label telling user what the cell number means.
+  $message = "still need to qualify for the " + Extract($ComboboxFizzyType, " - ", 2) + " Fizzy."
+  $MainForm = EditForm($MainForm, "LabelCellRepresents2", "Caption", $message)
+
+  # Enable/disable the Filter button.
+  If $numNeededCells = 0
+    $MainForm = EditForm($MainForm, "ButtonFilter", "Enabled", "No")
+  Else
+    $MainForm = EditForm($MainForm, "ButtonFilter", "Enabled", "Yes")
+  EndIf
+
+EndSub # Name=UpdateDifficultyTerrainGrid
+
+#---------------------------------------------------------------------------------------------
+# Apply filter
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=ApplyFilter
+
+  # Select the database.
+  If DataBaseExists($CurUnfoundCachesDatabase)
+    Database Name=$CurUnfoundCachesDatabase Action=Select StopStartupMacro=Y
+  EndIf
+  $result = SQLite("open", "$_CurrentDataPath\sqlite.db3")
+
+  # Remove any filter that may be currently in force.  
+  CancelFilter
+
+  # Initialize variables.
+  $numNeededCells = 0
+  GoSub Name=ConvertUpleToMaxCellCount
+
+  # Assign a number and a color to each cell.
+	$indexDifficulty = 1
+	$indexTerrain = 1
+	While $indexDifficulty <= 9
+		While $indexTerrain <= 9
+      GoSub Name=ConvertIndexToRating
+      ShowStatus Msg="Filtering Difficulty = $difficulty / Terrain = $terrain"
+      $numFound = Val(Array($indexDifficulty, $indexTerrain))
+      If $numFound <= $maxCellCount
+        If $ComboboxStates = "Ignore"
+          MFilter Expression=($d_Difficulty=$difficulty AND $d_Terrain=$terrain) Join=OR
+        Else
+          MFilter Expression=($d_Difficulty=$difficulty AND $d_Terrain=$terrain AND $d_State=$ComboboxStates) Join=OR
+        EndIf
+        $numNeededCells = $numNeededCells + 1
+      EndIf
+      $indexTerrain = $indexTerrain + 1
+		EndWhile
+		$indexDifficulty = $indexDifficulty + 1
+		$indexTerrain = 1
+	EndWhile
+
+  # If no filtering was applied.
+  If $numNeededCells = 0
+    $message = "There are no cells with " + NumToStr($maxCellCount) + " or fewer finds"
+    MsgOK Msg=$message
+  EndIf
+  
+EndSub # Name=ApplyFilter
+
+#---------------------------------------------------------------------------------------------
+# Validate Apply Filter
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=ValidateApplyFilter1
+
+  # Make sure the macro file exists.
+  If $CurCheckboxPostMacro = True
+    If $CurFilePostMacro = ""
+      MsgOK Msg="You chose to run a macro, but have not specified one yet."
+      $IsValid = False
+      ExitSub
+    EndIf
+    If FileExists($CurFilePostMacro) = False
+      If FileExists($_AppData + "\Macros\" + $CurFilePostMacro) = False
+        MsgOK Msg=You chose to run a macro, but the one you specified does not exist: $_NewLine $_NewLine $CurFilePostMacro
+        $IsValid = False
+        ExitSub
+      EndIf
+    EndIf
+  EndIf
+
+EndSub # Name=ValidateApplyFilter1
+
+BeginSub Name=ValidateApplyFilter2
+
+  # Make sure the macro file exists.
+  If $CheckboxPostMacro = True
+    If $FilePostMacro = ""
+      MsgOK Msg="You chose to run a macro, but have not specified one yet."
+      $IsValid = False
+      ExitSub
+    EndIf
+    If FileExists($FilePostMacro) = False
+      If FileExists($_AppData + "\Macros\" + $FilePostMacro) = False
+        MsgOK Msg=You chose to run a macro, but the one you specified does not exist: $_NewLine $_NewLine $FilePostMacro
+        $IsValid = False
+        ExitSub
+      EndIf
+    EndIf
+  EndIf
+
+EndSub # Name=ValidateApplyFilter2
+
+#---------------------------------------------------------------------------------------------
+# Run macro
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=RunMacro
+
+  # Run a macro if needed.
+  If $CurCheckboxPostMacro = True
+    Macro File=$CurFilePostMacro VarScope=Local
+  EndIf
+
+EndSub # Name=RunMacro
+
+#---------------------------------------------------------------------------------------------
+# Save settings to the configuration file on disk
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=SaveSettings
+
+  GoSub Name=CopyFromCurSettingsToControls
+  MacSettings Type=S Vars=ComboboxFizzyType,ComboboxFoundCachesDatabase,ComboboxUnfoundCachesDatabase,ComboboxStates,CheckboxPostMacro,FilePostMacro File="FizzyFilter.data"
+  GoSub Name=CopyFromCurSettingsToSavedSettings
+  GoSub Name=InitSettingsDisplay
+
+EndSub # Name=SaveSettings
+
+#---------------------------------------------------------------------------------------------
+# Initializes read-only information in Setting groupbox
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=InitSettingsDisplay
+
+  $AnyChanges = False
+
+  If $SavedFizzyType <> $CurFizzyType
+    $MainForm = EditForm($MainForm, "LabelFizzyType1", "Caption", "<FONT bgcolor=" + Quote("clYellow") + ">Fizzy type:</FONT>")
+    $AnyChanges = True
+  Else
+    $MainForm = EditForm($MainForm, "LabelFizzyType1", "Caption", "Fizzy type:")
+  EndIf
+  If $SavedFoundCachesDatabase <> $CurFoundCachesDatabase
+    $MainForm = EditForm($MainForm, "LabelFoundCachesDatabase1", "Caption", "<FONT bgcolor=" + Quote("clYellow") + ">Found caches database:</FONT>")
+    $AnyChanges = True
+  Else
+    $MainForm = EditForm($MainForm, "LabelFoundCachesDatabase1", "Caption", "Found caches database:")
+  EndIf
+  If $SavedUnfoundCachesDatabase <> $CurUnfoundCachesDatabase
+    $MainForm = EditForm($MainForm, "LabelUnfoundCachesDatabase1", "Caption", "<FONT bgcolor=" + Quote("clYellow") + ">Unfound caches database:</FONT>")
+    $AnyChanges = True
+  Else
+    $MainForm = EditForm($MainForm, "LabelUnfoundCachesDatabase1", "Caption", "Unfound caches database:")
+  EndIf
+  If $SavedStates <> $CurStates
+    $MainForm = EditForm($MainForm, "LabelState1", "Caption", "<FONT bgcolor=" + Quote("clYellow") + ">State:</FONT>")
+    $AnyChanges = True
+  Else
+    $MainForm = EditForm($MainForm, "LabelState1", "Caption", "State:")
+  EndIf
+  If $SavedCheckboxPostMacro <> $CurCheckboxPostMacro OR $SavedFilePostMacro <> $CurFilePostMacro
+    $MainForm = EditForm($MainForm, "LabelPostMacro1", "Caption", "<FONT bgcolor=" + Quote("clYellow") + ">Post filtering macro:</FONT>")
+    $AnyChanges = True
+  Else
+    $MainForm = EditForm($MainForm, "LabelPostMacro1", "Caption", "Post filtering macro:")
+  EndIf
+
+  If $AnyChanges = False
+    $MainForm = EditForm($MainForm, "ButtonSaveSettings", "Enabled", "No")
+  Else
+    $MainForm = EditForm($MainForm, "ButtonSaveSettings", "Enabled", "Yes")
+  EndIf
+
+  $MainForm = EditForm($MainForm, "LabelFizzyType2", "Caption", $CurFizzyType)
+  $MainForm = EditForm($MainForm, "LabelFoundCachesDatabase2", "Caption", $CurFoundCachesDatabase)
+  $MainForm = EditForm($MainForm, "LabelUnfoundCachesDatabase2", "Caption", $CurUnfoundCachesDatabase)
+  $MainForm = EditForm($MainForm, "LabelState2", "Caption", $CurStates)
+
+  # Post filtering macro.
+  $Prefix = $_AppData + "\Macros\"
+  If Left($CurFilePostMacro, Len($Prefix)) = $Prefix
+    $Macro = Substr($CurFilePostMacro, Len($_AppData + "\Macros\") + 1, 0)
+  Else
+    $Macro = $CurFilePostMacro
+  EndIf
+  BeginCase
+    Case $CurCheckboxPostMacro = True
+      $MainForm = EditForm($MainForm, "LabelPostMacro2", "Caption", "Run:")
+      $MainForm = EditForm($MainForm, "LabelPostMacro3", "Caption", $Macro)
+      $MainForm = EditForm($MainForm, "LabelPostMacro3", "Visible", "Yes")
+    Case $Macro <> ""
+      $MainForm = EditForm($MainForm, "LabelPostMacro2", "Caption", "Do not run:")
+      $MainForm = EditForm($MainForm, "LabelPostMacro3", "Caption", $Macro)
+      $MainForm = EditForm($MainForm, "LabelPostMacro3", "Visible", "Yes")
+    OtherWise
+      $MainForm = EditForm($MainForm, "LabelPostMacro2", "Caption", "None")
+      $MainForm = EditForm($MainForm, "LabelPostMacro3", "Caption", "")
+      $MainForm = EditForm($MainForm, "LabelPostMacro3", "Visible", "No")
+  EndCase
+
+EndSub # Name=InitSettingsDisplay
+
+#---------------------------------------------------------------------------------------------
+# Copy local variables to control values
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=CopyFromCurSettingsToControls
+
+  $ComboboxFizzyType = $CurFizzyType
+  $ComboboxFoundCachesDatabase = $CurFoundCachesDatabase
+  $ComboboxUnfoundCachesDatabase = $CurUnfoundCachesDatabase
+  $ComboboxStates = $CurStates
+  $CheckboxPostMacro = $CurCheckboxPostMacro
+  $FilePostMacro = $CurFilePostMacro
+
+EndSub # Name=CopyFromCurSettingsToControls
+
+#---------------------------------------------------------------------------------------------
+# Copy control values to local variables
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=CopyFromControlsToCurSettings
+
+  $CurFizzyType = $ComboboxFizzyType
+  $CurFoundCachesDatabase = $ComboboxFoundCachesDatabase
+  $CurUnfoundCachesDatabase = $ComboboxUnfoundCachesDatabase
+  $CurStates = $ComboboxStates
+  $CurCheckboxPostMacro = $CheckboxPostMacro
+  $CurFilePostMacro = $FilePostMacro
+
+EndSub # Name=CopyFromControlsToCurSettings
+
+#---------------------------------------------------------------------------------------------
+# 
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=CopyFromCurSettingsToSavedSettings
+
+  $SavedFizzyType = $CurFizzyType
+  $SavedFoundCachesDatabase = $CurFoundCachesDatabase
+  $SavedUnfoundCachesDatabase = $CurUnfoundCachesDatabase
+  $SavedStates = $CurStates
+  $SavedCheckboxPostMacro = $CurCheckboxPostMacro
+  $SavedFilePostMacro = $CurFilePostMacro
+
+EndSub # Name=CopyFromCurSettingsToSavedSettings
+
+#---------------------------------------------------------------------------------------------
+# Convert index to rating. E.g., if $indexDifficulty is 6 then $difficulty is set to 3.5.
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=ConvertIndexToRating
+
+  # Difficulty.
+  BeginCase
+    Case $indexDifficulty = 1
+      $difficulty = 1
+    Case $indexDifficulty = 2
+      $difficulty = 1.5
+    Case $indexDifficulty = 3
+      $difficulty = 2
+    Case $indexDifficulty = 4
+      $difficulty = 2.5
+    Case $indexDifficulty = 5
+      $difficulty = 3
+    Case $indexDifficulty = 6
+      $difficulty = 3.5
+    Case $indexDifficulty = 7
+      $difficulty = 4
+    Case $indexDifficulty = 8
+      $difficulty = 4.5
+    Case $indexDifficulty = 9
+      $difficulty = 5
+  EndCase
+  
+  # Terrain.
+  BeginCase
+    Case $indexTerrain = 1
+      $terrain = 1
+    Case $indexTerrain = 2
+      $terrain = 1.5
+    Case $indexTerrain = 3
+      $terrain = 2
+    Case $indexTerrain = 4
+      $terrain = 2.5
+    Case $indexTerrain = 5
+      $terrain = 3
+    Case $indexTerrain = 6
+      $terrain = 3.5
+    Case $indexTerrain = 7
+      $terrain = 4
+    Case $indexTerrain = 8
+      $terrain = 4.5
+    Case $indexTerrain = 9
+      $terrain = 5
+  EndCase
+  
+EndSub # Name=ConvertIndexToRating
+
+#---------------------------------------------------------------------------------------------
+# Get cell name
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=GetCellName
+
+  # Prefix.
+  $cellName = "Edit"
+
+  # Difficulty.
+  BeginCase
+    Case $indexDifficulty = 1
+      $cellName = $cellName + "10"
+    Case $indexDifficulty = 2
+      $cellName = $cellName + "15"
+    Case $indexDifficulty = 3
+      $cellName = $cellName + "20"
+    Case $indexDifficulty = 4
+      $cellName = $cellName + "25"
+    Case $indexDifficulty = 5
+      $cellName = $cellName + "30"
+    Case $indexDifficulty = 6
+      $cellName = $cellName + "35"
+    Case $indexDifficulty = 7
+      $cellName = $cellName + "40"
+    Case $indexDifficulty = 8
+      $cellName = $cellName + "45"
+    Case $indexDifficulty = 9
+      $cellName = $cellName + "50"
+  EndCase
+
+  # Terrain.
+  BeginCase
+    Case $indexTerrain = 1
+      $cellName = $cellName + "10"
+    Case $indexTerrain = 2
+      $cellName = $cellName + "15"
+    Case $indexTerrain = 3
+      $cellName = $cellName + "20"
+    Case $indexTerrain = 4
+      $cellName = $cellName + "25"
+    Case $indexTerrain = 5
+      $cellName = $cellName + "30"
+    Case $indexTerrain = 6
+      $cellName = $cellName + "35"
+    Case $indexTerrain = 7
+      $cellName = $cellName + "40"
+    Case $indexTerrain = 8
+      $cellName = $cellName + "45"
+    Case $indexTerrain = 9
+      $cellName = $cellName + "50"
+  EndCase
+
+EndSub # Name=GetCellName
+
+#---------------------------------------------------------------------------------------------
+# Figure out the maximum number of finds in a cell according to the uple selected.
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=ConvertUpleToMaxCellCount
+
+  $maxCellCount = Val(List("ListUples", "Find", $ComboboxFizzyType)) - 1
+
+EndSub # Name=ConvertUpleToMaxCellCount
+
+#---------------------------------------------------------------------------------------------
+# Put the count for the cell into the text box
+#---------------------------------------------------------------------------------------------
+
+BeginSub Name=SetCellText
+
+  BeginCase
+
+    Case $indexDifficulty = 1 And $indexTerrain = 1
+      $Edit1010 = $cellText
+    Case $indexDifficulty = 1 And $indexTerrain = 2
+      $Edit1015 = $cellText
+    Case $indexDifficulty = 1 And $indexTerrain = 3
+      $Edit1020 = $cellText
+    Case $indexDifficulty = 1 And $indexTerrain = 4
+      $Edit1025 = $cellText
+    Case $indexDifficulty = 1 And $indexTerrain = 5
+      $Edit1030 = $cellText
+    Case $indexDifficulty = 1 And $indexTerrain = 6
+      $Edit1035 = $cellText
+    Case $indexDifficulty = 1 And $indexTerrain = 7
+      $Edit1040 = $cellText
+    Case $indexDifficulty = 1 And $indexTerrain = 8
+      $Edit1045 = $cellText
+    Case $indexDifficulty = 1 And $indexTerrain = 9
+      $Edit1050 = $cellText
+
+    Case $indexDifficulty = 2 And $indexTerrain = 1
+      $Edit1510 = $cellText
+    Case $indexDifficulty = 2 And $indexTerrain = 2
+      $Edit1515 = $cellText
+    Case $indexDifficulty = 2 And $indexTerrain = 3
+      $Edit1520 = $cellText
+    Case $indexDifficulty = 2 And $indexTerrain = 4
+      $Edit1525 = $cellText
+    Case $indexDifficulty = 2 And $indexTerrain = 5
+      $Edit1530 = $cellText
+    Case $indexDifficulty = 2 And $indexTerrain = 6
+      $Edit1535 = $cellText
+    Case $indexDifficulty = 2 And $indexTerrain = 7
+      $Edit1540 = $cellText
+    Case $indexDifficulty = 2 And $indexTerrain = 8
+      $Edit1545 = $cellText
+    Case $indexDifficulty = 2 And $indexTerrain = 9
+      $Edit1550 = $cellText
+
+    Case $indexDifficulty = 3 And $indexTerrain = 1
+      $Edit2010 = $cellText
+    Case $indexDifficulty = 3 And $indexTerrain = 2
+      $Edit2015 = $cellText
+    Case $indexDifficulty = 3 And $indexTerrain = 3
+      $Edit2020 = $cellText
+    Case $indexDifficulty = 3 And $indexTerrain = 4
+      $Edit2025 = $cellText
+    Case $indexDifficulty = 3 And $indexTerrain = 5
+      $Edit2030 = $cellText
+    Case $indexDifficulty = 3 And $indexTerrain = 6
+      $Edit2035 = $cellText
+    Case $indexDifficulty = 3 And $indexTerrain = 7
+      $Edit2040 = $cellText
+    Case $indexDifficulty = 3 And $indexTerrain = 8
+      $Edit2045 = $cellText
+    Case $indexDifficulty = 3 And $indexTerrain = 9
+      $Edit2050 = $cellText
+
+    Case $indexDifficulty = 4 And $indexTerrain = 1
+      $Edit2510 = $cellText
+    Case $indexDifficulty = 4 And $indexTerrain = 2
+      $Edit2515 = $cellText
+    Case $indexDifficulty = 4 And $indexTerrain = 3
+      $Edit2520 = $cellText
+    Case $indexDifficulty = 4 And $indexTerrain = 4
+      $Edit2525 = $cellText
+    Case $indexDifficulty = 4 And $indexTerrain = 5
+      $Edit2530 = $cellText
+    Case $indexDifficulty = 4 And $indexTerrain = 6
+      $Edit2535 = $cellText
+    Case $indexDifficulty = 4 And $indexTerrain = 7
+      $Edit2540 = $cellText
+    Case $indexDifficulty = 4 And $indexTerrain = 8
+      $Edit2545 = $cellText
+    Case $indexDifficulty = 4 And $indexTerrain = 9
+      $Edit2550 = $cellText
+
+    Case $indexDifficulty = 5 And $indexTerrain = 1
+      $Edit3010 = $cellText
+    Case $indexDifficulty = 5 And $indexTerrain = 2
+      $Edit3015 = $cellText
+    Case $indexDifficulty = 5 And $indexTerrain = 3
+      $Edit3020 = $cellText
+    Case $indexDifficulty = 5 And $indexTerrain = 4
+      $Edit3025 = $cellText
+    Case $indexDifficulty = 5 And $indexTerrain = 5
+      $Edit3030 = $cellText
+    Case $indexDifficulty = 5 And $indexTerrain = 6
+      $Edit3035 = $cellText
+    Case $indexDifficulty = 5 And $indexTerrain = 7
+      $Edit3040 = $cellText
+    Case $indexDifficulty = 5 And $indexTerrain = 8
+      $Edit3045 = $cellText
+    Case $indexDifficulty = 5 And $indexTerrain = 9
+      $Edit3050 = $cellText
+
+    Case $indexDifficulty = 6 And $indexTerrain = 1
+      $Edit3510 = $cellText
+    Case $indexDifficulty = 6 And $indexTerrain = 2
+      $Edit3515 = $cellText
+    Case $indexDifficulty = 6 And $indexTerrain = 3
+      $Edit3520 = $cellText
+    Case $indexDifficulty = 6 And $indexTerrain = 4
+      $Edit3525 = $cellText
+    Case $indexDifficulty = 6 And $indexTerrain = 5
+      $Edit3530 = $cellText
+    Case $indexDifficulty = 6 And $indexTerrain = 6
+      $Edit3535 = $cellText
+    Case $indexDifficulty = 6 And $indexTerrain = 7
+      $Edit3540 = $cellText
+    Case $indexDifficulty = 6 And $indexTerrain = 8
+      $Edit3545 = $cellText
+    Case $indexDifficulty = 6 And $indexTerrain = 9
+      $Edit3550 = $cellText
+
+    Case $indexDifficulty = 7 And $indexTerrain = 1
+      $Edit4010 = $cellText
+    Case $indexDifficulty = 7 And $indexTerrain = 2
+      $Edit4015 = $cellText
+    Case $indexDifficulty = 7 And $indexTerrain = 3
+      $Edit4020 = $cellText
+    Case $indexDifficulty = 7 And $indexTerrain = 4
+      $Edit4025 = $cellText
+    Case $indexDifficulty = 7 And $indexTerrain = 5
+      $Edit4030 = $cellText
+    Case $indexDifficulty = 7 And $indexTerrain = 6
+      $Edit4035 = $cellText
+    Case $indexDifficulty = 7 And $indexTerrain = 7
+      $Edit4040 = $cellText
+    Case $indexDifficulty = 7 And $indexTerrain = 8
+      $Edit4045 = $cellText
+    Case $indexDifficulty = 7 And $indexTerrain = 9
+      $Edit4050 = $cellText
+
+    Case $indexDifficulty = 8 And $indexTerrain = 1
+      $Edit4510 = $cellText
+    Case $indexDifficulty = 8 And $indexTerrain = 2
+      $Edit4515 = $cellText
+    Case $indexDifficulty = 8 And $indexTerrain = 3
+      $Edit4520 = $cellText
+    Case $indexDifficulty = 8 And $indexTerrain = 4
+      $Edit4525 = $cellText
+    Case $indexDifficulty = 8 And $indexTerrain = 5
+      $Edit4530 = $cellText
+    Case $indexDifficulty = 8 And $indexTerrain = 6
+      $Edit4535 = $cellText
+    Case $indexDifficulty = 8 And $indexTerrain = 7
+      $Edit4540 = $cellText
+    Case $indexDifficulty = 8 And $indexTerrain = 8
+      $Edit4545 = $cellText
+    Case $indexDifficulty = 8 And $indexTerrain = 9
+      $Edit4550 = $cellText
+
+    Case $indexDifficulty = 9 And $indexTerrain = 1
+      $Edit5010 = $cellText
+    Case $indexDifficulty = 9 And $indexTerrain = 2
+      $Edit5015 = $cellText
+    Case $indexDifficulty = 9 And $indexTerrain = 3
+      $Edit5020 = $cellText
+    Case $indexDifficulty = 9 And $indexTerrain = 4
+      $Edit5025 = $cellText
+    Case $indexDifficulty = 9 And $indexTerrain = 5
+      $Edit5030 = $cellText
+    Case $indexDifficulty = 9 And $indexTerrain = 6
+      $Edit5035 = $cellText
+    Case $indexDifficulty = 9 And $indexTerrain = 7
+      $Edit5040 = $cellText
+    Case $indexDifficulty = 9 And $indexTerrain = 8
+      $Edit5045 = $cellText
+    Case $indexDifficulty = 9 And $indexTerrain = 9
+      $Edit5050 = $cellText
+
+  EndCase
+
+EndSub # Name=SetCellText
+
+#---------------------------------------------------------------------------------------------
+# Uples
+#---------------------------------------------------------------------------------------------
+
+<Data> VarName=$uples
+1 - Single
+2 - Double
+3 - Triple
+4 - Quadruple
+5 - Quintuple
+6 - Sextuple
+7 - Septuple
+8 - Octuple
+9 - Nonuple
+10 - Decuple
+11 - Undecuple
+12 - Duodecuple
+13 - Tredecuple
+14 - Quattuordecuple
+15 - Quindecuple
+16 - Sexdecuple
+17 - Septendecuple
+18 - Octodecuple
+19 - Novemdecuple
+20 - Viguple
+21 - Unviguple
+22 - Duoviguple
+23 - Treviguple
+24 - Quattuorviguple
+25 - Quinviguple
+26 - Sexviguple
+27 - Septenviguple
+28 - Octoviguple
+29 - Novemviguple
+30 - Triguple
+31 - Untriguple
+32 - Duotriguple
+33 - Tretriguple
+34 - Quattuortriguple
+35 - Quintriguple
+36 - Sextriguple
+37 - Septentriguple
+38 - Octotriguple
+39 - Novemtriguple
+40 - Quadraguple
+41 - Unquadraguple
+42 - Duoquadraguple
+43 - Trequadraguple
+44 - Quattuorquadraguple
+45 - Quinquadraguple
+46 - Sexquadraguple
+47 - Septenquadraguple
+48 - Octoquadraguple
+49 - Novemquadraguple
+50 - Quinquaguple
+51 - Unquinquaguple
+52 - Duoquinquaguple
+53 - Trequinquaguple
+54 - Quattuorquinquaguple
+55 - Quinquinquaguple
+56 - Sexquinquaguple
+57 - Septenquinquaguple
+58 - Octoquinquaguple
+59 - Novemquinquaguple
+60 - Sexaguple
+61 - Unsexaguple
+62 - Duosexaguple
+63 - Tresexaguple
+64 - Quattuorsexaguple
+65 - Quinsexaguple
+66 - Sexsexaguple
+67 - Septensexaguple
+68 - Octosexaguple
+69 - Novemsexaguple
+70 - Septuaguple
+71 - Unseptuaguple
+72 - Duoseptuaguple
+73 - Treseptuaguple
+74 - Quattuorseptuaguple
+75 - Quinseptuaguple
+76 - Sexseptuaguple
+77 - Septenseptuaguple
+78 - Octoseptuaguple
+79 - Novemseptuaguple
+80 - Octoguple
+81 - Unoctoguple
+82 - Duooctoguple
+83 - Treoctoguple
+84 - Quattuoroctoguple
+85 - Quinoctoguple
+86 - Sexoctoguple
+87 - Septoctoguple
+88 - Octooctoguple
+89 - Novemoctoguple
+90 - Nonaguple
+91 - Unnonaguple
+92 - Duononaguple
+93 - Trenonaguple
+94 - Quattuornonaguple
+95 - Quinnonaguple
+96 - Sexnonaguple
+97 - Septennonaguple
+98 - Octononaguple
+99 - Novemnonaguple
+100 - Centuple
+<EndData>
+
+#---------------------------------------------------------------------------------------------
+# stateList
+#---------------------------------------------------------------------------------------------
+
+<Data> VarName=$stateList
+Ignore
+Alabama
+Alaska
+American Samoa
+Arizona
+Arkansas
+California
+Colorado
+Connecticut
+Delaware
+District of Columbia
+Florida
+Georgia
+Guam
+Hawaii
+Idaho
+Illinois
+Indiana
+Iowa
+Kansas
+Kentucky
+Louisiana
+Maine
+Maryland
+Massachusetts
+Michigan
+Minnesota
+Mississippi
+Missouri
+Montana
+Nebraska
+Nevada
+New Hampshire
+New Jersey
+New Mexico
+New York
+North Carolina
+North Dakota
+Northern Marianas Islands
+Ohio
+Oklahoma
+Oregon
+Pennsylvania
+Puerto Rico
+Rhode Island
+South Carolina
+South Dakota
+Tennessee
+Texas
+Utah
+Vermont
+Virginia
+Virgin Islands
+Washington
+West Virginia
+Wisconsin
+Wyoming
+<EndData>
+
+#---------------------------------------------------------------------------------------------
+# Main form
+#---------------------------------------------------------------------------------------------
+
+<Data> VarName=$MainForm
+
+Name = FormMain
+  Type = Form
+  Caption = Fizzy Filter
+  Height = 354
+  Width = 638
+
+Name = GroupboxFizzyGrid
+  Type = Groupbox
+  Enabled = No
+  Height = 265
+  Left = 10
+  Top = 48
+  Width = 287
+  Taborder = 6
+
+Name = GroupboxSettings
+  Type = Groupbox
+  Height = 169
+  Left = 312
+  Top = 48
+  Width = 305
+  Taborder = 2
+
+Name = LabelTitle
+  Type = Label
+  Color = 16744448
+  Height = 25
+  Left = 7
+  Size = 16
+  Style = bold
+  Top = 13
+  Width = 125
+  Caption = Fizzy Filter
+
+Name = ButtonFilter
+  Type = Button
+  Height = 25
+  Left = 324
+  Top = 288
+  Width = 88
+  Taborder = 3
+  Caption = Filter
+
+Name = ButtonClose
+  Type = Button
+  Height = 25
+  Left = 516
+  Top = 288
+  Width = 88
+  Taborder = 5
+  Caption = Close
+
+Name = ButtonSaveSettings
+  Type = Button
+  Height = 25
+  Left = 420
+  Top = 288
+  Width = 88
+  Taborder = 4
+  Caption = Save Settings
+
+Name = LabelTerr10
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 101
+  Top = 49
+  Width = 14
+  Caption = 1
+
+Name = LabelTerr15
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 116
+  Top = 49
+  Width = 23
+  Caption = 1.5
+
+Name = LabelTerr20
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 141
+  Top = 49
+  Width = 14
+  Caption = 2
+
+Name = LabelTerr25
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 156
+  Top = 49
+  Width = 23
+  Caption = 2.5
+
+Name = LabelTerr30
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 181
+  Top = 49
+  Width = 14
+  Caption = 3
+
+Name = LabelTerr35
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 196
+  Top = 49
+  Width = 23
+  Caption = 3.5
+
+Name = LabelTerr40
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 221
+  Top = 49
+  Width = 14
+  Caption = 4
+
+Name = LabelTerr45
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 236
+  Top = 49
+  Width = 23
+  Caption = 4.5
+
+Name = LabelTerr50
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 261
+  Top = 49
+  Width = 14
+  Caption = 5
+
+Name = LabelDiff10
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 74
+  Top = 68
+  Width = 14
+  Caption = 1
+
+Name = LabelDiff15
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 74
+  Top = 88
+  Width = 23
+  Caption = 1.5
+
+Name = LabelDiff20
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 74
+  Top = 108
+  Width = 14
+  Caption = 2
+
+Name = LabelDiff25
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 74
+  Top = 128
+  Width = 23
+  Caption = 2.5
+
+Name = LabelDiff30
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 74
+  Top = 148
+  Width = 14
+  Caption = 3
+
+Name = LabelDiff35
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 74
+  Top = 168
+  Width = 23
+  Caption = 3.5
+
+Name = LabelDiff40
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 74
+  Top = 188
+  Width = 14
+  Caption = 4
+
+Name = LabelDiff45
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 74
+  Top = 208
+  Width = 23
+  Caption = 4.5
+
+Name = LabelDiff50
+  Type = Label
+  Container = GroupboxFizzyGrid
+  Height = 13
+  Left = 74
+  Top = 228
+  Width = 14
+  Caption = 5
+
+Name = Edit1010
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 94
+  Top = 64
+  Width = 20
+  Taborder = 0
+
+Name = Edit1015
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 114
+  Top = 64
+  Width = 20
+  Taborder = 1
+
+Name = Edit1020
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 134
+  Top = 64
+  Width = 20
+  Taborder = 2
+
+Name = Edit1025
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 154
+  Top = 64
+  Width = 20
+  Taborder = 3
+
+Name = Edit1030
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 174
+  Top = 64
+  Width = 20
+  Taborder = 4
+
+Name = Edit1035
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 194
+  Top = 64
+  Width = 20
+  Taborder = 5
+
+Name = Edit1040
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 214
+  Top = 64
+  Width = 20
+  Taborder = 6
+
+Name = Edit1045
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 234
+  Top = 64
+  Width = 20
+  Taborder = 7
+
+Name = Edit1050
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 254
+  Top = 64
+  Width = 20
+  Taborder = 8
+
+Name = Edit1510
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 94
+  Top = 84
+  Width = 20
+  Taborder = 9
+
+Name = Edit1515
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 114
+  Top = 84
+  Width = 20
+  Taborder = 10
+
+Name = Edit1520
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 134
+  Top = 84
+  Width = 20
+  Taborder = 11
+
+Name = Edit1525
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 154
+  Top = 84
+  Width = 20
+  Taborder = 12
+
+Name = Edit1530
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 174
+  Top = 84
+  Width = 20
+  Taborder = 13
+
+Name = Edit1535
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 194
+  Top = 84
+  Width = 20
+  Taborder = 14
+
+Name = Edit1540
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 214
+  Top = 84
+  Width = 20
+  Taborder = 15
+
+Name = Edit1545
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 234
+  Top = 84
+  Width = 20
+  Taborder = 16
+
+Name = Edit1550
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 254
+  Top = 84
+  Width = 20
+  Taborder = 17
+
+Name = Edit2010
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 94
+  Top = 104
+  Width = 20
+  Taborder = 18
+
+Name = Edit2015
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 114
+  Top = 104
+  Width = 20
+  Taborder = 19
+
+Name = Edit2020
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 134
+  Top = 104
+  Width = 20
+  Taborder = 20
+
+Name = Edit2025
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 154
+  Top = 104
+  Width = 20
+  Taborder = 21
+
+Name = Edit2030
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 174
+  Top = 104
+  Width = 20
+  Taborder = 22
+
+Name = Edit2035
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 194
+  Top = 104
+  Width = 20
+  Taborder = 23
+
+Name = Edit2040
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 214
+  Top = 104
+  Width = 20
+  Taborder = 24
+
+Name = Edit2045
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 234
+  Top = 104
+  Width = 20
+  Taborder = 25
+
+Name = Edit2050
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 254
+  Top = 104
+  Width = 20
+  Taborder = 26
+
+Name = Edit2510
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 94
+  Top = 124
+  Width = 20
+  Taborder = 27
+
+Name = Edit2515
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 114
+  Top = 124
+  Width = 20
+  Taborder = 28
+
+Name = Edit2520
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 134
+  Top = 124
+  Width = 20
+  Taborder = 29
+
+Name = Edit2525
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 154
+  Top = 124
+  Width = 20
+  Taborder = 30
+
+Name = Edit2530
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 174
+  Top = 124
+  Width = 20
+  Taborder = 31
+
+Name = Edit2535
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 194
+  Top = 124
+  Width = 20
+  Taborder = 32
+
+Name = Edit2540
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 214
+  Top = 124
+  Width = 20
+  Taborder = 33
+
+Name = Edit2545
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 234
+  Top = 124
+  Width = 20
+  Taborder = 34
+
+Name = Edit2550
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 254
+  Top = 124
+  Width = 20
+  Taborder = 35
+
+Name = Edit3010
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 94
+  Top = 144
+  Width = 20
+  Taborder = 36
+
+Name = Edit3015
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 114
+  Top = 144
+  Width = 20
+  Taborder = 37
+
+Name = Edit3020
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 134
+  Top = 144
+  Width = 20
+  Taborder = 38
+
+Name = Edit3025
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 154
+  Top = 144
+  Width = 20
+  Taborder = 39
+
+Name = Edit3030
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 174
+  Top = 144
+  Width = 20
+  Taborder = 40
+
+Name = Edit3035
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 194
+  Top = 144
+  Width = 20
+  Taborder = 41
+
+Name = Edit3040
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 214
+  Top = 144
+  Width = 20
+  Taborder = 42
+
+Name = Edit3045
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 234
+  Top = 144
+  Width = 20
+  Taborder = 43
+
+Name = Edit3050
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 254
+  Top = 144
+  Width = 20
+  Taborder = 44
+
+Name = Edit3510
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 94
+  Top = 164
+  Width = 20
+  Taborder = 45
+
+Name = Edit3515
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 114
+  Top = 164
+  Width = 20
+  Taborder = 46
+
+Name = Edit3520
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 134
+  Top = 164
+  Width = 20
+  Taborder = 47
+
+Name = Edit3525
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 154
+  Top = 164
+  Width = 20
+  Taborder = 48
+
+Name = Edit3530
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 174
+  Top = 164
+  Width = 20
+  Taborder = 49
+
+Name = Edit3535
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 194
+  Top = 164
+  Width = 20
+  Taborder = 50
+
+Name = Edit3540
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 214
+  Top = 164
+  Width = 20
+  Taborder = 51
+
+Name = Edit3545
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 234
+  Top = 164
+  Width = 20
+  Taborder = 52
+
+Name = Edit3550
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 254
+  Top = 164
+  Width = 20
+  Taborder = 53
+
+Name = Edit4010
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 94
+  Top = 184
+  Width = 20
+  Taborder = 54
+
+Name = Edit4015
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 114
+  Top = 184
+  Width = 20
+  Taborder = 55
+
+Name = Edit4020
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 134
+  Top = 184
+  Width = 20
+  Taborder = 56
+
+Name = Edit4025
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 154
+  Top = 184
+  Width = 20
+  Taborder = 57
+
+Name = Edit4030
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 174
+  Top = 184
+  Width = 20
+  Taborder = 58
+
+Name = Edit4035
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 194
+  Top = 184
+  Width = 20
+  Taborder = 59
+
+Name = Edit4040
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 214
+  Top = 184
+  Width = 20
+  Taborder = 60
+
+Name = Edit4045
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 234
+  Top = 184
+  Width = 20
+  Taborder = 61
+
+Name = Edit4050
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 254
+  Top = 184
+  Width = 20
+  Taborder = 62
+
+Name = Edit4510
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 94
+  Top = 204
+  Width = 20
+  Taborder = 63
+
+Name = Edit4515
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 114
+  Top = 204
+  Width = 20
+  Taborder = 64
+
+Name = Edit4520
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 134
+  Top = 204
+  Width = 20
+  Taborder = 65
+
+Name = Edit4525
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 154
+  Top = 204
+  Width = 20
+  Taborder = 66
+
+Name = Edit4530
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 174
+  Top = 204
+  Width = 20
+  Taborder = 67
+
+Name = Edit4535
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 194
+  Top = 204
+  Width = 20
+  Taborder = 68
+
+Name = Edit4540
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 214
+  Top = 204
+  Width = 20
+  Taborder = 69
+
+Name = Edit4545
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 234
+  Top = 204
+  Width = 20
+  Taborder = 70
+
+Name = Edit4550
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 254
+  Top = 204
+  Width = 20
+  Taborder = 71
+
+Name = Edit5010
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 94
+  Top = 224
+  Width = 20
+  Taborder = 72
+
+Name = Edit5015
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 114
+  Top = 224
+  Width = 20
+  Taborder = 73
+
+Name = Edit5020
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 134
+  Top = 224
+  Width = 20
+  Taborder = 74
+
+Name = Edit5025
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 154
+  Top = 224
+  Width = 20
+  Taborder = 75
+
+Name = Edit5030
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 174
+  Top = 224
+  Width = 20
+  Taborder = 76
+
+Name = Edit5035
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 194
+  Top = 224
+  Width = 20
+  Taborder = 77
+
+Name = Edit5040
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 214
+  Top = 224
+  Width = 20
+  Taborder = 78
+
+Name = Edit5045
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 234
+  Top = 224
+  Width = 20
+  Taborder = 79
+
+Name = Edit5050
+  Type = Edit
+  Container = GroupboxFizzyGrid
+  Height = 21
+  Left = 254
+  Top = 224
+  Width = 20
+  Taborder = 80
+
+Name = LabelTerrain
+  Type = Label
+  Color = 16744448
+  Container = GroupboxFizzyGrid
+  Height = 17
+  Left = 160
+  Top = 24
+  Width = 41
+  Caption = Terrain
+
+Name = LabelDifficulty
+  Type = Label
+  Color = 16744448
+  Container = GroupboxFizzyGrid
+  Height = 17
+  Left = 8
+  Top = 148
+  Width = 48
+  Caption = Difficulty
+
+Name = LabelAuthor
+  Type = Label
+  Height = 17
+  Left = 552
+  Top = 20
+  Width = 63
+  Caption = by longtrails
+
+Name = LabelVersion
+  Type = Label
+  Height = 17
+  Left = 136
+  Top = 20
+  Width = 73
+  Caption = Version: ?.?.?
+
+Name = LabelCellRepresents1
+  Type = Label
+  Color = 16744448
+  Height = 17
+  Left = 328
+  Top = 232
+  Width = 270
+  Caption = The number in each cell represents how many finds you
+
+Name = LabelCellRepresents2
+  Type = Label
+  Color = 16744448
+  Height = 17
+  Left = 328
+  Top = 248
+  Width = 222
+  Caption = still need to qualify for the selected Fizzy type.
+
+Name = ButtonSettings
+  Type = Button
+  Container = GroupboxSettings
+  Height = 25
+  Left = 12
+  Top = 130
+  Width = 81
+  Taborder = 0
+  Caption = Settings
+
+Name = LabelFizzyType1
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 12
+  Top = 18
+  Width = 57
+  Caption = Fizzy type:
+
+Name = LabelFizzyType2
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 152
+  Top = 18
+  Width = 14
+  Caption = ?
+
+Name = LabelFoundCachesDatabase1
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 12
+  Top = 40
+  Width = 126
+  Caption = Found caches database:
+
+Name = LabelFoundCachesDatabase2
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 152
+  Top = 40
+  Width = 14
+  Caption = ?
+
+Name = LabelUnfoundCachesDatabase1
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 12
+  Top = 62
+  Width = 137
+  Caption = Unfound caches database:
+
+Name = LabelUnfoundCachesDatabase2
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 152
+  Top = 62
+  Width = 14
+  Caption = ?
+
+Name = LabelState1
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 12
+  Top = 84
+  Width = 36
+  Caption = State:
+
+Name = LabelState2
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 152
+  Top = 84
+  Width = 14
+  Caption = ?
+
+Name = LabelPostMacro1
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 12
+  Top = 106
+  Width = 100
+  Caption = Post filtering macro:
+
+Name = LabelPostMacro2
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 152
+  Top = 106
+  Width = 14
+  Caption = ?
+
+Name = LabelPostMacro3
+  Type = Label
+  Container = GroupboxSettings
+  Height = 17
+  Left = 152
+  Top = 120
+  Width = 14
+  Caption = ?
+
+<enddata>
+
+#---------------------------------------------------------------------------------------------
+# Settings form
+#---------------------------------------------------------------------------------------------
+
+<Data> VarName=$SettingsForm
+
+Name = FormSettings
+  Type = Form
+  Caption = Settings
+  Height = 326
+  Width = 297
+
+Name = LabelFizzyType
+  Type = Label
+  Height = 13
+  Left = 12
+  Top = 13
+  Width = 57
+  Caption = Fizzy type:
+
+Name = ComboboxFizzyType
+  Type = Combobox
+  Color = 12713983
+  Height = 21
+  Left = 12
+  Top = 28
+  Values = $uples
+  Width = 260
+  Taborder = 0
+
+Name = LabelFoundCachesDatabase
+  Type = Label
+  Height = 17
+  Left = 12
+  Top = 61
+  Width = 126
+  Caption = Found caches database:
+
+Name = ComboboxFoundCachesDatabase
+  Type = Combobox
+  Color = 12713983
+  Height = 21
+  Left = 12
+  Top = 76
+  Values = $databaseList
+  Width = 260
+  Taborder = 1
+
+Name = LabelUnfoundCachesDatabase
+  Type = Label
+  Height = 17
+  Left = 12
+  Top = 109
+  Width = 137
+  Caption = Unfound caches database:
+
+Name = ComboboxUnfoundCachesDatabase
+  Type = Combobox
+  Color = 12713983
+  Height = 21
+  Left = 12
+  Top = 124
+  Values = $databaseList
+  Width = 260
+  Taborder = 2
+
+Name = LabelStates
+  Type = Label
+  Height = 17
+  Left = 12
+  Top = 157
+  Width = 36
+  Caption = State:
+
+Name = ComboboxStates
+  Type = Combobox
+  Color = 12713983
+  Height = 21
+  Left = 12
+  Top = 172
+  Values = $stateList
+  Width = 260
+  Taborder = 3
+
+Name = CheckboxPostMacro
+  Type = Checkbox
+  Height = 20
+  Left = 12
+  Top = 200
+  Width = 269
+  Taborder = 4
+  Caption = Run this macro after filtering on unfound caches
+
+Name = FilePostMacro
+  Type = File
+  Height = 21
+  Left = 12
+  Top = 224
+  Width = 261
+  Taborder = 5
+
+Name = ButtonOk
+  Type = Button
+  Height = 25
+  Left = 48
+  Top = 256
+  Width = 88
+  Taborder = 6
+  Caption = OK
+
+Name = ButtonCancel
+  Type = Button
+  Height = 25
+  Left = 146
+  Top = 256
+  Width = 88
+  Taborder = 7
+  Caption = Cancel
+
+<enddata>

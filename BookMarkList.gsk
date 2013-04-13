@@ -1,0 +1,341 @@
+#*******************************************
+# MacVersion = 1.6
+# MacDescription = Save and restore bookmark lists
+# MacAuthor = Clyde
+# MacFileName = BookMarkList.gsk
+#*******************************************
+
+Vercheck Version=7.7.2.56
+
+# Declare all used variables
+GoSub Name=Declare
+
+# Populate the Restore and Delete comboboxes
+Gosub Name=Init
+Gosub Name=Populate
+
+While True
+  $FormExit = form($form,"")
+  if $FormExit = "FrmBtnRestore"
+    GoSub Name=Restore
+    Break
+  EndIf
+
+  If $FormExit = "FrmBtnSave"
+    GoSub Name=Save
+  EndIf
+
+  If $FormExit = "FrmBtnDelete"
+    GoSub Name=Delete
+  EndIf
+
+  If $FormExit = "FrmBtnCancel"
+    Break
+  EndIf
+
+
+EndWhile
+
+BeginSub Name=Init
+  $File = $_AppData + "\macros\BookMarkList.dat"
+  #debug status=on
+
+  # if we find the .dat file, then list is old format and we must convert to Sqlite
+  If FileExists($file)
+    $status = sqlite("create", $_AppData + "\macros\BookMarkList.db3")
+    $status = sqlite("sql","create table bmCodes (bmCode text, bmkey Integer)") 
+    $status = sqlite("sql","create table bmNames (bmName text, bmKey Integer)") 
+    $status = sqlite("sql","begin") 
+    #$FrmCbxValues = List("FrmCbxValues","replace","") 
+    $data = GetFile($file)
+    $NumberOfLists = RegExCount("\<name=",$data)
+    $x = 1
+    While $x < $NumberOfLists + 1
+      $x = $x + 1
+      $work = Extract($data,"<name=",$x)
+      $name = Extract($work,">",1)
+      $status = Sqlite("sql","Insert into bmNames values(" + sqlquote($name) + ",$x)" )
+      $work = Extract($work,">",2)
+      $work = Extract($work,"</name>",1)
+      $lines = RegExCount("\r\n",$work)
+      $j = 0
+      While $j < $lines
+        $j = $j + 1
+        IF frac($j/50) = 0
+          $status = "$j $name"
+          ShowStatus msg="$status"
+        EndIf
+        $code = Extract($work,$_CrLf,$j)
+        $code = Replace($_CrLf,"",$code)
+        if not(isempty($code))
+          $status = Sqlite("sql","Insert into bmCodes values(" + sqlquote($code) + ",$x)" )
+        endif
+      EndWhile 
+    EndWhile
+    $status = sqlite("sql","commit") 
+    $status = sqlite("close","")
+    FileErase File=$File 
+    ShowStatus Msg=xxx Display=off
+  endif
+
+  $File = $_AppData + "\macros\BookMarkList.db3"
+  If not(FileExists($file))
+    $status = sqlite("create", $_AppData + "\macros\BookMarkList.db3")
+    $status = sqlite("sql","create table bmCodes (bmCode text, bmkey Integer)") 
+    $status = sqlite("sql","create table bmNames (bmName text, bmKey Integer)") 
+    $status = sqlite("close","") 
+  Endif
+
+  $status = sqlite("sql","attach '$file' as bml")
+
+EndSub
+
+BeginSub Name=Populate
+  $work = sqlite("sql","select count(*) from bmNames")
+  
+  if val($work) = 0   
+     # No bookmark list, so disable buttons and comboboxes
+     $Form = EditForm($Form,"FrmBtnRestore","Enabled","No")
+     $Form = EditForm($Form,"FrmBtnDelete","Enabled","No")
+     $Form = EditForm($Form,"FrmCbxRestoreList","Enabled","No")
+     $Form = EditForm($Form,"FrmCbxDeleteList","Enabled","No")
+  else
+    $FrmCbxValues = Sqlite("sql","Select bmName from bmNames order by bmName")
+    $FrmCbxValuesSave = ";" + $FrmCbxValues 
+  EndIf
+Endsub
+
+BeginSub Name=Restore
+
+  $work = sqlite("sql","select bmKey from bmNames where bmname = " + sqlquote($FrmCbxRestoreList))
+  $x = val($work)
+ 
+ # we need to create a table  mfilter persistance - we can't use the existing BookMarkList database because it is closed on macro exit. 
+  $status = sqlite("sql","drop table if exists Macro_BookMarkListFilter")
+  $status = sqlite("sql","create table Macro_BookMarkListFilter as select bmCode from bmCodes where bmKey = $x")
+ 
+  MFilter Where=code in (select * from Macro_BookMarkListFilter)
+  
+  If $_FilterCount = 0
+    MsgOk Msg="Sorry, current database contains zero bookmarked waypoints"
+  EndIf
+Endsub
+
+BeginSub Name=Save
+  $work = sqlite("sql","select count(*) from bmNames where bmname = " + sqlquote($FrmCbxSaveList)) 
+  if val($work) > 0
+    If Form($YesNo,"") <> "FrmBtnYes"
+      ExitSub
+    EndIf
+  EndIf 
+  Transaction Action=Begin
+  $status = sqlite("sql","delete from bmCodes where bmKey = (select bmKey from bmNames where bmname = " + sqlquote($FrmCbxSaveList) + ")")
+  $status = sqlite("sql","delete from bmNames where bmname = " +  sqlquote($FrmCbxSaveList)) 
+  $work = sqlite("sql","select max(bmKey) from bmNames")
+  $x = val($work) + 1
+  $status = sqlite("sql","insert into bmCodes select code,$x from caches where rowid in (select * from gridtemp)")
+  $status = sqlite("sql","insert into bmNames values(" + sqlquote($FrmCbxSaveList) + ",$x)")
+  Transaction Action=End 
+
+  GoSub Name=Populate
+ # MsgOk Msg=Bookmark list saved
+EndSub
+
+BeginSub Name=Delete
+  Transaction Action=Begin
+  $status = sqlite("sql","delete from bmCodes where bmKey = (select bmKey from bmNames where bmname = " + sqlquote($FrmCbxDeleteList) + ")")
+  $status = sqlite("sql","delete from bmNames where bmname = " +  sqlquote($FrmCbxDeleteList))
+  Transaction Action=End  
+  GoSub Name=Populate 
+EndSub
+
+
+
+
+BeginSub Name=Declare
+#*******************************************************
+#   Variable declarations for
+#   C:\gsak\Macros\BookMarkList.gsk
+#
+#   Generated 15/05/2007 4:50:19 PM on GSAKVariables.gsk Rev V0.20 B4
+#
+#*******************************************************
+
+
+  Option Explicit=Yes
+
+  Declare Var=$code Type=String
+  Declare Var=$Count Type=String
+  Declare Var=$Countn Type=Numeric
+  Declare Var=$data Type=String
+  Declare Var=$dummy Type=Boolean
+  Declare Var=$File Type=String
+  Declare Var=$FileData Type=String
+  Declare Var=$Form Type=String
+  Declare Var=$FrmCbxValues Type=String
+  Declare Var=$FrmCbxValuesSave Type=String
+  Declare Var=$ldata Type=String
+  Declare Var=$NumberOfLists Type=Numeric
+  Declare Var=$out Type=String
+  Declare Var=$Status Type=String
+  Declare Var=$work Type=String
+  Declare Var=$x Type=Numeric
+  Declare  Var=$limit Type=Numeric
+  Declare Var=$YesNo Type=String
+  Declare Var=$y Type=Numeric
+  Declare Var=$RegEx Type=String 
+  Declare Var=$result Type=String
+  $FrmCbxValues = List("FrmCbxValues","create",";") 
+  Declare Var=$name Type=String
+  Declare Var=$lines Type=Numeric
+  Declare Var=$j Type=Numeric 
+  Declare Var=$FormExit type=String
+EndSub
+
+
+<Data> Varname=$form
+#********************************************************************
+# Form generated by GSAK form designer on Tue 15-May-2007 16:07:12
+#********************************************************************
+
+Name = Form1
+  type = form
+  height = 286
+  width = 384
+  caption = Bookmark List Management V1.4
+
+Name = FrmGrpRestore
+  type = GroupBox
+  left = 9
+  top = 4
+  height = 69
+  width = 365
+  caption = Restore a bookmark list
+  
+
+Name = FrmBtnRestore
+  type = Button
+  left = 300
+  top = 19
+  height = 29
+  width = 59
+  caption = Restore
+  container = FrmGrpRestore
+
+Name = FrmGrpSave
+  type = GroupBox
+  left = 10
+  top = 74
+  height = 60
+  width = 365
+  Caption = Save a bookmark list
+
+
+Name = FrmBtnSave
+  type = Button
+  left = 300
+  top = 14
+  height = 29
+  width = 59
+  Caption = Save 
+  container = FrmGrpSave
+
+Name = FrmCbxRestoreList
+  type = ComboBox
+  left = 5
+  top = 23
+  height = 21
+  width = 290
+  container = FrmGrpRestore
+  values = $FrmCbxValues
+  display = 15
+
+Name = FrmCbxSaveList
+  type = ComboBox
+  left = 3
+  top = 19
+  height = 21
+  width = 287
+  container = FrmGrpSave
+  values = $FrmCbxValuesSave
+  display = 15
+  directinput = Yes
+
+Name = FrmGrpDelete
+  type = GroupBox
+  left = 10
+  top = 136
+  height = 69
+  width = 365
+  caption = Delete a bookmark list
+  container = fmMacro_2
+
+Name = FrmBtnDelete
+  type = Button
+  left = 300
+  top = 20
+  height = 29
+  width = 59
+  caption = Delete
+  container = FrmGrpDelete
+
+Name = FrmCbxDeleteList
+  type = ComboBox
+  left = 5
+  top = 23
+  height = 21
+  width = 290
+  container = FrmGrpDelete
+  values = $FrmCbxValues
+
+Name = FrmBtnCancel
+  type = Button
+  left = 128
+  top = 215
+  height = 32
+  width = 75
+  caption = Cancel 
+
+<EndData>
+
+<Data> Varname=$YesNo
+#********************************************************************
+# Form generated by GSAK form designer on Tue 15-May-2007 16:47:31
+#********************************************************************
+
+Name = YesNo
+  type = form
+  height = 123
+  width = 195
+  Caption = Warning!
+
+Name = FrmLbl3
+  type = Label
+  left = 7
+  top = 21
+  height = 13
+  width = 176
+  Caption = Bookmark already exists, Overwrite?
+
+Name = FrmBtnYes
+  type = Button
+  left = 8
+  top = 52
+  height = 33
+  width = 75
+  caption = Yes
+
+Name = FrmBtnNo
+  type = Button
+  left = 106
+  top = 52
+  height = 33
+  width = 75
+  caption = No
+
+<EndData>
+
+
+
+
+

@@ -1,0 +1,220 @@
+# MacVersion = 1.0.1
+# MacDescription = RouteMe
+# MacFileName = routeme.gsk
+# MacAuthor = Pasha Phares
+####################################################################
+# RouteMe.1.0-6.6.0.40-20060326
+# By Pasha Phares
+# Modified by Steve Bromley to use KML files 
+#
+# Plots route using Google Maps, wget, and GPSBabel
+# between two selected caches, then displays all
+# caches within user-specified miles of the route.
+#
+# Requirements:
+# You must have wget (http://www.gnu.org/software/wget/wget.html)
+# and a GPSBabel version >= 1.2.8-beta20060209
+# (http://www.gpsbabel.org)
+#
+# Edit the initial variables below to match the file locations on
+# your system.
+####################################################################
+# Set debugging on or off
+DEBUG Status=Off
+VERCHECK version=6.6.0.42
+
+# Location of wget.exe (edit this to match!)
+$wget = "C:\Windows\wget.exe"
+
+# Location of babel (you shouldn't need to change this.)
+$babel = $_Install + "\gpsbabel.exe"
+
+# Variables you should leave alone.
+$gmfile = $_Install + "\temp\gmaproute"
+$arcfile = $_Install + "\temp\arcfile.txt"
+
+# Check to see whether wget and babel exist
+WHILE NOT (FileExists($wget))
+	$inputmsg=$wget + " not found." + $_NewLine + "Enter fully-qualified path to wget.exe"
+	INPUT Msg="$inputmsg" Default="$wget" Varname=$wget
+ENDWHILE
+WHILE NOT (FileExists($babel))
+	$inputmsg=$babel + " not found." + $_NewLine + "Enter fully-qualified path to gpsbabel.exe"
+	INPUT Msg="$inputmsg" Default="$babel" Varname=$babel
+ENDWHILE
+
+# If the $gmfile or $arcfile exist, remove them first
+IF FileExists($gmfile) = True
+	RUNPGM Pgm="cmd.exe" Parms=/C del /Q "$gmfile" Wait=Yes
+ENDIF
+IF FileExists($arcfile) = True
+	RUNPGM Pgm="cmd.exe" Parms=/C del /Q "$arcfile" Wait=Yes
+ENDIF
+
+# Set a filter for user-flagged records
+MFILTER If=$d_UserFlag
+
+# If there's not two and only two records flagged, error out
+IF $_FilterCount <> 2
+	PAUSE Msg="Please UserFlag two (and only two) cache records as your start and endpoints."
+	CANCEL
+ENDIF
+
+# Get the lat/long pairs from the two caches
+GOTO Position=Top
+$startlat = $d_Latitude
+$startlong = $d_Longitude
+GOTO Position=Next
+$endlat = $d_Latitude
+$endlong = $d_Longitude
+
+# Cancel the user-flag filter
+CANCELFILTER
+
+# Build the URL for Google Maps to return a route
+$url = "http://maps.google.com/maps?q=$startlat,$startlong to $endlat,$endlong&output=kml"
+
+# Run WGET to get the route from Google Maps using the lat/long pairs
+RUNPGM Pgm="$wget" Parms=-O "$gmfile" "$url" Wait=Yes
+
+# Verify that $gmfile exists before continuing
+IF NOT (FileExists($gmfile))
+	PAUSE Msg="GMFile does not exist! Problem may lie with your internet connection or perhaps Google has changed their format again."
+	CANCEL
+ENDIF
+
+# Run GPSBabel to convert the route from Google format to a GSAK-
+# compatible arc file. Cut the route down to 750 points or less.
+RUNPGM Pgm="$babel" Parms=-i kml -f "$gmfile" -x simplify,count=750 -o arc -F "$arcfile" Wait=Yes
+
+# Ask the user how close to route to filter
+INPUT Msg="Enter distance from route to show caches:" Default=".5" VarName=$arcdistance
+
+# Check if the arcfile exists. If it does, add the distance to the filter
+IF FileExists($arcfile) = False
+	PAUSE Msg="Arcfile does not exist!"
+	CANCEL
+ELSE
+  $arcfilterline = "ArcFilter="
+	FILEREAD File=$arcfile
+		$arcfilterline = $arcfilterline + "~" + $line
+	ENDREAD
+ENDIF
+
+# Join our final arcfilter dialog settings string together
+$arcfilter = $arcfilterstart + "edtArcDistance=" + $arcdistance + $_NewLine + $arcfilterend + $arcfilterline + "~~~" + $_NewLine
+
+# Set the arc filter using the settings string
+MACROSET Dialog=Filter VarName=$arcfilter
+FILTER Name=<macro>
+
+# Remove gmfile and arcfile now that we're done with them
+RUNPGM Pgm="cmd.exe" Parms=/C del /Q "$gmfile" Wait=No
+RUNPGM Pgm="cmd.exe" Parms=/C del /Q "$arcfile" Wait=No
+
+
+# Data structures to set the arc filter dialog correctly
+# Note: this filter also shows only unfound, available records.
+<data> VarName=$arcfilterstart
+edtDesc=
+cbxDesc=0
+cbxFilter=0
+edtDistance=
+cbxDistance=0
+edtDistance2=
+edtPlacedBy=
+cbxDifficulty=0
+cbxTerrain=0
+cbxDif=8
+cbxTer=8
+cbxPlacedBy=0
+cbxDif2=8
+cbxTer2=8
+edtUserData=
+cbxUserData=0
+chkReverse=False
+edtTbugName=
+cbxTbugName=0
+cbxSource=0
+edtSource=
+cbxUser2=0
+EdtUser2=
+cbxOwnerName=0
+edtOwnerName=
+edtUserId=
+cbxState=0
+cbxCountry=0
+edtState=
+edtCountry=
+cbxUsort=4
+edtUsort=0
+edtUsort2=0
+edtCode=
+cbxCode=0
+cbxFoundCount=0
+EdtFoundCount=0
+<enddata>
+
+<data> VarName=$arcfilterend
+chkArcExclude=False
+chkFound=False
+chkNotFound=True
+chkExclude=True
+chkAvailable=True
+chkArchivedOnly=False
+chkTempUnavailable=False
+chkUserFlag1=True
+chkUserFlag2=True
+chkBugNo=True
+cbxBugs=True
+chkNoteNo=True
+chkNoteYes=True
+edtFull=
+chkFullHighlight=True
+chkRegEx=False
+chkFullNotes=False
+chkFullLogs=False
+chkFullDes=False
+RbtFullAll=True
+rbtFullSelect=False
+chkFtfNo=True
+chkFtfyes=True
+cbxMicro=True
+cbxUnknown=True
+cbxRegular=True
+cbxLarge=True
+cbxSmall=True
+cbxN=True
+cbxNW=True
+cbxNe=True
+cbxS=True
+cbxSW=True
+cbxSE=True
+cbxE=True
+cbxW=True
+chkLockYes=True
+chkLockNo=True
+chkCorrectYes=True
+chkCorrectNo=True
+chkDNFYes=True
+chkDNFNo=True
+chkWatchYes=True
+chkWatchNo=True
+chkChildYes=True
+chkChildNo=True
+rbtArc=True
+rbtPoly=False
+rbtPoint=False
+Traditional=True
+Multi=True
+LetterBox=True
+CITO=True
+Event=False
+Locationless=True
+Virtual=True
+Web Cam=True
+Mystery=True
+Benchmark=False
+Other=False
+Earth=True
+<enddata>

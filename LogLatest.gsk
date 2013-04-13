@@ -1,0 +1,62 @@
+# MacDescription = Log Today's DNFs and all found caches.
+# MacFileName =LogLatest.gsk
+# MacAuthor = byonke
+# MacVersion=1.0
+
+DEBUG Status="OFF"
+SPEEDMODE Status=OFF
+$macrohome = Sysinfo("MacroPath")
+
+# Filter so our list is only new DNFs.
+
+MFILTER Expression=$d_DNF AND $d_UserFlag
+
+# If there's records in the filter, sort 'em and log 'em, pausing between each for the user to confirm.
+
+IF .NOT. ($_FilterCount = 0)
+   USERFLAG Type=Clear Range=Filter
+   SORT By="FoundByMe;UserSort"
+   WHILE .NOT. $_EOL
+	$LogData = "%UserLog"
+	$Signature = GetFile($Macrohome + "\Signature.txt")
+	$ClipData = $LogData+$_NewLine+$Signature
+	CLIP tags=$ClipData
+
+	WEB url="http://www.geocaching.com/seek/log.aspx?LogType=3&ID=%gcid"
+	PAUSE Msg="Click Continue when logged successfully."
+	USERFLAG Type=Set Range=1
+	GOTO Position=Next
+   ENDWHILE
+ENDIF
+
+SORT By="Natural"
+CANCELFILTER
+
+#PAUSE msg="End of DNFs"
+
+MFILTER Expression=$d_Found AND $d_UserFlag
+GOTO Position=Top
+
+#PAUSE msg="Now the Founds"
+
+# If there's records in the filter, sort 'em and log 'em, pausing between each for the user to confirm.
+
+IF .NOT. ($_FilterCount = 0)
+   USERFLAG Type=Clear Range=Filter
+   SORT By="FoundByMe;UserSort"
+   WHILE .NOT. $_EOL
+	$LogData = "%UserLog"
+	$Signature = GetFile($Macrohome + "\Signature.txt")
+	$ClipData = $LogData+$_NewLine+$Signature
+	CLIP tags=$ClipData
+	WEB url="http://www.geocaching.com/seek/log.aspx?LogType=2&ID=%gcid"
+	PAUSE Msg="Click Continue when logged successfully."
+	USERFLAG Type=Set Range=1
+	GOTO Position=Next
+   ENDWHILE   
+MOVECOPY Settings="FoundIt"   
+ENDIF
+
+SORT By="Natural"
+
+# Done with everything.

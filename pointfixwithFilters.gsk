@@ -1,0 +1,756 @@
+################################
+# PointFilter.txt v.1.0-20060418
+# by Pasha Phares
+#
+# Requires: => v.6.6.0
+#
+# By default this macro shows
+# only unfound, available
+# caches.
+################################
+#DEBUG Status=On
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = PointFix macro with Filtering
+# MacAuthor = javapgmr
+# MacFileName = PointFixWithFilters.gsk
+# MacUrl =
+#*******************************************
+
+
+# Version check
+VERCHECK Version=7.5.0.0 
+DEBUG Status=OFF
+
+GOSUB Name=Declare
+
+$MacLoc=$_Install + "\Macros\pointFixwithFilters.xml"
+
+	MacSettings Type=R Filecheck=N 
+
+IF IsEmpty($vDistance)
+$vN=TRUE
+$vNW=TRUE
+$vNE=TRUE
+$vE=TRUE
+$vS=TRUE
+$vSW=TRUE
+$vSE=TRUE
+$vW=TRUE
+
+$vTraditional=TRUE
+$vMulti=TRUE
+$vLetterbox=TRUE
+$vCITO=FALSE
+$vEvent=FALSE
+$vLocationless=FALSE
+$vVirtual=TRUE
+$vWebcam=TRUE
+$vMystery=TRUE
+$vBenchmark=FALSE
+$vOther=TRUE
+$vEarth=TRUE
+$vAPE=TRUE
+$vMega=FALSE
+$vunAvailable=FALSE
+$vDiff="3.5"
+$vTerr="3.0"
+$vDistance="25"
+ENDIF
+
+$ratings="1.0;1.5;2.0;2.5;3.0;3.5;4.0;4.5;5.0"
+
+
+# Un comment the next line if you want to run the macro one line at a time
+#DEBUG Status="on"
+$formexit = form($form,"")
+IF $ok
+GOSUB Name=Main
+ENDIF
+
+
+
+
+
+BEGINSUB Name=Main
+
+MACSettings Type=S  Vars=vN,vNW,vNE,vE,vS,vSW,vSE,vW,vTraditional,vMulti,vLetterbox,vCITO,vEvent,vLocationless,vVirtual,vWebcam,vMystery,vBenchmark,vOther,vEarth,vAPE,vMega,vunAvailable,vDiff,vTerr,vDistance
+
+	# Keep asking until they enter a valid number
+	IF IsEmpty($vDistance) OR RegEx("[^0-9.]", $vDistance)
+		MSGOk Msg="Distance is missing or not numeric."
+		CANCELFILTER
+		EXITSUB
+	ENDIF	
+	
+# Filter for user-flagged caches
+MFILTER If=$d_UserFlag
+
+# If there are no user-flagged caches, error out.
+IF $_FilterCount < 1
+	PAUSE Msg="No records User Flagged! Unable to contine."
+	CANCEL
+# If there are, proceed.
+ELSE
+
+# Save the currently selected code and make sure it is part of the cache raid filter
+$CurrentCode = $d_Code
+$diff = (Val($vDiff)* 2) - 2
+$terr = (Val($vTerr)* 2) - 2
+
+
+$CR=Replace("{distance}",$vDistance,$CR,TRUE)
+$CR=Replace("{N}",BoolToStr($vN,"True","False"),$CR,TRUE)
+$CR=Replace("{NW}",BoolToStr($vNW,"True","False"),$CR,TRUE)
+$CR=Replace("{NE}",BoolToStr($vNE,"True","False"),$CR,TRUE)
+$CR=Replace("{E}",BoolToStr($vE,"True","False"),$CR,TRUE)
+$CR=Replace("{S}",BoolToStr($vS,"True","False"),$CR,TRUE)
+$CR=Replace("{SW}",BoolToStr($vSW,"True","False"),$CR,TRUE)
+$CR=Replace("{SE}",BoolToStr($vSE,"True","False"),$CR,TRUE)
+$CR=Replace("{W}",BoolToStr($vW,"True","False"),$CR,TRUE)
+
+$CR=Replace("{traditional}",BoolToStr($vTraditional,"True","False"),$CR,TRUE)
+$CR=Replace("{multi}",BoolToStr($vMulti,"True","False"),$CR,TRUE)
+$CR=Replace("{letterbox}",BoolToStr($vLetterbox,"True","False"),$CR,TRUE)
+$CR=Replace("{cito}",BoolToStr($vCITO,"True","False"),$CR,TRUE)
+$CR=Replace("{event}",BoolToStr($vEvent,"True","False"),$CR,TRUE)
+$CR=Replace("{locationless}",BoolToStr($vLocationless,"True","False"),$CR,TRUE)
+$CR=Replace("{virtual}",BoolToStr($vVirtual,"True","False"),$CR,TRUE)
+$CR=Replace("{webcam}",BoolToStr($vWebcam,"True","False"),$CR,TRUE)
+$CR=Replace("{mystery}",BoolToStr($vMystery,"True","False"),$CR,TRUE)
+$CR=Replace("{benchmark}",BoolToStr($vBenchmark,"True","False"),$CR,TRUE)
+$CR=Replace("{other}",BoolToStr($vOther,"True","False"),$CR,TRUE)
+$CR=Replace("{earth}",BoolToStr($vEarth,"True","False"),$CR,TRUE)
+$CR=Replace("{ape}",BoolToStr($vAPE,"True","False"),$CR,TRUE)
+$CR=Replace("{megaevent}",BoolToStr($vMega,"True","False"),$CR,TRUE)
+$CR=Replace("{terr}",NumToStr($terr),$CR,TRUE)
+$CR=Replace("{diff}",NumToStr($diff),$CR,TRUE)
+$CR=Replace("{unAvailable}",BoolToStr($vunAvailable,"True","False"),$CR,TRUE)
+
+
+	# Set current position to the first flagged cache
+	GOTO Position=Top
+
+	# Add the lat/long of each flagged cache to the point filter
+	WHILE NOT ($_EOL)
+		$pointfilterline = $pointfilterline + "~" + $d_Latitude + ", " + $d_Longitude 
+		GOTO Position=Next
+	ENDWHILE
+	
+	CANCELFILTER
+
+	$CR=Replace("{arcfilter}",$pointfilterline,$CR,TRUE)	
+	
+	# Put the full point filter together
+	#$status = putfile("c:\temp\bug.txt",$CR)
+	
+# Set the Filter dialog with the point filter
+	MACROSET Dialog=Filter VarName=$CR
+	DEBUG status=OFF
+	# Run the filter
+	FILTER Name=<macro>
+	
+	# If there's no results, say so and exit
+	IF $_FilterCount < 1
+		PAUSE Msg="No records match the filter. Clearing and exiting."
+		EXITSUB
+	ENDIF
+ENDIF
+
+ENDSUB
+
+
+# Variable structure to store the Filter dialog options,
+# minus the distance and points themselves
+<data> VarName=$CR
+edtDesc=
+cbxDesc=0
+cbxFilter=0
+edtDistance={distance}
+cbxDistance=0
+edtDistance2=
+edtPlacedBy=
+cbxDifficulty=0
+cbxTerrain=0
+cbxDif={diff}
+cbxTer={terr}
+cbxPlacedBy=0
+cbxDif2=8
+cbxTer2=8
+edtUserData=
+cbxUserData=0
+chkReverse=False
+edtTbugName=
+cbxTbugName=0
+cbxSource=0
+edtSource=
+cbxUser2=0
+EdtUser2=
+cbxOwnerName=0
+edtOwnerName=
+chkArcExclude=False
+chkFound=False
+chkNotFound=True
+chkExclude=True
+chkAvailable=True
+chkArchivedOnly=False
+chkTempUnavailable={UnAvailable}
+chkUserFlag1=True
+chkUserFlag2=True
+chkBugNo=True
+cbxBugs=True
+chkNoteNo=True
+chkNoteYes=TRUE
+cbxN={N}
+cbxNW={NW}
+cbxNe={NE}
+cbxS={S}
+cbxSW={SW}
+cbxSE={SE}
+cbxE={E}
+cbxW={W}
+edtFull=
+chkFullHighlight=True
+chkRegEx=False
+chkFullNotes=False
+chkFullLogs=False
+chkFullDes=False
+RbtFullAll=True
+rbtFullSelect=False
+chkFtfNo=True
+chkFtfyes=True
+rbtArc=False
+rbtPoly=False
+rbtPoint=True
+edtArcDistance={distance}
+ArcFilter={arcfilter}
+
+
+Traditional={traditional}
+Multi={multi}
+LetterBox={letterbox}
+CITO={cito}
+Event={event}
+Locationless={locationless}
+Virtual={virtual}
+Web Cam={webcam} 
+Mystery={mystery}
+Benchmark={benchmark}
+Other={other}
+Earth={earth}
+Project APE={ape}
+Mega Event={megaevent}
+<enddata>
+
+#*******************************************************
+#   Variable declarations for
+#   pointfixwithFilters.gsk
+#
+#   Generated 07/13/2007 6:46:57 PM on GSAKVariables.gsk Rev V0.20 B11
+#
+#*******************************************************
+
+
+BEGINSUB Name=Declare
+Option Explicit=Yes
+
+Declare Var=$status Type=String
+Declare Var=$CR Type=String
+Declare Var=$CRXX Type=String
+Declare Var=$CR1 Type=String
+Declare Var=$CurrentCode Type=String
+Declare Var=$diff Type=Numeric
+Declare Var=$form Type=String
+Declare Var=$formexit Type=String
+Declare Var=$MacLoc Type=String
+Declare Var=$pointdistanceline Type=String
+Declare Var=$PointFilter Type=String
+Declare Var=$pointfilterline Type=String
+Declare Var=$ratings Type=String
+Declare Var=$terr Type=Numeric
+Declare Var=$vAPE Type=Boolean
+Declare Var=$vBenchmark Type=Boolean
+Declare Var=$vCITO Type=Boolean
+Declare Var=$vDiff Type=String
+Declare Var=$vDistance Type=String
+Declare Var=$vE Type=Boolean
+Declare Var=$vEarth Type=Boolean
+Declare Var=$vEvent Type=Boolean
+Declare Var=$vLetterbox Type=Boolean
+Declare Var=$vLocationless Type=Boolean
+Declare Var=$vMega Type=Boolean
+Declare Var=$vMulti Type=Boolean
+Declare Var=$vMystery Type=Boolean
+Declare Var=$vN Type=Boolean
+Declare Var=$vNE Type=Boolean
+Declare Var=$vNW Type=Boolean
+Declare Var=$vOther Type=Boolean
+Declare Var=$vS Type=Boolean
+Declare Var=$vSE Type=Boolean
+Declare Var=$vSW Type=Boolean
+Declare Var=$vTerr Type=String
+Declare Var=$vTraditional Type=Boolean
+Declare Var=$vVirtual Type=Boolean
+Declare Var=$vW Type=Boolean
+Declare Var=$vWebcam Type=Boolean
+Declare Var=$vunAvailable Type=Boolean
+ENDSUB
+
+
+
+<Data> Varname=$form
+#********************************************************************
+# Form generated by GSAK form designer on Fri 17-Aug-2007 22:42:21
+#********************************************************************
+
+Name = Form1
+  type = form
+  height = 428
+  width = 198
+
+Name = FrmLbl1
+  type = Label
+  left = 5
+  top = 30
+  height = 13
+  width = 51
+  caption = Distance
+  style = bold
+
+Name = vDistance
+  type = Edit
+  left = 91
+  top = 30
+  height = 21
+  width = 84
+
+Name = FrmLbl30
+  type = Label
+  left = 11
+  top = 152
+  height = 13
+  width = 10
+  caption = N
+  style = bold
+
+Name = FrmLbl33
+  type = Label
+  left = 46
+  top = 152
+  height = 13
+  width = 22
+  caption = NW
+  style = bold
+
+Name = FrmLbl35
+  type = Label
+  left = 92
+  top = 152
+  height = 13
+  width = 18
+  Caption = NE
+  style = bold
+
+Name = FrmLbl37
+  type = Label
+  left = 133
+  top = 152
+  height = 13
+  width = 9
+  caption = E
+  style = bold
+
+Name = FrmLbl39
+  type = Label
+  left = 11
+  top = 177
+  height = 13
+  width = 9
+  caption = S
+  style = bold
+
+Name = FrmLbl41
+  type = Label
+  left = 46
+  top = 177
+  height = 13
+  width = 21
+  caption = SW
+  style = bold
+
+Name = FrmLbl43
+  type = Label
+  left = 92
+  top = 177
+  height = 13
+  width = 17
+  caption = SE
+  style = bold
+
+Name = FrmLbl45
+  type = Label
+  left = 133
+  top = 177
+  height = 13
+  width = 13
+  caption = W
+  style = bold
+
+Name = vN
+  type = CheckBox
+  left = 22
+  top = 150
+  height = 16
+  width = 19
+
+Name = vNW
+  type = CheckBox
+  left = 69
+  top = 150
+  height = 16
+  width = 19
+
+Name = vNE
+  type = CheckBox
+  left = 110
+  top = 150
+  height = 16
+  width = 19
+
+Name = vE
+  type = CheckBox
+  left = 149
+  top = 150
+  height = 16
+  width = 19
+
+Name = vS
+  type = CheckBox
+  left = 22
+  top = 175
+  height = 16
+  width = 20
+
+Name = vSW
+  type = CheckBox
+  left = 69
+  top = 175
+  height = 16
+  width = 20
+
+Name = vSE
+  type = CheckBox
+  left = 110
+  top = 175
+  height = 16
+  width = 20
+
+Name = vW
+  type = CheckBox
+  left = 150
+  top = 175
+  height = 17
+  width = 15
+
+Name = LB1
+  type = Label
+  left = 4
+  top = 211
+  caption = Traditional
+  height = 13
+  width = 61
+  style = bold
+
+Name = vTraditional
+  type = CheckBox
+  left = 67
+  top = 209
+  height = 17
+  width = 19
+
+Name = LB2
+  type = Label
+  left = 92
+  top = 211
+  caption = Multi
+  height = 13
+  width = 28
+  style = bold
+
+Name = vMulti
+  type = CheckBox
+  left = 166
+  top = 209
+  height = 17
+  width = 19
+
+Name = LB3
+  type = Label
+  left = 4
+  top = 232
+  caption = Letterbox
+  height = 13
+  width = 54
+  style = bold
+
+Name = vLetterbox
+  type = CheckBox
+  left = 67
+  top = 230
+  height = 17
+  width = 19
+
+Name = LB4
+  type = Label
+  left = 92
+  top = 232
+  caption = CITO
+  height = 13
+  width = 30
+  style = bold
+
+Name = vCITO
+  type = CheckBox
+  left = 166
+  top = 230
+  height = 17
+  width = 19
+
+Name = LB5
+  type = Label
+  left = 4
+  top = 254
+  caption = Event
+  height = 13
+  width = 34
+  style = bold
+
+Name = vEvent
+  type = CheckBox
+  left = 67
+  top = 252
+  height = 17
+  width = 19
+
+Name = LB6
+  type = Label
+  left = 92
+  top = 254
+  caption = Locationless
+
+  height = 13
+  width = 72
+  style = bold
+
+Name = vLocationless
+  type = CheckBox
+  left = 166
+  top = 252
+  height = 17
+  width = 19
+
+Name = LB7
+  type = Label
+  left = 4
+  top = 276
+  caption = Virtual
+  height = 13
+  width = 37
+  style = bold
+
+Name = vVirtual
+  type = CheckBox
+  left = 67
+  top = 276
+  height = 17
+  width = 19
+
+Name = LB8
+  type = Label
+  left = 92
+  top = 276
+  caption = Webcam
+  height = 13
+  width = 50
+  style = bold
+
+Name = vWebcam
+  type = CheckBox
+  left = 166
+  top = 276
+  height = 17
+  width = 19
+
+Name = LB9
+  type = Label
+  left = 4
+  top = 298
+  caption = Mystery
+  height = 13
+  width = 44
+  style = bold
+
+Name = vMystery
+  type = CheckBox
+  left = 67
+  top = 298
+  height = 17
+  width = 19
+
+Name = LB10
+  type = Label
+  left = 92
+  top = 298
+  caption = Benchmark
+  height = 13
+  width = 64
+  style = bold
+
+Name = vBenchmark
+  type = CheckBox
+  left = 166
+  top = 298
+  height = 17
+  width = 19
+
+Name = LB11
+  type = Label
+  left = 4
+  top = 322
+  caption = Other
+  height = 13
+  width = 32
+  style = bold
+
+Name = vOther
+  type = CheckBox
+  left = 67
+  top = 320
+  height = 17
+  width = 19
+
+Name = LB12
+  type = Label
+  left = 92
+  top = 322
+  caption = Earth
+  height = 13
+  width = 31
+  style = bold
+
+Name = vEarth
+  type = CheckBox
+  left = 166
+  top = 320
+  height = 17
+  width = 19
+
+Name = LB13
+  type = Label
+  left = 4
+  top = 343
+  caption = Ape
+  height = 13
+  width = 23
+  style = bold
+
+Name = vApe
+  type = CheckBox
+  left = 67
+  top = 341
+  height = 17
+  width = 19
+
+Name = LB14
+  type = Label
+  left = 92
+  top = 343
+  caption = Mega
+  height = 13
+  width = 32
+  style = bold
+
+Name = vMega
+  type = CheckBox
+  left = 166
+  top = 341
+  height = 17
+  width = 19
+
+Name = Ok
+  type = Button
+  left = 12
+  top = 369
+  height = 24
+  width = 69
+  Enter = yes
+
+Name = CANCEL
+  type = Button
+  left = 111
+  top = 369
+  height = 24
+  width = 69
+
+Name = FrmLbl5
+  type = Label
+  left = 5
+  top = 92
+  height = 13
+  width = 24
+  caption = Terr
+  style = bold
+
+Name = vTerr
+  type = ComboBox
+  left = 91
+  top = 88
+  height = 21
+  width = 49
+  Values = $ratings
+
+Name = FrmLbl6
+  type = Label
+  left = 5
+  top = 65
+  height = 13
+  width = 21
+  caption = Diff
+  style = bold
+
+Name = vDiff
+  type = ComboBox
+  left = 91
+  top = 61
+  height = 21
+  width = 49
+  Values = $ratings
+
+Name = Lbl1
+  type = Label
+  left = 39
+  top = 7
+  height = 13
+  width = 106
+  caption = PointFixWithFilters
+  style = bold
+
+Name = Lbl2
+  type = Label
+  left = 7
+  top = 122
+  height = 13
+  width = 20
+  caption= Unavailables?
+  style = bold
+
+Name = vUnavailable
+  type = CheckBox
+  left = 91
+  top = 120
+  height = 17
+  width = 15
+
+
+<EndData>
+

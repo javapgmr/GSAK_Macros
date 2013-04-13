@@ -1,0 +1,408 @@
+#************************************************************************
+# MacDescription = Export current filter to a DeLorme PN-40 via JAM4AR's website
+# MacFileName = DeLormeSendtoPN40PlugIn.gsk
+# MacAuthor = Tigerz
+# MacVersion = 1.01
+# MacUrl = http://gsak.net/board/index.php?act=ST&f=25&t=11101
+#************************************************************************
+# This macro will generate a GPX file (geocaches.gpx) from the current 
+# GSAK filter that can then be uploaded to JAM4AR's website at 
+# findcache.info/pn40.  The first log will include the GSAK User Notes,
+# County, and User Data fields.  
+#
+# Advanced users may choose to modify the exact GSAK fields they'd like to
+# transfer.  They might also choose to un-remark the delay included on the 
+# concluding "Macro is Complete" screen.  Search for the "Advanced Users"
+# headings for the appropriate lines of code.
+#************************************************************************
+# Version History
+# 1.01 - 28 Feb 09
+#   + For FieldNotes.txt integrity, removed the ability to name the cache
+#     by both it's GC Code and Cache Name
+#   + Added the ability to optionally proceed with the first 980 caches 
+#     in the current sort
+# 1.00 - 23 Feb 09
+#   + Public Release
+# 0.00-0.06 - 23 Feb 09
+#   + Initial Development and Beta Testing
+#************************************************************************
+# Acknowledgements
+# + Thanks to the folks at DeLorme for the significant upgrade in usuability 
+#   provided by the Send to GPS Plug-In!
+# + Thanks to JAM4AR for the excellent work in his javascript app that made
+#   sending more than a single waypoint possible!
+#************************************************************************
+# Requirements
+# 1)  Some of the features of this macro require GSAK Version 7.5 or 
+#     higher (e.g., County, User Data 3, and User Data 4 fields)
+# 2)  To make use of JAM4AR's website, you must use Firefox (and not
+#     Microsoft's Internet Explorer)
+#************************************************************************
+#************************************************************************
+# Comments and requests for support are encouraged at
+# http://gsak.net/board/index.php?showtopic=11100
+#************************************************************************
+
+# Use of some of the functions in this macro require at least version 7.5 of GSAK
+VerCheck Version=7.5.0.0 (To run this macro, please update to the lastest GSAK version at http://gsak.net)
+
+# Troubleshooting
+DEBUG Status=Off
+SPEEDMODE Status=On
+
+#************************************************************************
+# Declare/Define Variables ... Setup Folders
+#************************************************************************
+GOSUB Name=Declare
+
+SHOWSTATUS MSG="Creating geocaches.gpx file for uploading ... " WIDTH=300
+
+$Folder = $_Install+"\DeLormeSendtoPN40PlugIn"
+
+# Ensure the folder is present to write the GPX file
+  IF NOT (FolderExists($Folder))
+      $ComSpec = GetEnvV("comspec")
+      RUNPGM PGM=$comspec PARMS=/C MD "$Folder"
+  ENDIF
+
+$File=$_Install + "\DeLormeSendtoPN40PlugIn\geocaches.gpx"
+
+# If present, delete old geocache GPX file
+  IF FileExists("$File")
+     FileErase File="$File" OnError="Prompt"
+  ENDIF
+
+#************************************************************************
+# Ensure total number of waypoints < 980
+#************************************************************************
+$Count=$_Count
+
+$ChildCount = 0
+Goto Position=Top
+WHILE NOT($_EOL)
+   Table Active=Waypoints Scope=Parent
+      GOTO Position=Top    
+      WHILE NOT($_EOL)      
+        $ChildCount=$ChildCount+1          
+        GOTO Position=Next
+      ENDWHILE
+      Table Active=Caches
+      GOTO Position=Next
+ENDWHILE
+GOTO Position=Top
+
+$TotalCount=$Count + $ChildCount
+
+IF $TotalCount > 980
+   GOSUB Name=TooMany
+ENDIF
+
+#************************************************************************
+# Generate Geocache GPX File
+#************************************************************************
+MacroSet Dialog=GPX VarName=$GPX4PlugIn
+Export Type=GPX Settings=<macro> File="$File" Max=980
+
+#************************************************************************
+# Call JAM4AR Online Plug-In
+#************************************************************************
+GOSUB Name=GPXsCreated
+RunPgm Pgm="http://www.findcache.info/pn40"
+
+# End the macro
+CANCEL
+
+#********************************************************************
+# Subroutines
+#********************************************************************
+
+#********************************************************************
+# Variable Declaration
+BEGINSUB Name=Declare
+#********************************************************************
+Option Explicit=Yes
+  Declare Var=$CacheGPX Type=String
+  Declare Var=$ComSpec Type=String
+  Declare Var=$ChildCount Type=Numeric
+  Declare Var=$Count Type=Numeric
+  Declare Var=$CurrentFilter Type=String
+  Declare Var=$File Type=String
+  Declare Var=$Folder Type=String
+  Declare Var=$GPX Type=String
+  Declare Var=$TooManyForm Type=String
+  Declare Var=$TotalCount Type=Numeric
+  Declare Var=$TotalChildren Type=Numeric
+ENDSUB 		# Variable Declaration
+
+#********************************************************************
+# TooManyWpts Menu
+BEGINSUB Name=TooMany
+#********************************************************************
+
+SHOWSTATUS DISPLAY=Off
+
+IF ShowForm($TooManyWpts)
+
+   BeginCase
+
+     Case $Cancel
+     Cancel Msg="Canceled ... please re-sort and run the macro again."
+
+     Case $Continue
+     # User clicked Continue ... will take 1st 980 in current sort
+
+   EndCase
+
+ENDIF
+
+ENDSUB		# TooMany
+
+#********************************************************************
+# GPX Created Menu
+BEGINSUB Name=GPXsCreated
+#********************************************************************
+
+SHOWSTATUS DISPLAY=Off
+
+IF ShowForm($Completed)
+   BeginCase
+
+     Case $Cancel
+     Cancel Msg="Macro was canceled by user"
+
+     Case $Continue
+     # User clicked Continue but will still abort
+
+   EndCase
+ENDIF
+
+ENDSUB		# GPXsCreated
+
+#********************************************************************
+# Data
+#********************************************************************
+
+#********************************************************************
+# MacroSet data for geocache export
+#********************************************************************
+
+<data> VarName=$GPX4PlugIn
+[TfmExportGpx]
+fnmTo.Text=$_Install + \DeLormeSendtoPN40PlugIn\geocaches.gpx
+cbxLimit.Text=No Limit
+cbxUserNotes.Checked=False
+chkActual.Checked=False
+chkDefault.Checked=False
+chkExtra.Checked=False
+chkMyLogs.Checked=False
+chkSymbol.Checked=False
+edtFormat.Text=%Name by %By (%Dif/%Ter)
+edtMax.Text=
+edtMaxGps.Text=100
+edtWaypoint.Text=%code
+rbtGpx.Checked=True
+rbtLoc.Checked=False
+edtProblem.Text=
+#********************************************************************
+# Advanced Users may choose to modify the following line to better suit their needs
+# These are the GSAK fields that will appear in the first log of each cache
+edtExtra.Text=Notes: %UserNote ... Co: %County ... UD1: %User1 ... UD2: %User2 ... UD3: %User3 ... UD4: %User4
+#********************************************************************
+chkChild.Checked=True
+chkOnlyChild.Checked=False
+rbtAllChildren.Checked=True
+rbtOnlyFlagged.Checked=False
+rbtOnlyUnFlagged.Checked=False
+chkApplyName.Checked=False
+chkForce.Checked=True
+cbxVersion.Text=Ver 1.1
+[TfmExportGpx.cbxRecent.Items]
+Count=0
+<enddata>
+
+#********************************************************************
+<Data> VarName=$TooManyWpts
+#********************************************************************
+Name = TooMany
+  Type = Form
+  Caption = Send to DeLorme PN-40 Plug-In
+  Color = 16777215
+  Height = 253
+  Width = 485
+
+Name = Label1
+  Type = Label
+  Color = 255
+  Height = 20
+  Left = 114
+  Size = 13
+  Style = bold
+  Top = 16
+  Width = 239
+  Caption = DeLorme PN-40 GPX Export
+
+Name = Label2
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Top = 55
+  Width = 421
+  Caption = Your current filter contains over 980 points (geocaches and waypoints).  
+
+Name = Label3
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Top = 75
+  Width = 416
+  Caption = As your DeLorme PN-40 will hold a maximum of 1000 points, 980 points
+
+Name = Label4
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Top = 95
+  Width = 382
+  Caption = will leave you room to add up to 20 field waypoints.  If you would like 
+
+Name = Label5
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Top = 115
+  Width = 292
+  Caption = to proceed with the first 980 points in the current sort, press Continue.
+
+Name = Label6
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Top = 135
+  Width = 292
+  Caption = Otherwise, select Cancel to "re-filter" your GSAK database.
+
+Name = Continue
+  Type = Button
+  Height = 20
+  Left = 160
+  Top = 170
+  Width = 60
+  Taborder = 1
+  Caption = Continue
+
+Name = Cancel
+  Type = Button
+  Height = 20
+  Left = 266
+  Top = 170
+  Width = 60
+  Taborder = 2
+  Caption = Cancel
+
+<enddata>
+
+#********************************************************************
+<Data> VarName=$Completed
+#********************************************************************
+Name = GPXsCreated
+  Type = Form
+  Caption = Send to DeLorme PN-40 Plug-In
+  Color = 16777215
+#********************************************************************
+# Advanced Users may choose to modify the following line to better suit their needs
+# Removing the remark and adjusting the time delay will allow semi-automatic operation
+#  Delay = 10
+#********************************************************************
+  Height = 310
+  Width = 555
+
+Name = Label11
+  Type = Label
+  Color = 255
+  Height = 20
+  Left = 100
+  Size = 13
+  Style = bold
+  Top = 16
+  Width = 239
+  Caption = DeLorme PN-40 GPX Export Files Created
+
+Name = Label12
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Top = 55
+  Width = 421
+  Caption = Assuming Firefox is your default browser, click "Continue" to proceed.
+
+Name = Label13
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Top = 75
+  Width = 419
+  Caption = Firefox will then load JAM4AR's online routine.  If this is not your intent, 
+
+Name = Label14
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Top = 95
+  Width = 401
+  Caption = "Abort" the load command and then load Firefox and the website manually.
+
+Name = Label17
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Top = 135
+  Width = 340
+  Caption = Once at JAM4AR's website, you'll want to browse to the DeLormeSendtoPN40PlugIn 
+
+Name = Label18
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Top = 155
+  Width = 340
+  Caption = directory within your main GSAK folder (typically C:\GSAK or C:\Program Files\GSAK). 
+
+Name = Label19
+  Type = Label
+  Height = 16
+  Left = 24
+  Size = 10
+  Top = 175
+  Width = 340
+  Caption = This is where you will find the geocaches.gpx file to be uploaded.
+
+Name = Continue
+  Type = Button
+  Height = 20
+  Left = 190
+  Top = 230
+  Width = 60
+  Taborder = 1
+  Caption = Continue
+
+Name = Cancel
+  Type = Button
+  Height = 20
+  Left = 296
+  Top = 230
+  Width = 60
+  Taborder = 2
+  Caption = Abort
+
+<EndData>
+

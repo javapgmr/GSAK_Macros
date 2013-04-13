@@ -1,0 +1,750 @@
+#******************************************************************************#
+ $CurrentVersion = "v1.3"   
+
+# MacVersion = 1.3                                                             #
+# MacDescription = Save Settings Demo                                          #
+# MacAuthor = Big Wolf                                                         #
+# MacFileName = Save Settings.gsk                                              #      
+# MacURL = http://gsak.net/board/index.php?showtopic=6774                      #
+#******************************************************************************#
+#                                                                              #
+# Version History:                                                             #
+#                                                                              #
+# v1.3   29-11-07 A) Added icon to warning form                                #
+#                 B) Changed combox load to remove deprecated update method    #
+#                 C) Created 3 sub's to handle all the control save/load and   #
+#                    added a variable to set the position of the data set name #
+#                    in the data set to make re-using the code simpler         #
+#                 D) Fixed bug when deleting (extra line left in combo box)    # 
+#                                                                              #
+# V1.2   25-11-07 A)Inital release                                             # 
+#                                                                              #
+#******************************************************************************#
+# To display a form and save the settings so that they can be used the next    #
+# time a macro runs is not too difficult to achieve.  This macro however moves # 
+# things one step on and demonstrates that you can store and use multiple      #
+# settings.  As you need to be able to add and delete to the list makes the    #
+# coding a bit more lenthy but it is achievable. (as this macro shows)         #
+#                                                                              #
+# Currently the features needed for this macro are available with              #
+# version 7.2.0.89 (or higher) which is (at the time of writing) available in  #
+# the Version 7.2 beta thread in the forum.                                    #
+#                                                                              #
+# To make the macro more robust I still need to check for inadvendant use of   #
+# the delimiters in the text to be stored. Current the two delimiters used     #
+# are :-: and :x: which is probably wont cause a problem ok for most users.    #
+#                                                                              #
+# Fundamentally, the data on the form is stored in a .dat file with the same   #
+# name / location as the macro.  The data is stored with delimiters between    # 
+# each field. (note each one must be a string so if its say a date field then  #
+# you will need to add code to convert it to a string on writing and to        #
+# swapback again when reading) One line in the dat file corrosponds to one set #
+# of data fields.  The dat file is loaded into a stirng variable called        #
+# $savedata with each line being added with another delimiter to denote the    #
+# boundary between data sets.  This enables easier extraction of the data but  #
+# does add some code add a bit of an overhead to keep both the .dat file and   #
+# $savedata up to date.                                                        #
+#                                                                              #
+#******************************************************************************#
+# To reuse the code you need to change the main loop for the form display to   #
+# include your own controls (and the main functions of your own code.) In      #
+# addition the following SUB's need to change  to store/save your own control  #
+# data: "LoadControlValues", "SaveControlValues" & "LoadDefaultControlValues"  #
+# Finally you need to change the following variable $DataSetNamePos to         #
+# reflect the position of the data field used to hold the Data Set Name.       #
+# Apart from that you should not need to make any changes to any other         #
+# bits of code                                                                 #
+#******************************************************************************#
+#                                                                              #
+# There are lots of comments in the code so you should hopefully be able to    #
+# follow it with out too much bother but if you need a help then drop me an    #
+# email or pm via the GSAK forum                                               #
+#                                                                              #
+#                                                                  Big Wolf    #
+#                                                                              #
+#******************************************************************************#
+
+# Version check for ver 7.2 
+VERCHECK Version=7.2.0.89 (You can find the latest version of GSAK in the forums at http://support.gsak.net/)
+
+#set up form heading
+$form = EditForm($form,"Form1","Caption","Save Settings:  " + $CurrentVersion)
+
+#Check that this macro file ends with .txt or .gsk
+$MN=sysinfo("MacroFile")  #Get MacroName
+$MNend=substr($MN,len($MN)-3,4)
+if ($MNend = ".txt") or ($MNend = ".gsk")
+    #then do nothing as the ending is ok
+else
+    #Abort macro
+    $opstr="Macro name must end with .gsk or .txt" + $_NewLine + $_NewLine + "Please change the macro name and re-run it"
+    msgok  msg=$opstr caption=Error: Macro Name
+    return
+endif
+
+#Now create the name of the dat file to store the form data in
+#This will have the same path and name as the macro but will end in .dat
+$datafile=sysinfo("macropath")+ "\" +substr($MN,1,len($MN)-4)+ ".dat"
+
+#inital variables
+$savedata=""    #used to hold a string repersentation of all the data stored
+$datalines=0    #number of differnt data sets stored in $savedata
+$CtlDelim=":-:"   #Control Delimiter used in dat file and $savedata
+$SetDelim=":x:"   #Setting Control used in $savedata
+$dblist=""          #temp container to create dropdown list
+$DataSetNamePos=1    #Position of the data set name in the data string 
+
+# Does the dat file already exist?
+IF (FileExists($datafile))
+   # Yes? Read config values
+   FILEREAD File=$datafile
+     $dblist =  $dblist + EXTRACT($line,$CtlDelim, $DataSetNamePos) + ";"  #extract the settings names
+     $savedata=$savedata + $line + $SetDelim         #extract the data and separate with delim
+     $datalines=$datalines+1                   #Counter for number of data sets
+   ENDREAD
+ 
+   #remove last setdelim from $savedata since no more data
+   if right($savedata,len($SetDelim))=$SetDelim
+     $savedata=substr($savedata,1,len($savedata)-len($SetDelim))
+   endif
+  
+  #remove last ";" from $dblist since no more data
+   if right($dblist,1)=";"
+     $dblist=substr($dblist,1,len($dblist)-1)
+   endif
+  
+   #set combo box with dropdown data
+   $form = EditForm($form,"cboSettings","values", $dblist)
+
+   $I=1  
+   #Load in "...Last active"  data set (Since $I=1)
+   GOSUB Name="LoadControlValues"  
+
+ELSE    
+    # use default values since no data file to load
+    GOSUB Name="LoadDefaultControlValues"
+ 
+    #Create dblist and load the combobox
+    $dblist="...Last active"
+    $form = EditForm($form,"cboSettings","values", $dblist)
+    
+    #Create savedata from the data loaded into the controls
+    $edtSaveName ="...Last active"
+    GOSUB Name="SaveControlValues"   #loads data into $line
+    $savedata= $line    
+    $datalines=1   
+    
+ENDIF
+
+
+#Display main form
+
+While True # Infinite loop to redisplay form as required
+  $FormExit = form($form,"")    #now display the form
+  $error=""
+  $DontSave=false
+    
+  #### Actions for buttons on main form when clicked ###
+  BeginCase
+    Case $FormExit = "cboSettings"      
+        #change to combo box so re-load the values in the otehr controls
+        GOSUB Name="LoadMyParams"
+      
+    Case $FormExit = "btnSave"
+        #Save contol values
+        GOSUB Name="SaveMyParams"
+        
+    Case $FormExit = "btnDelete"
+          #Delete one of the names & settings in the combo box  
+          if $cboSettings = "...Last active"
+            #msgok msg="Sorry, you cant delete ...Last active"
+          else  
+            GOSUB Name="DeleteMyParams"
+          endif
+          
+    Case $FormExit = "btnOK"
+        break
+    
+    Case ($FormExit = "btnCancel") or ($FormExit = "SystemExit")
+       $DontSave=true
+       break
+              
+  
+     #### User control on the form  ###
+     Case $FormExit = "btnClear"
+         $chk1=false
+         $chk2=false
+         $chk3=false
+    
+      Case $FormExit = "btnSet"
+         $chk1=true
+         $chk2=true
+         $chk3=true
+         
+  EndCase  
+EndWhile
+  
+if $DontSave=true
+  #Then don't save it!
+else
+  #update ...Last active
+  # Now save the screen values 
+  $edtSaveName="...Last active"
+  GOSUB Name="SaveControlValues"   #Stored in $line 
+
+  #replace old with new line
+  $oldline=EXTRACT($savedata, $SetDelim, $DataSetNamePos)
+  $savedata=Replace($oldline, $line, $savedata, false) 
+  
+  GOSUB Name="SaveDatFile"
+   
+endif
+
+
+#End of Macro
+
+####################### Subroutines #######################
+
+
+#----------------------------------------------------
+BEGINSUB Name="LoadDefaultControlValues"
+#----------------------------------------------------
+#In the absence of a data file the following is used to populate the form with
+#default values.
+    $chk1=False
+    $chk2=False
+    $chk3=False
+    $Fol8=Substr($_install,1,3)
+ENDSUB
+
+
+#----------------------------------------------------
+BEGINSUB Name="SaveControlValues"
+#----------------------------------------------------
+#This SUB is used to save the values from form to $line.  Note that only
+#string data is capable of being stored so you will need to do conversions
+#to ensure that all data is converted to strings.
+
+  # Now save the screen values for next time into $datafile, separated by $CtlDelim
+  $line=""
+  $line=$line + $edtSaveName + $CtlDelim                     #1
+  $line=$line + BoolToStr($chk1,"Yes","No") + $CtlDelim      #2
+  $line=$line + BoolToStr($chk2,"Yes","No") + $CtlDelim      #3  
+  $line=$line + BoolToStr($chk3,"Yes","No") + $CtlDelim      #4
+  $line=$line + $Fol8                                        #5
+ENDSUB
+
+
+
+#----------------------------------------------------
+BEGINSUB Name="LoadControlValues"
+#----------------------------------------------------
+#This SUB is used to load the values from $line on to the form.  Note that only
+#string data is capable of being stored so you will need to do conversions
+#to ensure that all data is converted back to the correct data types.
+
+  #BEFORE calling this sub you MUST set $I to select which data set required
+   $line=EXTRACT($savedata, $SetDelim, $I)
+   $cboSettings=EXTRACT($line,$CtlDelim, $DataSetNamePos) 
+
+   $chk1=StrToBool(EXTRACT($line, $CtlDelim, 2))
+   $chk2=StrToBool(EXTRACT($line, $CtlDelim, 3))
+   $chk3=StrToBool(EXTRACT($line, $CtlDelim, 4))
+   $Fol8=EXTRACT($line,$CtlDelim, 5)
+   
+ENDSUB
+
+
+
+
+
+
+#******************************************************************************#
+#       No Need to change any of the code below here when reusing              #
+#******************************************************************************#
+
+
+
+#----------------------------------------------------
+BEGINSUB Name="SaveDatFile"
+#----------------------------------------------------
+    $savedataOP=Replace($SetDelim, $_newline, $savedata, false)   
+    $result=PUTFILE($datafile, $savedataOP)
+    if Left($result, 7) = "*Error*"
+    CANCEL Msg="Unable to save form values to $datafile!"
+    endif
+ENDSUB
+
+
+#----------------------------------------------------
+BEGINSUB Name="SaveMyParams"
+#----------------------------------------------------
+#display a blank if ...Last active or the name of the current setting
+if $cboSettings="...Last active"
+   $edtSaveName=""
+else
+   $edtSaveName=$cboSettings
+endif   
+
+#boolean to check data saved
+$datasaved=false
+
+While True # Infinite loop to redisplay form as required
+  $FormExit3 = form($frmSaveSettings,"")
+  BeginCase        
+    Case ($FormExit3 = "btn3Cancel") or ($FormExit3 = "SystemExit") or ($edtSaveName="")
+       #exit if cancel, x , or blank name after ok pressed
+       break              
+    Case $FormExit3 = "btn3Ok"
+        gosub name="ChecknSave"
+        if $datasaved
+           Break
+        endif   
+  EndCase
+    
+EndWhile
+
+ENDSUB
+
+
+
+#----------------------------------------------------
+BEGINSUB name="ChecknSave"
+#----------------------------------------------------
+  #Start at the top so if no match $I=0
+  $I=$datalines 
+  while $I > 0
+    #extract name from each line in the data stream
+    $varname=EXTRACT(EXTRACT($savedata, $SetDelim, $I),$CtlDelim, $DataSetNamePos) 
+   
+    #if dropdown name matches the name in the data stream 
+    if upper($edtSaveName) = upper($varname)
+      break  #and $I must be > 0 still
+    endif
+
+    #decrement the counter
+    $I=$I - 1
+  endwhile
+
+$warntxt = "This name already exists.  Are you sure you want to overwrite?"
+$frmWarning = EditForm($frmWarning,"lblWarn","Caption",$warntxt)
+if $I > 0  #already exist       
+    While True # Infinite loop to redisplay form as required
+          $FormExit2 = form($frmWarning,"")      
+          BeginCase    
+              Case ($FormExit2 = "btn2Cancel") or ($FormExit2 = "SystemExit")
+                 #exit if cancel or x to close the form
+                 break                         
+              Case $FormExit2 = "btn2Ok"
+                 gosub name="ReplaceIt"
+                 $datasaved=True
+                 #select combo box with save name
+                 $cboSettings=$edtSaveName
+                 Break          
+          EndCase    
+    EndWhile
+else
+    #save current data to end of data string and save file
+    gosub name="AddIt"
+    #select combo box with save name
+    $cboSettings=$edtSaveName
+    $datasaved=true
+endif
+ENDSUB
+
+
+#----------------------------------------------------
+BEGINSUB name="AddIt"
+#----------------------------------------------------
+  # Now save the screen values for next time into $datafile, separated by $CtlDelim
+  GOSUB Name="SaveControlValues"   #Stored in $line
+  
+  #update combo box 
+  $dblist=$dblist+";"+$edtSaveName
+  $form = EditForm($form,"cboSettings","values", $dblist)
+  
+  #increment number of datalines
+  $datalines = $datalines + 1
+  
+  #add line to end of data then save file
+  $savedata= $savedata + $SetDelim +  $line  
+  
+  GOSUB Name="SaveDatFile"
+
+ENDSUB
+
+
+
+#----------------------------------------------------
+BEGINSUB name="ReplaceIt"
+#----------------------------------------------------
+  #create new data line
+  GOSUB Name="SaveControlValues"   #Stored in $line
+
+  #Start at the top so if no match then you load the first record i.e.last active 
+  $I=$datalines 
+  while $I > 0
+    #extract name from each line in the data stream
+    $varname=EXTRACT(EXTRACT($savedata, $SetDelim, $I),$CtlDelim, $DataSetNamePos) 
+   
+    #if dropdown name matches the name in the data stream 
+    if upper($edtSaveName) = upper($varname)
+      break
+    endif
+
+    #decrement the counter
+    $I=$I - 1
+  endwhile
+  
+  #replace old with new line
+  $oldline=EXTRACT($savedata, $SetDelim, $I)
+  $savedata=Replace($oldline, $line, $savedata, false) 
+  
+  #use $savedata to re-create the combobox entries
+  $dblist=""
+  $I=1
+  while $I < $datalines
+      $dblist=$dblist+EXTRACT(EXTRACT($savedata, $SetDelim, $I),$CtlDelim, $DataSetNamePos) + ";"
+      $I=$I+1
+  endwhile
+  $dblist=$dblist+EXTRACT(EXTRACT($savedata, $SetDelim, $datalines),$CtlDelim, $DataSetNamePos) 
+  $form = EditForm($form,"cboSettings","values", $dblist)  
+  
+  GOSUB Name="SaveDatFile"
+ 
+ENDSUB
+
+
+
+
+#----------------------------------------------------
+BEGINSUB Name="DeleteMyParams"
+#----------------------------------------------------
+$warntxt = "Are you sure that you want to delete: " + $cboSettings+ " ?"
+$frmWarning = EditForm($frmWarning,"lblWarn","Caption",$warntxt)
+$dontgoforit=true    
+    While True # Infinite loop to redisplay form as required
+          $FormExit2 = form($frmWarning,"")      
+          BeginCase    
+              Case ($FormExit2 = "btn2Cancel") or ($FormExit2 = "SystemExit")
+                 #exit if cancel or x to close the form
+                 $dontgoforit=true
+                 break                         
+              Case $FormExit2 = "btn2Ok"
+                 $dontgoforit=false
+                 Break          
+          EndCase    
+    EndWhile
+
+#abort if answer to the prompt is 'cancel'
+if $dontgoforit
+    exitsub
+endif    
+
+#Start at the top so if no match then you load the first record i.e. last active 
+  $I=$datalines 
+  while $I > 0
+    #extract name from each line in the data stream
+    $varname=EXTRACT(EXTRACT($savedata, $SetDelim, $I),$CtlDelim, $DataSetNamePos) 
+   
+    #if dropdown name matches the name in the data stream 
+    if $cboSettings = $varname
+      break
+    endif
+
+    #decrement the counter
+    $I=$I - 1
+  endwhile
+  
+  #get old data part
+  $oldline=EXTRACT($savedata, $SetDelim, $I)
+  
+  #modify it to create the string to remove
+  $DataToRemove=$SetDelim+$oldline  #need to add the delim to the front
+  
+  #remove it and save the .dat file
+  $savedata=Replace($DataToRemove, "", $savedata, false) 
+  GOSUB Name="SaveDatFile"
+    
+  #Reduce the number of datalines by 1
+  $datalines=$datalines - 1 
+  
+  #use $savedata to re-create the combobox entries
+  $dblist=""
+  $I=1
+  while $I < $datalines
+      $dblist=$dblist+EXTRACT(EXTRACT($savedata, $SetDelim, $I),$CtlDelim, $DataSetNamePos) + ";"
+      $I=$I+1
+  endwhile
+  $dblist=$dblist+EXTRACT(EXTRACT($savedata, $SetDelim, $datalines),$CtlDelim, $DataSetNamePos)  
+  $form = EditForm($form,"cboSettings","values", $dblist)
+  
+   #Load in ...Last active  (since this cant be deleted it must be there)
+   $I=1
+   GOSUB Name="LoadControlValues"
+ 
+ENDSUB
+
+
+
+#----------------------------------------------------
+BEGINSUB Name="LoadMyParams"
+#----------------------------------------------------
+  #Start at the top so if no match then you load the first record i.e.last active 
+  $I=$datalines
+  
+  while $I > 0
+    #extract name from each line in the data stream
+    $varname=EXTRACT(EXTRACT($savedata, $SetDelim, $I),$CtlDelim, $DataSetNamePos) 
+   
+    #if dropdown name matches the name in the data stream 
+    if $cboSettings = $varname
+      break
+    endif
+
+    #decrement the counter
+    $I=$I - 1
+  endwhile
+  
+   #load in line that matches $I
+   GOSUB Name="LoadControlValues"
+  
+ENDSUB
+
+
+
+
+
+
+####################### Define Forms #######################
+
+
+<Data> VarName=$form
+
+Name = Form1
+  Type = Form
+  Caption = Save Setings Test
+  Error = $error
+  Height = 200
+  Width = 290
+  
+Name = btnOK
+  Type = Button
+  Height = 25
+  Left = 203
+  Top = 140
+  Width = 75
+  Caption = &OK
+  
+Name = Group1
+  Type = Groupbox
+  Caption = Settings
+  Height = 44
+  Left = 4
+  Top = 87
+  Width = 271
+
+
+Name = btnCancel
+  Type = Button
+  Height = 25
+  Left = 120
+  Top = 140
+  Width = 75
+  Caption = &Cancel
+
+Name = Chk1
+  Type = Checkbox
+  Height = 17
+  Left = 117
+  Top = 53
+  Width = 15
+
+Name = Chk2
+  Type = Checkbox
+  Height = 17
+  Left = 79
+  Top = 53
+  Width = 15
+
+Name = Chk3
+  Type = Checkbox
+  Height = 17
+  Left = 41
+  Top = 53
+  Width = 15
+
+Name = Fol8
+  Type = Folder
+  Height = 21
+  Left = 33
+  Top = 13
+  Width = 197
+
+Name = btnClear
+  Type = Button
+  Height = 18
+  Left = 147
+  Top = 52
+  Width = 39
+  Caption = Clear
+
+Name = btnSet
+  Type = Button
+  Height = 18
+  Left = 192
+  Top = 52
+  Width = 39
+  Caption = Set
+
+Name = cboSettings
+  Type = Combobox
+  Container = Group1
+  Exitonchange = Yes
+  Height = 21
+  Left = 7
+  Top = 14
+  Width = 145
+
+Name = btnSave
+  Type = Button
+  Container = Group1
+  Height = 21
+  Left = 162
+  Top = 14
+  Width = 45
+  Caption = Save
+
+Name = btnDelete
+  Type = Button
+  Container = Group1
+  Height = 21
+  Left = 217
+  Top = 14
+  Width = 45
+  Caption = Delete
+
+<enddata>
+
+
+
+
+<Data> VarName=$frmWarning
+
+Name = frmWarning
+  Type = Form
+  Caption = Warning
+  Height = 127
+  Width = 415
+
+Name = btn2Cancel
+  Type = Button
+  Height = 25
+  Left = 213
+  Top = 63
+  Width = 75
+  Caption = Cancel
+
+Name = btn2Ok
+  Type = Button
+  Height = 25
+  Left = 119
+  Top = 63
+  Width = 75
+  Caption = OK
+
+Name = lblWarn
+  Type = Label
+  Height = 16
+  Left = 63
+  Top = 26
+  Width = 334
+
+Name = warn
+  Type = Image
+  File = warn.gif
+  Height = 45
+  Left = 10
+  Source = Macro
+  Top = 20
+  Width = 45
+
+<enddata>
+
+
+
+
+<Data> VarName=$frmSaveSettings
+
+Name = Form3
+  Type = Form
+  Height = 127
+  Width = 368
+
+Name = btn3Cancel
+  Type = Button
+  Height = 25
+  Left = 189
+  Top = 63
+  Width = 75
+  Caption = Cancel
+
+Name = btn3Ok
+  Type = Button
+  Height = 25
+  Left = 95
+  Top = 63
+  Width = 75
+  Caption = OK
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 17
+  Size = 10
+  Top = 13
+  Width = 182
+  Caption = Enter a name for these settings
+
+Name = edtSaveName
+  Type = Edit
+  Height = 21
+  Left = 16
+  Top = 32
+  Width = 327
+
+<enddata>
+
+
+########################## Mime Encodded Resources    ###########################
+
+<data> VarName=$warn
+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
+<enddata>
+
+

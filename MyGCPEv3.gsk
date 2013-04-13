@@ -1,0 +1,2716 @@
+############################################################################################### 
+#                                GSAK My Garmin CSV POI Export                                # 
+#                                (c) 2007 written by KFBradley                                # 
+#                                                                                             # 
+# This macro will run through your database and export all the caches and child waypoints to  #
+# separate files depending on the cache-type or cache-status. If there's a hint for the cache #
+# it will be added to an additional line for that cache or split over more lines if the hint  #
+#is longer than 88 characters. Also if the comment for the child waypoints is longer than 88  #
+# characters they too will be split. The generated CSV-files will have the same name as       #
+# BMP-files published along with this macro thus enabling Garmin's POIloader to give the      #
+# waypoint in each file the correct symbol according to geocaching.com. The BMP-files are     #
+# included in this macro and will be automatically placed in the same folder as the CSV-files.#
+#                                                                                             #
+# Instructions for use:                                                                       #
+# - Create a directory where you will put the CSV-files, (f.x. C:\POI),                       #
+# - Install this macro into GSAK,                                                             #
+# - Run the macro,                                                                            #
+# - When asked where to put the CSV-files, point to the directory you created (f.x. C:\POI)   # 
+# - Then choose the database,                                                                 #
+# - And finally input your geocacher name,                                                    #
+# - Start Garmin's POIloader and point it to the directory where you put the                  #
+#   CSV-files and custom icons,                                                               #
+# - When finished you should have all your caches and child waypoints as POI's                #
+#   in your GPSr.                                                                             #
+#                                                                                             #
+# Requires:                                                                                   #
+# - Premium Membership from www.geocaching.com, so you have all the data for the caches and   #
+#   child waypoints.                                                                          #
+# - Requires GSAK 7.1.1.32 or higher                                                          #
+#                                                                                             #
+# MacDescription = Garmin CSV POI Export with icons
+# MacFileName = MyGCPEv3.gsk
+# MacAuthor = KFBradley
+# MacVersion =3.1
+# MacUrl =
+###############################################################################################
+
+# Version check
+VERCHECK Version=7.1.1.32 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+GOSUB Name=DeclareVariables
+
+$myVersion = "3.0"
+
+# Save various settings for restoration later
+DATASAVE Data=$d_UserFlag
+$CurrentSort = $_SortBy
+$CurrentFilter = SaveFilter()
+$CurrentDB = $_CurrentDatabase
+$DBlist = "*Not Selected*" + ";" + SysInfo("databases")
+
+#This may be unnesseccary. May be repeated later.
+#$UserOptions = Editform($UserOptions,"VersionLabel","caption","$myVersion")
+
+SPEEDMODE status=on
+
+GOSUB Name=CreateFilePaths
+GOSUB Name=SetVars
+GOSUB Name=ValidateFiles
+GOSUB Name=ReadConfigFile
+GOSUB Name=DisplayForm
+
+IF $VersionChange
+  GOSUB Name=SaveConfigFile
+ENDIF
+
+#######################
+#Set and validate file paths
+BEGINSUB Name=CreateFilePaths
+  $datafilepath = $_Install + "\Macros"
+    IF NOT(FolderExists($datafilepath))
+      $BatFile = $_Install + "\babel.bat"
+      $result = PutFile($BatFile, "MD " + quote($datafilepath))
+      FileOpen File="$BatFile" Wait=yes
+    ENDIF
+
+  $configFile = $datafilepath + "\MyGCPEConfig.txt"
+    IF NOT(FileExists($ConfigFile))
+      $image = MimeDecode($myGCPEConfig)
+      $result = PutFile($configFile,$image)
+   ENDIF
+
+  $datafile = $datafilepath + "\MyGCPEData.dat"
+
+ENDSUB
+
+#######################
+# Set defaults & initialize variables
+BEGINSUB Name=SetVars
+  # Define the cachetypes, used when writing the different CSV-files,
+  # if you change them here also remember to change the name of the bmp-files.
+  $CacheTypeFull = "Project APE~Letterbox~CITO~Event~Benchmark~Locationless~Multi~Other~Earth"
+  $CacheTypeFull=$CacheTypeFull + "~Traditional~Mystery~Virtual~Webcam"
+  $CacheTypeFull=$CacheTypeFull + "~GPS Adventures Exhibits~Mega Event"
+  $CacheType = "ABCEGLMORTUVWXZ"
+  $CacheTotal = RegExCount("~",$CacheTypeFull) + 1
+
+  # Define the childtypes, used when writing the different CSV-files,
+  # if you change them here also remember to change the name of the bmp-files.
+  $ChildTypeFull = "Parking Area~Trailhead~Reference Point~Stages of a Multicache"
+  $ChildTypeFull=$ChildTypeFull + "~Final Location~Question to Answer"
+  $ChildType = "PTRSFQ"
+  $ChildTotal = RegExCount("~",$ChildTypeFull) + 1
+
+  # Keep track of problems that were encountered, used together with $Verbose
+  $ErrorLog = "Errors occured during processing:" + $_NewLine + $_NewLine
+  $ErrorCount = 0
+
+  # Will the macro keep you updated about the progress
+  $Verbose = True
+
+  # set variable to contain double quote character - needed for processing Child WP's
+  $QT = chr(34)
+
+  # Set up the variables to count the numbers of caches with hint split into 2 or more lines.
+  $HintCountDB = List("HintDB","create",";")
+
+  # Will the found, archived and caches with corrected coordinates have a prefix character.
+  $UsePrefix = False
+
+  # Will there be generated a line in the csv file for the hint? Defaults to True but can
+  #be changed in the form.
+  $Hint = True
+
+  # Indicate whether found caches should be filtered out. Defaults to False but can be
+  # changed in the form.
+  $Found = False
+
+ENDSUB
+
+#######################
+#Check if version has changed
+BEGINSUB Name=ReadConfigFile
+  FILEREAD File=$configFile
+
+    #-----read each line and parse for variable and value-----#
+    $len = at(";","$line")
+    $str = allTrim(SubStr("$line",1,$len -2))
+    $myVariable = allTrim(SubStr("$str",1,at("=","$str")-1))
+    $myValue = SubStr($str,at("=","$line")+5,$len)
+
+    IF $myVariable = "$" +"myVersion"
+      IF $myValue = $myVersion
+        #same version - do nothing
+        $UserOptions = Editform($UserOptions,"VersionLabel","Caption","$myVersion")
+      ELSE
+        #New version - do something# 
+        $VersionChange = True
+      ENDIF
+    ENDIF
+  ENDREAD
+
+ENDSUB
+
+#######################
+#Write to ConfigFile
+BEGINSUB Name=SaveConfigFile
+  $strConfig = "#-----myGCPE Config Variables-----#" + $_newLine
+  $strConfig = $strConfig + "#" + $_newLine
+  $strConfig = "# myGME Version " + $_newLine
+  $strConfig = $strConfig + "$" + "myVersion = " + quote($myVersion) + ";" + $_newLine
+  $strConfig = $strConfig + "#" + $_newLine 
+  $strConfig = $strConfig + "#-----End-----#" + $_newLine 
+  SET $Data = PutFile($configFile,$strConfig)
+  
+ENDSUB
+
+#######################
+#
+BEGINSUB Name=DisplayForm
+
+DEBUG Status=On
+  # Check if the data-file exists?
+  IF (FileExists($datafile))
+    # If the file exists then read the saved values and assign them to variables
+    # now $line will hold the contents of the file
+    FILEREAD File=$datafile
+
+      # CSV files location
+      $csvFolder = Extract($line, ";", 1)
+
+      # Database to export from
+      $DB = Extract($line, ";", 2)
+
+      # Geocaching user name
+      $UserName = Extract($line, ";", 3)
+
+      #Status of Check Boxes on last run:
+      $HintBx=StrToBool(Extract($line, ";", 4))
+      $FoundBx=StrToBool(Extract($line, ";", 5))
+      $ArchiveBx=StrToBool(Extract($line, ";", 6))
+      $TempDisBx=StrToBool(Extract($line, ";", 7))      
+    ENDREAD	
+  ELSE
+
+    # No saved file so set defaults for form
+	
+    # CSV files location
+    $csvFolder = ""
+
+    # Database to export from
+    $DB="Default"
+
+    # Geocaching user name
+    $UserName=""
+	
+    #Check boxes
+    $HintBx=TRUE
+    $FoundBx=FALSE
+    $ArchiveBx=FALSE
+    $TempDisBx=FALSE
+	
+    IF Showform($UserOptions)
+      IF $cancel
+        # Save the value into $datafile to be reused the next time the macro is run
+        $variables = $csvFolder + ";" + $DB + ";" + $UserName + ";" + BoolToStr($HintBx,"T","F") + ";"
+        $variables=$variables + BoolToStr($FoundBx, "T", "F") + ";" + BoolToStr($ArchiveBx,"T","F")+ ";" + BoolToStr($TempDisBx,"T","F") + ";"
+	$result = PutFile($datafile, $variables)
+	IF Left($result, 7) = "*Error*"
+          # If theres any error abort the macro
+          CANCEL Msg="Unable to write to $datafile!"
+	ENDIF
+    	CANCEL msg="Macro cancelled"
+      ENDIF
+    ELSE
+      CANCEL msg="Macro cancelled"
+    ENDIF 
+
+    # If we get to here then the user must have clicked on the OK button
+					
+  ENDIF
+  
+    # Save the value into $datafile to be reused the next time the macro is run
+  $variables = $csvFolder + ";" + $DB + ";" + $UserName + ";" + BoolToStr($HintBx,"T","F") + ";"
+  $variables=$variables + BoolToStr($FoundBx, "T", "F") + ";" + BoolToStr($ArchiveBx,"T","F")+ ";" + BoolToStr($TempDisBx,"T","F") + ";"
+  $result = PutFile($datafile, $variables)
+  IF Left($result, 7) = "*Error*"
+    # If theres any error abort the macro
+    CANCEL Msg="Unable to write to $datafile!"
+  ENDIF
+
+  WHILE ShowForm($UserOptions)
+    # Reset the screen position of the menu form to where the user left it
+    $UserOptions = EditForm($UserOptions,"Form1","Top",$_FormTop)
+    $UserOptions = EditForm($UserOptions,"Form1","Left",$_FormLeft)
+    IF $cancel
+      $$variables = $csvFolder + ";" + $DB + ";" + $UserName + ";" + BoolToStr($HintBx,"T","F") + ";"
+      $variables=$variables + BoolToStr($FoundBx, "T", "F") + ";" + BoolToStr($ArchiveBx,"T","F")+ ";" + BoolToStr($TempDisBx,"T","F") + ";"
+      $result = PutFile($datafile, $variables)
+      IF Left($result, 7) = "*Error*"
+        # If theres any error abort the macro
+        CANCEL Msg="Unable to write to $datafile!"
+      ENDIF
+      CANCELFILTER
+      CANCEL msg="Macro cancelled"
+    ENDIF 
+
+    IF $OK
+      $variables = $csvFolder + ";" + $DB + ";" + $UserName + ";" + BoolToStr($HintBx,"T","F") + ";"
+      $variables=$variables + BoolToStr($FoundBx, "T", "F") + ";" + BoolToStr($ArchiveBx,"T","F")+ ";" + BoolToStr($TempDisBx,"T","F") + ";"
+      $result = PutFile($datafile, $variables)
+      IF Left($result, 7) = "*Error*"
+        # If theres any error abort the macro
+        CANCEL Msg="Unable to write to $datafile!"
+      ENDIF
+      BREAK
+      GOSUB Name=ReadFormVars
+      GOSUB Name=ProcessCollection
+      GOSUB Name=ParentWpt
+    ENDIF
+ 
+  ENDWHILE
+
+# If we get to here then the user must have clicked on the OK button
+
+ENDSUB
+
+#######################
+#
+BEGINSUB Name=ReadFormVars
+  # Remove previously saved CSV files (but not BMP-files, or any other file-type)
+  $EraseFiles = $csvFolder + "\*.csv"
+  IF FileExists($EraseFiles)
+    FILEERASE File=$EraseFiles
+  ENDIF
+
+  # Select the correct database if necessary
+  IF $CurrentDB <> $DB
+    DATABASE Name="$DB" Action=Select
+  ENDIF
+
+  IF $FoundBx
+    IF $ArchiveBx
+      IF $TempDisBx
+        MFILTER Expression=NOT($d_Found) AND NOT($d_Archived) AND NOT($d_TempDisabled)
+      ELSE
+        MFILTER Expression=NOT($d_Found) AND NOT($d_Archived)
+      ENDIF
+    ELSE
+      IF $TempDisBx
+        MFILTER Expression=NOT($d_Found) AND NOT($d_TempDisabled)
+    ELSE
+        MFILTER Expression=NOT($d_Found)
+      ENDIF
+    ENDIF
+  ELSE
+    IF $ArchiveBx
+      IF $TempDisBx
+        MFILTER Expression=NOT($d_Archived) AND NOT($d_TempDisabled)
+      ELSE
+        MFILTER Expression=NOT($d_Archived)
+      ENDIF
+    ELSE
+      IF $TempDisBx
+        MFILTER Expression=NOT($d_TempDisabled)
+      ELSE
+        MFILTER Expression=$d_Code <> ""
+      ENDIF
+    ENDIF
+  ENDIF
+
+ENDSUB
+
+#######################
+#
+BEGINSUB Name=ValidateFiles 
+  IF NOT (FileExists($csvFolder + "Found.bmp")) OR $VersionChange
+    $image = MimeDecode($img_found)
+    $result = PutFile($csvFolder + "Found.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Attended.bmp")) OR $VersionChange
+    $image = MimeDecode($img_attended)
+    $result = PutFile($csvFolder + "Attended.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Benchmark Found.bmp")) OR $VersionChange
+    $image = MimeDecode($img_bmfound)
+    $result = PutFile($csvFolder + "Benchmark Found.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Picture Taken.bmp")) OR $VersionChange
+    $image = MimeDecode($img_picturetaken)
+    $result = PutFile($csvFolder + "Picture Taken.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Placed.bmp")) OR $VersionChange
+    $image = MimeDecode($img_placed)
+    $result = PutFile($csvFolder + "Placed.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Benchmark.bmp")) OR $VersionChange
+    $image = MimeDecode($img_benchmark)
+    $result = PutFile($csvFolder + "Benchmark.bmp",$image)
+  ENDIF
+   
+  IF NOT (FileExists($csvFolder + "CITO.bmp")) OR $VersionChange
+    $image = MimeDecode($img_cito)
+    $result = PutFile($csvFolder + "CITO.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Earth.bmp")) OR $VersionChange
+    $image = MimeDecode($img_earth)
+    $result = PutFile($csvFolder + "Earth.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Event.bmp")) OR $VersionChange
+    $image = MimeDecode($img_event)
+    $result = PutFile($csvFolder + "Event.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Letterbox.bmp")) OR $VersionChange
+    $image = MimeDecode($img_letterbox)
+    $result = PutFile($csvFolder + "Letterbox.bmp",$image)
+  ENDIF
+  
+  IF NOT (FileExists($csvFolder + "Locationless.bmp")) OR $VersionChange
+    $image = MimeDecode($img_locationless)
+    $result = PutFile($csvFolder + "Locationless.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Maze.bmp")) OR $VersionChange
+    $image = MimeDecode($img_maze)
+    $result = PutFile($csvFolder + "Maze.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Mega Event.bmp")) OR $VersionChange
+    $image = MimeDecode($img_mega)
+    $result = PutFile($csvFolder + "Mega Event.bmp",$image)
+  ENDIF
+ 
+  IF NOT (FileExists($csvFolder + "Multi.bmp")) OR $VersionChange
+    $image = MimeDecode($img_multi)
+    $result = PutFile($csvFolder + "Multi.bmp",$image)
+  ENDIF
+  
+  IF NOT (FileExists($csvFolder + "Mystery.bmp")) OR $VersionChange
+    $image = MimeDecode($img_mystery)
+    $result = PutFile($csvFolder + "Mystery.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Project APE.bmp")) OR $VersionChange
+    $image = MimeDecode($img_ape)
+    $result = PutFile($csvFolder + "Project APE.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Traditional.bmp")) OR $VersionChange
+    $image = MimeDecode($img_traditional)
+    $result = PutFile($csvFolder + "Traditional.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Virtual.bmp")) OR $VersionChange
+    $image = MimeDecode($img_virtual)
+    $result = PutFile($csvFolder + "Virtual.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Webcam.bmp")) OR $VersionChange
+    $image = MimeDecode($img_webcam)
+    $result = PutFile($csvFolder + "Webcam.bmp",$image)
+  ENDIF
+
+###Disabled###
+
+  IF NOT (FileExists($csvFolder + "Found Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_founddis)
+    $result = PutFile($csvFolder + "Found Disabled.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Attended Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_attendeddis)
+    $result = PutFile($csvFolder + "Attended Disabled.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Benchmark Found Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_bmfounddis)
+    $result = PutFile($csvFolder + "Benchmark Found Disabled.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Picture Taken Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_picturetakendis)
+    $result = PutFile($csvFolder + "Picture Taken Disabled.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Placed Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_placeddis)
+    $result = PutFile($csvFolder + "Placed Disabled.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Benchmark Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_benchmarkdis)
+    $result = PutFile($csvFolder + "Benchmark Disabled.bmp",$image)
+  ENDIF
+   
+  IF NOT (FileExists($csvFolder + "CITO Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_citodis)
+    $result = PutFile($csvFolder + "CITO Disabled.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Earth Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_earthdis)
+    $result = PutFile($csvFolder + "Earth Disabled.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Event Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_eventdis)
+    $result = PutFile($csvFolder + "Event Disabled.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Letterbox Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_letterboxdis)
+    $result = PutFile($csvFolder + "Letterbox Disabled.bmp",$image)
+  ENDIF
+  
+  IF NOT (FileExists($csvFolder + "Locationless Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_locationlessdis)
+    $result = PutFile($csvFolder + "Locationless Disabled.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Maze Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_mazedis)
+    $result = PutFile($csvFolder + "Maze Disabled.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Mega Event Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_megadis)
+    $result = PutFile($csvFolder + "Mega Event Disabled.bmp",$image)
+  ENDIF
+ 
+  IF NOT (FileExists($csvFolder + "Multi Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_multidis)
+    $result = PutFile($csvFolder + "Multi Disabled.bmp",$image)
+  ENDIF
+  
+  IF NOT (FileExists($csvFolder + "Mystery Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_mysterydis)
+    $result = PutFile($csvFolder + "Mystery Disabled.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Project APE Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_apedis)
+    $result = PutFile($csvFolder + "Project APE Disabled.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Traditional Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_traditionaldis)
+    $result = PutFile($csvFolder + "Traditional Disabled.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Virtual Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_virtualdis)
+    $result = PutFile($csvFolder + "Virtual Disabled.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Webcam Disabled.bmp")) OR $VersionChange
+    $image = MimeDecode($img_webcamdis)
+    $result = PutFile($csvFolder + "Webcam Disabled.bmp",$image)
+  ENDIF
+
+###Solved###
+
+  IF NOT (FileExists($csvFolder + "Found Solved.bmp")) OR $VersionChange
+    $image = MimeDecode($img_foundsolv)
+    $result = PutFile($csvFolder + "Found Solved.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Multi Solved.bmp")) OR $VersionChange
+    $image = MimeDecode($img_multisolv)
+    $result = PutFile($csvFolder + "Multi Solved.bmp",$image)
+  ENDIF
+  
+  IF NOT (FileExists($csvFolder + "Mystery Solved.bmp")) OR $VersionChange
+    $image = MimeDecode($img_mysterysolv)
+    $result = PutFile($csvFolder + "Mystery Solved.bmp",$image)
+  ENDIF
+
+###Children###
+
+  IF NOT (FileExists($csvFolder + "Parking Area.bmp")) OR $VersionChange
+    $image = MimeDecode($img_parking)
+    $result = PutFile($csvFolder + "Parking Area.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Trailhead.bmp")) OR $VersionChange
+    $image = MimeDecode($img_trailhead)
+    $result = PutFile($csvFolder + "Trailhead.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Question to Answer.bmp")) OR $VersionChange
+    $image = MimeDecode($img_question)
+    $result = PutFile($csvFolder + "Question to Answer.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Reference Point.bmp")) OR $VersionChange
+    $image = MimeDecode($img_reference)
+    $result = PutFile($csvFolder + "Reference Point.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Stages of a Multicache.bmp")) OR $VersionChange
+    $image = MimeDecode($img_multistage)
+    $result = PutFile($csvFolder + "Stages of a Multicache.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Final Location.bmp")) OR $VersionChange
+    $image = MimeDecode($img_final)
+    $result = PutFile($csvFolder + "Final Location.bmp",$image)
+  ENDIF
+
+  IF NOT (FileExists($csvFolder + "Archived.bmp")) OR $VersionChange
+    $image = MimeDecode($img_archived)
+    $result = PutFile($csvFolder + "Archived.bmp",$image)
+  ENDIF
+
+# showStatus msg=File validation complete
+
+ENDSUB
+
+#######################
+#
+BEGINSUB Name=ProcessCollection
+  # Set this counter to tell the user how the export progresses
+  $ThisRecord = 0
+  $csvLines = 0
+
+  # Iterate through the whole database, start at the first cache in the grid
+  GOTO Position=Top
+  WHILE NOT($_EOL)
+
+    # Show which record we are at
+    $ThisRecord = $ThisRecord + 1
+    IF $Verbose
+      IF Frac($ThisRecord/10) = 0
+        $Msg = "Now processing: " + "$ThisRecord" + " of " + "$_Count caches. $csvLines POI's"
+         SHOWSTATUS msg="$Msg"
+      ENDIF
+    ENDIF
+
+    # I want "." instead of "," in my terrain and difficulty
+    $dif = Replace(",",".","$d_Difficulty", True)
+    $ter = Replace(",",".","$d_Terrain", True)
+
+    $csvLon = "$d_Longitude"
+    $csvLat = "$d_Latitude"
+
+    GOSUB Name=SetPrefix
+
+    $By = $d_OwnerName
+    # Note that double quote character MUST be removed to prevent csv file problems
+    IF At($_Quote,$By) > 0
+      #replace double quotes with single quotes
+      $By = Replace($_Quote,"'",$By, True)
+    ENDIF
+
+  ENDWHILE
+
+ENDSUB
+
+#######################
+#
+BEGINSUB Name=ParentWpt
+  IF $_count > 0
+    WHILE NOT($_EOL)
+
+      # Change these lines for different data in the POI-files
+      # - ParentNameSetup
+      $csvName = $csvPrefix + "%code"
+      # Note that double quote character MUST be removed to prevent csv file problems
+      IF At($QT,$csvName) > 0
+        #replace double quotes with single quotes
+        $csvName = Replace($QT,"'",$csvName, True)
+      ENDIF
+
+      # - ParentCommentSetup
+      vsub status=off
+      $csvComment = eval("%Name by %By (%Dif/%Ter)") + $By
+      vsub status=on
+      # Note that double quote character MUST be removed to prevent csv file problems
+      IF At($QT,$csvComment) > 0
+        #replace double quotes with single quotes
+        $csvComment = Replace($QT,"'",$csvComment, True)
+      ENDIF
+  
+      # This line goes in the CSV file
+      $csvOut = $csvLon + "," + $csvLat + "," + Quote($csvName) + "," + Quote($csvComment) + $_NewLine
+
+      # Write first line to CSV file
+      GOSUB Name=WriteParentFile
+
+      # Now check if there's a hint for the cache and if there is process it
+      # so it can be split if its longer than 88 characters
+      # only do this if the user has chosen to write hints to the files
+      IF Len($d_Hints) > 0 .AND. $HintBx
+        # This section creates the comment text of the POI
+        # Many times the hint is too long and this is handled below by splitting it in two or more lines
+        # To try to get as much useful stuff into the comment, strip out as
+        # many useless characters as possible: formatting codes, double spaces, line-feeds, etc.
+
+        GOSUB Name=SetPrefix
+
+        # The lines with the hint will have the full name for the cache
+        $csvName = $csvPrefix + $d_Name
+        $csvComment = $d_Hints
+  
+        GOSUB Name=CleanUpCSV
+
+        # now assemble the csv data for this cache and deal with cases where 4th field (comment) is too long
+        $CommentLength = Len($csvComment)
+        $csvName = $csvName + " Hint"
+        IF $commentLength <= 88
+          # Comment field is not too long to fit on Garmin eTrex/GPSMAP (limit is 88 characters)
+          $csvOut = $csvLon + "," + $csvLat + "," + Quote($csvName) + "," + Quote($csvComment) + $_NewLine
+
+          # Write the line to CSV file
+          GOSUB Name=WriteParentFile
+        ELSE
+          # Count the number of lines the hint is split into
+          $HintNumber = 0
+
+          # As long as there's more than 88 characters keep splitting the hint
+          WHILE Len($csvComment) > 88
+            $HintNumber = $HintNumber + 1
+  
+            # Determine where to split the comment when longer than 88 characters
+            # Try to find a natural space between character 60 and 85
+            $Icharpos=85
+            WHILE ($Icharpos>60) .AND. .NOT. (SubStr($csvComment,$Icharpos,1) = " ")
+              $Icharpos = $Icharpos-1
+            ENDWHILE
+
+            # Assuming that no spaces where found between 60th and 87th characters of hint
+            # split at character 85 so that we can append "..."
+            IF $Icharpos = 60
+              $Icharpos = 85
+            ENDIF
+  
+            # Get the part of the comment that's to be written now
+            $PartComment = SubStr($csvComment,1, $Icharpos)
+  
+            $csvOut = $csvLon + "," + $csvLat + "," + Quote($csvName + " part $HintNumber") + "," + Quote($PartComment + "...") + $_NewLine
+            # Write line to CSV file
+            GOSUB Name=WriteParentFile
+  
+            # Cut the already written part of the string out of the comment
+            $csvComment = "..." + Replace($PartComment,"",$csvComment, True)
+          ENDWHILE
+    	
+          # If there's still part of the comment left (it will now be less than 88 characters long)
+          # then write it to the CSV-file
+          IF Len($csvComment) > 0
+            $HintNumber = $HintNumber + 1
+            $csvOut = $csvLon + "," + $csvLat + "," + Quote($csvName + " part $HintNumber") + "," + Quote($csvComment) + $_NewLine
+  	    # Write line to CSV file
+  	    GOSUB Name=WriteParentFile
+          ENDIF
+  
+          # Write to the CountLog if there's more than 2 lines of hint
+          IF $HintNumber > 0
+            $HintMatch = "^=$HintNumber="
+            $HintPOS = Val(List("HintDB","RegEx",$HintMatch))
+            IF $HintPOS > 0
+              $HintCount = List("HintDB","Item","$HintPOS")
+              $HintNumberString = "=" + NumToStr($HintNumber) + "="
+              $HintCount = SubStr($HintCount,Len($HintNumberString) + 1,Len($HintCount)-Len($HintNumberString))
+              $HintValue = Val($HintCount) + 1
+              $HintCountDB = List("HintDB","Edit:$HintPOS","$HintNumberString$HintValue")
+            ELSE
+              $HintNumberString = "=" + NumToStr($HintNumber) + "="
+              $HintValueStr = "$HintNumberString" + "1"
+              $HintCountDB = List("HintDB","add",$HintValueStr)
+            ENDIF
+          ENDIF
+        ENDIF
+      ENDIF
+
+      # Now check the Child waypoints for this cache
+      GOSUB Name=ChildWpt
+ 
+      # Goto next cache in view
+      GOTO Position=Next
+    ENDWHILE
+
+      # Show which record we are at so it shows the right number when the macro ends
+      IF $Verbose
+        $Msg = "Now processing: " + "$ThisRecord" + " of " + "$_Count caches. $csvLines POI's"
+        SHOWSTATUS msg="$Msg"
+      ENDIF
+
+    # Return to original database, if different
+    IF $_CurrentDatabase <> $CurrentDB
+      DATABASE Name=$CurrentDB Action=select
+    ENDIF
+
+    # Restore userflags, filter, and sort
+    DATARESTORE Data=$d_UserFlag
+    IF RESTOREFILTER($CurrentFilter, True) = 0
+      PAUSE Msg="Previously-set filter now would show no records. Clearing."
+    ENDIF
+    $sortdata = Extract($CurrentSort, "=",1)
+    $sequence = Extract($CurrentSort, "=",2)
+    SORT By=$sortdata Sequence=$sequence
+
+    IF $Verbose
+      #display summary information
+      $Message = "$ThisRecord records processed." + $_NewLine
+      $Message = $Message + "$csvLines POI's generated." + $_NewLine + $_NewLine
+      $Message = $Message + "Number of caches where the hint is split into 2 or more lines:" + $_NewLine + $_NewLine
+  
+      $HCount = 2
+      WHILE Val(List("HintDB","Count","")) > 0
+        $HintMatch = "^=$HCount="
+        $HintPOS = Val(List("HintDB","RegEx",$HintMatch))
+        IF $HintPOS > 0
+    	  $HintCount = List("HintDB","Item","$HintPOS")
+     	  $HintNumberString = "=" + NumToStr($HCount) + "="
+     	  $HintCount = SubStr($HintCount,Len($HintNumberString) + 1,Len($HintCount)-Len($HintNumberString))
+     	  $HintCountDB = List("HintDB","Delete","$HintPOS")
+          $Message = $Message + "$HCount lines of hint: $HintCount cache(s)" + $_NewLine
+        ENDIF
+        $HCount = $HCount + 1
+      ENDWHILE
+
+      PAUSE Msg=$Message
+    ENDIF
+  ENDIF
+
+ENDSUB
+
+#######################
+#
+BEGINSUB Name=ChildWpt
+  # Switch to Additional Waypoint table
+  TABLE Active=Waypoints scope=Parent
+	
+  # Is there any additional waypoints for this cache
+  IF $_count > 0
+    WHILE NOT($_EOL)
+      # First character in the name indicates the type of child waypoint
+
+      # Change these lines for different data in the POI-files
+      # - ChildNameSetup
+      $csvName = "$d_cCode" + " " + $d_cType
+      # - ChildCommentSetup
+      $csvComment = $d_cName + " " + $d_cComment
+
+      $csvLon = $d_cLon
+      $csvLat = $d_cLat
+
+      IF Len($csvComment) > 0
+        # This section creates the comment text of the POI
+        # Sometimes the comment is too long and this is handled below by splitting it in two or more lines
+        # To try to get as much useful stuff into the comment, strip out as
+        # many useless characters as possible: formatting codes, double spaces, line-feeds, etc.
+   
+        GOSUB Name=CleanUpCSV
+      
+      	# now assemble the csv data for this cache and deal with cases where 4th field (comment) is too long
+      	$CommentLength = Len($csvComment)
+      	IF $commentLength <= 88
+      	  # Comment field is not too long to fit on Garmin eTrex/GPSMAP (limit is 88 characters)
+      	  $csvOut = $csvLon + "," + $csvLat + "," + Quote($csvName) + "," + Quote($csvComment) + $_NewLine
+    
+      	  # Write the line to CSV file
+      	  GOSUB Name=WriteChildFile
+      	ELSE
+          # Count the number of lines the hint is split into
+      	  $CommentNumber = 0
+    
+    	    # As long as there's more than 88 characters keep splitting the hint
+      	  WHILE Len($csvComment) > 88
+      	    $CommentNumber = $CommentNumber + 1
+      
+            # Determine where to split the comment when longer than 88 characters
+            # Try to find a natural space between character 60 and 85
+            $Icharpos=85
+            WHILE ($Icharpos>60) .AND. .NOT. (SubStr($csvComment,$Icharpos,1) = " ")
+              $Icharpos = $Icharpos-1
+            ENDWHILE
+    
+       	    # Assuming that no spaces where found between 60th and 87th characters of hint
+       	    # split at character 85 so that we can append "..."
+            IF $Icharpos = 60
+              $Icharpos = 85
+            ENDIF
+        
+    	    # Get the part of the comment that's to be written now
+            $PartComment = SubStr($csvComment,1, $Icharpos)
+      
+            $csvOut = $csvLon + "," + $csvLat + "," + Quote($csvName + " #$CommentNumber") + "," + Quote($PartComment + "...") + $_NewLine
+      	    # Write line to CSV file
+      	    GOSUB Name=WriteChildFile
+      
+      	    # Cut the already written part of the string out of the comment
+      	    $csvComment = "..." + Replace($PartComment,"",$csvComment, True)
+          ENDWHILE
+        	
+    	  # If there's still part of the comment left (it will now be less than 88 characters long)
+    	  # then write it to the CSV-file
+          IF Len($csvComment) > 0
+      	    $CommentNumber = $CommentNumber + 1
+      	    $csvOut = $csvLon + "," + $csvLat + "," + Quote($csvName + " #$CommentNumber") + "," + Quote($csvComment) + $_NewLine
+      	    # Write line to CSV file
+      	    GOSUB Name=WriteChildFile
+      	  ENDIF
+      
+      	  # Write to the ErrorLog if there's more than 2 lines of hint
+      	  IF $CommentNumber > 0
+            $ErrorLog = $ErrorLog + $csvName + " - Long comment: $commentNumber POI's" + $_NewLine
+      	    $ErrorCount = $ErrorCount + 1
+          ENDIF
+      	ENDIF
+      ELSE
+        # Write Child Waypoints that doesn't have any comment-text
+        $csvOut = $csvLon + "," + $csvLat + "," + Quote($csvName) + "," + Quote($csvComment) + $_NewLine
+        GOSUB Name=WriteChildFile
+      ENDIF
+      GOTO Position=Next
+    ENDWHILE
+  ENDIF
+  TABLE Active=Caches
+
+ENDSUB
+
+#######################
+#
+BEGINSUB Name=SetPrefix
+  $csvPrefix = ""
+
+  IF $UsePrefix
+    # Previously found caches will have a "*" in front of the smart-name
+    IF $d_Found
+      $csvPrefix = "*"
+    ENDIF
+    
+    # Archived caches will have a "-" in front of the smart-name
+    IF $d_Archived
+      $csvPrefix = "-"
+    ENDIF
+    
+    # Caches with corrected coordinates will have a "!" in front of the smart-name
+    IF $d_HasCorrected
+      $csvPrefix = "!"
+    ENDIF
+  ENDIF
+  
+ENDSUB
+
+#######################
+# clean up $csvComment: remove returns, html, etc
+BEGINSUB Name=CleanUpCSV
+  $csvComment = Replace($_NewLine," ",$csvComment, True)
+  
+  IF At("<",$csvComment) > 0
+    # remove common html tags
+    $csvComment = Replace("<br>"," ",$csvComment, True)
+    $csvComment = Replace("<p>","",$csvComment, True)
+    $csvComment = Replace("</p>","",$csvComment, True)
+  ENDIF
+
+  # Note that double quote character MUST be removed to prevent csv file problems
+  IF At($QT,$csvName) > 0
+    #replace double quotes with single quotes
+    $csvName = Replace($QT,"'",$csvName, True)
+  ENDIF
+
+  # Note that double quote character MUST be removed to prevent csv file problems
+  IF At($QT,$csvComment) > 0
+    #replace double quotes with single quotes
+    $csvComment = Replace($QT,"'",$csvComment, True)
+  ENDIF
+
+  IF At("  ",$csvComment) > 0
+    # convert 3, and then 2, sequential spaces into one
+    # note: this if/endif could be removed to enhance speed
+    $csvComment = Replace("   "," ",$csvComment, True)
+    $csvComment = Alltrim(Replace("  "," ",$csvComment, True))
+  ENDIF
+  
+ENDSUB
+
+#######################
+#
+BEGINSUB name=WriteParentFile
+  # Called to write the data about the cache to the file
+  # The data must be in $csvOut
+
+  # Default filename
+  # Any waypoint not in the list of geocaching.com cache-types will be put in the "Unknown" file
+  $FileName = "Unknown"
+
+  # Native cache types
+  $Index = At($d_CacheType,$CacheType)
+  IF $Index > 0
+    $FileName = Extract($CacheTypeFull,"~",$Index)
+  ENDIF
+
+  IF $d_CacheType = "M"
+    Table active=waypoints scope=parent
+    $HasFinal = false
+    WHILE NOT($_EOL)
+      IF $d_cType = "Final Location"
+        $HasFinal = true
+        BREAK
+      ENDIF
+      GOTO Position=Next
+    ENDWHILE
+    Table active=caches
+    IF $HasFinal
+      $FileName = "Multi Solved"
+    ENDIF
+  ENDIF
+
+  IF $d_CacheType = "U"
+    Table active=waypoints scope=parent
+    $HasFinal = false
+    WHILE NOT($_EOL)
+      IF $d_cType = "Final Location"
+        $HasFinal = true
+        BREAK
+      ENDIF
+      GOTO Position=Next
+    ENDWHILE
+    Table active=caches
+    IF $HasFinal
+      $FileName = "Mystery Solved"
+    ENDIF
+  ENDIF
+
+  # Found status takes precedence over cachetype
+  IF $d_Found
+    $FileName = "Found"
+  ENDIF
+
+  IF $d_Found AND $d_CacheType = "M"
+    Table active=waypoints scope=parent
+    $HasFinal = false
+    WHILE NOT($_eol)
+      IF $d_cType = "Final Location"
+        $HasFinal = true
+        BREAK
+      ENDIF
+      GOTO Position=Next
+    ENDWHILE
+    Table active=caches
+    IF $HasFinal
+      $FileName = "Found Solved"
+    ENDIF
+  ENDIF 
+
+  IF $d_Found AND $d_CacheType = "U"
+    Table active=waypoints scope=parent
+    $HasFinal = false
+    WHILE not($_eol)
+      IF $d_cType = "Final Location"
+        $HasFinal = true
+        BREAK
+      ENDIF
+      GOTO Position=Next
+    ENDWHILE
+    Table active=caches
+    IF $HasFinal
+      $FileName = "Found Solved"
+    ENDIF
+  ENDIF 
+
+  IF $d_Found AND $d_TempDisabled
+    $DisabledIndex = At($d_CacheType,$CacheType)
+    IF $Index > 0
+      $FileName = "Found Disabled"
+    ENDIF
+  ENDIF
+
+  # Corrected coordinates will be indicated with a green check-mark, only meaningfull for multi's and mystery's
+  IF $d_HasCorrected
+    $FileName = $FileName + " Solved"
+  ENDIF
+
+  # Disabled status takes precedence over cachetype, found-status and corrected coordinates
+  IF $d_TempDisabled
+    $DisabledIndex = At($d_CacheType,$CacheType)
+    IF $Index > 0
+      $FileName = Extract($CacheTypeFull,"~",$DisabledIndex) + " Disabled"
+    ENDIF
+  ENDIF
+
+  # Archived status takes precedence over cachetype, found-status, corrected coordinates and disabled-ness
+  IF $d_Archived
+    $FileName = "Archived"
+  ENDIF
+
+  IF $d_Archived AND $d_CacheType = "A"
+    $FileName = "Project APE Disabled"
+  ENDIF
+
+  IF $d_Archived AND $d_CacheType = "C"
+    $FileName = "CITO Disabled"
+  ENDIF
+
+  IF $d_Archived AND $d_CacheType = "E"
+    $FileName = "Event Disabled"
+  ENDIF
+
+  IF $d_Archived AND $d_CacheType = "G"
+    $FileName = "Benchmark Disabled"
+  ENDIF
+
+  IF $d_Archived AND $d_CacheType = "X"
+    $FileName = "Maze Disabled"
+  ENDIF
+
+  IF $d_Archived AND $d_CacheType = "Z"
+    $FileName = "Mega Event Disabled"
+  ENDIF
+
+  IF $d_Found AND $d_CacheType = "C" 
+    $FileName = "Attended"
+  ENDIF
+
+  IF $d_Found AND $d_CacheType = "E" 
+    $FileName = "Attended"
+  ENDIF
+
+  IF $d_Found AND $d_CacheType = "G" 
+    $FileName = "Benchmark Found"
+  ENDIF
+
+  IF $d_Found AND $d_CacheType = "W" 
+    $FileName = "Picture Taken"
+  ENDIF
+
+  IF $d_Found AND $d_CacheType = "X" 
+    $FileName = "Attended"
+  ENDIF
+
+  IF $d_Found AND $d_CacheType = "Z" 
+    $FileName = "Attended"
+  ENDIF
+
+  # Any cache that I have placed will be indicated as such, independent of type
+  # Will only match if your name is part of the OwnerName
+  $Index = At($UserName,$d_OwnerName)
+  IF $Index > 0
+    $FileName = "Placed"
+  ENDIF
+
+  $FileName = "\" + $FileName + ".csv"
+  $error = Appendfile($csvFolder + $FileName, $csvOut)
+  $csvLines = $csvLines + 1
+
+ENDSUB
+
+#######################
+#
+BEGINSUB name=WriteChildFile
+	# Called to write the data about the child to the file
+	# The data must be in $csvOut
+
+	# Default filename
+	$FileName = "UnknownChild"
+
+	$ChildType1 = Left($d_cType, 1)
+	$Index = At($ChildType1,$ChildType)
+	IF $Index > 0
+		$FileName = Extract($ChildTypeFull,"~",$Index)
+	ENDIF
+
+	$FileName = "\" + $FileName + ".csv"
+	$error = Appendfile($csvFolder + $FileName, $csvOut)
+	$csvLines = $csvLines + 1
+
+ENDSUB	
+
+#######################
+
+<Data> VarName=$UserOptions
+#********************************************************************
+# Form generated by GSAK form designer on Sat 03-Nov-2007 01:17:35
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = My Garmin POI Export
+  height = 421
+  width = 505
+
+  left = 466
+  top = 378
+
+Name = Label1
+  Type = Label
+  left = 133
+  top = 7
+  Caption = My Garmin CSV POI Export
+  color = 16744448
+  style = bold
+  size = 13
+
+  height = 20
+  width = 220
+
+Name = DBLbl
+  Type = Label
+  left = 10
+  top = 45
+  Caption = Database to export
+  height = 13
+  width = 90
+
+Name = DB
+  Type = Combobox
+  left = 160
+  top = 40
+  values = $dblist
+  height = 21
+  width = 145
+
+Name = csvFolderLbl
+  Type = Label
+  left = 10
+  top = 155
+  Caption = Folder to save CSV files
+  height = 13
+  width = 112
+
+Name = csvFolder
+  Type = Folder
+  left = 160
+  top = 150
+  width = 250
+  height = 21
+
+Name = UserNameLbl
+  Type = Label
+  left = 10
+  top = 205
+  Caption = Geocaching Name
+  height = 13
+  width = 89
+
+Name = UserName
+  Type = Edit
+  left = 160
+  top = 200
+  height = 21
+  width = 79
+
+Name = ok
+  type = Button
+  top = 350
+  left = 125
+  caption = OK
+  height = 25
+  width = 75
+
+Name = cancel
+  type = Button
+  top = 350
+  left = 300
+  caption = Cancel
+  height = 25
+  width = 75
+
+Name = Warning1
+  type = Label
+  left = 160
+  top = 78
+  caption = ***Warning***
+  color = 255
+  style = bold
+  size = 11
+  height = 20
+  width = 300
+
+Name = Warning2
+  type = Label
+  left = 60
+  top = 98
+  caption = All CSV files in the destination folder will be deleted before generation
+  color = 255
+  style = bold
+  size = 9
+  height = 20
+  width = 400
+
+Name = Warning3
+  type = Label
+  left = 60
+  top = 118
+  caption = (but not other types of files, so your .BMP or .GPX files will be safe)
+  color = 255
+  style = bold
+  size = 9
+  height = 20
+  width = 400
+
+Name = HintLbl
+  type = Label
+  left = 10
+  top = 250
+  Caption = Output hint?
+  height = 13
+  width = 89
+
+Name = HintBx
+  type = CheckBox
+  left = 160
+  top = 250
+  height = 17
+  width = 15
+
+Name = FoundLbl
+  type = Label
+  left = 240
+  top = 250
+  Caption = Filter out found caches?
+  height = 13
+  width = 130
+
+Name = FoundBx
+  type = CheckBox
+  left = 390
+  top = 250
+  height = 17
+  width = 15
+
+Name = ArchiveLbl
+  type = Label
+  left = 10
+  top = 300
+  Caption = Filter out archived caches?
+  height = 13
+  width = 130
+
+Name = ArchiveBx
+  type = CheckBox
+  left = 160
+  top = 300
+  height = 17
+  width = 15
+
+Name = TempDisLbl
+  type = Label
+  left = 240
+  top = 300
+  Caption = Filter out disabled caches?
+  height = 13
+  width = 130
+
+Name = TempDisBx
+  type = CheckBox
+  left = 390
+  top = 300
+  height = 17
+  width = 15
+
+Name = VersionLabel
+  type = Label
+  left = 443
+  top = 362
+  height = 13
+  width = 34
+  caption = version
+
+<EndData>
+
+#######################
+<data> VarName=$img_found
+Qk04BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAAAAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39AAAAAAD9/f39/f39/f0AAC8vbzdvAAD9/f39/f0ALy8BDQEBAS93AP39/f0AN28BF+/vtxcBLzcA
+/f39AL8BFw8XDxcPFwG/AP39AL+/AQEBAQEBAQEBv78A/QC/Pz8///////8/P3+/AP0Av/t/////////
+/38/vwD9AL+/+wcAUv8HAFL7v78A/QA3v78A+///APv/v78vAP39AC+/WwAH/1MAB783AP39/QAvd7+/
+v7+/v783bwD9/f39AC9vL3/7fy93LwD9/f39/f0AADcvbzcvAAD9/f39/f39/f0AAAAAAP39/f39/f39
+/f39/f39/f39/f39/f0AAA==
+<enddata>
+
+<data> VarName=$img_attended
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/f39/f39/f0GBgYGBgYG/WxsbGxsbGz9BoSEhIT7Bv1sw8PDw8xs/f0GhIT7Bv39/WzDw8xs
+/f39/QYGBv39VFRUbGxsVFRU/f3C0ML9/f1UVNDQ0FRU/f3C0HDQwv39VNDQcNDQVP3C0HDQcNDC/VTQ
+cNBw0FT9wtDQ0NDQwv1U0NDQ0NBU/cLQANAA0ML9VND80PzQVP0A0NDQ0NAA/VTQ0NDQ0FT9AADQANAA
+AP1UVNDQ0FRU/QAAAAAAAAD9VFRUVFRUVP39AAAAAAD9/f1UVFRUVP39/f0AAAD9/f39/VRUVP39/f39
+/f39/f39/f3
+9/f39/f0=
+<enddata>
+<data> VarName=$img_bmfound
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39CPcI9wj9/f39/f39/f0I96mpqdDQ9wj9/f39/f0I/6mpqZCQqYLQ9/39/f0I/9CpCKmQkIbQqtAI
+/f3996rQqampqdDQ0NDQ9/39CP/Q0NCpCJCQCNDQ0NAI/Qj/qqqqqgiQkAiqqtDQ9/0I/wgI09OQkJCQ
+qYKqqgj9CP+qqqrQkJCQkNCpgqn3/Qj/qtAIkJCQkJCQ0K6uCP39CP8I0JCQkJCQkIbQ9/39/Qj/rgiQ
+kJCQkJCurgj9/f399///9pCQkJD///f9/f39/f0I9///////9wj9/f39/f39/f0I9wj3CP39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_picturetaken
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/VJSUlJSUlJSUv39/f39/Vs/Pz8/Pz8/Pz9b/f39/VI/P/////////8/P1L9/f1SP/8/P1JSUj8/Pz9S
+/f39Uj//P1IH/wdSP/8/Uv39/VI//z9S////Uj//P1L9/f1SP/8/Ugf/B1I//z9S/f39Uj//Pz9SUlI/
+P/81Uv39/VI/NT8/Pz8///81NVL9/f39WzU1NTU1NTU1NVv9/f39/f1SUlJSUlJSUlL9/f39/f1S////
+Uv39/QAA/f39/f39/VJSUv39/f39/f39/f39/Tc3Nzf9/f39/f39/f39/Tf9/Tf9Nzf9/f39/f39/f39
+/f03/f03/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_placed
+Qk04BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAAAAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/bcnt/39/f39Zh79/f39/f23b29v/f39J29m/f39/f39/S+/b2dvL3d3r/39/f39/f13t793d7+3J/39
+/f39/f39t3e/t3+3f2f9/f39/f39/Xe3v793d78n/f39/f39/S93v7e/v3d3dyev/f39ty939r+/v7e/
+v7+3b2f9/W93d3d3tr+/t3dvdzcv/f39/f39tm+/v3eu/f39/f39/f397OO2t78v4uT9/f39/f397OP0
+7De3buzi5P39/f39/dr07Opud6zr7Jn9/f39/f3aCevrrG7i4uzZ/f39/f394Qnr6+vq6+IJkf39/f39
+/doJ6+vr6+vr9Nn9/f0AAA==
+<enddata>
+
+<data> VarName=$img_benchmark
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f399wctLQf3/f39/f39/f2G8PEHhoYH8fCG/f39/f0xAIaqqYGBqar3AAf9/f33AK6pMX0sVSwxWaoA
+hv398IapgSxVVVVVgTGphvD99/XQqamBgVmBfYGBgar19y33qampMfDw8PD0gYGpBzEthtDQ0KoA94bw
+MYGBgYItLYbT09PTVfWC8IGpqamGLS2C09DQqakAAIHQramp9y0HMa6lqamu9/Sp0NMH0DH3/QCqWamp
+9v+lqamp0AgA/f0H8a6l9//2qaWpVa7xB/39/fXxrvavgalZqa7xMf39/f39BwBVhvauhjEAB/39/f39
+/f39B/UAAPUH/f39/f0=
+<enddata>
+
+<data> VarName=$img_cito
+Qk04BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAIBAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39BAQEBAT9/f39/f39/f0EBAQEBAQEBAT9/f39/f0EsxUVBAQEBAQEBP39/f0EFf8VFRUVBAQEBAQE
+/f39BBX/FRX/FRUEBAQEBP39BBUVFf//FRUVBAQEBAQE/QT/Ff//FRUVFQQEBAQEBP0EFf8VFf8VFQQE
+BAQEBAT9BP8VsrIV/wSDg/+DgwQE/QQVFbKyFQQEgwQEBIMEBP39BBUVFRUEBP8EBAT/BP39/QQVFRUV
+BAQEgwSDBAT9/f39BBUVFRUEBAT/BAT9/f39/f0EBBUVFRUEBAT9/f39/f39/f0EBAQEBP39/f39/f39
+/f39/f39/f39/f39/f0AAA==
+<enddata>
+
+<data> VarName=$img_earth
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f0AAAAAAAAA/f39/f39/f0A5eXl5QwMDAD9/f39/f0A5QkJCQnlDAwMAP39/f0A5QkJCQkJ5QwMDAwA
+/f0A5QkJCQkJCQnlDAwM9AD9AOUJCQnl5eXl5eUM5QwA/QDlCQnl5aTPz8/Pz8/PAP0A5Qnl5c/KpKSk
+pKSpqQD9AAwJ5eXPyv//ysrPz88A/QAMCeXlz8r//8rKz8/PAP0ADAwM5eXPysrKys/PzwD9/QAMDAzl
+z8rKys/PzwD9/f39AAwM5eXPys/PzwD9/f39/f0ADOXlz8/PzwD9/f39/f39/QAAAAAAAAD9/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_event
+Qk04BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAIBAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/f39/f39/f39/f39/f398P39/f39/f39/f39/f39/fDw/f39/f39/f39/f39/f3wr/D9/f39
+/f39/f398PDw8K+v8P39/f39/f398K+vr6+v0a/w/f39/f398K+vr6+vr6+vr/D9/f398NPT////////
+/6+v8P39/fDT0///fX19ff+vr/D9/f3w09P/////////r6/w/f398NPTfX19fX19fa+v8P39/fDT0///
+//////+vr/D9/f398NPT09PT09PT0/D9/f39/f3w09PT09PT0/D9/f39/f39/fDw8PDw8PD9/f39/f39
+/f39/f39/f39/f39/f0AAA==
+<enddata>
+
+<data> VarName=$img_letterbox
+Qk04BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAIBAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+AAD9/f39/f39/f39/f39/QAzAAD9/f39/f39/f39/f0AMzMzAAD9/f39/f39/f39ADNb1NQzAAD9/f39
+/f39/QAzW9TU1NQzAAD9/f39/f0AM1vU1NTU1NTRAAD9/f39ADNb1FsAAADR0dEA/f39/QAzWwAAM9Qz
+ANHRAP39/f0AAABb1NTU1ADR0QD9/f39ADNbW9TU1NQzANEA/f39/QAAMzNbW9TU0QDRAP39/f39/QAA
+MzNb1NTRAAD9/f39/f39/QAAMzNb0QAA/f39/f39/f39/QAAM1vRAP39/f39/f39/f39/QAAMwD9/f39
+/f39/f39/f39/QAA/f0AAA==
+<enddata>
+
+<data> VarName=$img_locationless
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/f39/f39/f39BQUFgwWDg4ODg4MFQ0P9/RCh9P9gCQgICAgJ8wlS/f1KWPMQEPQJ86IJEKJg
+/f39/UEYWBD/CetZEFgQ/f39/f39BRBYWf///1hB/f39/f39/f39BRAAqlLG/f39/f39/f39/f0F/4P9
+/f39/f39/f39/f39g/+D/f39/f39/f39/f39/YP/AP39/f39/f39/f39/f2D/wCUS8b9/f39/f39/f39
+g/8LZ/tnS/39/f39/f39/YP/HGf7S8b9/f39/f39/f1D/wDGxf39/f39/f39/f39/UL9/f39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_maze
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/QhiYmL9YmL9/f39/f39/Qhi9ghi/WFhYv1i/f39
+/f1i9v+0YWL9q2L9YmJi/f39Yv+sYmth9ati/WK0CP39/WK1YvarYmJiYmJi/f39/f1iYvb9/bRhbGti
+YggICGL9/f39/f20YVpaYmJia2u1Yv39/f39YWy/v2thYmJiCGL9/f39/WL/Ygm/Wf39YvZi/f39/f1q
+/2v/Yqv9/WL2Yv39/f39q2JqWWL9/f0IYvX9/f39/f1vb6v9/f39/f39/f39/f39b2/9/f39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_mega
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/f39/f39/f39/f39/f398P39/f39/f39/f39/f39/fDw/f39/f39/f39/f39/f3wr/D9/f39
+/f39/f398PDw8K+v8P39/f39/f398K+vr6+v0a/w/f39/f398K+vr6+vr6+vr/D9/f398AkJcHD///9w
+cK+v8P39/fAJCXBw/3D/cHCvr/D9/f3wCQlwcHBwcHBwr6/w/f398AkJcHBw/3BwcK+v8P39/fAJCXBw
+////cHCvr/D9/f398AkJCQkJCQkJCfD9/f39/f3wCQkJCQkJCfD9/f39/f39/fDw8PDw8PD9/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_multi
+Qk04BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAIBAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP0A
+AAAAAAD9/f39/f39/f0Agvb29vYAAP39/f39/f39AAj29vb2APYA/f39/f39/QD2CAj29gD29gD9/f39
+/f0AAAAAAAAA9vb2AP39/f39AADOzs4AAPb29vYA/f39/fAAAAAAAPAA9vb2CAD9/f398M7Ozs7OzgD2
+9ggAAAD9/QAAzpycnJzOAAgIAPYA/f0A9gDOnJycnM4ACAD2AAD9APb2AM7Ozs7OzgAA9gAA/QAAAAAA
+AAAAAAAAAAAAAP0Azs7Ozs7Ozs7Ozs7OAAD9AAcAAAAAAAAAAAAAAAcA/f0Azs7OzpycnM7Ozs7OAP39
+/QAAAAAAAAAAAAAAAIIAAA==
+<enddata>
+
+<data> VarName=$img_mystery
+Qk04BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAIBAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f0AAP39/f39/f39/f39/f0ACq8A/f39/f39/f39/f39AAqvAP39/f39/f39/f39/f0AAP39/f39
+/f39/f39/f0AAAD9/f39/f39/f39/f39AAoA/f39/f39/f39/f39/QAKrwD9/f39/f39/f39/f39AAqv
+AP39/f39/f39/QAA/QAKCq8A/f39/f39/QAKCgD9AAoKrwD9/f39/QAKCq8A/f0ACgqvAP39/f0ACgoA
+/f39AAoKrwD9/f39AAoKCgAAAAoKCq8A/f39/f0ACgoKCgoKCq8A/f39/f39/QCvr6+vr68A/f39/f39
+/f39AAAAAAAA/f39/f0AAA==
+<enddata>
+
+<data> VarName=$img_ape
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39AAAHBwAA/f39/f39/f0AAAD/AP//AAAA/f39/f0AAP///y3w9v//AAD9/f0AAP////b/B/D///8A
+AP39AP//CPcI9wAx/////wD9AAD//wgI/wcAhv/wr/8AAAD//////zEALQAACDEt/wAA//////8AMf/w
+//////8AAP////+CAPXxAPf//6//AAD/////rwAACP/wVTEt/wAAAP////8xAPH///cI/wAA/QD/////
+9wD///////8A/f0AAP//9gD3//////8AAP39/QAA/wAI//////8AAP39/f39AAAA/////wAAAP39/f39
+/f39AAAAAAAA/f39/f0=
+<enddata>
+
+<data> VarName=$img_traditional
+Qk04BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAIBAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f0AAAAAAAD9/f39/f39/f0Agvb29vYAAP39/f39
+/f39AAj29vb2APYA/f39/f39/QCvCAj29gD29gD9/f39/f0AAAAAAAAA9vb2AP39/f39AABhYWEAAPb2
+9vYA/f39/fAAAAAAAPAACPb2ggD9/f398GFhYWFhYQCC9oIA/f39/f0AYQwMDAxhAIKCAP39/f39/QBh
+DAwMDGEAggD9/f39/f39AGFhYWFhYQAA/f39/f39/f0AAAAAAAAAAP39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f0AAA==
+<enddata>
+
+<data> VarName=$img_virtual
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+AAAAAP0AAAAAAAD9/f39/f0Ar68Ar///r6+vAP39/f39/QCv////////r68A/f39/f0Ar///////r68A
+AP39/f39AK///////68A/f39/f39AAD///n///8A/f39/f39AP8A//n5+f//AAD9/f39AP8A//n////5
+/wD/AP39AP8AAP////////+vAP8A/QAA/QD//wD/AP//rwAAAP0A/f0A//8A/wD//68A/QD9/f39AP8A
+////AP+vAP39/f39/QD///////+vAP39/f39/f39AP//r6+vAP39/f39/f39/f0AAAAAAP39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_webcam
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/QAA8PDw8PDw8AD9/f39/f0A//////8I9/cA/f39/f39/QAACAgI9wAA/f39/f39/f39/QAA8AD9/f39
+/f39/f39/f0A8PD1/f39/f39/f39/f0AAAAAAAD9/f39/f39/f0A////9vb2AP39/f39/f0A//8tLS0A
+CAcA/f39/f0A//8A//f3CAAI9gD9/f39AP8t//f39wivAPYA/f39/QD/Lff39wivCAD2AP39/f0A//YA
+BwivCAD29gD9/f39/QD29i0tLQD29gD9/f39/f39AP////b29gD9/f39/f39/f0xMQAAMTH9/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_founddis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39AAAAAAD9/f0A/f39/f0AAC8vbwD5AAAA+QD9/f0ALy8BDQD5+fkA+fn5AP0AN28BF+/vAPn5+fn5
+AP39AL8BFw8XDxcA+fn5AP39AL+/AQEBAQEA+fn5+fkA/QC/Pz8///8A+fn5APn5+QAAv/t//////wD5
+AH8A+QD9AL+/+wcAUv8HAFL7vwAA/QA3v78A+///APv/v78vAP39AC+/WwAH/1MAB783AP39/QAvd7+/
+v7+/v783bwD9/f39AC9vL3/7fy93LwD9/f39/f0AADcvbzcvAAD9/f39/f39/f0AAAAAAP39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_attendeddis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/QD9/f0A/f0GBgYGBgYG/QD5AGwA+QD9BoSEhIT7BgD5+fkA+fn5AP0GhIT7Bv39APn5+fn5
+AP39/QYGBv39VFQA+fn5AFRU/f3C0ML9/f0A+fn5+fkA/f3C0HDQwv0A+fn5APn5+QDC0HDQcNDC/QD5
+ANAA+QD9wtDQ0NDQwv1UANDQ0ABU/cLQANAA0ML9VND80PzQVP0A0NDQ0NAA/VTQ0NDQ0FT9AADQANAA
+AP1UVNDQ0FRU/QAAAAAAAAD9VFRUVFRUVP39AAAAAAD9/f1UVFRUVP39/f0AAAD9/f39/VRUVP39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_bmfounddis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39AAAAAAD9/f39/f39/f39/QCBgYGBAAD9/f39/f0AAP39AJCQLPWBAP39/f0A/6kA/f2QkPWBAP39
+/f39AK6pqQAA/QCBAP39AP39AP+pqamBAJCQAAD9AIEA/QD/0NDQqgCQkP39AIGBAP0A//X109OQkJCQ
+APWpqQD9AP/T0NAAkJCQkNCp9akA/QD/rgAAkJCQkJCQ0K6uAP39AAD9/ZCQkJCQkPXQAP39/f39/f2Q
+kJCQkJCurgD9/f39/f0A9pCQkJD//wD9/f39/f39AP///wD9AAD9/f39/f39/f0AAAD9/f39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_picturetakendis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/VJSUlJSUgBSUv0A/f39/Vs/Pz8/PwD5AD8A+QD9/VI/P////wD5+fkA+fn5AP1SP/8/P1JSAPn5+fn5
+AP39Uj//P1IH/wcA+fn5AP39/VI//z9S//8A+fn5+fkA/f1SP/8/UgcA+fn5APn5+QD9Uj//Pz9SUgD5
+AP8A+QD9/VI/NT8/Pz8/AP81NQD9/f39WzU1NTU1NTU1NVv9/f39/f1SUlJSUlJSUlL9/f39/f1S////
+Uv39/QAA/f39/f39/VJSUv39/f39/f39/f39/Tc3Nzf9/f39/f39/f39/Tf9/Tf9Nzf9/f39/f39/f39
+/f03/f03/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_placeddis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/bcnt/39/QD9Zh4A/f39/f23b29v/QD5AG8A+QD9/f39/S+/bwD5+fkA+fn5AP39/f13t793APn5+fn5
+AP39/f39t3e/t38A+fn5AP39/f39/Xe3v78A+fn5+fkA/f39/S93v7cA+fn5APn5+QD9ty939r+/vwD5
+AL8A+QD9/W93d3d3tr+/AHdvdwAv/f39/f39tm+/v3eu/f39/f39/f397OO2t78v4uT9/f39/f397OP0
+7De3buzi5P39/f39/dr07Opud6zr7Jn9/f39/f3aCevrrG7i4uzZ/f39/f394Qnr6+vq6+IJkf39/f39
+/doJ6+vr6+vr9Nn9/f0=
+<enddata>
+
+<data> VarName=$img_benchmarkdis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39AAAAAAD9/f39/f39/f39/QCBgYGBAAD9/f39/f0AAP39AABVLPWBAP39/f0A/6kA/f39APWBAP39
+/f39AK6pqQAA/QCBAP39AP39AP+pqamBAP0AAAD9AIEA/QD/0NDQqgD9/f39AIGBAP0A//X109MA/f39
+APWpqQD9AP/T0NAA/f0AANCp9akA/QD/rgAA/f39AKn10K6uAP39AAD9/f0AAKWpqfXQAP39/f39/f0A
+//WppamurgD9/f39/f0A9q/1qQD//wD9/f39/f39AP///wD9AAD9/f39/f39/f0AAAD9/f39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_citodis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39BAQEBAD9/f0A/f39/f0EBAQEBAD5AAQA+QD9/f0EsxUVBAD5+fkA+fn5AP0EFf8VFRUVAPn5+fn5
+AP39BBX/FRX/FRUA+fn5AP39BBUVFf//FRUA+fn5+fkA/QT/Ff//FRUA+fn5APn5+QAEFf8VFf8VFQD5
+AAQA+QD9BP8VsrIV/wSDAP+DgwAE/QQVFbKyFQQEgwQEBIMEBP39BBUVFRUEBP8EBAT/BP39/QQVFRUV
+BAQEgwSDBAT9/f39BBUVFRUEBAT/BAT9/f39/f0EBBUVFRUEBAT9/f39/f39/f0EBAQEBP39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_earthdis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f0AAAAAAAAA/f0A/f39/f0A5eXl5QD5AAAA+QD9/f0A5QkJCQD5+fkA+fn5AP0A5QkJCQkJAPn5+fn5
+AP0A5QkJCQkJCQkA+fn5AAD9AOUJCQnl5eUA+fn5+fkA/QDlCQnl5aQA+fn5APn5+QAA5Qnl5c/KpAD5
+AKQA+QD9AAwJ5eXPyv//AMrPzwAA/QAMCeXlz8r//8rKz8/PAP0ADAwM5eXPysrKys/PzwD9/QAMDAzl
+z8rKys/PzwD9/f39AAwM5eXPys/PzwD9/f39/f0ADOXlz8/PzwD9/f39/f39/QAAAAAAAAD9/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_eventdis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/QD9/f0A/f39/f39/f398AD5AP0A+QD9/f39/f39/QD5+fkA+fn5AP39/f39/f3wAPn5+fn5
+AP39/f398PDw8K8A+fn5AP39/f398K+vr68A+fn5+fkA/f398K+vr68A+fn5APn5+QD98NPT/////wD5
+AK8A+QD9/fDT0///fX19AP+vrwD9/f3w09P/////////r6/w/f398NPTfX19fX19fa+v8P39/fDT0///
+//////+vr/D9/f398NPT09PT09PT0/D9/f39/f3w09PT09PT0/D9/f39/f39/fDw8PDw8PD9/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_letterboxdis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+AAD9/f39/QD9/f0A/f39/QAzAAD9/QD5AP0A+QD9/f0AMzMzAAD5+fkA+fn5AP39ADNb1NQzAPn5+fn5
+AP39/QAzW9TU1NQA+fn5AP39/f0AM1vU1NQA+fn5+fkA/f39ADNb1FsA+fn5APn5+QD9/QAzWwAAMwD5
+ANEA+QD9/f0AAABb1NTUAADR0QD9/f39ADNbW9TU1NQzANEA/f39/QAAMzNbW9TU0QDRAP39/f39/QAA
+MzNb1NTRAAD9/f39/f39/QAAMzNb0QAA/f39/f39/f39/QAAM1vRAP39/f39/f39/f39/QAAMwD9/f39
+/f39/f39/f39/QAA/f0=
+<enddata>
+
+<data> VarName=$img_locationlessdis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/QD9/f0A/f39BQUFgwWDgwD5AIMA+QD9/RCh9P9gCQD5+fkA+fn5AP1KWPMQEPQJAPn5+fn5
+AP39/UEYWBD/CesA+fn5AP39/f39BRBYWf8A+fn5+fkA/f39/f39BRAA+fn5APn5+QD9/f39/f0F/wD5
+AP0A+QD9/f39/f39g/+DAP39/QD9/f39/f39/YP/AP39/f39/f39/f39/f2D/wCUS8b9/f39/f39/f39
+g/8LZ/tnS/39/f39/f39/YP/HGf7S8b9/f39/f39/f1D/wDGxf39/f39/f39/f39/UL9/f39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_mazedis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/QD9/f0A/f39/f39/f39/QD5AP0A+QD9/QhiYmL9YgD5+fkA+fn5AAhi9ghi/WFhAPn5+fn5
+AP1i9v+0YWL9q2IA+fn5AP39Yv+sYmth9asA+fn5+fkA/WK1YvarYmIA+fn5APn5+QBiYvb9/bRhbAD5
+AAgA+QD9/f39/f20YVpaAGJiawC1Yv39/f39YWy/v2thYmJiCGL9/f39/WL/Ygm/Wf39YvZi/f39/f1q
+/2v/Yqv9/WL2Yv39/f39q2JqWWL9/f0IYvX9/f39/f1vb6v9/f39/f39/f39/f39b2/9/f39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_megadis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/QD9/f0A/f39/f39/f398AD5AP0A+QD9/f39/f39/QD5+fkA+fn5AP39/f39/f3wAPn5+fn5
+AP39/f398PDw8K8A+fn5AP39/f398K+vr68A+fn5+fkA/f398K+vr68A+fn5APn5+QD98AkJcHD//wD5
+AK8A+QD9/fAJCXBw/3D/AHCvrwD9/f3wCQlwcHBwcHBwr6/w/f398AkJcHBw/3BwcK+v8P39/fAJCXBw
+////cHCvr/D9/f398AkJCQkJCQkJCfD9/f39/f3wCQkJCQkJCfD9/f39/f39/fDw8PDw8PD9/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_multidis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP0A
+AAAAAAD9/QD9/f0A/f0Agvb29vYAAAD5AP0A+QD9AAj29vb2AAD5+fkA+fn5AAD2CAj29gD2APn5+fn5
+AP0AAAAAAAAA9vYA+fn5AP39AADOzs4AAPYA+fn5+fkA/fAAAAAAAPAA+fn5APn5+QD98M7Ozs7OzgD5
+AAgA+QD9/QAAzpycnJzOAAgIAAAA/f0A9gDOnJycnM4ACAD2AAD9APb2AM7Ozs7OzgAA9gAA/QAAAAAA
+AAAAAAAAAAAAAP0Azs7Ozs7Ozs7Ozs7OAAD9AAcAAAAAAAAAAAAAAAcA/f0Azs7OzpycnM7Ozs7OAP39
+/QAAAAAAAAAAAAAAAII=
+<enddata>
+
+<data> VarName=$img_mysterydis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f0AAAD9/f0A/f39/f39/f0ACgD5AP0A+QD9/f39/f39AAD5+fkA+fn5AP39/f39/f0AAPn5+fn5
+AP39/f39/f0AAAAA+fn5AP39/f39/f39AAoA+fn5+fkA/f39/f39/QAA+fn5APn5+QD9/f39/f39AAD5
+AP0A+QD9/f39/QAA/QAKAK8A/QD9/f39/QAKCgD9AAoKrwD9/f39/QAKCq8A/f0ACgqvAP39/f0ACgoA
+/f39AAoKrwD9/f39AAoKCgAAAAoKCq8A/f39/f0ACgoKCgoKCq8A/f39/f39/QCvr6+vr68A/f39/f39
+/f39AAAAAAAA/f39/f0=
+<enddata>
+
+<data> VarName=$img_apedis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39AAAHBwAA/f0A/f39/f0AAAD/AAD5AAAA+QD9/f0AAP///wD5+fkA+fn5AP0AAP////b/APn5+fn5
+AP39AP//CPcI9wAA+fn5AAD9AAD//wgI/wcA+fn5+fkAAAD//////zEA+fn5APn5+QAA//////8AMQD5
+AP8A+QAAAP////+CAPXxAPf//wD/AAD/////rwAACP/wVTEt/wAAAP////8xAPH///cI/wAA/QD/////
+9wD///////8A/f0AAP//9gD3//////8AAP39/QAA/wAI//////8AAP39/f39AAAA/////wAAAP39/f39
+/f39AAAAAAAA/f39/f0=
+<enddata>
+
+<data> VarName=$img_traditionaldis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/QD9/f0A/f39/f39/f39/QD5AP0A+QD9/f0AAAAAAAD5+fkA+fn5AP0Agvb29vYAAPn5+fn5
+AP39AAj29vb2APYA+fn5AP39/QCvCAj29gAA+fn5+fkA/f0AAAAAAAAA+fn5APn5+QD9AABhYWEAAAD5
+APYA+QD9/fAAAAAAAPAAAPb2ggD9/f398GFhYWFhYQCC9oIA/f39/f0AYQwMDAxhAIKCAP39/f39/QBh
+DAwMDGEAggD9/f39/f39AGFhYWFhYQAA/f39/f39/f0AAAAAAAAAAP39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_virtualdis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+AAAAAP0AAAAAAAAA/f39/f0Ar68ArwD5AK8A+QD9/f39/QCv/wD5+fkA+fn5AP39/f0Ar///APn5+fn5
+AP39/f39AK////8A+fn5AP39/f39AAD///kA+fn5+fkA/f39AP8A//kA+fn5APn5+QD9AP8A//n//wD5
+AAAA+QD9AP8AAP//////AP+vAAAA/QAA/QD//wD/AP//rwAAAP0A/f0A//8A/wD//68A/QD9/f39AP8A
+////AP+vAP39/f39/QD///////+vAP39/f39/f39AP//r6+vAP39/f39/f39/f0AAAAAAP39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_webcamdis
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/QAA8PDw8ADw8AAA/f39/f0A/////wD5APcA+QD9/f39/QAACAD5+fkA+fn5AP39/f39/QAAAPn5+fn5
+AP39/f39/f0A8PAA+fn5AP39/f39/f0AAAAA+fn5+fkA/f39/f0A//8A+fn5APn5+QD9/f0A//8tLQD5
+AAcA+QD9/f0A//8A//f3AAAI9gD9/f39AP8t//f39wivAPYA/f39/QD/Lff39wivCAD2AP39/f0A//YA
+BwivCAD29gD9/f39/QD29i0tLQD29gD9/f39/f39AP////b29gD9/f39/f39/f0xMQAAMTH9/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_foundsolv
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39AAAAAAD9/f39/f39/f0AAC8vbwD6AAD9/f39/f0ALy8BDQD6+voAAP39/f0AN28BFwD6+vr6+gAA
+/f39AL8BFw8XAPoA+vr6AP39AL+/AQEBAQEAAQD6+voA/QC/Pz8///////8/APr6+gAAv/t/////////
+/38A+gD9AL+/+wcAUv8HAFL7vwAA/QA3v78A+///APv/v78vAP39AC+/WwAH/1MAB783AP39/QAvd7+/
+v7+/v783bwD9/f39AC9vL3/7fy93LwD9/f39/f0AADcvbzcvAAD9/f39/f39/f0AAAAAAP39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_multisolv
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP0A
+AAAAAAD9/QD9/f39/f0Agvb29vYAAAD6AP39/f39AAj29vb2AAD6+voA/f39/QD2CAj29gD6+vr6+gD9
+/f0AAAAAAAAAAPoA+vr6AP39AADOzs4AAPYA9gD6+voA/fAAAAAAAPAA9vb2APr6+gD98M7Ozs7OzgD2
+9ggA+gD9/QAAzpycnJzOAAgIAAAA/f0A9gDOnJycnM4ACAD2AAD9APb2AM7Ozs7OzgAA9gAA/QAAAAAA
+AAAAAAAAAAAAAP0Azs7Ozs7Ozs7Ozs7OAAD9AAcAAAAAAAAAAAAAAAcA/f0Azs7OzpycnM7Ozs7OAP39
+/QAAAAAAAAAAAAAAAII=
+<enddata>
+
+<data> VarName=$img_mysterysolv
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f0AAAD9/f39/f39/f39/f0ACgD6AP39/f39/f39/f39AAD6+voA/f39/f39/f39/QD6+vr6+gD9
+/f39/f39/f0AAPoA+vr6AP39/f39/f39AAoA/QD6+voA/f39/f39/QAKrwD9APr6+gD9/f39/f39AAqv
+AP0A+gD9/f39/QAA/QAKCq8A/QD9/f39/QAKCgD9AAoKrwD9/f39/QAKCq8A/f0ACgqvAP39/f0ACgoA
+/f39AAoKrwD9/f39AAoKCgAAAAoKCq8A/f39/f0ACgoKCgoKCq8A/f39/f39/QCvr6+vr68A/f39/f39
+/f39AAAAAAAA/f39/f0=
+<enddata>
+
+<data> VarName=$img_parking
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/aWbpPf9/f39pKOk/f39/f1c9/9krm5ublz/92T9/f2ut6Wlv7+3v3e3pK22bv39bnd3t3d3bre/
+d3d3b7f9/f39bnf39+z09263t7f9/f39/f1ldwkJCXev/f39/f39/f39rm5ubm5u/f39/f39/f39/f39
+t7e3/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_trailhead
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/f39/f39/f39/f39/f1lZm79/f39/f39/f39/f39Zq9l/f39/f39/f39/f39/Wavbv39/f39
+/f39/f39/f1mr2b9/f39/f39/f39/f39Zrdm/f39/f39/f39rmZmbma3Zv39/f39/f39Zre3t7evr2b9
+/f39/f39/Wb29vb2B7dmZmdmZyb9/f1mr29mZmZvbre3t/Zt/f39/WZmZm5mb6729vb2bf39/f39/f39
+ZrdmZmZut2b9/f39/f39/Wa3ZmZmZmZm/f39/f39/f1mZqb9/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_question
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP3/
+//////39/////f39/f3/AAAAAAD//wAAAP/9/f39/wAAAAD//f3/AAD//f39/f8AAAAA//39/wAA//39
+/f3/AAAAAAD//wAAAP////39/wD//wAAAAAAAAD/AAD//f3//f3/AAAAAAAAAAAAAP/9//39/wAAAAAA
+AAAAAAD//wD//wAAAAAAAAD/AAD//f8AAAAAAAAAAAAA/////f3/AAAAAAAAAAAAAP/9/f39/f//////
+AAD//////f39/f39/f3/AAAAAP/9/f39/f39/f39/wAAAAD//f39/f39/f39/f//AAD///39/f39/f39
+/f39//////39/f39/f0=
+<enddata>
+
+<data> VarName=$img_reference
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADA3MAA8MqmAKo/KgD/PyoAAF8qAFVfKgCqXyoA/18qAAB/
+KgBVfyoAqn8qAP9/KgAAnyoAVZ8qAKqfKgD/nyoAAL8qAFW/KgCqvyoA/78qAADfKgBV3yoAqt8qAP/f
+KgAA/yoAVf8qAKr/KgD//yoAAABVAFUAVQCqAFUA/wBVAAAfVQBVH1UAqh9VAP8fVQAAP1UAVT9VAKo/
+VQD/P1UAAF9VAFVfVQCqX1UA/19VAAB/VQBVf1UAqn9VAP9/VQAAn1UAVZ9VAKqfVQD/n1UAAL9VAFW/
+VQCqv1UA/79VAADfVQBV31UAqt9VAP/fVQAA/1UAVf9VAKr/VQD//1UAAAB/AFUAfwCqAH8A/wB/AAAf
+fwBVH38Aqh9/AP8ffwAAP38AVT9/AKo/fwD/P38AAF9/AFVffwCqX38A/19/AAB/fwBVf38Aqn9/AP9/
+fwAAn38AVZ9/AKqffwD/n38AAL9/AFW/fwCqv38A/79/AADffwBV338Aqt9/AP/ffwAA/38AVf9/AKr/
+fwD//38AAACqAFUAqgCqAKoA/wCqAAAfqgBVH6oAqh+qAP8fqgAAP6oAVT+qAKo/qgD/P6oAAF+qAFVf
+qgCqX6oA/1+qAAB/qgBVf6oAqn+qAP9/qgAAn6oAVZ+qAKqfqgD/n6oAAL+qAFW/qgCqv6oA/7+qAADf
+qgBV36oAqt+qAP/fqgAA/6oAVf+qAKr/qgD//6oAAADUAFUA1ACqANQA/wDUAAAf1ABVH9QAqh/UAP8f
+1AAAP9QAVT/UAKo/1AD/P9QAAF/UAFVf1ACqX9QA/1/UAAB/1ABVf9QAqn/UAP9/1AAAn9QAVZ/UAKqf
+1AD/n9QAAL/UAFW/1ACqv9QA/7/UAADf1ABV39QAqt/UAP/f1AAA/9QAVf/UAKr/1AD//9QAVQD/AKoA
+/wAAH/8AVR//AKof/wD/H/8AAD//AFU//wCqP/8A/z//AABf/wBVX/8Aql//AP9f/wAAf/8AVX//AKp/
+/wD/f/8AAJ//AFWf/wCqn/8A/5//AAC//wBVv/8Aqr//AP+//wAA3/8AVd//AKrf/wD/3/8AVf//AKr/
+/wD/zMwA/8z/AP//MwD//2YA//+ZAP//zAAAfwAAVX8AAKp/AAD/fwAAAJ8AAFWfAACqnwAA/58AAAC/
+AABVvwAAqr8AAP+/AAAA3wAAVd8AAKrfAAD/3wAAVf8AAKr/AAAAACoAVQAqAKoAKgD/ACoAAB8qAFUf
+KgCqHyoA/x8qAAA/KgBVPyoA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/f39/f39/f39/f39/f0GBgYG/f39/f39/f39/QYGCK+vCQYG/f39/f39/QYJ////////CQb9
+/f39/QbU//b29vb2//8IBv39/f0G//b2CV5er//29gb9/f0GCPb2CBIGBhKv//YIBv39Bq/29l4GDg4G
+Yv//rwb9/Qav//ZeBg4GBgn/9q8G/f0GCP/21BIGBhLR9vYIBv39/Qb///+vCQmv//b2Bv39/f0GCf/2
+9v//9vbRCQb9/f39/QYJ//b29vb2CQb9/f39/f39BgYIr68IBgb9/f39/f39/f39BgYGBv39/f39/f39
+/f39/f39/f39/f39/f0=
+<enddata>
+
+<data> VarName=$img_multistage
+Qk04BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAAAAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AAAA
+AAAAAAAAAAAAAAAAAAAA//////////b29gj29v8AAP/////////2B2Vdrv//AAD////2/////+5UVKT2
+/wAA////9vb29v/29vb/9v8AAP////alZq729mZmZq/2AAD2//8HVBRd/whdHRRe9gAA//8Itvb27vYH
+FBQVFAcAAP/2Zl1mrvb2rgwMFBQHAAD/rhQVXV32//cMFAwMBwAA9lwMFRRl//b2XQwMXPYAAAcUDBQM
+Zf///wiupQf/AAAHFAwUDKb/9v////b//wAA9l0MDF0I//////////8AAP8H9672//////b///b/AAAA
+AAAAAAAAAAAAAAAAAAAAAA==
+<enddata>
+
+<data> VarName=$img_final
+Qk04BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAAAAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39m/39/f39/f39/f39/f39m6P9/f39/f39/f39/f39/Zmj/f39/f39/f39/f39/eSa9f39/f39/f39
+/f39/f2jmvf9/f39/f39/f39/f0ImuP3r/39/f39/f39/f3995qkbmZmB/39/f39/f39/eSZrCcfFlX9
+/f39/f39/f3amqUnHhYNZv39/f39/f0HmaNuJx4OHmcmZa/9/f397ZmkbicWDicnHxcWpv39/eSarS8f
+FhYnZ2au/f39/f2bmm4nHxVm/f39/f39/f39ouOvbq7v/f39/f39/f39/fUH/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f0AAA==
+<enddata>
+
+<data> VarName=$img_archived
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39AAAAAAD9/f39/f39/f0AAG9vb2dnAAD9/f39/f0At7f2b29nDg4OAP39/f0At/ZvbwAAAFdXDg4A
+/f39APb2AABvV1cAAFdXAP39/f0AAABvb29XVwAAAP39/f39/QAAb1dXV1cAAP39/f39/f39AG////8O
+AP39/f39/f39/QD/b1cO/wD9/f39/f39/f39AG9XDgD9/f39/f39/f39/QBv/w4A/f39/f39/f39/f0A
+/w7/AP39/f39/f39/f39/QAOAP39/f39/f39/f39/f0ADgD9/f39/f39/f39/f39AP8A/f39/f39/f39
+/f39/f0A/f39/f39/f0=
+<enddata>
+
+<data> VarName=$myGCPEConfig
+Iy0tLS0tbXlHQ1BFIENvbmZpZyBWYXJpYWJsZXMtLS0tLSMNCiMNCiMgbXlHTUUgVmVyc2lvbg0KJG15
+VmVyc2lvbiA9ICIzLjAiOw0KIw0KIy0tLS0tRW5kLS0tLS0jDQo=
+<enddata>
+
+#######################
+
+BEGINSUB Name=DeclareVariables
+#*******************************************************
+#   Variable declarations for
+#   C:\Users\Kaylin\Desktop\MyGCPEv3.txt
+#
+#   Generated 05/11/2007 10:07:18 PM on GSAKVariables.gsk Rev V0.20 B11
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$ArchiveBx Type=Boolean
+Declare Var=$BatFile Type=String
+Declare Var=$By Type=String
+Declare Var=$CacheTotal Type=Numeric
+Declare Var=$CacheType Type=String
+Declare Var=$CacheTypeFull Type=String
+Declare Var=$ChildTotal Type=Numeric
+Declare Var=$ChildType Type=String
+Declare Var=$ChildType1 Type=String
+Declare Var=$ChildTypeFull Type=String
+Declare Var=$CommentLength Type=Numeric
+Declare Var=$CommentNumber Type=Numeric
+Declare Var=$configFile Type=String
+Declare Var=$csvComment Type=String
+Declare Var=$csvFolder Type=String
+Declare Var=$csvLat Type=String
+Declare Var=$csvLines Type=Numeric
+Declare Var=$csvLon Type=String
+Declare Var=$csvName Type=String
+Declare Var=$csvOut Type=String
+Declare Var=$csvPrefix Type=String
+Declare Var=$CurrentDB Type=String
+Declare Var=$CurrentFilter Type=String
+Declare Var=$CurrentSort Type=String
+Declare Var=$Data Type=String
+Declare Var=$datafile Type=String
+Declare Var=$datafilepath Type=String
+Declare Var=$DB Type=String
+Declare Var=$DBlist Type=String
+Declare Var=$dif Type=String
+Declare Var=$DisabledIndex Type=Numeric
+Declare Var=$EraseFiles Type=String
+Declare Var=$error Type=String
+Declare Var=$ErrorCount Type=Numeric
+Declare Var=$ErrorLog Type=String
+Declare Var=$FileName Type=String
+Declare Var=$Found Type=Boolean
+Declare Var=$FoundBx Type=Boolean
+Declare Var=$HasFinal Type=Boolean
+Declare Var=$HCount Type=Numeric
+Declare Var=$Hint Type=Boolean
+Declare Var=$HintBx Type=Boolean
+Declare Var=$HintCount Type=String
+Declare Var=$HintCountDB Type=String
+Declare Var=$HintMatch Type=String
+Declare Var=$HintNumber Type=Numeric
+Declare Var=$HintNumberString Type=String
+Declare Var=$HintPOS Type=Numeric
+Declare Var=$HintValue Type=Numeric
+Declare Var=$HintValueStr Type=String
+Declare Var=$Icharpos Type=Numeric
+Declare Var=$image Type=String
+Declare Var=$img_ape Type=String
+Declare Var=$img_apedis Type=String
+Declare Var=$img_archived Type=String
+Declare Var=$img_attended Type=String
+Declare Var=$img_attendeddis Type=String
+Declare Var=$img_benchmark Type=String
+Declare Var=$img_benchmarkdis Type=String
+Declare Var=$img_bmfound Type=String
+Declare Var=$img_bmfounddis Type=String
+Declare Var=$img_cito Type=String
+Declare Var=$img_citodis Type=String
+Declare Var=$img_earth Type=String
+Declare Var=$img_earthdis Type=String
+Declare Var=$img_event Type=String
+Declare Var=$img_eventdis Type=String
+Declare Var=$img_final Type=String
+Declare Var=$img_found Type=String
+Declare Var=$img_founddis Type=String
+Declare Var=$img_foundsolv Type=String
+Declare Var=$img_letterbox Type=String
+Declare Var=$img_letterboxdis Type=String
+Declare Var=$img_locationless Type=String
+Declare Var=$img_locationlessdis Type=String
+Declare Var=$img_maze Type=String
+Declare Var=$img_mazedis Type=String
+Declare Var=$img_mega Type=String
+Declare Var=$img_megadis Type=String
+Declare Var=$img_multi Type=String
+Declare Var=$img_multidis Type=String
+Declare Var=$img_multisolv Type=String
+Declare Var=$img_multistage Type=String
+Declare Var=$img_mystery Type=String
+Declare Var=$img_mysterydis Type=String
+Declare Var=$img_mysterysolv Type=String
+Declare Var=$img_parking Type=String
+Declare Var=$img_picturetaken Type=String
+Declare Var=$img_picturetakendis Type=String
+Declare Var=$img_placed Type=String
+Declare Var=$img_placeddis Type=String
+Declare Var=$img_question Type=String
+Declare Var=$img_reference Type=String
+Declare Var=$img_traditional Type=String
+Declare Var=$img_traditionaldis Type=String
+Declare Var=$img_trailhead Type=String
+Declare Var=$img_virtual Type=String
+Declare Var=$img_virtualdis Type=String
+Declare Var=$img_webcam Type=String
+Declare Var=$img_webcamdis Type=String
+Declare Var=$Index Type=Numeric
+DECLARE Var=$len Type=Numeric
+Declare Var=$Message Type=String
+Declare Var=$Msg Type=String
+Declare Var=$myGCPEConfig Type=String
+Declare Var=$myValue Type=String
+DECLARE Var=$myVariable Type=String
+Declare Var=$myVersion Type=String
+Declare Var=$PartComment Type=String
+Declare Var=$QT Type=String
+Declare Var=$result Type=String
+Declare Var=$sequence Type=String
+Declare Var=$sortdata Type=String
+DECLARE Var=$str Type=String
+Declare Var=$strConfig Type=String
+Declare Var=$TempDisBx Type=Boolean
+Declare Var=$ter Type=String
+Declare Var=$ThisRecord Type=Numeric
+Declare Var=$UsePrefix Type=Boolean
+Declare Var=$UserName Type=String
+Declare Var=$UserOptions Type=String
+Declare Var=$variables Type=String
+Declare Var=$Verbose Type=Boolean
+Declare Var=$VersionChange Type=Boolean
+
+ENDSUB

@@ -1,0 +1,459 @@
+#*******************************************
+# MacVersion = 0.24
+# MacDescription = Opencaching.com data retrieval into GSAK database 
+# MacAuthor = Heiner Lieth
+# MacFileName = OpencachingGarmin.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=17233
+#*******************************************
+
+# Opencaching.com is a geocaching listing service of Garmin
+# For more information about it check out http://www.opencaching.com
+# Data can be retrieved from that site directly into GSAK databases
+# using this macro.
+# Note that you must be willing to agree to all terms and the opportunity
+# to agree to the terms of use will be presented the first time you use this service.
+
+ VERCHECK version=7.7.3.37
+
+# todo:
+# set state and county after load if opencaching does not implement that 
+# allow Load to be for specific saved settings
+# get center from locations
+# allow saving settings
+
+#initialize the variables that need to be declared before using MacSettings
+ $TempFile="$_AppData\OpencachingGarmin.gpx"
+ $UseAuthentication=false
+ $ErrorMessage=""
+ $OXRadiobuttonCenter=True
+ $OXRadiobuttonbbox=False
+ Gosub Name=OXGetDGbbox
+ $OXEditbbox= $TMPBbox
+ $OXEditLimit= "500"
+
+ $OXEditcenter=SysInfo("gsakini;LastCenter;Lat")+","+SysInfo("gsakini;LastCenter;Lon")
+ $OXform=EditForm($OXform, "DatabaseEdit", "Values", SysInfo("Databases")) 
+ if $UseAuthentication
+   $OXform=EditForm($OXform, "Label5", "Visible", "Yes") 
+   $OXform=EditForm($OXform, "Label6", "Visible", "Yes") 
+   $OXform=EditForm($OXform, "OXEditUser", "Visible", "Yes") 
+   $OXform=EditForm($OXform, "OXEditPassword", "Visible", "Yes") 
+ else
+   $OXform=EditForm($OXform, "Label5", "Visible", "No") 
+   $OXform=EditForm($OXform, "Label6", "Visible", "No") 
+   $OXform=EditForm($OXform, "OXEditUser", "Visible", "No") 
+   $OXform=EditForm($OXform, "OXEditPassword", "Visible", "No") 
+ endif
+
+#if this macro was run before, then restore the fields on the dialog
+ MacSettings Type=R FileCheck=N
+ gosub Name=CreateAPIurl
+
+ $KeepRunning=True
+
+ While $KeepRunning
+  $FormExit = form($OXform,"")
+  BeginCase
+    Case $FormExit = "SystemExit"
+      # exit via red X button on form"
+	$KeepRunning=false
+    case $FormExit = "OXRadiobuttonbbox"
+        gosub Name=CreateAPIurl
+
+    case $FormExit = "OXRadiobuttonCenter"
+        gosub Name=CreateAPIurl
+
+    Case $FormExit = "ButtonBboxDB"
+	Gosub Name=OXGetDBbbox
+	$OXEditbbox= $TMPBbox
+        gosub Name=CreateAPIurl
+
+    Case $FormExit = "ButtonBboxDG"
+	Gosub Name=OXGetDGbbox
+	$OXEditbbox= $TMPBbox
+        gosub Name=CreateAPIurl
+
+    Case $FormExit = "ButtonCenterLast"
+	$OXEditcenter=SysInfo("gsakini;LastCenter;Lat")+","+SysInfo("gsakini;LastCenter;Lon")
+        gosub Name=CreateAPIurl
+
+    Case $FormExit = "ButtonCenterDB"
+	Gosub Name=OXGetDBbbox
+	$OXEditcenter=$TMPBboxCenter
+        gosub Name=CreateAPIurl
+
+    Case $FormExit = "ButtonCenterDG"
+	Gosub Name=OXGetDGbbox
+	$OXEditcenter=$TMPBboxCenter
+        gosub Name=CreateAPIurl
+
+    Case $FormExit = "ButtonGo"
+	# do the opencaching.com API call and then stop the macro
+	IF DataBaseExists($DatabaseEdit)
+	  Database Name=$DatabaseEdit
+	  Gosub Name=OXAPIcall
+	  $KeepRunning=false
+	Else
+	  Pause Msg="$DatabaseEdit does not exist"
+	ENDIF
+  EndCase
+ EndWhile
+
+ MacSettings Type=S Vars=TempFile,DatabaseEdit,OXEditbbox,OXEditcenter,OXEditLimit,OXEditUser,OXEditPassword,OXRadiobuttonCenter,OXRadiobuttonbbox
+
+Cancel
+
+########################## variables and subroutines #######################
+
+Beginsub Name=CreateAPIurl
+  $APIurl="http://www.opencaching.com/api/geocache.gpx?"
+  IF $OXRadiobuttonbbox
+   IF $OXEditbbox=""
+    # in case user has removed bbox string
+    Gosub Name=OXGetDGbbox
+    $OXEditbbox= $TMPBbox
+   ENDIF
+   $APIurl=$APIurl+"&bbox=$OXEditbbox"
+  ENDIF
+  IF $OXRadiobuttonCenter
+   $APIurl=$APIurl+"&center=$OXEditcenter"
+  ENDIF
+  IF not($OXEditLimit="")
+   $APIurl=$APIurl+"&limit=$OXEditLimit"
+  ENDIF
+#  Clip data=$APIurl
+endsub
+
+Beginsub Name=OXAPIcall
+  FILEERASE File=$TempFile OnError=Continue
+  $APIresult=""
+  gosub Name=CreateAPIurl
+  IF  $UseAuthentication
+    $APIresult = GarminApi($APIurl,"User:$OXEditUser,Pass:$OXEditPassword")
+  Else
+    $APIresult = GarminApi($APIurl,"")
+  ENDIF
+  IF Upper(Left($APIresult,7)) = "*ERROR*"
+  $ErrorMessage="API call returned this error: $_NewLine$APIresult"
+  Else
+    $status = Putfile($TempFile,$APIresult)
+    IF Upper(Left($status,7)) = "*ERROR*"
+      $ErrorMessage="Writing data to $_NewLine$TempFile$_NewLine generated this error:$_NewLine$status"
+    ENDIF
+  ENDIF
+  IF $ErrorMessage="" 
+    $LoadDialogSettings=Replace("[DATABASENAME]",$DatabaseEdit,$OX_GPXLoad)
+    $LoadDialogSettings=Replace("[TEMPFILE]",$TempFile,$LoadDialogSettings)
+    MacroSet Dialog=Load VarName=$LoadDialogSettings
+    Load settings=<macro> File=$TempFile DATABASE=$DatabaseEdit ShowStats=Yes
+  Else
+    Clip data=$ErrorMessage
+    MsgOK Msg="$ErrorMessage$_NewLine[note: this Error message has been put on the clipboard]"
+  Endif
+endsub
+
+Beginsub Name=OXGetDBbbox
+  # calculate the bounding box for the database and format it for the API call
+  $_sql = "Select min(Latitude + 0), min(longitude + 0), max(latitude + 0), max(longitude + 0) FROM Caches"
+  $TMPBbox=Replace(";",",",Sqlite("sql",$_sql))
+  $_sql = "Select (min(Latitude + 0)+max(latitude + 0))/2, (min(longitude + 0)+max(longitude + 0))/2 FROM Caches"
+  $TMPBboxCenter=Replace(";",",",Sqlite("sql",$_sql))
+endsub
+
+Beginsub Name=OXGetDGbbox
+  # calculate the bounding box for the displaygrid and format it for the API call
+  $_sql = "Select min(Latitude + 0), min(longitude + 0), max(latitude + 0), max(longitude + 0) FROM Caches WHERE $_Where"
+  $TMPBbox=Replace(";",",",Sqlite("sql",$_sql))
+  $_sql = "Select (min(Latitude + 0)+max(latitude + 0))/2, (min(longitude + 0)+max(longitude + 0))/2 FROM Caches WHERE $_Where"
+  $TMPBboxCenter=Replace(";",",",Sqlite("sql",$_sql))
+endsub
+
+<data> VarName=$OX_GPXLoad
+[TfmGpxLoad]
+fnmFrom.Text=[TEMPFILE]
+chkGpx.Checked=True
+chkLoc.Checked=False
+chkZip.Checked=True
+cbxZap.Checked=False
+chkClearUser.Checked=False
+chkDefault.Checked=False
+chkDelete.Checked=False
+chkSetUser.Checked=False
+chkUserOnly.Checked=False
+rbtAddOnly.Checked=False
+rbtAlways.Checked=True
+rbtExists.Checked=False
+rbtExtraChild.Checked=True
+rbtExtraExclude.Checked=False
+rbtExtraParent.Checked=False
+rbtFoundAlways.Checked=False
+rbtFoundNever.Checked=False
+rbtFoundOnly.Checked=True
+rbtNewer.Checked=False
+rbtLoadFile.Checked=True
+rbtLoadFolder.Checked=False
+edtFoundSymbol.Text=Geocache Found
+chkUpdateSymbol.Checked=True
+cbxDataBases.Text=[DATABASENAME]
+edtCounty.Text=
+cbxFileType.Text=GPX/LOC (including inside zip)
+edtState.Text=
+chkKeepFocus.Checked=False
+chkDecodeEntity.Checked=True
+[General]
+cbxlock.Text=
+chkSaveFile.Checked=True
+chkSaveDatabase.Checked=False
+<enddata>
+
+<Data> VarName=$OXform
+#********************************************************************
+# Form generated by GSAK form designer on Wed 29-Dec-2010 00:02:23
+#********************************************************************
+
+Name = OpencachingForm
+  Type = Form
+  Height = 399
+  Width = 427
+
+Name = DataSelection
+  Type = Groupbox
+  Caption = Select data using (edit boxes must be valid text for API URL)
+  Height = 169
+  Left = 8
+  Top = 56
+  Width = 393
+  Taborder = 2
+
+Name = Label1
+  Type = Label
+  Height = 13
+  Left = 8
+  Style = bold
+  Top = 8
+  Width = 334
+  Caption = OpenCaching.com data update: Pull data into the following
+
+Name = Label3
+  Type = Label
+  Height = 13
+  Left = 8
+  Top = 32
+  Width = 46
+  Caption = Database
+
+Name = DatabaseEdit
+  Type = Combobox
+  Height = 21
+  Left = 56
+  Top = 32
+  Values = Opencaching
+  Width = 289
+  Taborder = 1
+
+Name = OXRadiobuttonbbox
+  Type = Radiobutton
+  Container = DataSelection
+  Height = 17
+  Left = 8
+  Top = 16
+  Width = 49
+  Taborder = 0
+  ExitOnChange = Yes
+  Caption = bbox
+
+Name = OXRadiobuttonCenter
+  Type = Radiobutton
+  Container = DataSelection
+  Height = 17
+  Left = 8
+  Top = 80
+  Width = 65
+  Taborder = 1
+  ExitOnChange = Yes
+  Caption = center
+
+Name = OXEditBbox
+  Type = Edit
+  Container = DataSelection
+  Height = 21
+  Left = 56
+  Top = 16
+  Width = 321
+  Taborder = 2
+
+Name = OXEditCenter
+  Type = Edit
+  Container = DataSelection
+  Height = 21
+  Left = 64
+  Top = 80
+  Width = 113
+  Taborder = 3
+
+Name = Label5
+  Type = Label
+  Height = 13
+  Left = 8
+  Top = 272
+  Width = 192
+  Caption = Opencaching.com Authentication:  User:
+
+Name = Label6
+  Type = Label
+  Height = 13
+  Left = 280
+  Top = 272
+  Width = 49
+  Caption = Password:
+
+Name = OXEditUser
+  Type = Edit
+  Height = 21
+  Left = 200
+  Top = 272
+  Width = 73
+  Taborder = 3
+
+Name = OXEditPassword
+  Type = Edit
+  Color = 255,255,255
+  Height = 21
+  Left = 333
+  Top = 272
+  Width = 68
+  Taborder = 4
+
+Name = ButtonGo
+  Type = Button
+  Height = 33
+  Left = 16
+  Top = 231
+  Width = 377
+  Taborder = 5
+  Caption = Retrieve Opencaching.com Data
+
+Name = CenterButton
+  Type = Button
+  Container = DataSelection
+  Height = 25
+  Left = 200
+  Top = 106
+  Width = 177
+  Taborder = 4
+  Caption = of the midpoint of display grid bbox
+
+Name = ButtonBboxDB
+  Type = Button
+  Container = DataSelection
+  Height = 25
+  Left = 96
+  Top = 40
+  Width = 97
+  Taborder = 5
+  Caption = of the Database
+
+Name = Label7
+  Type = Label
+  Container = DataSelection
+  Height = 13
+  Left = 48
+  Top = 40
+  Width = 43
+  Caption = use bbox
+
+Name = ButtonBboxDG
+  Type = Button
+  Container = DataSelection
+  Height = 25
+  Left = 200
+  Top = 40
+  Width = 121
+  Taborder = 6
+  Caption = of the display grid
+
+Name = Label8
+  Type = Label
+  Container = DataSelection
+  Height = 13
+  Left = 40
+  Top = 104
+  Width = 50
+  Caption = use center
+
+Name = ButtonCenterDB
+  Type = Button
+  Container = DataSelection
+  Height = 25
+  Left = 98
+  Top = 106
+  Width = 97
+  Taborder = 7
+  Caption = of the Database
+
+Name = ButtonCenterLast
+  Type = Button
+  Container = DataSelection
+  Height = 25
+  Left = 200
+  Top = 80
+  Width = 177
+  Taborder = 8
+  Caption = use last display grid center
+
+Name = TempFile
+  Type = File
+  Height = 21
+  Left = 96
+  Top = 305
+  Width = 305
+  Taborder = 0
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 8
+  Top = 307
+  Width = 77
+  Caption = Temp File Name
+
+Name = Label4
+  Type = Label
+  Container = DataSelection
+  Height = 13
+  Left = 10
+  Top = 138
+  Width = 137
+  Caption = Max number of caches: limit=
+
+Name = OXEditLimit
+  Type = Edit
+  Container = DataSelection
+  Height = 21
+  Left = 154
+  Top = 138
+  Width = 89
+  Taborder = 9
+
+Name = APIurl
+  Type = Edit
+  Height = 21
+  Left = 8
+  Top = 341
+  Width = 393
+  Taborder = 14
+
+Name = Label9
+  Type = Label
+  Height = 13
+  Left = 10
+  Top = 328
+  Width = 45
+  Caption = API URL:
+
+<enddata>
+
+
+
+Cancel
+

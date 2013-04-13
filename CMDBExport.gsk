@@ -1,0 +1,366 @@
+#*******************************************
+# MacDescription = Cachemate DB Export
+# MacFileName = CMDBExport.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.02
+# MacUrl=http://gsak.net/board/index.php?showtopic=5887&view=findpost&p=34452
+#*******************************************
+
+$StartingDatabase=$_CurrentDatabase
+
+GOSUB Name=DeclareVariables
+
+#Initialize Variables
+$UserDataFile=$_Install + "\Macros\CMDBExport.dat"
+$DBList="None" + ";" + SysInfo("Databases")
+$SettingsPDB=SysInfo("S_CacheMate")
+$SettingsGPX=SysInfo("S_GPX")
+$NumDBs=0
+
+#Determine if User Data is saved, if so, read saved data into form variables
+IF FileExists($UserDataFile)
+    $UserSettings=GetFile($UserDataFile)
+    $Palm=StrToBool(Extract($UserSettings, ";", 1)) 
+    $PPC=StrToBool(Extract($UserSettings, ";", 2))
+    $SettingsCBx=Extract($UserSettings, ";", 3)
+    $ExportFolder=Extract($UserSettings, ";", 4)
+    $ExportType=Extract($UserSettings, ";", 5)
+    IF $ExportType="GPX"
+        $Settings=$SettingsGPX
+    ELSE
+        $Settings=$SettingsPDB
+    ENDIF
+    $DB1Cbx=Extract($UserSettings, ";", 6)
+    $DB2Cbx=Extract($UserSettings, ";", 7)
+    $DB3Cbx=Extract($UserSettings, ";", 8)
+    $DB4Cbx=Extract($UserSettings, ";", 9)
+    $DB5Cbx=Extract($UserSettings, ";", 10)
+    #Set initial state if PPC is True
+    IF $PPC=TRUE
+        $ExportType="GPX"
+        $Settings=$SettingsGPX
+        $PPC=TRUE
+        $VersionSelected="PPC GPX File"
+        $form = EditForm($form,"Label6","Caption","PPC GPX File")
+        $form = EditForm($form,"PPCGPXBtn","Enabled","No")
+        $form = EditForm($form,"PalmPDBbtn","Enabled","Yes")
+    ENDIF
+ELSE
+    $Palm=TRUE 
+    $PPC=FALSE
+    $ExportFolder=""
+    $ExportType="CMT"
+    $Settings=$SettingsPDB
+    $SettingsCBx=$SettingsPDB
+    $DB1Cbx=""
+    $DB2Cbx=""
+    $DB3Cbx=""
+    $DB4Cbx=""
+    $DB5Cbx=""
+ENDIF
+
+#Present user with form, record settings and save for next time
+WHILE Showform($form)
+    
+    #Sync Settings values with export type if Type button pressed
+    IF $PalmPDBbtn
+        $ExportType="CMT"
+        $Settings=$SettingsPDB
+        $Palm=TRUE
+        $PPC=FALSE
+        $form = EditForm($form,"Label6","Caption","Palm PDB File")
+        $form = EditForm($form,"PalmPDBbtn","Enabled","No")
+        $form = EditForm($form,"PPCGPXBtn","Enabled","Yes")
+    ENDIF
+    
+    IF $PPCGPXBtn
+        $ExportType="GPX"
+        $Settings=$SettingsGPX
+        $PPC=TRUE
+        $Palm=FALSE
+        $VersionSelected="PPC GPX File"
+        $form = EditForm($form,"Label6","Caption","PPC GPX File")
+        $form = EditForm($form,"PPCGPXBtn","Enabled","No")
+        $form = EditForm($form,"PalmPDBbtn","Enabled","Yes")
+    ENDIF 
+        
+    IF $ExportBtn
+        $UserSettings=BoolToStr($Palm,"T","F") + ";" + BoolToStr($PPC, "T", "F") + ";" + $SettingsCBx + ";" + $ExportFolder + ";" 
+        $UserSettings=$UserSettings + $ExportType + ";" + $DB1Cbx + ";" + $DB2Cbx + ";" + $DB3Cbx + ";" + $DB4Cbx + ";" + $DB5Cbx + ";"
+        GOSUB name=EXPORT
+        #Save User Information for next time
+        $result = PutFile($UserDataFile, $UserSettings)
+        IF Left($result, 7) = "*Error*"
+            CANCEL Msg=Unable to write to $UserDataFile!
+        ENDIF
+        DATABASE Name=$StartingDatabase Action=Select
+        CANCEL
+    ENDIF
+
+    IF $CancelBtn
+        CANCEL Msg="Macro Cancelled"
+    ENDIF 
+ENDWHILE
+
+BEGINSUB Name=EXPORT
+    
+    $Settings=$SettingsCBx
+
+    IF $DB1Cbx="None"
+        CANCEL Msg=You have not selected any databases to be exported.  Macro Cancelled.
+    ELSE
+        $NumDBs=1
+    ENDIF
+    IF $DB2Cbx<>"None"
+        $NumDBs=2
+    ENDIF
+        IF $DB3Cbx<>"None"
+        $NumDBs=3
+    ENDIF
+        IF $DB4Cbx<>"None"
+        $NumDBs=4
+    ENDIF
+        IF $DB5Cbx<>"None"
+        $NumDBs=5
+    ENDIF
+    
+    WHILE $NumDBs>0
+        IF $NumDBs=1
+            $Database=$DB1Cbx
+        ENDIF
+        IF $NumDBs=2
+            $Database=$DB2Cbx
+        ENDIF
+        IF $NumDBs=3
+            $Database=$DB3Cbx
+        ENDIF
+        IF $NumDBs=4
+            $Database=$DB4Cbx
+        ENDIF
+        IF $NumDBs=5
+            $Database=$DB5Cbx
+        ENDIF
+        $File=Quote($ExportFolder + "\" + $Database + "." + $ExportType)
+        DATABASE Name=$DataBase Action=Select
+        EXPORT Type=$ExportType  Settings=$Settings  File=$File 
+        $NumDBs=$NumDBs-1
+    ENDWHILE
+    MSGOK Msg=Finished OK
+ENDSUB
+
+BEGINSUB Name=DeclareVariables
+#*******************************************************
+#   Variable declarations for
+#   CMDBExport.gsk
+#
+#   Generated 8/4/2007 6:27:16 PM on GSAKVariables.gsk Rev V0.20 B11
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$Database Type=String
+Declare Var=$DB1Cbx Type=String
+Declare Var=$DB2Cbx Type=String
+Declare Var=$DB3Cbx Type=String
+Declare Var=$DB4Cbx Type=String
+Declare Var=$DB5Cbx Type=String
+Declare Var=$DBList Type=String
+Declare Var=$ExportFolder Type=String
+Declare Var=$ExportType Type=String
+Declare Var=$File Type=String
+Declare Var=$form Type=String
+Declare Var=$NumDBs Type=Numeric
+Declare Var=$Palm Type=Boolean
+Declare Var=$PPC Type=Boolean
+Declare Var=$result Type=String
+Declare Var=$Settings Type=String
+Declare Var=$SettingsCBx Type=String
+Declare Var=$SettingsGPX Type=String
+Declare Var=$SettingsPDB Type=String
+Declare Var=$StartingDatabase Type=String
+Declare Var=$UserDataFile Type=String
+Declare Var=$UserSettings Type=String
+Declare Var=$VersionSelected Type=String
+ENDSUB
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sat 04-Aug-2007 18:17:43
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Cachemate DB Export
+  Height = 559
+  Width = 245
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Databases
+  Color = 16761281
+  Height = 205
+  Left = 25
+  Top = 261
+  Width = 192
+
+Name = Label1
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 12
+  Style = Bold
+  Top = 21
+  Width = 157
+  Caption = Select databases to export:
+
+Name = DB1Cbx
+  Type = Combobox
+  Container = Groupbox1
+  Enabled = Yes
+  Height = 21
+  Left = 12
+  Top = 42
+  Values = $DBList
+  Width = 169
+
+Name = DB2Cbx
+  Type = Combobox
+  Container = Groupbox1
+  Enabled = Yes
+  Height = 21
+  Left = 12
+  Top = 72
+  Values = $DBList
+  Width = 169
+
+Name = DB3Cbx
+  Type = Combobox
+  Container = Groupbox1
+  Enabled = Yes
+  Height = 21
+  Left = 12
+  Top = 102
+  Values = $DBList
+  Width = 169
+
+Name = DB4Cbx
+  Type = Combobox
+  Container = Groupbox1
+  Enabled = Yes
+  Height = 21
+  Left = 12
+  Top = 132
+  Values = $DBList
+  Width = 169
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 23
+  Style = Bold
+  Top = 65
+  Width = 191
+  Caption = Change the Cachemate Version to:
+
+Name = DB5Cbx
+  Type = Combobox
+  Container = Groupbox1
+  Enabled = Yes
+  Height = 21
+  Left = 12
+  Top = 162
+  Values = $DBList
+  Width = 169
+
+Name = ExportBtn
+  Type = Button
+  Height = 25
+  Left = 25
+  Top = 488
+  Width = 75
+  Caption = Export
+
+Name = CancelBtn
+  Type = Button
+  Height = 25
+  Left = 142
+  Top = 488
+  Width = 75
+  Caption = Cancel
+
+Name = Label3
+  Type = Label
+  Height = 13
+  Left = 23
+  Style = Bold
+  Top = 188
+  Width = 120
+  Caption = Select Export Folder:
+
+Name = ExportFolder
+  Type = Folder
+  Height = 21
+  Left = 23
+  Top = 207
+  Width = 187
+
+Name = Label4
+  Type = Label
+  Height = 13
+  Left = 23
+  Style = Bold
+  Top = 126
+  Width = 167
+  Caption = Select Saved Export Settings
+
+Name = SettingsCBx
+  Type = Combobox
+  Height = 21
+  Left = 23
+  Top = 148
+  Values = $Settings
+  Width = 187
+
+Name = PalmPDBbtn
+  Type = Button
+  Enabled = No
+  Height = 25
+  Left = 32
+  Top = 84
+  Width = 75
+  Caption = Palm (PDB)
+
+Name = PPCGPXBtn
+  Type = Button
+  Enabled = Yes
+  Height = 25
+  Left = 132
+  Top = 84
+  Width = 75
+  Caption = PPC (GPX)
+
+Name = Label5
+  Type = Label
+  Height = 13
+  Left = 20
+  Style = Bold
+  Top = 12
+  Width = 197
+  Caption = Cachemate Version Now Selected:
+
+Name = Label6
+  Type = Label
+  Color = 16711680
+  Height = 24
+  Left = 51
+  Size = 14
+  Style = bold
+  Top = 30
+  Width = 134
+  Caption = Palm PDB File
+
+<enddata>
+
+

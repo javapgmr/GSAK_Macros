@@ -1,0 +1,1429 @@
+#*******************************************
+# MacVersion = 1.02
+# MacDescription = Set filter for caches "Along a Route" in GSAK
+# MacAuthor = Heiner Lieth (a.k.a Hynr)
+# MacFileName = AlongRouteFilter.gsk
+# MacUrl = http://gsak.net/board/index.php?act=ST&f=13&t=18216
+#*******************************************
+# This macro uses Google Maps to generate a route consisting of up to 4 segments
+# A GSAK filter is then set with this as the arc/poly portion of the filter
+VERCHECK version=7.7.3.53 (Note: this macro requires a more-recent release of GSAK)
+
+# recent location list parameters (defaults are 250 and False - user can set as desired)
+$RecentLocListMax = 250    # max number of entries in the Recent lists (not smaller than 5)
+$RecentLocListDup = False  # allow duplicates in the Recent-Locations list
+
+# Settings that regulate the macro's behavior
+$CleanUp=true  # if true then temporary files are deleted at end
+Gosub Name=CheckKMLassociation
+Gosub Name=GetVersionNumber  #sets $version from macversion line above
+$MainForm=Editform($MainForm,"Label1","Caption","Set GSAK Filter along a route - by Hynr - version=$Version")
+
+# Settings related to files and folders - initialization of temporary files and folders 
+$TMPfilekml ="$_Appdata\macros\AlongRouteTestTmp.kml"
+$TMPfilekml2="$_Appdata\macros\AlongRouteTestTmp2.kml"
+$TMPfilekml3="$_Appdata\macros\AlongRouteTestTmp3.kml"
+$TMPfilekml4="$_Appdata\macros\AlongRouteTestTmp4.kml"
+$TMPfilearc="$_Appdata\macros\AlongRouteTestTmp.arc"
+$Tmpbabel=$_Appdata
+FileErase File="$TMPfilekml" OnError=Continue
+FileErase File="$TMPfilekml2" OnError=Continue
+FileErase File="$TMPfilekml3" OnError=Continue
+FileErase File="$TMPfilekml4" OnError=Continue
+FileErase File="$TMPfilearc" OnError=Continue
+
+# Form defaults - set initial state of the form 
+$MainForm = editform($MainForm,"ButtonGCPQ","Visible","No")
+
+IF not($IsKMLassociated)
+  $MainForm = editform($MainForm,"GoogleEarthButton","Enabled","No")
+Endif
+
+# Form Variables set to initial values so boolean operations will always work
+$FromStr=""
+$DestStr=""
+$DestStr2=""
+$DestStr3=""
+$DestStr4=""
+$RteName=""
+$URLparmsSave=""
+$URLparms=""
+$RadiobuttonFilter=true
+$RadiobuttonAll=false
+$LocSort=false
+$RecentSort=false
+
+# Initialization of variables used by the macro
+$KeepRunning=true
+$ReturnCode=""
+$TMPkml=""
+$GCcodeList=""
+$RecentLocList=""
+$RecentRteList=""
+$BearingSort=true
+$DistanceSort=false
+$EditWidth="1"
+
+# If there was a previous use of this macro, then use the settings that were saved
+MacSettings Type=R Filecheck=N
+
+# Display the main form and allow user to direct the function of the macro
+While $KeepRunning
+  # Set up form 
+  # Allow editing of string only if something is already in a field
+  IF $FromStr=""
+    $MainForm=Editform($MainForm,"FromStr","Enabled","No")
+  else
+    $MainForm=Editform($MainForm,"FromStr","Enabled","Yes")
+    $RteName=extract($FromStr,"(",2)
+    IF $RteName=""
+      $RteName="($FromStr)"
+    endif
+  endif
+  IF $DestStr=""
+    $MainForm=Editform($MainForm,"DestStr","Enabled","No")
+  else
+    $MainForm=Editform($MainForm,"DestStr","Enabled","Yes")
+    $TmpStr=extract($DestStr,"(",2)
+    IF $TmpStr=""
+      $TmpStr=Extract($DestStr,"=",2)
+    endif
+    $RteName=$RteName+"-"+$TmpStr
+  endif
+  IF $DestStr2=""
+    $MainForm=Editform($MainForm,"DestStr2","Enabled","No")
+  else
+    $MainForm=Editform($MainForm,"DestStr2","Enabled","Yes")
+    $TmpStr=extract($DestStr2,"(",2)
+    IF $TmpStr=""
+      $TmpStr=Extract($DestStr2,"+to:",2)
+    endif
+    $RteName=$RteName+"-"+$TmpStr
+  endif
+  IF $DestStr3=""
+    $MainForm=Editform($MainForm,"DestStr3","Enabled","No")
+  else
+    $MainForm=Editform($MainForm,"DestStr3","Enabled","Yes")
+    $TmpStr=extract($DestStr3,"(",2)
+    IF $TmpStr=""
+      $TmpStr=Extract($DestStr3,"+to:",2)
+    endif
+    $RteName=$RteName+"-"+$TmpStr
+  endif
+  IF $DestStr4=""
+    $MainForm=Editform($MainForm,"DestStr4","Enabled","No")
+  else
+    $MainForm=Editform($MainForm,"DestStr4","Enabled","Yes")
+    $TmpStr=extract($DestStr4,"(",2)
+    IF $TmpStr=""
+      $TmpStr=Extract($DestStr4,"+to:",2)
+    endif
+    $RteName=$RteName+"-"+$TmpStr
+  endif
+  $RteName=Replace(")","",$RteName)
+  $MainForm = editform($MainForm,"RecentRteCombobox","Values",";"+$RecentRteList)
+  # If there is enough data to generate a route, then display the Preview and GE button
+  If not($FROMstr="" or $DESTstr="")
+     $MainForm = editform($MainForm,"PreviewButton","Visible","Yes")
+     $MainForm = editform($MainForm,"SetFilterButton","Visible","Yes")
+     $MainForm = editform($MainForm,"JoinOrFilterButton","Visible","Yes")
+     $MainForm = editform($MainForm,"JoinAndFilterButton","Visible","Yes")
+#     $MainForm = editform($MainForm,"ButtonGCPQ","Visible","Yes")
+     $MainForm = editform($MainForm,"RecentRteButton","Visible","Yes")
+     IF $IsKMLassociated
+	$MainForm = editform($MainForm,"GoogleEarthButton","Visible","Yes")
+     Endif
+   else
+     $MainForm = editform($MainForm,"PreviewButton","Visible","No")
+     $MainForm = editform($MainForm,"GoogleEarthButton","Visible","No")
+     $MainForm = editform($MainForm,"ButtonGCPQ","Visible","No")
+     $MainForm = editform($MainForm,"SetFilterButton","Visible","No")
+     $MainForm = editform($MainForm,"JoinOrFilterButton","Visible","No")
+     $MainForm = editform($MainForm,"JoinAndFilterButton","Visible","No")
+     $MainForm = editform($MainForm,"RecentRteButton","Visible","No")
+  endif
+
+  # Display the form and wait for the user's response
+  $FormExit = form($MainForm,"")
+
+  # The user has just made a selection; let's process that
+  BeginCase
+    Case $FormExit = "SystemExit"
+      $KeepRunning=false
+
+    Case $FormExit = "QuitButton"
+      # Form exit via quit - stop the macro
+      $KeepRunning=false
+
+    Case $FormExit = "CancelFilterButton"
+      # User wants any current filter cancelled
+      CANCELFILTER
+
+    Case $FormExit = "HelpButton"
+      # User needs some help so display a GSAK browser window
+      # showing the html help text that is at the end of this macro
+	Gosub Name=GetHelp
+
+    Case $FormExit = "StartButton"
+      # Help the user set up the starting point of the route
+	$WhichLocation="From"
+	gosub Name=GetLocation
+
+    Case $FormExit = "EndButton"
+      #help the user set up the ending point of the route
+	$WhichLocation="Dest"
+	gosub Name=GetLocation
+	$MainForm = editform($MainForm,"ButtonDest2","Visible","Yes")
+	$MainForm = editform($MainForm,"DestStr2","Visible","Yes")
+
+    Case $FormExit = "ButtonDest2"
+      #help the user set up another ending point of the route
+	$WhichLocation="Dest2"
+	gosub Name=GetLocation
+	$MainForm = editform($MainForm,"ButtonDest3","Visible","Yes")
+	$MainForm = editform($MainForm,"DestStr3","Visible","Yes")
+
+    Case $FormExit = "ButtonDest3"
+      #help the user set up another ending point of the route
+	$WhichLocation="Dest3"
+	gosub Name=GetLocation
+	$MainForm = editform($MainForm,"ButtonDest4","Visible","Yes")
+	$MainForm = editform($MainForm,"DestStr4","Visible","Yes")
+
+    Case $FormExit = "ButtonDest4"
+      #help the user set up another ending point of the route but this is the last one
+	$WhichLocation="Dest4"
+	gosub Name=GetLocation
+
+    Case $FormExit = "PreviewButton"
+      # open Google Maps link for route in external browser
+      # note that using macro form browser causes trouble as it robs focus from the macro dialog
+	$URLstr = "http://maps.google.com/maps?f=d&hl=en"+$URLparms
+	WEB URL=$URLstr
+	$TmpStr="You requested to show the route in a browser window."+$_NewLine
+	$TmpStr=$tmpStr+"Note that if you change the route there, then that will have no effect in the macro"
+	Msgok msg=$TmpStr
+
+    Case $FormExit = "ButtonGCPQ"
+      #help user with uploading route to geocaching.com by opening that page to the right tab
+      # the kml file name path is on the clipboard
+	WEB URL="http://www.geocaching.com/my/userroutes.aspx#tabsTop-3"
+        IF not(FileExists($TMPfilekml)) or not($URLparmsSave=$URLparms)
+          #only create the route data if it has not already been created
+          Gosub Name=ObtainRouteData
+        Endif
+        Clip data=$TMPfilekml
+	$TmpStr="You requested help to upload the route to geocaching.com"+$_NewLine
+	$TmpStr=$tmpStr+"Note that this cannot be fully automated; you must do it yourself."
+	$TmpStr=$tmpStr+" Note that the path to the kml file is on the clipboard."
+	MsgOK msg=$TmpStr
+
+    Case $FormExit = "GoogleEarthButton"
+      #display route in Google Earth
+      IF not(FileExists($TMPfilekml)) or not($URLparmsSave=$URLparms)
+        #only create the route data if it has not already been created
+        Gosub Name=ObtainRouteData
+      Endif
+      FileOpen File="$TMPfilekml" Wait=no
+
+    Case $FormExit = "RecentRteButton"
+      #Store current route to RecentRteList
+      $RecentRteList= $RteName+"|"+$FROMstr+"|"+$DESTstr+"|"+$DESTstr2+"|"+$DESTstr3+"|"+$DESTstr4+";"+$RecentRteList
+      $MainForm = editform($MainForm,"RecentRteCombobox","Values",$RecentRteList)
+
+    Case $FormExit = "RecentRteCombobox"
+      #Store current route to RecentRteList
+	$Tmpstr = extract($RecentRteCombobox,"|",2)
+	$Tmpstr2 = extract($RecentRteCombobox,"|",3)
+	If not($Tmpstr="" or $Tmpstr2="")
+	  $FROMstr = $Tmpstr
+	  $DESTstr = $Tmpstr2
+	  $DESTstr2 = extract($RecentRteCombobox,"|",4)
+	  $DESTstr3 = extract($RecentRteCombobox,"|",5)
+	  $DESTstr4 = extract($RecentRteCombobox,"|",6)
+	Endif
+ 	If not($DESTstr="")
+	  $MainForm = editform($MainForm,"ButtonDest2","Visible","Yes")
+	  $MainForm = editform($MainForm,"DestStr2","Visible","Yes")
+ 	  If not($DESTstr2="")
+	   $MainForm = editform($MainForm,"ButtonDest3","Visible","Yes")
+	   $MainForm = editform($MainForm,"DestStr3","Visible","Yes")
+ 	   If not($DESTstr3="")
+	    $MainForm = editform($MainForm,"ButtonDest4","Visible","Yes")
+	    $MainForm = editform($MainForm,"DestStr4","Visible","Yes")
+	   Endif
+	  Endif
+	Endif
+
+    Case $FormExit = "SetFilterButton" OR $FormExit = "JoinOrFilterButton" OR $FormExit = "JoinAndFilterButton"
+      If $FROMstr="" or $DESTstr="" or $Editwidth=""
+	# the user has not set the start and endpoint correctly
+	MsgOK msg="You need to set the start, endpoint and distance before a filter can be set"
+	$KeepRunning=True
+      Else
+	# we should be able to set the filter
+	IF val($EditWidth)<=0
+	  MsgOK msg="The text you entered for distance computes to zero.$_NewLine Please enter a positive number"
+	Else
+	  Gosub Name=SetRouteFilter
+	  MsgOK msg="The filter has been set.$_NewLine After you exit the macro, you can use CTRL-F to set additional filter options"
+	Endif
+	$KeepRunning=True
+      ENDIF
+  EndCase
+  # The URL parameter string is used to determine if a change has been made on the form
+
+  $URLparms=$FROMstr+$DESTstr+$DESTstr2+$DESTstr3+$DESTstr4
+
+Endwhile
+
+# Normal exit of macro - do whatever needs to be done now
+# clean up files that are no longer needed
+If $CleanUp
+  FileErase File="$TMPfilekml" OnError=Continue
+  FileErase File="$TMPfilearc" OnError=Continue
+  FileErase File="$TMPfilekml2" OnError=Continue
+  FileErase File="$TMPfilekml3" OnError=Continue
+  FileErase File="$TMPfilekml4" OnError=Continue
+Endif
+
+#IF $RecentLocList is longer than $RecentLocListMax then remove the oldest
+IF RegExCount(";",$RecentLocList)>$RecentLocListMax
+   $RecentLocList = Left($RecentLocList,regexpos(";",$RecentLocList,$RecentLocListMax)-1)
+Endif
+#IF $RecentRteList is longer than $RecentLocListMax then remove the oldest
+IF RegExCount(";",$RecentRteList)>$RecentLocListMax
+   $RecentRteList = Left($RecentRteList,regexpos(";",$RecentRteList,$RecentLocListMax)-1)
+Endif
+
+$MacSaveVersion=$Version
+MacSettings Type=S Vars=MacSaveVersion,DistanceSort,BearingSort,GCcodeSort,LocSort,RecentSort,EditWidth,RecentLocList,RadiobuttonFilter,RadiobuttonAll,RecentRteList
+Return
+
+CANCEL   # end of macro executable lines - data section below
+
+############################################################################################################
+
+Beginsub Name=GetLocation
+# This subroutine displays the Location-Selection form and processes whatever the user 
+# selected or typed in.
+ 
+  # at the end the result is in $LocationString; initialize to be empty
+  $LocationString=""
+  $ComboboxGC=""
+  $ComboboxLoc=""
+  $ComboBoxRecent=""
+  $LocSelString=""
+
+  # Display Location-input form until user clicks OK
+  While $LocationString=""
+   # Prepare the form and its variable to display as needed:
+    # Note that Radiobuttons also cause form exit but no action is needed 
+    # other than to reinitialze and redisplay the form
+    $_sql=""
+    IF $RadiobuttonFilter=true
+      $_sql="WHERE $_Where"
+    ENDIF
+    IF $RadiobuttonAll=true
+      $_sql=""
+    ENDIF
+    # AND:
+    # for the GCcode dropdown box we may want it sorted a certain way
+    BeginCase
+       Case $DistanceSort=true
+         $_sql = "SELECT code ||'-('||distance ||')-'||name from caches "+$_sql+" ORDER by distance"
+       Case $BearingSort=true
+         $_sql = "SELECT code ||'-('||bearing || distance ||')-'||name from caches "+$_sql+" ORDER by bearing, distance"
+       Case $GCcodeSort=true
+         $_sql = "SELECT code ||'-('||bearing || distance ||')-'||name from caches "+$_sql+" ORDER by code"
+    Endcase
+    $GCcodeList=$_NewLine+sqlite("sql",$_sql)
+    $GCcodeList=Replace($_NewLine,";",Replace(";",":",$GCcodeList))   
+    $LocationSelectForm=editform($LocationSelectForm,"ComboboxGC","Values",$GCcodeList)
+
+    # Make all the user's locations available for selection
+    $TMPsortlist=sysInfo("locations")
+    IF $LocSort
+      gosub Name=SortList
+    Endif
+    $LocationSelectForm=Editform($LocationSelectForm,"ComboboxLoc",   "Values",";"+$TMPsortlist)
+    $TMPsortlist=$RecentLocList
+    IF $RecentSort
+      gosub Name=SortList
+    ENDIF
+    $LocationSelectForm=Editform($LocationSelectForm,"ComboBoxRecent","Values",";"+$TMPsortlist) 
+
+   # So now display the form and note how the user exited the form
+    $FormExit = form($LocationSelectForm,"")
+    BeginCase
+     Case $FormExit = "SystemExit"
+      #  User has click red X button on form - return to previous form
+      break
+
+     Case $FormExit = "ComboboxGC"
+	# combobox selection was made - stick the result into the editbox and display it
+	$TmpGCcode=alltrim(extract($ComboboxGC,"-",1))
+	if seek($TmpGCcode) 
+	  $LocSelString = "$d_Latitude,$d_Longitude+($d_code)"
+	Else
+	  if $TmpGCcode=""
+	   #nothing was selected - redisplay form
+	  else
+	   pause msg="$TmpGCcode was not found"
+	  endif
+	endif
+
+     Case $FormExit = "ComboboxLoc"
+	# Locations combobox selection was made - stick the result into the editbox and display it
+	IF not($ComboboxLoc="")
+	  $LocSelString=alltrim(extract($ComboboxLoc,",",2))+","+alltrim(extract($ComboboxLoc,",",3))
+	  $LocSelString=$LocSelString + "+(" + replace(" ","",extract($ComboboxLoc,",",1)) + ")"
+	Endif
+
+     Case $FormExit = "ComboBoxRecent"
+	IF not($ComboboxRecent="")
+	  $LocSelString=$ComboboxRecent
+	Endif
+
+     Case $FormExit = "OK"
+      $LocSelString=replace(", ","+",$LocSelString)
+      $LocSelString=replace(",+","+",$LocSelString)
+      $LocSelString=replace("++","+",$LocSelString)
+      $LocSelString=replace(" ","+",$LocSelString)
+      IF (len($LocSelString)>3)
+	#save location in recent list only if location string is longer than 3 characters
+	IF at($LocSelString,$RecentLocList)>0 and not($RecentLocListDup)
+	  #if location is already in the list and user does not want duplicates in the list
+	  $RecentLocList=RegExReplace(RegExEscape(";"+$LocSelString+";"),$RecentLocList,";")
+	Endif
+	$RecentLocList=$LocSelString+";"+$RecentLocList
+      Endif
+      BeginCase
+       Case $WhichLocation="From"
+	$FROMstr="&saddr=$LocSelString"
+	$LocationString=$FROMstr
+       Case $WhichLocation="Dest"
+	$DESTstr="&daddr=$LocSelString"
+	$LocationString=$DESTstr
+       Case $WhichLocation="Dest2"
+	$DESTstr2="+to:$LocSelString"
+	$LocationString=$DESTstr2
+       Case $WhichLocation="Dest3"
+	$DESTstr3="+to:$LocSelString"
+	$LocationString=$DESTstr3
+       Case $WhichLocation="Dest4"
+	$DESTstr4="+to:$LocSelString"
+	$LocationString=$DESTstr4
+    EndCase
+   EndCase
+  # the form was exited; continue to loop until a location is specified
+  Endwhile
+endsub
+
+Beginsub Name=ObtainRouteDataOriginal
+  $URLparmsSave=$URLparms
+  # Unfortunately the Google Maps output to kml feature only works
+  # if there are no additional "to:" elements; so we have to construct
+  # the route segments individually
+  $URLstr = "http://maps.google.com/maps?f=d&hl=en"+$FROMstr+$DESTstr
+  $URLstrOut = $URLstr+"&output=kml"
+  $TMPkml=GetUrl($URLstrOut,"Retrieving first route segment from Google Maps")
+  $ReturnCode = PutFile($TMPfilekml,$TMPkml)
+  $TmpStr2= Quote($_ExePath + "\gpsbabel.exe")+" -N -i kml"
+  $TmpStr2= $TmpStr2+" -f " + Quote($TMPfilekml)
+  IF not($DESTstr2="")
+    $Tmpstr="&saddr=" + Extract($DESTstr,"&daddr=",2) + "&daddr=" + Extract($DESTstr2,"+to:",2)
+    $URLstr = "http://maps.google.com/maps?f=d&hl=en"+$TmpStr
+    $URLstrOut = $URLstr+"&output=kml"
+    $TMPkml=GetUrl($URLstrOut,"Retrieving second route segment from Google Maps")
+    $ReturnCode = PutFile($TMPfilekml2,$TMPkml)
+    $TmpStr2= $TmpStr2+" -f " + Quote($TMPfilekml2)
+    IF not($DESTstr3="")
+      $Tmpstr="&saddr=" + Extract($DESTstr2,"+to:",2) + "&daddr=" + Extract($DESTstr3,"+to:",2)
+      $URLstr = "http://maps.google.com/maps?f=d&hl=en"+$TmpStr
+      $URLstrOut = $URLstr+"&output=kml"
+      $TMPkml=GetUrl($URLstrOut,"Retrieving third route segment from Google Maps")
+      $ReturnCode = PutFile($TMPfilekml3,$TMPkml)
+      $TmpStr2= $TmpStr2+" -f " + Quote($TMPfilekml3)
+      IF not($DESTstr4="")
+        $Tmpstr="&saddr=" + Extract($DESTstr3,"+to:",2) + "&daddr=" + Extract($DESTstr4,"+to:",2)
+        $URLstr = "http://maps.google.com/maps?f=d&hl=en"+$TmpStr
+        $URLstrOut = $URLstr+"&output=kml"
+        $TMPkml=GetUrl($URLstrOut,"Retrieving fourth route segment from Google Maps")
+        $ReturnCode = PutFile($TMPfilekml4,$TMPkml)
+        $TmpStr2= $TmpStr2+" -f " + Quote($TMPfilekml4)
+      Endif
+    Endif
+  Endif
+  $TmpStr2= $TmpStr2+" -x nuketypes,waypoints -x transform,wpt=trk -x nuketypes,tracks -x duplicate,location -x simplify,count=50"
+  $TmpStr2= $TmpStr2+" -o arc -F "+ Quote($TMPfilearc)
+  $TmpStr2= $TmpStr2+" -x transform,trk=wpt -x nuketypes,waypoints -o kml -F "+ Quote($TMPfilekml)+$_NewLine
+  $FileOut = $TMPbabel + "\babel.bat"
+  $ReturnCode = PutFile($FileOut, $TMPstr2)
+#Pause msg=$ReturnCode
+  FileOpen File="$FileOut" Wait=yes
+endsub
+
+Beginsub Name=ObtainRouteData
+# built when output=kml stopped working at Google Maps; uses js instead
+  $URLparmsSave=$URLparms
+  # Unfortunately the Google Maps output to kml feature only works
+  # if there are no additional "to:" elements; so we have to construct
+  # the route segments individually
+  $URLstr = "http://maps.google.com/maps?f=d&hl=en"+$FROMstr+$DESTstr
+  $URLstrOut = $URLstr+"&output=js"   #***
+  $TMPkml=GetUrl($URLstrOut,"Retrieving first route segment from Google Maps")
+  $ReturnCode = PutFile($TMPfilekml,$TMPkml)
+  $TmpStr2= Quote($_ExePath + "\gpsbabel.exe")+" -N -i google"
+  $TmpStr2= $TmpStr2+" -f " + Quote($TMPfilekml)
+  IF not($DESTstr2="")
+    $Tmpstr="&saddr=" + Extract($DESTstr,"&daddr=",2) + "&daddr=" + Extract($DESTstr2,"+to:",2)
+    $URLstr = "http://maps.google.com/maps?f=d&hl=en"+$TmpStr
+    $URLstrOut = $URLstr+"&output=js"   #***
+    $TMPkml=GetUrl($URLstrOut,"Retrieving second route segment from Google Maps")
+    $ReturnCode = PutFile($TMPfilekml2,$TMPkml)
+    $TmpStr2= $TmpStr2+" -f " + Quote($TMPfilekml2)
+    IF not($DESTstr3="")
+      $Tmpstr="&saddr=" + Extract($DESTstr2,"+to:",2) + "&daddr=" + Extract($DESTstr3,"+to:",2)
+      $URLstr = "http://maps.google.com/maps?f=d&hl=en"+$TmpStr
+      $URLstrOut = $URLstr+"&output=js"   #***
+      $TMPkml=GetUrl($URLstrOut,"Retrieving third route segment from Google Maps")
+      $ReturnCode = PutFile($TMPfilekml3,$TMPkml)
+      $TmpStr2= $TmpStr2+" -f " + Quote($TMPfilekml3)
+      IF not($DESTstr4="")
+        $Tmpstr="&saddr=" + Extract($DESTstr3,"+to:",2) + "&daddr=" + Extract($DESTstr4,"+to:",2)
+        $URLstr = "http://maps.google.com/maps?f=d&hl=en"+$TmpStr
+        $URLstrOut = $URLstr+"&output=js"   #***
+        $TMPkml=GetUrl($URLstrOut,"Retrieving fourth route segment from Google Maps")
+        $ReturnCode = PutFile($TMPfilekml4,$TMPkml)
+        $TmpStr2= $TmpStr2+" -f " + Quote($TMPfilekml4)
+      Endif
+    Endif
+  Endif
+  $TmpStr2= $TmpStr2+" -x nuketypes,waypoints -x transform,wpt=trk -x nuketypes,tracks -x duplicate,location -x simplify,count=50"
+  $TmpStr2= $TmpStr2+" -o arc -F "+ Quote($TMPfilearc)
+  $TmpStr2= $TmpStr2+" -x transform,trk=wpt -x nuketypes,waypoints -o kml -F "+ Quote($TMPfilekml)+$_NewLine
+  $FileOut = $TMPbabel + "\babel.bat"
+  $ReturnCode = PutFile($FileOut, $TMPstr2)
+#Pause msg=$ReturnCode
+  FileOpen File="$FileOut" Wait=yes
+endsub
+
+Beginsub Name=SetRouteFilter
+#debug status=on
+  IF not($URLparmsSave=$URLparms)
+     #only create the route data if it has not already been created
+     Gosub Name=ObtainRouteData
+  Endif
+  $TmpStr=Getfile($TMPfilearc)
+  $TmpStr=replace($_NewLine,"~",Replace(CHR(9),",",$TMPstr))
+  If $QuickCheck
+    $TmpStr=replace("ArcFilter=~","ArcFilter=~$TmpStr",$ArcFilterTemplate2)
+    $TmpStr=replace("*where*=","*where*=$WhereEdit",$TmpStr)
+  Else
+    $TmpStr=replace("ArcFilter=~","ArcFilter=~$TmpStr",$ArcFilterTemplate1)
+  Endif
+  # set ArcDistance value 
+  $DialogVar="edtArcDistance"
+  IF $EditWidth=""
+    #if user has no distance set, then set it to 1
+    $EditWidth="1"
+  Endif
+  $SetToVal=$EditWidth
+  $DialogStr = RegExReplace("(?m)^"+$DialogVar+"=.*+$",$TmpStr,"$DialogVar=$SetToVal")
+  MacroSet Dialog=Filter VarName=$DialogStr
+  BeginCase
+     Case $FormExit = "SetFilterButton" 
+      Filter Name=<macro>
+     Case $FormExit = "JoinOrFilterButton" 
+      Filter Name=<macro> Join=Or
+     Case $FormExit = "JoinAndFilterButton"
+      Filter Name=<macro> Join=And
+  Endcase
+Endsub
+
+Beginsub Name=SortList
+# The variable $TMPsortlist needs to contain at least one semicolon (the delimiter)
+# at start of this subroutine
+# the variable contains the sorted list at the end
+ if regex(";",$TMPsortlist)
+  $TmpSortListStr = list("TMPlist","create",";")
+  $TmpSortListStr = list("TMPlist","replace",$TMPsortlist)
+  $TMPsortlist = list("TMPlist","sort","")
+  $TmpSortListStr = list("TMPlist","destroy","")
+ endif
+endsub
+
+
+Beginsub Name=CheckKMLassociation
+$IsKMLassociated=False
+$FileExtensionToTest=".kml"
+$FileBat = $_Install + "\babel.bat"
+$FileTmp = $_Install + "\TempAssoc.txt"
+$ReturnCode ="ASSOC $FileExtensionToTest >$FileTmp"
+$ReturnCode = PutFile($FileBat,$ReturnCode)
+IF Left($ReturnCode,7) = "*Error*"
+  Pause Msg="$ReturnCode"
+  Cancel
+Else
+  FileOpen File="$FileBat" Wait=yes
+  $ReturnCode = GetFile($FileTmp)
+  IF Left($ReturnCode,7) = "*Error*"
+    Pause Msg="$ReturnCode"
+    Cancel
+  Else
+    IF at($FileExtensionToTest,$ReturnCode)=1
+#      Pause Msg="File Association is set as follows$_NewLine$ReturnCode"
+      $IsKMLassociated=True
+    Else
+#      Pause Msg="No File Association was found for $FileExtensionToTest"
+      $IsKMLassociated=False
+    Endif
+  Endif
+ENDIF
+Endsub
+
+Beginsub Name=GetVersionNumber
+  $Version = Sysinfo("MacroPath")+"\"+Sysinfo("MacroFile")
+  $TmpStr=Getfile($Version)
+  $Version=AllTrim(Extract(Extract($TmpStr,"MacVersion =",2),$_NewLine,1))
+Endsub
+
+<data> VarName=$ArcFilterTemplate1
+edtArcDistance=
+chkArcExclude=False
+rbtArc=True
+rbtPoly=False
+rbtPoint=False
+rbtReplace=True
+rbtAppend=False
+
+ArcFilter=~
+*where*=
+<enddata>
+
+<data> VarName=$ArcFilterTemplate2
+edtDesc=
+cbxDesc=0
+cbxFilter=0
+edtDistance=
+cbxDistance=0
+edtDistance2=
+edtPlacedBy=
+cbxDifficulty=0
+cbxTerrain=0
+cbxDif=8
+cbxTer=8
+cbxPlacedBy=0
+cbxDif2=8
+cbxTer2=8
+edtUserData=
+cbxUserData=0
+chkReverse=False
+edtTbugName=
+cbxTbugName=0
+cbxSource=0
+edtSource=
+cbxUser2=0
+EdtUser2=
+cbxOwnerName=0
+edtOwnerName=
+cbxSymbol=0
+edtSymbol=
+cbxUser3=0
+edtUser3=
+cbxUser4=0
+edtUser4=
+edtArcDistance=
+chkArcExclude=False
+chkFound=False
+chkNotFound=True
+chkExclude=True
+chkAvailable=True
+chkArchivedOnly=False
+chkTempUnavailable=False
+chkUserFlag1=True
+chkUserFlag2=True
+chkBugNo=True
+cbxBugs=True
+chkNoteNo=True
+chkNoteYes=True
+edtFull=
+chkFullHighlight=True
+chkRegEx=False
+chkFullNotes=False
+chkFullLogs=False
+chkFullDes=False
+RbtFullAll=True
+rbtFullSelect=False
+chkFtfNo=True
+chkFtfyes=True
+rbtArc=True
+rbtPoly=False
+rbtPoint=False
+rbtReplace=True
+rbtAppend=False
+
+ArcFilter=~
+*where*=
+<enddata>
+
+
+<Data> VarName=$LocationSelectForm
+#********************************************************************
+# Form generated by GSAK form designer on Sun 10-Apr-2011 10:31:38
+#********************************************************************
+
+Name = LocationSelectForm
+  Type = Form
+  Caption = Select a location
+  Height = 505
+  Width = 379
+
+Name = GroupboxGCcode
+  Type = Groupbox
+  Caption = Select a GCcode with the following combobox:
+  Height = 127
+  Left = 19
+  Top = 34
+  Width = 345
+  Taborder = 0
+
+Name = GroupboxRadio
+  Type = Groupbox
+  Caption = Sort the dropdown list by:
+  Container = GroupboxGCcode
+  Height = 41
+  Left = 5
+  Top = 13
+  Width = 332
+  Taborder = 0
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Let dropdown list consist of caches in
+  Container = GroupboxGCcode
+  Height = 41
+  Left = 8
+  Top = 56
+  Width = 329
+  Taborder = 1
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = Select a location from the GSAK locations or a recently-used location
+  Height = 87
+  Left = 19
+  Top = 170
+  Width = 345
+  Taborder = 1
+
+Name = Groupbox3
+  Type = Groupbox
+  Caption = Making a selection above fills in the location below
+  Height = 75
+  Left = 19
+  Top = 294
+  Width = 345
+  Taborder = 2
+
+Name = DistanceSort
+  Type = Radiobutton
+  Container = GroupboxRadio
+  Exitonchange = Yes
+  Height = 17
+  Left = 89
+  Top = 16
+  Width = 72
+  Taborder = 0
+  Caption = Distance or
+
+Name = BearingSort
+  Type = Radiobutton
+  Container = GroupboxRadio
+  Exitonchange = Yes
+  Height = 17
+  Left = 177
+  Top = 16
+  Width = 152
+  Taborder = 1
+  Caption = Bearing from current center
+
+Name = GCcodeSort
+  Type = Radiobutton
+  Container = GroupboxRadio
+  Exitonchange = Yes
+  Height = 17
+  Left = 8
+  Top = 16
+  Width = 73
+  Taborder = 2
+  Caption = GCcode or
+
+Name = RadiobuttonFilter
+  Type = Radiobutton
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 17
+  Left = 8
+  Top = 16
+  Width = 113
+  Taborder = 0
+  Caption = Current filter only
+
+Name = RadiobuttonAll
+  Type = Radiobutton
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 17
+  Left = 112
+  Top = 16
+  Width = 113
+  Taborder = 1
+  Caption = Entire database
+
+Name = ComboboxGC
+  Type = Combobox
+  Container = GroupboxGCcode
+  Exitonchange = Yes
+  Height = 21
+  Left = 10
+  Top = 98
+  Width = 327
+  Taborder = 2
+
+Name = Label4
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 8
+  Top = 18
+  Width = 74
+  Caption = GSAK locations
+
+Name = ComboboxLoc
+  Type = Combobox
+  Container = Groupbox2
+  Exitonchange = Yes
+  Height = 21
+  Left = 110
+  Top = 21
+  Width = 227
+  Taborder = 0
+
+Name = ComboBoxRecent
+  Type = Combobox
+  Container = Groupbox2
+  Exitonchange = Yes
+  Height = 21
+  Left = 109
+  Top = 58
+  Width = 228
+  Taborder = 1
+
+Name = Label5
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 7
+  Top = 55
+  Width = 80
+  Caption = Recent locations
+
+Name = Label2
+  Type = Label
+  Container = Groupbox3
+  Height = 13
+  Left = 12
+  Top = 16
+  Width = 193
+  Caption = Alternately type in coordinates or address
+
+Name = LocSelString
+  Type = Edit
+  Container = Groupbox3
+  Height = 21
+  Left = 9
+  Top = 33
+  Width = 321
+  Taborder = 0
+
+Name = LocSort
+  Type = Checkbox
+  Container = Groupbox2
+  Exitonchange = Yes
+  Height = 17
+  Left = 8
+  Top = 32
+  Width = 97
+  Taborder = 2
+  Caption = Sort alphabetically
+
+Name = RecentSort
+  Type = Checkbox
+  Container = Groupbox2
+  Exitonchange = Yes
+  Height = 17
+  Left = 8
+  Top = 66
+  Width = 97
+  Taborder = 3
+  Caption = Sort alphabetically
+
+Name = Label1
+  Type = Label
+  Height = 20
+  Left = 8
+  Size = 12
+  Style = bold
+  Top = 8
+  Width = 335
+  Caption = Select a location either by drop-down box:
+
+Name = Label3
+  Type = Label
+  Height = 20
+  Left = 2
+  Size = 12
+  Style = bold
+  Top = 266
+  Width = 165
+  Caption = Or edit the following 
+
+Name = Label6
+  Type = Label
+  Height = 20
+  Left = 4
+  Size = 12
+  Style = bold
+  Top = 380
+  Width = 218
+  Caption = Then Clck the button below
+
+Name = OK
+  Type = Button
+  Height = 45
+  Left = 24
+  Top = 404
+  Width = 333
+  Taborder = 3
+  Caption = Once a location is entered click here to use that location
+
+<enddata>
+
+
+<Data> VarName=$MainForm
+#********************************************************************
+# Form generated by GSAK form designer on Sat 26-Feb-2011 16:48:44
+#********************************************************************
+
+Name = MainForm
+  Type = Form
+  Caption = Set GSAK Filter "Along a Route"
+  Height = 335
+  Width = 575
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = After Route is set, use this to set the Filter
+  Height = 145
+  Left = 328
+  Top = 64
+  Width = 233
+  Taborder = 3
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = Route to be generated with Google Maps
+  Height = 273
+  Left = 8
+  Top = 32
+  Width = 313
+  Taborder = 0
+
+Name = Label1
+  Type = Label
+  Height = 13
+  Left = 8
+  Style = bold
+  Top = 8
+  Width = 222
+  Caption = Set GSAK Filter along a route - by Hynr
+
+Name = Label2
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 5
+  Top = 22
+  Width = 168
+  Caption = Distance on either side of the route:
+
+Name = EditWidth
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 174
+  Top = 20
+  Width = 41
+  Taborder = 0
+
+Name = SetFilterButton
+  Type = Button
+  Container = Groupbox1
+  Height = 32
+  Left = 7
+  Top = 100
+  Width = 50
+  Taborder = 1
+  Caption = Set Filter
+
+Name = PreviewButton
+  Type = Button
+  Container = Groupbox2
+  Height = 25
+  Left = 7
+  Top = 144
+  Visible = No
+  Width = 122
+  Taborder = 0
+  Caption = Google Maps Preview
+
+Name = DestStr4
+  Type = Edit
+  Container = Groupbox2
+  Enabled = No
+  Height = 21
+  Left = 76
+  Top = 117
+  Visible = No
+  Width = 230
+  Taborder = 1
+
+Name = DestStr3
+  Type = Edit
+  Container = Groupbox2
+  Enabled = No
+  Height = 21
+  Left = 76
+  Top = 93
+  Visible = No
+  Width = 230
+  Taborder = 2
+
+Name = DestStr2
+  Type = Edit
+  Container = Groupbox2
+  Enabled = No
+  Height = 21
+  Left = 76
+  Top = 69
+  Visible = No
+  Width = 230
+  Taborder = 3
+
+Name = DestStr
+  Type = Edit
+  Container = Groupbox2
+  Enabled = No
+  Height = 21
+  Left = 77
+  Top = 42
+  Width = 230
+  Taborder = 4
+
+Name = FromStr
+  Type = Edit
+  Container = Groupbox2
+  Enabled = Yes
+  Height = 21
+  Left = 77
+  Top = 16
+  Width = 230
+  Taborder = 5
+
+Name = StartButton
+  Type = Button
+  Container = Groupbox2
+  Height = 25
+  Left = 7
+  Top = 16
+  Width = 66
+  Taborder = 6
+  Caption = Start
+
+Name = EndButton
+  Type = Button
+  Container = Groupbox2
+  Height = 25
+  Left = 7
+  Top = 42
+  Width = 66
+  Taborder = 7
+  Caption = Destination:
+
+Name = ButtonDest2
+  Type = Button
+  Container = Groupbox2
+  Height = 24
+  Left = 6
+  Top = 69
+  Visible = No
+  Width = 66
+  Taborder = 8
+  Caption = then to:
+
+Name = ButtonDest3
+  Type = Button
+  Container = Groupbox2
+  Height = 24
+  Left = 6
+  Top = 93
+  Visible = No
+  Width = 66
+  Taborder = 9
+  Caption = And on to:
+
+Name = ButtonDest4
+  Type = Button
+  Container = Groupbox2
+  Height = 24
+  Left = 6
+  Top = 117
+  Visible = No
+  Width = 66
+  Taborder = 10
+  Caption = to:
+
+Name = CancelFilterButton
+  Type = Button
+  Height = 28
+  Left = 332
+  Top = 29
+  Width = 123
+  Taborder = 1
+  Caption = Cancel Current Filter
+
+Name = HelpButton
+  Type = Button
+  Height = 28
+  Left = 464
+  Top = 29
+  Width = 97
+  Taborder = 1
+  Caption = Help
+
+Name = JoinAndFilterButton
+  Type = Button
+  Container = Groupbox1
+  Height = 32
+  Left = 62
+  Top = 100
+  Width = 83
+  Taborder = 2
+  Caption = Join [and] Filter
+
+Name = JoinOrFilterButton
+  Type = Button
+  Container = Groupbox1
+  Height = 32
+  Left = 147
+  Top = 100
+  Width = 73
+  Taborder = 3
+  Caption = Join [or] Filter
+
+Name = ButtonGCPQ
+  Type = Button
+  Container = Groupbox2
+  Height = 25
+  Left = 7
+  Top = 172
+  Width = 258
+  Taborder = 11
+  Caption = Use Route to create route PQ at Geocaching.com
+
+Name = GoogleEarthButton
+  Type = Button
+  Container = Groupbox2
+  Height = 25
+  Left = 136
+  Top = 144
+  Width = 121
+  Taborder = 12
+  Caption = Google Earth Preview
+
+Name = QuickCheck
+  Type = Checkbox
+  Container = Groupbox1
+  Height = 17
+  Left = 12
+  Top = 57
+  Width = 197
+  Taborder = 4
+  Caption = not unavailable, not found, where:
+
+Name = WhereEdit
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 32
+  Top = 72
+  Width = 177
+  Taborder = 5
+
+Name = QuitButton
+  Type = Button
+  Height = 41
+  Left = 464
+  Top = 216
+  Width = 91
+  Taborder = 2
+  Caption = Exit
+
+Name = Label3
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 8
+  Top = 40
+  Width = 169
+  Caption = Include these constraints in the filter
+
+Name = RecentRteButton
+  Type = Button
+  Container = Groupbox2
+  Height = 25
+  Left = 8
+  Top = 200
+  Width = 177
+  Taborder = 13
+  Caption = Add to Recent Route List below:
+
+Name = RecentRteCombobox
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 7
+  Top = 278
+  Width = 551
+  Taborder = 4
+
+Name = Label4
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 4
+  Top = 232
+  Width = 108
+  Caption = Recently-used Routes:
+
+<enddata>
+
+#### Help System ##########
+Beginsub Name=GetHelp
+  $TMPfileHTMLhelp ="$_Appdata\macros\AlongRouteHelpTmp.html"
+  $Tmpstr = PutFile($TMPfileHTMLhelp,$HelpTextHtml)
+ #pause msg=$TMPfileHTMLhelp
+  $URLedit="file://$TMPfileHTMLhelp"
+  $BrowserForm=EditForm($BrowserFormTmp,"Browser1","Url",$URLedit)
+  $StayInHelp=True
+  While $StayInHelp #loop to display form 
+    $FormExit = form($BrowserForm,"")
+    BeginCase
+     Case $FormExit = "SystemExit"
+#      MsgOk msg="Form exit via red X button on form"
+#      break
+       $StayInHelp=False
+     Case $FormExit = "DisplayInBrowerButton"
+       WEB URL=$URLedit
+       $StayInHelp=False
+    EndCase
+  EndWhile
+Endsub
+
+
+<Data> VarName=$BrowserFormTmp
+#********************************************************************
+# Form generated by GSAK form designer on Sun 10-Apr-2011 14:03:35
+#********************************************************************
+
+Name = BrowserForm
+  Type = Form
+  Height = 600
+  Width = 800
+
+Name = Browser1
+  Type = Browser
+  Height = 537
+  Left = 0
+  Top = 0
+  Width = 785
+  Taborder = 8
+  URL = http://gsak.net/
+
+Name = Label1
+  Type = Label
+  Height = 20
+  Left = 8
+  Size = 12
+  Style = bold
+  Top = 538
+  Width = 41
+  Caption = URL:
+
+Name = DisplayInBrowerButton
+  Type = Button
+  Height = 25
+  Left = 656
+  Top = 539
+  Width = 131
+  Taborder = 9
+  Caption = Display in Default Browser
+
+Name = URLedit
+  Type = Edit
+  Height = 21
+  Left = 56
+  Top = 540
+  Width = 593
+  Taborder = 10
+
+<enddata>
+
+
+<Data> VarName=$HelpTextHtml
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+  <meta content="text/html; charset=ISO-8859-1" http-equiv="content-type">
+  <title>Help for "AlongRoute" Filter macro by Hynr</title>
+</head>
+<body>
+
+<h1>Help for "AlongRoute" GSAK filter macro</h1>
+
+<p>This macro sets a filter in GSAK to select all the geocaches in the
+current database which are within some distance of a particular route
+where the route is the one returned by Google Maps. As such the
+computer needs to have internet access to Google Maps&nbsp;for this
+to work.</p>
+<p>The main macro dialog shows a left side where the route is specified
+and the right side where the filter is sepecified. On both left and
+right side buttons are hidden until the macro has enough data from the
+user to implement the action.</p>
+
+<h2>Selecting a Route</h2>
+
+<p>The route is specified by 2, 3, 4 or 5 nodes. Initially only
+2 lines are shown (a Start and a destination); the destination is
+generally the first via-point in a multi-segment route. Once a
+Destination is specified, a button is presented to let the user select
+a thrid point ("then to:"). This continues as long as the user selects
+more nodes. Leave one blank to end the selection process.</p>
+<p>Note that the fields next to the buttons are the exact text that is
+needed as part of the URL call to Google Maps. You can edit here if you
+know what you are doing; leave it alone otherwise.</p>
+<p>Once the macro has at least one segment, buttons are displayed to
+preview the route with the default browser or with Google Earth in a
+separate window. Note that there is no feedback from those windows to
+the macro; this is only for display purposes. If the preview to Google
+Maps does not work, then the actual setting of the filter cannot work
+either.</p>
+<p>The button to "Add to Recent Route List" allows re-using routes at
+later dates by saving the needed information to reconstruct the files
+directly above that button on the main dialog of the macro. </p>
+
+<h2>Selecting a Location</h2>
+
+<p>A new dialog opens up ("Select a location") when pressing the buttons
+for selecting a location. This selection dialog offers a lot of
+flexibility for the user for specifying locations. 
+The user may use either the "Select a GCcode" panel or "Select a location" panel
+to identify a location that is readily available in GSAK. 
+Selecting in either panel results in an entry
+into the editbox in "Making a selelction" panel below. </p>
+<p>Note that it is possible to edit in this editbox to make any desired
+modification. You can also enter brand new text here. If you enter
+text, then be sure to enter it with the same format as you would
+present to Google Maps if you were using that tool to find a location. 
+You should only use text that resolved to a particular place without triggering help to narrow it down.
+As such you can enter a town or city name, followed by state and coutnry names. 
+Here are some examples of what you can type in:</p>
+<br>
+<table style="text-align: left; width: 100%;" border="1" cellpadding="2" cellspacing="2">
+  <tbody>
+    <tr>
+      <td>
+      <h3>Desired Location </h3>
+      </td>
+      <td>
+      <h3>How to type it in to the editbox</h3>
+      </td>
+    </tr>
+    <tr>
+      <td>The city of San Francisco, California, USA
+         (it is not clear, generally, what point is used, but it is probably near the city center)
+      </td>
+      <td>San Francisco, California
+      </td>
+    </tr>
+    <tr>
+      <td>Coordinates with a comment;
+          the comment in perentheses is optional and included only to help with the previewing
+      </td>
+      <td>38.0 -122.0 (corner of degree quad)
+      </td>
+    </tr>
+    <tr>
+      <td>Specific codes that Google Maps understands as one individual location. 
+          E.g. Airport codes SMF=Sacramento International Airport
+      </td>
+      <td>SMF</td>
+    </tr>
+    <tr>
+      <td></td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+<p>It may take a little practice and trial-and-error at the Google Maps
+site to learn what it can accept as input for a specific location.<br>
+When the "Select a Location" dialog closes it will pass the infomration
+back to the main dialog in the format of the paramerter that will work
+in the Google Maps URL.</p>
+
+<h2>Current Filter</h2>
+
+<p>Note that the current filter that is active when the macro is started
+(if a filter is set) is respected and can be particularly useful when
+selecting GC codes on the above dialog. But there may come a time when,
+during the execution of the macro, you may want to cancel this filter.
+A button is provided for this purpose. Generally you would not need to
+cancel the filter.</p>
+
+<h2>Setting the "Along Route" filter</h2>
+
+<p>Note that you do need to tell GSAK how far away from the route you want
+geocaches included. The number for this distance is in the same units
+as the units that GSAK uses on the Arc/Poly tab of the Filter dialog.
+&nbsp;In fact, the number that is entered here is transferred to
+that dialog for you along with the coordinates that Google Maps
+generates for the route you specified.</p>
+<p>Note that you can set a few common filter elements by the macro even
+including a "Where" clause. But you should be aware that whatever ends
+up being set as a filter can readily be inspected and changed with the
+Filter dialog after the filter is set.</p>
+<p>Note also that whatever route filter you want to set, you can either
+set that against the entire database (Set Fliter) or by joining it to
+whatever filter is already set. Joining with "And" means that the the
+result is the intersection of the two sets; Joing with "Or" results in
+all caches that meet the requirements of either the filter that was
+already set or the new "along route" filter.</p>
+<p>Also: depending on how complex the route is, there may be hundreds of nodes.
+Each segment is, in fact, simplified down to 50 nodes, but a total of 200 nodes
+(if using all 4 segments) can still take quite a bit of time to filter a large database.
+As a consequence, setting the filter can take a minute or two. </p>
+</body>
+</html>
+<enddata>

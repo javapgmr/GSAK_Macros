@@ -1,0 +1,382 @@
+#*******************************************
+# MacVersion = 1.00
+# MacDescription = Pyramid Challenge Progress
+# MacAuthor = Russell Corfman
+# MacFileName = Pyramid.gsk
+# MacUrl =http://gsak.net/board/index.php?act=Attach&type=post&id=143722
+#*******************************************
+
+VerCheck Version=7.7.4.20 (please update GSAK to the latest version to run this macro)
+
+#*******************************************
+#* Variable Declarations
+#*
+
+Option Explicit=Yes
+
+Declare Var=$CheckboxSaveToClip Type=Boolean
+Declare Var=$RadioEarliest      Type=Boolean
+Declare Var=$RadioLatest        Type=Boolean
+Declare Var=$RadioSummary       Type=Boolean
+Declare Var=$RadioFullReport    Type=Boolean
+
+Declare Var=$cacheDay           Type=Numeric
+Declare Var=$maxCacheDay        Type=Numeric
+Declare Var=$row                Type=Numeric
+
+Declare Var=$data               Type=String
+Declare Var=$EditLevel          Type=String
+Declare Var=$formResult         Type=String
+Declare Var=$html               Type=String
+Declare Var=$htmlFile           Type=String
+Declare Var=$htmlHeader         Type=String
+Declare Var=$macAuthor          Type=String
+Declare Var=$macDescription     Type=String
+Declare Var=$macVersion         Type=String
+Declare Var=$prefix             Type=String
+Declare Var=$result             Type=String
+Declare Var=$resultList         Type=String
+Declare Var=$sortOrder          Type=String
+Declare Var=$tdRight            Type=String
+
+#*
+#*******************************************
+#* Main
+#*
+
+GoSub name=Startup
+
+If $RadioSummary
+	GoSub name=DoSummary
+Else
+	GoSub name=DoReport
+EndIf
+
+#*
+#*******************************************
+#*
+
+BeginSub name=Startup
+
+	$CheckboxSaveToClip = True
+
+	$RadioEarliest = True
+	$RadioLatest   = NOT ($RadioEarliest)
+
+	$RadioSummary  = False
+	$RadioFullReport = NOT ($RadioSummary)
+
+	$maxCacheDay = 15
+
+	$Form1 = EditForm($Form1,"LabelAuthor","Caption", "by " + MacHeader("MacAuthor"))
+	$Form1 = EditForm($Form1,"LabelVersion","Caption", "version " + MacHeader("MacVersion"))
+
+	$EditLevel = NumToStr($maxCacheDay)
+
+	While True
+		$formResult = form($Form1,"")
+
+		BeginCase
+		Case $formResult = "SystemExit"
+			Cancel Msg="$MacDescription Cancelled"
+
+		Case $formResult = "RadioSummary"
+			$Form1 = EditForm($Form1, "CheckboxSaveToClip", "Enabled","No")
+			$Form1 = EditForm($Form1, "Groupbox2", "Enabled","No")
+			$Form1 = EditForm($Form1, "RadioEarliest", "Enabled","No")
+			$Form1 = EditForm($Form1, "RadioLatest", "Enabled","No")
+
+		Case $formResult = "RadioFullReport"
+			$Form1 = EditForm($Form1, "CheckboxSaveToClip", "Enabled","Yes")
+			$Form1 = EditForm($Form1, "Groupbox2", "Enabled","Yes")
+			$Form1 = EditForm($Form1, "RadioEarliest", "Enabled","Yes")
+			$Form1 = EditForm($Form1, "RadioLatest", "Enabled","Yes")
+
+		Case $formResult = "ButtonOk"
+
+			If RegEx("^\d{1,2}$",$EditLevel)
+
+				If ((0 < Val($EditLevel)) AND (Val($EditLevel) < 21))
+
+					$maxCacheDay = Val($EditLevel)
+					ExitSub
+				EndIf
+			EndIf
+
+			MsgOK Msg="Pyramid Level must be a number from 1 to 20"
+			$EditLevel = NumToStr($maxCacheDay)
+
+		Case $formResult = "ButtonCancel"
+			Cancel
+		EndCase
+	EndWhile
+		
+
+EndSub
+
+#*
+#*******************************************
+#*
+
+BeginSub name=DoSummary
+
+	# get the sql data to display
+	$_sql = "Select NumberOfCachesFound as 'Number of Caches Found', Count(NumberOfCachesFound) as 'Number Of Days' FROM (Select FoundByMeDate, Count(Code) as NumberOfCachesFound from CachesAll Where CacheType<>'G' and FoundByMeDate<>'' Group By FoundByMeDate) as drvTable Where NumberOfCachesFound<=$maxCacheDay Group By NumberOfCachesFound Order By NumberOfCachesFound"
+	$result = sqlite("sql",$_sql,"Headings=Yes")
+
+	# display the data
+	$html = sqltohtml($result,"Summary of Pyramid Challenge","y")
+EndSub
+
+#*
+#*******************************************
+#*
+
+BeginSub name=DoReport
+
+	$cacheDay = 1
+
+	If $RadioLatest
+		$sortOrder = "Desc"
+	Else
+		$sortOrder = "Asc"
+	EndIf
+
+	$resultList = ""
+	$html = $htmlHeader
+	$html = $html + "<body>" + $_crlf
+	$html = $html + "<center><h1 class=" + $_quote + "heading" + $_quote + ">Pyramid Challenge Progress</h1></center>"
+	$html = $html + "<table cellpadding=" + $_Quote + "1" + $_Quote + " cellspacing=" + $_Quote + "1" + $_Quote + " border=" + $_Quote + "0" + $_Quote + ">"
+
+	While $cacheDay <= $maxCacheDay
+		$_sql = "Select FoundByMeDate as NumberOfCachesFound from CachesAll Where CacheType<>'G' and FoundByMeDate<>'' Group By FoundByMeDate Having count(code)=$cacheDay Order by FoundByMeDate $sortOrder Limit $cacheDay"
+  		$result = sqlite("sql",$_sql,"Headings=No")
+
+		$resultList = $resultList + "$cacheDay" + ":"
+		$html = $html + "<tr class=" + $_quote
+
+		If $_sqlrows < $cacheDay
+			$html = $html + "incompleterows"
+		Else
+			$html = $html + "completerows"
+		EndIf
+
+		#$html = $html + $_quote + ">" + $tdRight + "$cacheDay" + "&nbsp</td>" + $tdRight + "$_sqlrows" + "&nbsp</td>"
+		$html = $html + $_quote + ">" + $tdRight + "$cacheDay" + "&nbsp</td>"
+
+		$row = 1
+		$prefix = " "
+		While $row <= $_sqlrows
+			$data = Extract("$result", "$_crlf", $row)
+			$resultList = $resultList + $prefix + $data
+			$html = $html + "<td>" + $data + "&nbsp</td>"
+			$row = $row + 1
+			$prefix = ", "
+		EndWhile
+
+		$resultList = $resultList + $_crlf
+		$html = $html + "</tr>"
+		$cacheDay = $cacheDay + 1
+	EndWhile
+	$html = $html + "</table></body></html>"
+
+	If $CheckboxSaveToClip
+		Clip data=$resultList
+	EndIf
+
+	$htmlFile = $_AppData + "\Temp\Pyramid.html"
+	$result = PutFile("$htmlFile", "$html")
+	Web url="$htmlFile"
+
+EndSub
+
+#*
+#*******************************************
+
+<data> varname=$htmlHeader
+<html>
+<head>
+<title>Pyramid Challenge Summary</title>
+<style type='text/css'>                                                 
+.heading
+{
+background: #176199;
+color: #ffffff;
+font: 22px tahoma, verdana, geneva, lucida, 'lucida grande', helvetica, sans-serif;
+}
+.rows {
+background: #d9d9d9;
+color: #000000;
+font: 12px tahoma, verdana, geneva, lucida, 'lucida grande', helvetica, sans-serif;
+}
+.completerows {
+background: #00f000;
+color: #000000;
+font: 12px tahoma, verdana, geneva, lucida, 'lucida grande', helvetica, sans-serif;
+}
+.incompleterows {
+background: #f00000;
+color: #000000;
+font: 12px tahoma, verdana, geneva, lucida, 'lucida grande', helvetica, sans-serif;
+}
+</style>
+</head>
+<enddata>
+
+#*******************************************
+
+<data> varname=$tdRight
+<td align="right">
+<enddata>
+
+#*******************************************
+
+<Data> VarName=$Form1
+#********************************************************************
+# Form generated by GSAK form designer on Fri 28-Oct-2011 21:43:42
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Pyramid Challenge
+  Height = 260
+  Left = 535
+  Width = 342
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Report Type
+  Height = 50
+  Left = 8
+  Top = 104
+  Width = 170
+  Taborder = 2
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = Date Sort Order
+  Height = 50
+  Left = 8
+  Top = 160
+  Width = 170
+  Taborder = 3
+
+Name = LabelMacroName
+  Type = Label
+  Height = 33
+  Left = 8
+  Size = 22
+  Style = bold
+  Top = 8
+  Visible = Yes
+  Width = 272
+  Caption = Pyramid Challenge
+
+Name = LabelAuthor
+  Type = Label
+  Height = 17
+  Left = 30
+  Top = 74
+  Width = 53
+  Caption = by Author
+
+Name = RadioSummary
+  Type = Radiobutton
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 20
+  Left = 8
+  Top = 18
+  Width = 65
+  Taborder = 0
+  Caption = Summary
+
+Name = RadioFullReport
+  Type = Radiobutton
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 20
+  Left = 80
+  Top = 18
+  Width = 81
+  Taborder = 1
+  Caption = Full Report
+
+Name = EditLevel
+  Type = Edit
+  Height = 21
+  Left = 200
+  Top = 120
+  Width = 33
+  Taborder = 5
+
+Name = LabelLevel
+  Type = Label
+  Height = 17
+  Left = 240
+  Top = 122
+  Width = 74
+  Caption = Pyramid Level
+
+Name = RadioEarliest
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 20
+  Left = 8
+  Top = 18
+  Width = 65
+  Taborder = 0
+  Caption = Earliest
+
+Name = RadioLatest
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 20
+  Left = 80
+  Top = 18
+  Width = 65
+  Taborder = 1
+  Caption = Latest
+
+Name = LabelVersion
+  Type = Label
+  Height = 20
+  Left = 30
+  Size = 12
+  Top = 48
+  Width = 91
+  Caption = Version x.xx
+
+Name = ButtonOk
+  Type = Button
+  Height = 25
+  Left = 216
+  Top = 152
+  Width = 75
+  Taborder = 1
+  Caption = Okay
+
+Name = ButtonCancel
+  Type = Button
+  Height = 25
+  Left = 216
+  Top = 184
+  Width = 75
+  Taborder = 6
+  Caption = Cancel
+
+Name = CheckboxSaveToClip
+  Type = Checkbox
+  Height = 20
+  Left = 200
+  Top = 88
+  Width = 121
+  Taborder = 4
+  Caption = Save to Clipboard
+
+<enddata>
+
+
+
+
+

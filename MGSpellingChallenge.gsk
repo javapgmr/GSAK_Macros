@@ -1,0 +1,59 @@
+#******************************************************
+# MacVersion = 1.0
+# MacDescription = Missouri Geocaching Spelling Challenge Check
+# MacAuthor = Dakender
+# MacFileName = MGSpellingChallenge.gsk
+# MacUrl =
+# NOTE = Based upon AZTech's AzAlphanumericChallenge macro
+#        which was based upon Baldin' Eagle's Alphabet Soup
+#        Challenge macro, which was in turn based on
+#        kimbest's Ultimate GSAK Challenge macro
+#******************************************************
+
+
+MacroFlag Type=Clear Range=All
+
+$LogEntry = ""
+$C = 1
+$Found = 0
+$alphanumeric = "MISSOURIGEOCACHING"
+$invalid = "CCG Series #"
+$CheckDate = [20100601]
+
+While $C <= 18
+   $A = "^"
+   $C2 = 1
+   $A = $A + SubStr($alphanumeric,$C,1)
+
+   $C = $C + 1
+
+   Goto Position=Top
+   While not($_Eol)
+      If $d_Found = TRUE AND $d_Archived = FALSE AND IsOwner() = FALSE AND $d_FoundByMeDate >= $CheckDate
+         If $d_MacroFlag = FALSE
+            If RegEx($A,$d_Name) = TRUE
+               If RegEx(SubStr($d_Name,1,12),$invalid) = FALSE
+                  $LogEntry = $LogEntry + SubStr($A,2,1) + " = " + $d_Name + " - " + $d_Code + " - " + DateFormat($d_FoundByMeDate) + $_NewLine
+                  $Found = $Found + 1
+                  $d_MacroFlag = TRUE
+                  $d_UserSort = $C
+                  Break
+               EndIf
+            EndIf
+         Endif
+      EndIf
+      GoTo Position=Next
+   EndWhile
+EndWhile
+
+Clip Data=$LogEntry
+
+If $Found = 18
+   $Message = "Congratulations! You have completed the Missouri Geocaching Spelling Challenge!" + $_NewLine + $_NewLine + "Your list of finds has been copied to the Windows clipboard where it can be easily pasted into your log entry."
+   Pause Msg=$Message
+Else
+   $Message = "Sorry, but you have only found " + NumToStr($Found) + " of the 18 caches needed to complete the Missouri Geocaching Spelling Challenge." + $_NewLine + $_NewLine + "Press Continue to see the finds which qualify."
+   Pause Msg=$Message
+EndIf
+MFilter Expression=$d_MacroFlag
+Sort by="usersort"

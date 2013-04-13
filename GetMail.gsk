@@ -1,0 +1,172 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription =  GetMail MACRO
+# MacAuthor = javapgmr
+# MacFileName = getMail.gsk
+# MacUrl =
+#*******************************************
+
+#################################################################
+# This macro will take all of your PQ's, dump them into the 	#
+# Default DB and then FILTER and MOVECOPY them as needed.  This	#
+# macro is great as a 'Start-Up' macro as it bring everything   #
+# in and sorts it as necessary every time you run GSAK.  You'll	#
+# need to adjust the DATABASE, FILTER, & MOVECOPY Settings as 	#
+# necessary to make it work for your needs.			#
+#################################################################
+#
+#
+#################################################################
+# UPDATE HISTORY						#
+#################################################################
+#								#
+# 05.11.05 - Added IF Statements for the FILTER and MOVECOPY    #
+#            Statements to allow the macro to ALWAYS look for	#
+#            DNF and Owned Caches, even if they don't exist.	#
+#								#
+# 05.05.05 - Added Filtering and DB Management for caches near	#
+#            Mom & Dad.  Added UPDATE HISTORY header.		#
+#								#
+# 05.01.05 - Fine tuned Filtering and sorting features		#
+#								#
+# 04.29.05 - Macro creation date				#
+#								#
+#################################################################
+#*******************************************************
+#   Variable declarations for
+#   getmail.gsk
+#
+#   Generated 06/08/2007 5:02:55 PM on GSAKVariables.gsk Rev V0.20 B4
+#
+#*******************************************************
+
+GOSUB Name="Declare"
+GOSUB Name="OnlyOnce"
+
+$macrohome=Sysinfo("MacroPath")
+
+# Select Default DB
+DATABASE Name="Default" Action=select
+
+#MACROSET Dialog=Load VarName=$GPXLoad
+#Load Settings=<macro>
+
+#MACROSET Dialog=Getmail  VarName=$GetMail
+
+# Get PQ's from POP3 Mail
+#getMail Settings="<macro>" OnError=Prompt  ShowStats=Yes
+
+
+MACROSET Dialog=Load VarName=$GPXLoad
+LOAD Settings=<macro>
+MACROSET Dialog=Getmail  VarName=$GetMail
+
+# Get PQ's from POP3 Mail
+GETMAIL Settings="<macro>" OnError=Prompt  ShowStats=No
+
+MACRO File=SWBAssignCounties.gsk
+
+######## SORT OUT FOUND CACHES AND MOVE THEM TO FOUND DB ########
+#MACRO File=$macrohome"moveToFound.gsk"
+
+#DATABASE Name="Default" Action=select
+
+
+#MACRO File=$macrohome"setup.gsk"
+
+<data> VarName=$GetMail
+[TfmMail]
+cbxMatch.Text=RegEx
+chkIgnore.Checked=False
+chkSSL.Checked=True
+edtHost.Text=pop.gmail.com
+edtMatch.Text=\[GEO\] Pocket Query:
+edtPass.Text=Cavetown
+edtUser.Text=mail.javapgmr
+rbtDelete.Checked=False
+rbtLeave.Checked=True
+rbtOver.Checked=False
+rbtRenumber.Checked=True
+edtPort.Text=995
+chkNewMsg.Checked=False
+chkLoadYes.Checked=True
+cbxLoadSettings.Text=<macro>
+chkRename.Checked=False
+chkForceRead.Checked=False
+RbtOnlyAttach.Checked=True
+rbtHeaderBody.Checked=False
+edtFolder.Text=C:\apps\gsakwork
+File1.Filename=C:\apps\gsakwork\notify.gpx
+<enddata>
+
+
+<data> VarName=$MoveCopy_Static
+[TfmMove]
+rbtAdd.Checked=True
+rbtAddFlag.Checked=True
+rbtAddIgnore.Checked=False
+rbtCopy.Checked=True
+rbtExistIgnore.Checked=False
+rbtFlagOnly.Checked=False
+rbtMove.Checked=False
+rbtReplace.Checked=True
+rbtReplaceFlag.Checked=False
+chkDisplay.Checked=False
+<enddata>
+
+<data> VarName=$GPXLoad
+[TfmGpxLoad]
+fnmFrom.Text=C:\apps\DA\gsak\
+chkGpx.Checked=True
+chkLoc.Checked=True
+chkZip.Checked=True
+edtFolder.Text=C:\apps\gsakwork\
+cbxZap.Checked=False
+chkClearUser.Checked=False
+chkDefault.Checked=False
+chkDelete.Checked=True
+chkSetUser.Checked=False
+chkUserOnly.Checked=False
+rbtAddOnly.Checked=False
+rbtAlways.Checked=True
+rbtExists.Checked=False
+rbtExtraChild.Checked=True
+rbtExtraExclude.Checked=False
+rbtExtraParent.Checked=False
+rbtFoundAlways.Checked=True
+rbtFoundNever.Checked=False
+rbtFoundOnly.Checked=False
+rbtNewer.Checked=False
+rbtLoadFile.Checked=False
+rbtLoadFolder.Checked=True
+<enddata>
+
+
+#*******************************************************
+#   Variable declarations for
+#   GetMail.gsk
+#
+#   Generated 07/27/2007 10:00:24 AM on GSAKVariables.gsk Rev V0.20 B11
+#
+#*******************************************************
+
+
+BEGINSUB Name=Declare
+Option Explicit=Yes
+
+Declare Var=$GetMail Type=String
+Declare Var=$GetMail2 Type=String
+Declare Var=$GPXLoad Type=String
+Declare Var=$GPXLoadOld Type=String
+Declare Var=$macrohome Type=String
+Declare Var=$MoveCopy_Static Type=String
+DECLARE Var=$Updated Type=Numeric
+ENDSUB
+
+
+
+
+
+INCLUDE File="includeOnlyOne.gsk"
+
+

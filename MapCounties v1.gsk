@@ -1,0 +1,3996 @@
+# MacVersion = 1.0
+# MacDescription = Create Map of Counties for US County Challenge
+# MacAuthor = KoosKoos
+# MacFileName = MapCounties v1.gsk
+# Current version release date = 8-10-2008
+#
+# This macro owes its existence to the fine work of Lignumaqua and specifically, his
+# CheckCounties.gsk macro 
+# I used a lot of his code from version .6, trimmed a few sections, and added the parameter code
+#
+# Starting in v1, the output of this file is HTML code meant to be pasted into a geocaching.com profile or other page.
+# The image URL to a PHP script that creates a dynamic image based on the parameters given.
+# 
+# The general parameters are:
+# map - a lower case abbreviation of each state
+# enc - flag to show that the coordinates are coming over encoded (custommap.php accepts either format)
+# x/y - coordinates for fill zones (encoded to reduce size)
+# col1 - list of colors to use in shading gradients
+# s - gradient code for each county
+# 
+# Thanks to Lignumaqua and Clyde for the server/hosting at gsak.net
+# Thanks also go to Lignumaqua for his help in creating the state basemaps and his custommap.php script
+# And of course, thanks to Lignumaqua for some help cleaning up my macro coding in general
+#
+# future enhancements:
+# pull the color section and break definitions into a user form
+#
+# Release notes:
+# v.7 initial public release 7-6-2008
+# v.7.1 bug fix 7-7-08
+# --- change out the SQL code to account for counties with multiple segments
+# v.7.2 bug fix 7-8-08
+# --- added TestMode flag to make it easier to turn on full mapping for tests
+# --- changed OBrien to O'Brien county in Iowa
+# --- added additional coordinates to clean up some stray segments in Florida, Utah, Texas, Pennsylvania, Ohio, North Carolina
+# v.8 bug fix 7-12-08
+# --- adjusted the "check counties" bug that was returning a missing location error at times
+# v.9 bug fix 7-24-08
+# --- switched Tarrant and San Patricio county coordinates in Texas (reversed)
+# --- add apostrophes for Maryland counties: Prince George's, St. Mary's, and Queen Anne's
+# v.9.1 bug fix 8-4-08
+# --- a few Texas counties had incorrect coords
+# v.9.2 bug fix 8-4-08
+# --- actually fixing La Salle, Lamar, Lamb, and Lampasas counties in Texas
+# v 1.0 upgrade 8-10-08
+# --- added support for encoded x/y coordinate lists
+# --- added county names and counts
+# --- exclude locationless caches by default
+# --- add support for shading counties by find count
+
+VERCHECK Version=7.2.3.12 (Note: this macro requires the latest GSAK "patch" - please see the 7.2.3 patch thread here: http://gsak.net/board/index.php?showtopic=8565)
+
+SHOWSTATUS msg="Loading County Definitions...0%" Width=200 Height=150 Title="Initializing"
+
+GOSUB name=DeclareVariables
+
+########## Default variable setup
+# flag for test mode or normal operation
+# 1 = testing (show all counties filled for selected state)
+# 0 = normal (only show counties where a cache exists in current db/filter)
+$TestMode = 0
+
+# groups for shading
+$list = List("breaks", "create", ";")
+
+# you can add or delete breaks to change the amount of groups tracked
+
+# Current code does not support more than TEN breaks
+# the upper number limit for each break
+$list = List("breaks", "add", "1")
+$list = List("breaks", "add", "9")
+$list = List("breaks", "add", "19")
+$list = List("breaks", "add", "49")
+$list = List("breaks", "add", "74")
+$list = List("breaks", "add", "99")
+$list = List("breaks", "add", "149")
+$list = List("breaks", "add", "199")
+$list = List("breaks", "add", "249")
+$list = List("breaks", "add", "999999") # once you have a millionith cache, increase this number
+
+# labels for above breaks
+$list = List("breaks", "add", "1")
+$list = List("breaks", "add", "2-9")
+$list = List("breaks", "add", "10-19")
+$list = List("breaks", "add", "20-49")
+$list = List("breaks", "add", "50-74")
+$list = List("breaks", "add", "75-99")
+$list = List("breaks", "add", "100-149")
+$list = List("breaks", "add", "150-199")
+$list = List("breaks", "add", "200-249")
+$list = List("breaks", "add", "250+")
+
+# shading colors
+# begin color will be for count=1
+# if you want all counties to be filled in the same color, list the same color in both variables
+$BeginColor = "#0066FF"
+$EndColor = "#FF0000"
+
+########## End default variable setup
+# Define SQL database
+$datafilepath = Sysinfo("MacroPath")
+#$File = $datafilepath + "\USCountiesSQL.db3"
+
+$file = ":memory:"
+
+$status=""
+
+#Open the SQL database ready for use
+$status = Sqlite("open",$file,"")
+
+$_sql = "drop table if exists USCounties"
+$status = Sqlite("sql",$_sql,"")
+
+# Create counties table
+$Data = "State text,Abbreviation text,County text,xFill text,yFill text"
+$_sql = "CREATE TABLE USCounties ($Data)"
+$status = Sqlite("sql",$_sql,"")
+
+SHOWSTATUS msg="Loading County Definitions...50%" Width=200 Height=150 Title="Initializing"
+
+# Import the master list of Counties to the SQL table
+$status = sqlite("import",$CountiesSQlFile,"table=USCounties")
+
+SHOWSTATUS msg="Loading County Definitions...75%" Width=200 Height=150 Title="Initializing"
+
+#Save the State and User2 fields from the current GSAK database out to an SQL table in the SQL database
+$Status = DbToSQLite("caches","State,User2,CacheType",$file) 
+
+# Get a list of States to populate the combo box on the menu form
+$_sql = "SELECT DISTINCT State FROM USCounties ORDER BY State"
+
+SHOWSTATUS msg="Loading County Definitions...100%" Width=200 Height=150 Title="Initializing"
+
+$result = Sqlite("SQL",$_sql,"")
+$StateList = Replace("$_NewLine",";",$result,true)
+
+# $StateList = "Alabama;Alaska;Arizona;Arkansas;California;Colorado;Connecticut;Delaware;District of Columbia;Florida;Georgia;Hawaii;Idaho;Illinois;Indiana;Iowa;Kansas;Kentucky;Louisiana;Maine;Maryland;Massachusetts;Michigan;Minnesota;Mississippi;Missouri;Montana;Nebraska;Nevada;New Hampshire;New Jersey;New Mexico;New York;North Carolina;North Dakota;Ohio;Oklahoma;Oregon;Pennsylvania;Rhode Island;South Carolina;South Dakota;Tennessee;Texas;Utah;Vermont;Virginia;Washington;West Virginia;Wisconsin;Wyoming"
+
+# set up list that's used for later manipulation
+$list = list("CtyTable","create", ";")
+
+SHOWSTATUS Msg="Done!" Display=Off
+
+# Show the main form in a loop
+WHILE TRUE
+# set the locationless flag to "on" by default  
+  $Excludelocationless = TRUE
+
+  $result = Form($form,"")
+# Reset the screen position of the menu form to where the user left it
+  $Form = EditForm($Form,"Form1","Top",$_FormTop)
+  $Form = EditForm($Form,"Form1","Left",$_FormLeft)
+ 
+  BEGINCASE #Buttons
+  CASE $Cancel
+    CANCEL
+    CASE $GetCounties
+    $tmpN = GetCounty("2b")
+    $Status = DbToSQLite("caches","State,User2,CacheType",$file)
+CASE $OK
+GOSUB name=Main
+OTHERWISE
+CANCEL
+ENDCASE
+ENDWHILE # Form Loop
+
+BEGINSUB name=Main
+
+# Exclude locationless? 
+IF $Excludelocationless 
+  $Locationless = " AND caches.Cachetype <> 'L'" 
+ELSE
+  $Locationless = "" 
+ENDIF
+
+# Grab the state abbreviation to make the URL a little shorter later
+$_sql = "SELECT Abbreviation FROM USCounties WHERE State = '$StateChosen'"
+$StateAbbreviation = Left(Sqlite("SQL",$_sql,""),2)
+
+# Figure out if we are using full state names or abbreviations
+$_sql = "SELECT AVG(LENGTH(state)) from caches"
+$tmpN = Val(Sqlite("SQL",$_sql,""))
+
+IF $tmpN > 3
+  $SearchState = $StateChosen
+  $CountyCheck = "USCounties.State"
+ELSE
+  $SearchState = $StateAbbreviation
+  $CountyCheck = "USCounties.Abbreviation"
+ENDIF
+
+# build link to the mapping script
+IF $StateAbbreviation = "VI"
+   $MapName = "pr"
+ELSE
+   $MapName = lower($StateAbbreviation)
+ENDIF
+
+$code= "http://gsak.net/stats/counties/custommap.php?map=" + $MapName + "&enc=1" 
+
+# encoded x/y coords
+$encodingString = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-."
+
+# add shading for number of caches in that county
+$count=0
+$count=(Val(List("breaks","count",""))/2)-1
+
+IF $count < 1
+  $count=1 # no matter what the user chooses, make at least 1 break
+ENDIF
+# get the decimal values of the step changes for each shade
+# Red value
+$hex=Substr($BeginColor,2,2)
+GOSUB Name=hextodec
+$begRed=$dec
+$hex=Substr($EndColor,2,2)
+GOSUB Name=hextodec
+$endRed=$dec
+$redChange = Round(($endRed - $begRed) / $count,0)
+
+# Green value
+$hex=Substr($BeginColor,4,2)
+GOSUB Name=hextodec
+$begGreen=$dec
+$hex=Substr($EndColor,4,2)
+GOSUB Name=hextodec
+$endGreen=$dec
+$greenChange = Round(($endGreen - $begGreen) / $count,0)
+
+# Blue value
+$hex=Substr($BeginColor,6,2)
+GOSUB Name=hextodec
+$begBlue=$dec
+$hex=Substr($EndColor,6,2)
+GOSUB Name=hextodec
+$endBlue=$dec
+$blueChange = Round(($endBlue - $begBlue) / $count,0)
+
+$_sql = " case "
+$legendTable = "<TABLE style='width: 390px; margin: auto auto; font-size: xx-small; text-align: left;' border=0><TR>"
+$tmpN=0
+$lowBreak="0"
+$rows=1
+$shades=""
+WHILE $tmpN < $count
+  $red=$begRed+($redChange*$tmpN)
+  $dec=$red
+  GOSUB Name=dectohex
+  $redhex=$hex
+
+  $green=$begGreen+($greenChange*$tmpN)
+  $dec=$green
+  GOSUB Name=dectohex
+  $greenhex=$hex
+
+  $blue=$begBlue+($blueChange*$tmpN)
+  $dec=$blue
+  GOSUB Name=dectohex
+  $bluehex=$hex
+
+  $shades = $shades + $redhex + $greenhex + $bluehex
+
+  $Break = List("breaks","item",NumtoStr($tmpN+1))
+  $_sql = $_sql + " when cnt > $lowBreak and cnt <= $Break then '$tmpN'"
+  $tmpL = $tmpN + $count + 2
+  $Label = List("breaks","item","$tmpL")
+  IF $rows < 5
+    $legendTable = $legendTable + "<TD style='width:10px;height:10px;border:1px solid #000000;background-color:#$redhex$greenhex$bluehex'>&nbsp;</td><TD>" + $Label + "</TD>"
+    $rows = $rows + 1
+  ELSE
+    $legendTable = $legendTable + "<TD style='width:10px;height:10px;border:1px solid #000000;background-color:#$redhex$greenhex$bluehex'>&nbsp;</td><TD>" + $Label + "</TD></TR><TR>"
+    $rows = 1  
+  ENDIF
+  $tmpN = $tmpN + 1
+  $lowBreak = $Break
+ENDWHILE
+  
+$dec=$endRed
+GOSUB Name=dectohex
+$redhex=$hex
+
+$dec=$endGreen
+GOSUB Name=dectohex
+$greenhex=$hex
+
+$dec=$endBlue
+GOSUB Name=dectohex
+$bluehex=$hex
+
+$shades = $shades + $redhex + $greenhex + $bluehex
+
+$Break = List("breaks","item",NumtoStr($tmpN+1))
+$tmpL = $tmpN + $count + 2
+$Label = List("breaks","item","$tmpL")
+
+$_sql = $_sql + " when cnt > $lowBreak and cnt <= $Break then '$tmpN' end"
+
+$legendTable = $legendTable + "<TD style='width:10px;height:10px;border:1px solid #000000;background-color:#$redhex$greenhex$bluehex'>&nbsp;</td><TD>" + $Label + "</TD></TR></TABLE>"
+
+#test code to load ALL counties shaded at highest level
+IF $TestMode = 1
+  $_sql = " '$tmpN' "
+ENDIF
+
+#test code to load ALL counties
+IF $TestMode = 1
+  $_sql = "SELECT substr('$encodingString', (round((xFill / 64)-0.5))+1,1) || substr('$encodingString',(xFill % 64)+1,1) xfill, substr('$encodingString', (round((yFill / 64)-0.5))+1,1) || substr('$encodingString',(yFill % 64)+1,1) yfill, $_sql, USCounties.county, cnt FROM USCounties, (select county, count(*) cnt from USCounties WHERE State like '$SearchState' GROUP BY county) counts WHERE State = '$StateChosen' and counts.county like USCounties.county GROUP BY xfill,yfill order by cnt desc"
+ELSE  # Normal mode
+  $_sql = "SELECT substr('$encodingString', (round((xFill / 64)-0.5))+1,1) || substr('$encodingString',(xFill % 64)+1,1) xfill, substr('$encodingString', (round((yFill / 64)-0.5))+1,1) || substr('$encodingString',(yFill % 64)+1,1) yfill, $_sql, county, cnt FROM USCounties, caches, (select User2, count(*) cnt from caches WHERE caches.User2 != '' and caches.State like '$SearchState' GROUP BY User2) counts WHERE caches.User2 != '' and caches.State like '$SearchState' and $CountyCheck = '$SearchState' and USCounties.County like caches.User2 and caches.User2 like counts.User2 $Locationless GROUP BY xfill,yfill order by cnt desc"
+ENDIF
+
+$result = Sqlite("SQL",$_sql,"")
+#$result = Replace(" ","",$result,true)
+$result = Replace("$_NewLine", ";",$result,true)
+
+$list = list("CtyTable","replace",$result)
+$count = Val(list("CtyTable","count",""))
+
+$tmpN = 1
+$rows = 1
+$TotList = "<TR><TD>"
+$x=""
+$y=""
+$s=""
+
+while $tmpN < $count
+  $x = $x + List("CtyTable","item",NumtoStr($tmpN))
+  $y = $y + List("CtyTable","item",NumtoStr($tmpN+1))
+  $s = $s + List("CtyTable","item",NumtoStr($tmpN+2))
+  $CountyName = List("CtyTable","item",NumtoStr($tmpN+3))
+  $PreviousCountyName = List("CtyTable","item",NumtoStr($tmpN-2))
+
+  # avoid duplicate county names for counties with multiple coord entries
+  IF $CountyName <> List("CtyTable","item",NumtoStr($tmpN-2))
+    $CountyCnt = List("CtyTable","item",NumtoStr($tmpN+4))
+    $TotList = $TotList + "$CountyName:$CountyCnt"
+
+    IF $tmpN < $count
+      IF $rows < 5
+        $TotList = $TotList + "</TD><TD>"
+        $rows = $rows + 1
+      ELSE
+        $TotList = $TotList + "</TD></TR><TR><TD>"
+        $rows=1
+      ENDIF
+    ELSE
+      $TotList = $TotList + "</TD></TR>"
+    ENDIF
+  ENDIF
+
+  $tmpN = $tmpN+5
+ENDWHILE
+
+# build the url
+$code = $code + "&x=" + $x + "&y=" + $y + "&col1=" + $shades + "&s=" + $s
+
+# Display map in browser
+WEB URL=$code
+
+# Copy full profile text to clipboard
+$code = "<div style='font-family: Verdana, Arial, sans-serif; font-size: xx-small; text-align: center;'><TABLE style='width: 390px; margin: auto auto; font-size: xx-small; text-align: left;' border=0><TR><TD colspan='5' align='center'><img src=" + $code + "><BR>$legendTable</TD></TR>$TotList</TABLE></div>"
+
+CLIP Data=$code
+
+MSGOK msg="Your $StateChosen map code is on your clipboard, ready to be pasted into your profile or another web page."
+ 
+ENDSUB #Main
+
+
+BEGINSUB name=DeclareVariables
+
+Option Explicit=Yes
+
+Declare Var=$begBlue Type=Numeric
+Declare Var=$begGreen Type=Numeric
+Declare Var=$BeginColor Type=String
+Declare Var=$begRed Type=Numeric
+Declare Var=$blue Type=Numeric
+Declare Var=$blueChange Type=Numeric
+Declare Var=$bluehex Type=String
+Declare Var=$Break Type=String
+Declare Var=$code Type=String
+Declare Var=$count Type=Numeric
+Declare Var=$CountiesSQlFile Type=String
+Declare Var=$CountyCheck Type=String
+Declare Var=$CountyCnt Type=String
+Declare Var=$CountyName Type=String
+Declare Var=$d Type=Numeric
+Declare Var=$Data Type=String
+Declare Var=$datafilepath Type=String
+Declare Var=$dec Type=Numeric
+Declare Var=$encodingString Type=String
+Declare Var=$endBlue Type=Numeric
+Declare Var=$EndColor Type=String
+Declare Var=$endGreen Type=Numeric
+Declare Var=$endRed Type=Numeric
+Declare Var=$Excludelocationless Type=Boolean
+Declare Var=$file Type=String
+Declare Var=$Form Type=String
+Declare Var=$green Type=Numeric
+Declare Var=$greenChange Type=Numeric
+Declare Var=$greenhex Type=String
+Declare Var=$hex Type=String
+Declare Var=$hexlookup Type=String
+Declare Var=$Label Type=String
+Declare Var=$legendTable Type=String
+Declare Var=$list Type=String
+Declare Var=$Locationless Type=String
+Declare Var=$lowBreak Type=String
+Declare Var=$MapName Type=String
+Declare Var=$PreviousCountyName Type=String
+Declare Var=$q Type=Numeric
+Declare Var=$r Type=Numeric
+Declare Var=$red Type=Numeric
+Declare Var=$redChange Type=Numeric
+Declare Var=$redhex Type=String
+Declare Var=$result Type=String
+Declare Var=$rows Type=Numeric
+Declare Var=$s Type=String
+Declare Var=$SearchState Type=String
+Declare Var=$shades Type=String
+Declare Var=$StateAbbreviation Type=String
+Declare Var=$StateList Type=String
+Declare Var=$status Type=String
+Declare Var=$TestMode Type=Numeric
+Declare Var=$tmpL Type=Numeric
+Declare Var=$tmpN Type=Numeric
+Declare Var=$TotList Type=String
+Declare Var=$x Type=String
+Declare Var=$y Type=String
+
+ENDSUB #DeclareVariables
+
+
+BEGINSUB Name=hextodec
+  # assumes variables $hex and $dec are already defined in the macro 
+  # $hex should be set before subroutine is called
+  # $dec is set by the subroutine
+  
+  Declare Var=$HTDSUBcounter Type=Numeric
+  Declare Var=$HTDSUBhexcodes Type=String
+  Declare Var=$HTDSUBnumDigits Type=Numeric
+  
+  $HTDSUBnumDigits=len($hex) 
+  
+  IF $HTDSUBnumDigits = 0
+    $dec=-1 # an error condition. no hex characters were passed
+  ELSE
+    $hex=Upper($hex)
+    $dec=0
+    $HTDSUBhexcodes="0123456789ABCDEF"
+    $HTDSUBcounter=0
+    WHILE $HTDSUBcounter < $HTDSUBnumDigits
+      $dec=16*$dec + (AT(Substr($hex, $HTDSUBcounter, 1), $HTDSUBhexcodes)-1)
+      $HTDSUBcounter = $HTDSUBcounter + 1
+		ENDWHILE
+  ENDIF
+ENDSUB #hextodec
+
+BEGINSUB name=dectohex
+  # Takes input from 0-255 as a decimal number in $dec
+  # and returns it as a two character hex string in $hex
+
+  $hexlookup="0123456789ABCDEF"
+  $d = Int($dec)
+  $q = Int($d/16)
+  $r = $d - ($q*16)
+  $hex = SubStr($hexlookup,$q+1,1) + SubStr($hexlookup,$r+1,1)
+ENDSUB
+
+<data> VarName=$form
+Name = Form1
+  Type = Form
+  Caption = County Challenge Mapper
+  Height = 250
+  Width = 532
+
+Name = Groupbox1
+  Type = Groupbox
+  Height = 110
+  Left = 40
+  Top = 50
+  Width = 185
+  Taborder = 4
+
+Name = Groupbox2
+  Type = Groupbox
+  Height = 110
+  Left = 300
+  Top = 50
+  Width = 185
+  Taborder = 5
+
+Name = Label1
+  Type = Label
+  Color = 16744448
+  Height = 20
+  Left = 143
+  Size = 13
+  Style = bold
+  Top = 5
+  Width = 238
+  Caption = US County Challenge Mapper
+
+Name = Label2
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 56
+  Top = 18
+  Width = 73
+  Caption = State to map:
+
+Name = Statechosen
+  Type = Combobox
+  Container = Groupbox2
+  Height = 21
+  Left = 22
+  Top = 43
+  Values = $StateList
+  Width = 145
+  Taborder = 0
+
+Name = ok
+  Type = Button
+  Height = 25
+  Left = 134
+  Top = 180
+  Width = 75
+  Taborder = 0
+  Caption = Map it
+
+Name = cancel
+  Type = Button
+  Height = 25
+  Left = 314
+  Top = 180
+  Width = 75
+  Taborder = 1
+  Caption = Cancel
+
+Name = GetCounties
+  Type = Button
+  Container = Groupbox1
+  Height = 25
+  Left = 46
+  Top = 27
+  Width = 91
+  Taborder = 0
+  Caption = Update Counties
+
+Name = Label3
+  Type = Label
+  Color = 255
+  Container = Groupbox1
+  Height = 13
+  Left = 70
+  Style = bold
+  Top = 65
+  Width = 44
+  Caption = Warnng
+
+Name = excludelocationless
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 17
+  Left = 149
+  Top = 79
+  Width = 15
+  Taborder = 1
+
+Name = Label4
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 26
+  Top = 82
+  Width = 99
+  Caption = Exclude locationless:
+
+Name = Label5
+  Type = Label
+  Color = 255
+  Container = Groupbox1
+  Height = 13
+  Left = 21
+  Style = bold
+  Top = 81
+  Width = 143
+  Caption = Will overwrite Userdata2!
+
+<enddata>
+
+<data> VarName=$CountiesSQlFile
+Alabama;AL;Autauga;141;196
+Alabama;AL;Baldwin;71;333
+Alabama;AL;Baldwin;88;364
+Alabama;AL;Barbour;221;247
+Alabama;AL;Bibb;110;162
+Alabama;AL;Blount;146;87
+Alabama;AL;Bullock;201;230
+Alabama;AL;Butler;139;256
+Alabama;AL;Calhoun;192;102
+Alabama;AL;Chambers;220;167
+Alabama;AL;Cherokee;205;72
+Alabama;AL;Chilton;136;173
+Alabama;AL;Choctaw;37;235
+Alabama;AL;Clarke;65;261
+Alabama;AL;Clay;190;141
+Alabama;AL;Cleburne;212;109
+Alabama;AL;Coffee;184;283
+Alabama;AL;Colbert;68;32
+Alabama;AL;Conecuh;119;281
+Alabama;AL;Coosa;166;166
+Alabama;AL;Covington;154;294
+Alabama;AL;Crenshaw;163;258
+Alabama;AL;Cullman;127;75
+Alabama;AL;Dale;208;280
+Alabama;AL;Dallas;112;213
+Alabama;AL;DeKalb;192;50
+Alabama;AL;Elmore;173;192
+Alabama;AL;Escambia;108;304
+Alabama;AL;Etowah;179;81
+Alabama;AL;Fayette;72;106
+Alabama;AL;Franklin;66;51
+Alabama;AL;Geneva;193;306
+Alabama;AL;Greene;57;171
+Alabama;AL;Hale;79;179
+Alabama;AL;Henry;232;274
+Alabama;AL;Houston;229;301
+Alabama;AL;Jackson;181;26
+Alabama;AL;Jefferson;125;119
+Alabama;AL;Lamar;50;140
+Alabama;AL;Lauderdale;78;16
+Alabama;AL;Lawrence;99;46
+Alabama;AL;Lee;223;191
+Alabama;AL;Limestone;120;24
+Alabama;AL;Lowndes;141;226
+Alabama;AL;Macon;146;27
+Alabama;AL;Madison;68;218
+Alabama;AL;Marengo;63;75
+Alabama;AL;Marion;162;58
+Alabama;AL;Marshall;202;208
+Alabama;AL;Mobile;39;329
+Alabama;AL;Monroe;95;270
+Alabama;AL;Montgomery;169;221
+Alabama;AL;Morgan;128;51
+Alabama;AL;Perry;42;192
+Alabama;AL;Pickens;100;100
+Alabama;AL;Pike;186;253
+Alabama;AL;Randolph;216;138
+Alabama;AL;Russell;234;214
+Alabama;AL;St. Clair;140;141
+Alabama;AL;Shelby;161;107
+Alabama;AL;Sumter;50;102
+Alabama;AL;Talladega;195;171
+Alabama;AL;Tallapoosa;171;132
+Alabama;AL;Tuscaloosa;85;139
+Alabama;AL;Walker;100;189
+Alabama;AL;Washington;40;282
+Alabama;AL;Wilcox;99;238
+Alabama;AL;Winston;95;74
+Alaska;AK;Aleutians East;256;303
+Alaska;AK;Aleutians East;278;293
+Alaska;AK;Aleutians East;270;299
+Alaska;AK;Aleutians East;291;299
+Alaska;AK;Aleutians East;236;311
+Alaska;AK;Aleutians West;56;294
+Alaska;AK;Aleutians West;19;257
+Alaska;AK;Aleutians West;77;304
+Alaska;AK;Aleutians West;113;322
+Alaska;AK;Aleutians West;143;321
+Alaska;AK;Aleutians West;205;322
+Alaska;AK;Aleutians West;210;319
+Alaska;AK;Aleutians West;226;313
+Alaska;AK;Aleutians West;224;319
+Alaska;AK;Anchorage;401;196
+Alaska;AK;Angoon;514;222
+Alaska;AK;Angoon;524;202
+Alaska;AK;Angoon;517;214
+Alaska;AK;Angoon;541;232
+Alaska;AK;Angoon;553;228
+Alaska;AK;Angoon;526;228
+Alaska;AK;Bethel;313;198
+Alaska;AK;Bethel;266;199
+Alaska;AK;Bethel;251;206
+Alaska;AK;Bristol Bay;334;239
+Alaska;AK;Cordova;443;185
+Alaska;AK;Cordova;408;209
+Alaska;AK;Denali;389;152
+Alaska;AK;Dillingham;322;220
+Alaska;AK;Fairbanks North Star;415;130
+Alaska;AK;Haines;521;206
+Alaska;AK;Haines;529;209
+Alaska;AK;Juneau;540;218
+Alaska;AK;Kenai Peninsula;371;204
+Alaska;AK;Kenai Peninsula;356;238
+Alaska;AK;Kenai Peninsula;392;211
+Alaska;AK;Ketchikan Gateway;581;257
+Alaska;AK;Kodiak Island;362;264
+Alaska;AK;Kodiak Island;350;250
+Alaska;AK;Kodiak Island;361;257
+Alaska;AK;Kodiak Island;372;248
+Alaska;AK;Koyukuk;375;120
+Alaska;AK;Lake and Peninsula;339;241
+Alaska;AK;Nome;289;124
+Alaska;AK;Nome;231;140
+Alaska;AK;North Slope;363;52
+Alaska;AK;Northwest Arctic;320;91
+Alaska;AK;Northwest Arctic;300;93
+Alaska;AK;Outer Ketchikan;588;254
+Alaska;AK;Outer Ketchikan;567;260
+Alaska;AK;Petersburg;567;241
+Alaska;AK;Petersburg;555;246
+Alaska;AK;Petersburg;549;247
+Alaska;AK;Sitka;539;246
+Alaska;AK;Sitka;528;237
+Alaska;AK;Sitka;531;229
+Alaska;AK;Southeast Fairbanks;442;143
+Alaska;AK;Susitna;395;176
+Alaska;AK;Wade Hampton;282;174
+Alaska;AK;Yakutat;489;204
+Alaska;AK;Yakutat;500;219
+Arizona;AZ;Apache;299;112
+Arizona;AZ;Cochise;289;336
+Arizona;AZ;Coconino;182;84
+Arizona;AZ;Gila;232;215
+Arizona;AZ;Graham;281;269
+Arizona;AZ;Greenlee;314;250
+Arizona;AZ;La Paz;66;217
+Arizona;AZ;Maricopa;143;243
+Arizona;AZ;Mohave;80;92
+Arizona;AZ;Navajo;256;112
+Arizona;AZ;Pima;180;322
+Arizona;AZ;Pinal;204;272
+Arizona;AZ;Santa Cruz;231;359
+Arizona;AZ;Yavapai;141;163
+Arizona;AZ;Yuma;68;278
+Arkansas;AR;Arkansas;296;252
+Arkansas;AR;Ashley;262;373
+Arkansas;AR;Baxter;211;159
+Arkansas;AR;Benton;43;26
+Arkansas;AR;Boone;145;31
+Arkansas;AR;Bradley;226;81
+Arkansas;AR;Calhoun;195;333
+Arkansas;AR;Carroll;106;27
+Arkansas;AR;Chicot;304;366
+Arkansas;AR;Clark;135;279
+Arkansas;AR;Clay;378;23
+Arkansas;AR;Cleburne;238;116
+Arkansas;AR;Cleveland;224;296
+Arkansas;AR;Columbia;129;371
+Arkansas;AR;Conway;178;146
+Arkansas;AR;Craighead;361;82
+Arkansas;AR;Crawford;42;108
+Arkansas;AR;Crittenden;390;150
+Arkansas;AR;Cross;349;141
+Arkansas;AR;Dallas;181;288
+Arkansas;AR;Desha;307;303
+Arkansas;AR;Drew;266;330
+Arkansas;AR;Faulkner;211;33
+Arkansas;AR;Franklin;73;117
+Arkansas;AR;Fulton;256;23
+Arkansas;AR;Garland;137;221
+Arkansas;AR;Grant;202;253
+Arkansas;AR;Greene;366;51
+Arkansas;AR;Hempstead;90;313
+Arkansas;AR;Hot Spring;156;250
+Arkansas;AR;Howard;61;274
+Arkansas;AR;Independence;278;93
+Arkansas;AR;Izard;248;55
+Arkansas;AR;Jackson;310;109
+Arkansas;AR;Jefferson;246;255
+Arkansas;AR;Johnson;111;111
+Arkansas;AR;Lafayette;95;367
+Arkansas;AR;Lawrence;318;60
+Arkansas;AR;Lee;347;198
+Arkansas;AR;Lincoln;264;290
+Arkansas;AR;Little River;38;151
+Arkansas;AR;Logan;88;151
+Arkansas;AR;Lonoke;250;202
+Arkansas;AR;Madison;89;63
+Arkansas;AR;Marion;180;214
+Arkansas;AR;Miller;69;359
+Arkansas;AR;Mississippi;411;88
+Arkansas;AR;Monroe;312;210
+Arkansas;AR;Montgomery;92;225
+Arkansas;AR;Nevada;122;321
+Arkansas;AR;Newton;133;73
+Arkansas;AR;Ouachita;160;329
+Arkansas;AR;Perry;157;181
+Arkansas;AR;Phillips;344;236
+Arkansas;AR;Pike;92;266
+Arkansas;AR;Poinsett;359;111
+Arkansas;AR;Polk;41;229
+Arkansas;AR;Pope;149;125
+Arkansas;AR;Prairie;280;193
+Arkansas;AR;Pulaski;213;200
+Arkansas;AR;Randolph;325;27
+Arkansas;AR;Saline;180;36
+Arkansas;AR;Scott;57;189
+Arkansas;AR;Searcy;178;75
+Arkansas;AR;Sebastian;38;315
+Arkansas;AR;Sevier;39;283
+Arkansas;AR;Sharp;286;48
+Arkansas;AR;St. Francis;352;171
+Arkansas;AR;Stone;226;343
+Arkansas;AR;Union;186;376
+Arkansas;AR;Van Buren;195;111
+Arkansas;AR;Washington;46;66
+Arkansas;AR;White;263;147
+Arkansas;AR;Woodruff;308;154
+Arkansas;AR;Yell;114;174
+California;CA;Alameda;93;185
+California;CA;Alpine;158;145
+California;CA;Amador;127;153
+California;CA;Butte;101;102
+California;CA;Calaveras;135;161
+California;CA;Colusa;81;122
+California;CA;Contra Costa;91;174
+California;CA;Del Norte;31;16
+California;CA;El Dorado;135;138
+California;CA;Fresno;165;220
+California;CA;Glenn;76;104
+California;CA;Humboldt;31;59
+California;CA;Imperial;315;365
+California;CA;Inyo;238;227
+California;CA;Kern;197;277
+California;CA;Kings;160;248
+California;CA;Lake;65;125
+California;CA;Lassen;131;59
+California;CA;Los Angeles;216;316
+California;CA;Los Angeles;210;357
+California;CA;Los Angeles;209;377
+California;CA;Madera;161;202
+California;CA;Marin;66;167
+California;CA;Mariposa;156;187
+California;CA;Mendocino;45;111
+California;CA;Merced;130;203
+California;CA;Modoc;127;22
+California;CA;Mono;188;171
+California;CA;Monterey;113;243
+California;CA;Napa;78;149
+California;CA;Nevada;127;116
+California;CA;Orange;232;343
+California;CA;Placer;129;126
+California;CA;Plumas;125;88
+California;CA;Riverside;292;338
+California;CA;Sacramento;111;150
+California;CA;San Benito;119;227
+California;CA;San Bernardino;282;293
+California;CA;San Diego;269;368
+California;CA;San Francisco;75;180
+California;CA;San Joaquin;112;173
+California;CA;San Luis Obispo;142;277
+California;CA;San Mateo;78;194
+California;CA;Santa Barbara;155;304
+California;CA;Santa Barbara;164;333
+California;CA;Santa Barbara;152;334
+California;CA;Santa Barbara;144;332
+California;CA;Santa Clara;98;201
+California;CA;Santa Cruz;89;209
+California;CA;Shasta;88;56
+California;CA;Sierra;135;105
+California;CA;Siskiyou;72;22
+California;CA;Solano;92;159
+California;CA;Sonoma;61;148
+California;CA;Stanislaus;121;188
+California;CA;Sutter;98;127
+California;CA;Tehama;81;83
+California;CA;Trinity;54;62
+California;CA;Tulare;193;241
+California;CA;Tuolumne;154;168
+California;CA;Ventura;187;313
+California;CA;Ventura;174;364
+California;CA;Yolo;91;141
+California;CA;Yuba;109;118
+Colorado;CO;Adams;358;124
+Colorado;CO;Alamosa;251;342
+Colorado;CO;Arapahoe;357;146
+Colorado;CO;Archuleta;157;377
+Colorado;CO;Baca;490;364
+Colorado;CO;Bent;451;305
+Colorado;CO;Boulder;284;104
+Colorado;CO;Broomfield;306;117
+Colorado;CO;Chaffee;223;231
+Colorado;CO;Cheyenne;483;222
+Colorado;CO;Clear Creek;263;142
+Colorado;CO;Conejos;221;377
+Colorado;CO;Costilla;278;371
+Colorado;CO;Crowley;398;271
+Colorado;CO;Custer;282;292
+Colorado;CO;Delta;102;218
+Colorado;CO;Denver;312;138
+Colorado;CO;Dolores;50;321
+Colorado;CO;Douglas;315;176
+Colorado;CO;Eagle;187;147
+Colorado;CO;Elbert;371;180
+Colorado;CO;El Paso;344;224
+Colorado;CO;Fremont;277;258
+Colorado;CO;Garfield;100;148
+Colorado;CO;Gilpin;272;127
+Colorado;CO;Grand;230;103
+Colorado;CO;Gunnison;161;238
+Colorado;CO;Hinsdale;140;318
+Colorado;CO;Huerfano;313;332
+Colorado;CO;Jackson;214;50
+Colorado;CO;Jefferson;291;152
+Colorado;CO;Kiowa;474;259
+Colorado;CO;Kit Carson;482;176
+Colorado;CO;Lake;212;188
+Colorado;CO;La Plata;99;367
+Colorado;CO;Larimer;276;50
+Colorado;CO;Las Animas;381;366
+Colorado;CO;Lincoln;417;208
+Colorado;CO;Logan;442;43
+Colorado;CO;Mesa;58;201
+Colorado;CO;Mineral;167;332
+Colorado;CO;Moffat;82;51
+Colorado;CO;Montezuma;43;360
+Colorado;CO;Montrose;71;260
+Colorado;CO;Morgan;394;87
+Colorado;CO;Otero;403;311
+Colorado;CO;Ouray;107;285
+Colorado;CO;Park;257;196
+Colorado;CO;Phillips;496;54
+Colorado;CO;Pitkin;171;186
+Colorado;CO;Prowers;500;304
+Colorado;CO;Pueblo;345;286
+Colorado;CO;Rio Blanco;79;111
+Colorado;CO;Rio Grande;207;341
+Colorado;CO;Routt;168;66
+Colorado;CO;Saguache;215;294
+Colorado;CO;San Juan;112;322
+Colorado;CO;San Miguel;59;297
+Colorado;CO;Sedgwick;495;28
+Colorado;CO;Summit;229;148
+Colorado;CO;Teller;297;219
+Colorado;CO;Washington;437;115
+Colorado;CO;Weld;352;60
+Colorado;CO;Yuma;493;110
+Connecticut;CT;Fairfield;87;244
+Connecticut;CT;Hartford;234;84
+Connecticut;CT;Litchfield;120;88
+Connecticut;CT;Middlesex;278;187
+Connecticut;CT;New Haven;189;203
+Connecticut;CT;New London;375;179
+Connecticut;CT;Tolland;322;69
+Connecticut;CT;Windham;400;77
+Delaware;DE;Kent;55;200
+Delaware;DE;New Castle;38;77
+Delaware;DE;Sussex;85;306
+Florida;FL;Alachua;280;90
+Florida;FL;Baker;284;51
+Florida;FL;Bay;113;51
+Florida;FL;Bradford;290;74
+Florida;FL;Brevard;365;176
+Florida;FL;Brevard;367;148
+Florida;FL;Brevard;369;158
+Florida;FL;Brevard;374;159
+Florida;FL;Broward;383;295
+Florida;FL;Calhoun;135;46
+Florida;FL;Charlotte;312;253
+Florida;FL;Citrus;276;139
+Florida;FL;Clay;305;72
+Florida;FL;Collier;338;298
+Florida;FL;Columbia;267;58
+Florida;FL;DeSoto;311;236
+Florida;FL;Dixie;239;94
+Florida;FL;Duval;309;50
+Florida;FL;Duval;323;55
+Florida;FL;Escambia;24;24
+Florida;FL;Flagler;334;102
+Florida;FL;Franklin;155;76
+Florida;FL;Gadsden;165;37
+Florida;FL;Gilchrist;258;87
+Florida;FL;Glades;341;249
+Florida;FL;Gulf;133;73
+Florida;FL;Hamilton;250;42
+Florida;FL;Hardee;311;218
+Florida;FL;Hendry;346;273
+Florida;FL;Hernando;277;156
+Florida;FL;Highlands;335;226
+Florida;FL;Hillsborough;285;192
+Florida;FL;Holmes;104;18
+Florida;FL;Indian River;373;205
+Florida;FL;Jackson;134;23
+Florida;FL;Jefferson;201;45
+Florida;FL;Lafayette;238;72
+Florida;FL;Lake;314;144
+Florida;FL;Lee;313;271
+Florida;FL;Leon;182;44
+Florida;FL;Levy;261;111
+Florida;FL;Liberty;151;56
+Florida;FL;Madison;223;45
+Florida;FL;Manatee;286;220
+Florida;FL;Marion;296;117
+Florida;FL;Martin;386;241
+Florida;FL;Martin;393;231
+Florida;FL;Miami-Dade;379;326
+Florida;FL;Monroe;355;332
+Florida;FL;Monroe;391;348
+Florida;FL;Monroe;394;346
+Florida;FL;Monroe;335;380
+Florida;FL;Nassau;306;34
+Florida;FL;Okaloosa;64;26
+Florida;FL;Okeechobee;359;221
+Florida;FL;Orange;335;158
+Florida;FL;Osceola;345;184
+Florida;FL;Palm Beach;385;267
+Florida;FL;Pasco;280;170
+Florida;FL;Pinellas;263;199
+Florida;FL;Polk;316;191
+Florida;FL;Putnam;308;91
+Florida;FL;Putnam;321;100
+Florida;FL;St. Johns;328;77
+Florida;FL;St. Lucie;381;223
+Florida;FL;Santa Rosa;43;23
+Florida;FL;Sarasota;284;237
+Florida;FL;Seminole;339;146
+Florida;FL;Sumter;296;147
+Florida;FL;Suwannee;248;60
+Florida;FL;Taylor;216;68
+Florida;FL;Union;279;69
+Florida;FL;Volusia;343;126
+Florida;FL;Wakulla;175;61
+Florida;FL;Walton;86;29
+Florida;FL;Washington;112;33
+Georgia;GA;Appling;241;282
+Georgia;GA;Atkinson;199;320
+Georgia;GA;Bacon;229;298
+Georgia;GA;Baker;88;316
+Georgia;GA;Baldwin;173;172
+Georgia;GA;Banks;157;64
+Georgia;GA;Barrow;142;95
+Georgia;GA;Bartow;65;73
+Georgia;GA;Ben Hill;175;281
+Georgia;GA;Berrien;174;321
+Georgia;GA;Bibb;142;194
+Georgia;GA;Bleckley;168;225
+Georgia;GA;Brantley;263;328
+Georgia;GA;Brooks;149;357
+Georgia;GA;Bryan;300;258
+Georgia;GA;Bulloch;279;228
+Georgia;GA;Burke;260;172
+Georgia;GA;Butts;124;153
+Georgia;GA;Calhoun;76;299
+Georgia;GA;Camden;283;349
+Georgia;GA;Camden;300;354
+Georgia;GA;Candler;256;227
+Georgia;GA;Carroll;47;127
+Georgia;GA;Catoosa;46;16
+Georgia;GA;Charlton;252;362
+Georgia;GA;Chatham;321;256
+Georgia;GA;Chatham;323;277
+Georgia;GA;Chattahoochee;65;231
+Georgia;GA;Chattooga;31;52
+Georgia;GA;Cherokee;90;73
+Georgia;GA;Clarke;166;98
+Georgia;GA;Clay;50;291
+Georgia;GA;Clayton;97;131
+Georgia;GA;Clinch;211;351
+Georgia;GA;Cobb;83;98
+Georgia;GA;Coffee;201;299
+Georgia;GA;Colquitt;136;328
+Georgia;GA;Columbia;242;132
+Georgia;GA;Cook;160;332
+Georgia;GA;Coweta;69;147
+Georgia;GA;Crawford;122;201
+Georgia;GA;Crisp;137;267
+Georgia;GA;Dade;21;20
+Georgia;GA;Dawson;111;56
+Georgia;GA;Decatur;78;353
+Georgia;GA;DeKalb;106;113
+Georgia;GA;Dodge;179;247
+Georgia;GA;Dooly;135;248
+Georgia;GA;Dougherty;104;299
+Georgia;GA;Douglas;69;118
+Georgia;GA;Early;55;316
+Georgia;GA;Echols;198;368
+Georgia;GA;Effingham;307;229
+Georgia;GA;Elbert;202;84
+Georgia;GA;Emanuel;240;212
+Georgia;GA;Evans;269;248
+Georgia;GA;Fannin;101;21
+Georgia;GA;Fayette;87;142
+Georgia;GA;Floyd;39;70
+Georgia;GA;Forsyth;114;75
+Georgia;GA;Franklin;175;63
+Georgia;GA;Fulton;90;111
+Georgia;GA;Gilmer;92;35
+Georgia;GA;Glascock;218;158
+Georgia;GA;Glynn;293;323
+Georgia;GA;Glynn;303;336
+Georgia;GA;Gordon;63;50
+Georgia;GA;Grady;102;354
+Georgia;GA;Greene;179;129
+Georgia;GA;Gwinnett;121;97
+Georgia;GA;Habersham;155;41
+Georgia;GA;Hall;135;67
+Georgia;GA;Hancock;191;155
+Georgia;GA;Haralson;39;109
+Georgia;GA;Harris;58;198
+Georgia;GA;Hart;193;65
+Georgia;GA;Heard;44;151
+Georgia;GA;Henry;111;139
+Georgia;GA;Houston;144;223
+Georgia;GA;Irwin;171;294
+Georgia;GA;Jackson;152;83
+Georgia;GA;Jasper;143;151
+Georgia;GA;Jeff Davis;216;277
+Georgia;GA;Jefferson;231;173
+Georgia;GA;Jenkins;263;195
+Georgia;GA;Johnson;215;202
+Georgia;GA;Jones;152;175
+Georgia;GA;Lamar;112;170
+Georgia;GA;Lanier;186;341
+Georgia;GA;Laurens;196;222
+Georgia;GA;Lee;110;279
+Georgia;GA;Liberty;295;273
+Georgia;GA;Lincoln;229;111
+Georgia;GA;Long;279;281
+Georgia;GA;Lowndes;171;358
+Georgia;GA;Lumpkin;123;46
+Georgia;GA;McDuffie;227;137
+Georgia;GA;McIntosh;302;302
+Georgia;GA;Macon;118;231
+Georgia;GA;Madison;176;83
+Georgia;GA;Marion;84;231
+Georgia;GA;Meriwether;73;173
+Georgia;GA;Miller;67;329
+Georgia;GA;Mitchell;106;325
+Georgia;GA;Monroe;127;176
+Georgia;GA;Montgomery;223;246
+Georgia;GA;Morgan;157;128
+Georgia;GA;Murray;72;26
+Georgia;GA;Muscogee;60;217
+Georgia;GA;Newton;132;131
+Georgia;GA;Oconee;161;108
+Georgia;GA;Oglethorpe;185;104
+Georgia;GA;Paulding;63;99
+Georgia;GA;Peach;133;213
+Georgia;GA;Pickens;91;54
+Georgia;GA;Pierce;246;314
+Georgia;GA;Pike;94;169
+Georgia;GA;Polk;41;92
+Georgia;GA;Pulaski;157;242
+Georgia;GA;Putnam;165;151
+Georgia;GA;Quitman;48;271
+Georgia;GA;Rabun;164;20
+Georgia;GA;Randolph;67;280
+Georgia;GA;Richmond;255;147
+Georgia;GA;Rockdale;120;123
+Georgia;GA;Schley;99;239
+Georgia;GA;Screven;287;198
+Georgia;GA;Seminole;57;348
+Georgia;GA;Spalding;102;155
+Georgia;GA;Stephens;171;48
+Georgia;GA;Stewart;62;253
+Georgia;GA;Sumter;106;257
+Georgia;GA;Talbot;84;202
+Georgia;GA;Taliaferro;199;131
+Georgia;GA;Tattnall;257;257
+Georgia;GA;Taylor;103;214
+Georgia;GA;Telfair;195;267
+Georgia;GA;Terrell;89;279
+Georgia;GA;Thomas;125;355
+Georgia;GA;Tift;153;306
+Georgia;GA;Toombs;238;251
+Georgia;GA;Towns;141;17
+Georgia;GA;Treutlen;221;227
+Georgia;GA;Troup;50;173
+Georgia;GA;Turner;146;284
+Georgia;GA;Twiggs;161;205
+Georgia;GA;Union;124;24
+Georgia;GA;Upson;100;187
+Georgia;GA;Walker;34;30
+Georgia;GA;Walton;140;112
+Georgia;GA;Ware;229;330
+Georgia;GA;Warren;213;143
+Georgia;GA;Washington;205;180
+Georgia;GA;Wayne;267;298
+Georgia;GA;Webster;82;256
+Georgia;GA;Wheeler;210;251
+Georgia;GA;White;140;40
+Georgia;GA;Whitfield;57;25
+Georgia;GA;Wilcox;160;263
+Georgia;GA;Wilkes;208;112
+Georgia;GA;Wilkinson;179;194
+Georgia;GA;Worth;130;298
+Hawaii;HI;Kauai;88;33
+Hawaii;HI;Kauai;28;49
+Hawaii;HI;Honolulu;234;93
+Hawaii;HI;Kalawao;328;121
+Hawaii;HI;Maui;389;160
+Hawaii;HI;Maui;320;124
+Hawaii;HI;Maui;333;156
+Hawaii;HI;Maui;365;184
+Hawaii;HI;Hawaii;467;279
+Idaho;ID;Ada;52;316
+Idaho;ID;Adams;45;236
+Idaho;ID;Bannock;215;359
+Idaho;ID;Bear Lake;252;380
+Idaho;ID;Benewah;40;106
+Idaho;ID;Bingham;207;329
+Idaho;ID;Blaine;143;319
+Idaho;ID;Boise;72;286
+Idaho;ID;Bonner;44;47
+Idaho;ID;Bonneville;239;318
+Idaho;ID;Boundary;49;21
+Idaho;ID;Butte;176;301
+Idaho;ID;Camas;110;316
+Idaho;ID;Canyon;34;306
+Idaho;ID;Caribou;241;352
+Idaho;ID;Cassia;159;382
+Idaho;ID;Clark;207;269
+Idaho;ID;Clearwater;78;137
+Idaho;ID;Custer;131;273
+Idaho;ID;Elmore;83;322
+Idaho;ID;Franklin;232;386
+Idaho;ID;Fremont;242;272
+Idaho;ID;Gem;46;283
+Idaho;ID;Gooding;109;343
+Idaho;ID;Idaho;85;183
+Idaho;ID;Jefferson;209;295
+Idaho;ID;Jerome;132;359
+Idaho;ID;Kootenai;39;81
+Idaho;ID;Latah;38;129
+Idaho;ID;Lemhi;145;234
+Idaho;ID;Lewis;48;161
+Idaho;ID;Lincoln;137;342
+Idaho;ID;Madison;236;296
+Idaho;ID;Minidoka;157;350
+Idaho;ID;Nez Perce;35;155
+Idaho;ID;Oneida;202;386
+Idaho;ID;Owyhee;54;365
+Idaho;ID;Payette;32;284
+Idaho;ID;Power;190;358
+Idaho;ID;Shoshone;69;100
+Idaho;ID;Teton;254;297
+Idaho;ID;Twin Falls;115;378
+Idaho;ID;Valley;80;243
+Idaho;ID;Washington;31;260
+Illinois;IL;Adams;27;189
+Illinois;IL;Alexander;122;385
+Illinois;IL;Bond;118;268
+Illinois;IL;Boone;151;28
+Illinois;IL;Brown;50;192
+Illinois;IL;Bureau;115;92
+Illinois;IL;Calhoun;53;247
+Illinois;IL;Carroll;95;46
+Illinois;IL;Cass;76;192
+Illinois;IL;Champaign;184;180
+Illinois;IL;Christian;127;222
+Illinois;IL;Clark;206;236
+Illinois;IL;Clay;169;277
+Illinois;IL;Clinton;119;287
+Illinois;IL;Coles;183;224
+Illinois;IL;Cook;203;62
+Illinois;IL;Crawford;208;259
+Illinois;IL;Cumberland;182;241
+Illinois;IL;DeKalb;154;58
+Illinois;IL;De Witt;147;178
+Illinois;IL;Douglas;183;206
+Illinois;IL;DuPage;189;61
+Illinois;IL;Edgar;208;213
+Illinois;IL;Edwards;192;300
+Illinois;IL;Effingham;163;256
+Illinois;IL;Fayette;140;260
+Illinois;IL;Ford;182;149
+Illinois;IL;Franklin;146;330
+Illinois;IL;Fulton;79;157
+Illinois;IL;Gallatin;183;346
+Illinois;IL;Greene;68;234
+Illinois;IL;Grundy;172;101
+Illinois;IL;Hamilton;166;324
+Illinois;IL;Hancock;29;160
+Illinois;IL;Hardin;181;363
+Illinois;IL;Henderson;42;132
+Illinois;IL;Henry;84;95
+Illinois;IL;Iroquois;203;138
+Illinois;IL;Jackson;121;344
+Illinois;IL;Jasper;187;259
+Illinois;IL;Jefferson;146;309
+Illinois;IL;Jersey;70;253
+Illinois;IL;Jo Daviess;81;25
+Illinois;IL;Johnson;148;367
+Illinois;IL;Kane;172;55
+Illinois;IL;Kankakee;201;111
+Illinois;IL;Kendall;172;80
+Illinois;IL;Knox;79;125
+Illinois;IL;Lake;193;28
+Illinois;IL;La Salle;148;96
+Illinois;IL;Lawrence;210;279
+Illinois;IL;Lee;127;69
+Illinois;IL;Livingston;165;128
+Illinois;IL;Logan;123;181
+Illinois;IL;McDonough;54;157
+Illinois;IL;McHenry;170;28
+Illinois;IL;McLean;150;156
+Illinois;IL;Macon;144;200
+Illinois;IL;Macoupin;93;241
+Illinois;IL;Madison;94;271
+Illinois;IL;Marion;146;284
+Illinois;IL;Marshall;124;118
+Illinois;IL;Mason;94;173
+Illinois;IL;Massac;157;384
+Illinois;IL;Menard;100;188
+Illinois;IL;Mercer;52;105
+Illinois;IL;Monroe;78;310
+Illinois;IL;Montgomery;116;244
+Illinois;IL;Morgan;79;209
+Illinois;IL;Moultrie;162;215
+Illinois;IL;Ogle;126;48
+Illinois;IL;Peoria;103;135
+Illinois;IL;Perry;122;324
+Illinois;IL;Piatt;163;190
+Illinois;IL;Pike;42;215
+Illinois;IL;Pope;165;370
+Illinois;IL;Pulaski;134;384
+Illinois;IL;Putnam;128;106
+Illinois;IL;Randolph;97;326
+Illinois;IL;Richland;191;280
+Illinois;IL;Rock Island;61;87
+Illinois;IL;St. Clair;92;296
+Illinois;IL;Saline;166;347
+Illinois;IL;Sangamon;107;207
+Illinois;IL;Schuyler;57;178
+Illinois;IL;Scott;64;214
+Illinois;IL;Shelby;152;233
+Illinois;IL;Stark;101;114
+Illinois;IL;Stephenson;109;26
+Illinois;IL;Tazewell;115;155
+Illinois;IL;Union;128;366
+Illinois;IL;Vermilion;209;177
+Illinois;IL;Wabash;204;298
+Illinois;IL;Warren;58;130
+Illinois;IL;Washington;120;305
+Illinois;IL;Wayne;172;300
+Illinois;IL;White;185;323
+Illinois;IL;Whiteside;95;68
+Illinois;IL;Will;195;89
+Illinois;IL;Williamson;145;348
+Illinois;IL;Winnebago;134;27
+Illinois;IL;Woodford;131;135
+Indiana;IN;Adams;245;106
+Indiana;IN;Allen;235;73
+Indiana;IN;Bartholomew;175;257
+Indiana;IN;Benton;72;120
+Indiana;IN;Blackford;217;133
+Indiana;IN;Boone;133;175
+Indiana;IN;Brown;150;258
+Indiana;IN;Carroll;126;123
+Indiana;IN;Cass;142;105
+Indiana;IN;Clark;190;328
+Indiana;IN;Clay;85;238
+Indiana;IN;Clinton;133;150
+Indiana;IN;Crawford;133;346
+Indiana;IN;Daviess;87;306
+Indiana;IN;Dearborn;244;263
+Indiana;IN;Decatur;205;247
+Indiana;IN;DeKalb;240;43
+Indiana;IN;Delaware;212;157
+Indiana;IN;Dubois;101;339
+Indiana;IN;Elkhart;178;24
+Indiana;IN;Fayette;228;215
+Indiana;IN;Floyd;175;344
+Indiana;IN;Fountain;76;167
+Indiana;IN;Franklin;237;237
+Indiana;IN;Fulton;148;78
+Indiana;IN;Gibson;48;344
+Indiana;IN;Grant;193;129
+Indiana;IN;Greene;96;273
+Indiana;IN;Hamilton;164;173
+Indiana;IN;Hancock;184;197
+Indiana;IN;Harrison;159;356
+Indiana;IN;Hendricks;130;202
+Indiana;IN;Henry;212;186
+Indiana;IN;Howard;159;133
+Indiana;IN;Huntington;205;99
+Indiana;IN;Jackson;165;287
+Indiana;IN;Jasper;86;79
+Indiana;IN;Jay;240;137
+Indiana;IN;Jefferson;210;298
+Indiana;IN;Jennings;195;278
+Indiana;IN;Johnson;160;230
+Indiana;IN;Knox;61;307
+Indiana;IN;Kosciusko;178;58
+Indiana;IN;LaGrange;209;19
+Indiana;IN;Lake;68;41
+Indiana;IN;LaPorte;114;28
+Indiana;IN;Lawrence;131;293
+Indiana;IN;Madison;188;164
+Indiana;IN;Marion;157;201
+Indiana;IN;Marshall;148;50
+Indiana;IN;Martin;107;306
+Indiana;IN;Miami;164;105
+Indiana;IN;Monroe;128;262
+Indiana;IN;Montgomery;102;175
+Indiana;IN;Morgan;135;230
+Indiana;IN;Newton;66;86
+Indiana;IN;Noble;210;43
+Indiana;IN;Ohio;245;282
+Indiana;IN;Orange;130;322
+Indiana;IN;Owen;105;247
+Indiana;IN;Parke;78;201
+Indiana;IN;Perry;119;367
+Indiana;IN;Pike;75;336
+Indiana;IN;Porter;90;37
+Indiana;IN;Posey;27;371
+Indiana;IN;Pulaski;117;78
+Indiana;IN;Putnam;105;212
+Indiana;IN;Randolph;240;164
+Indiana;IN;Ripley;223;267
+Indiana;IN;Rush;207;217
+Indiana;IN;St. Joseph;147;22
+Indiana;IN;Scott;187;308
+Indiana;IN;Shelby;183;226
+Indiana;IN;Spencer;91;373
+Indiana;IN;Starke;121;54
+Indiana;IN;Steuben;239;19
+Indiana;IN;Sullivan;62;268
+Indiana;IN;Switzerland;240;294
+Indiana;IN;Tippecanoe;102;141
+Indiana;IN;Tipton;164;149
+Indiana;IN;Union;247;216
+Indiana;IN;Vanderburgh;47;371
+Indiana;IN;Vermillion;59;193
+Indiana;IN;Vigo;64;234
+Indiana;IN;Wabash;182;97
+Indiana;IN;Warren;68;145
+Indiana;IN;Warrick;71;366
+Indiana;IN;Washington;159;317
+Indiana;IN;Wayne;241;193
+Indiana;IN;Wells;224;108
+Indiana;IN;White;104;106
+Indiana;IN;Whitley;203;68
+Iowa;IA;Adair;187;263
+Iowa;IA;Adams;167;298
+Iowa;IA;Allamakee;447;35
+Iowa;IA;Appanoose;326;331
+Iowa;IA;Audubon;150;222
+Iowa;IA;Benton;392;175
+Iowa;IA;Black Hawk;371;131
+Iowa;IA;Boone;233;182
+Iowa;IA;Bremer;369;95
+Iowa;IA;Buchanan;410;130
+Iowa;IA;Buena Vista;131;100
+Iowa;IA;Butler;330;101
+Iowa;IA;Calhoun;174;141
+Iowa;IA;Carroll;155;181
+Iowa;IA;Cass;148;263
+Iowa;IA;Cedar;472;209
+Iowa;IA;Cerro Gordo;290;61
+Iowa;IA;Cherokee;91;100
+Iowa;IA;Chickasaw;369;62
+Iowa;IA;Clarke;246;298
+Iowa;IA;Clay;132;60
+Iowa;IA;Clayton;451;85
+Iowa;IA;Clinton;523;193
+Iowa;IA;Crawford;110;181
+Iowa;IA;Dallas;224;223
+Iowa;IA;Davis;365;330
+Iowa;IA;Decatur;246;332
+Iowa;IA;Delaware;450;129
+Iowa;IA;Des Moines;471;307
+Iowa;IA;Dickinson;132;26
+Iowa;IA;Dubuque;491;128
+Iowa;IA;Emmet;171;26
+Iowa;IA;Fayette;409;84
+Iowa;IA;Floyd;329;63
+Iowa;IA;Franklin;290;101
+Iowa;IA;Fremont;89;330
+Iowa;IA;Greene;194;182
+Iowa;IA;Grundy;330;139
+Iowa;IA;Guthrie;185;222
+Iowa;IA;Hamilton;253;142
+Iowa;IA;Hancock;250;61
+Iowa;IA;Hardin;292;141
+Iowa;IA;Harrison;73;221
+Iowa;IA;Henry;439;301
+Iowa;IA;Howard;368;28
+Iowa;IA;Humboldt;210;96
+Iowa;IA;Ida;100;140
+Iowa;IA;Iowa;393;221
+Iowa;IA;Jackson;518;161
+Iowa;IA;Jasper;308;222
+Iowa;IA;Jefferson;404;296
+Iowa;IA;Johnson;434;221
+Iowa;IA;Jones;471;169
+Iowa;IA;Keokuk;384;261
+Iowa;IA;Kossuth;211;47
+Iowa;IA;Lee;446;340
+Iowa;IA;Linn;432;174
+Iowa;IA;Louisa;463;273
+Iowa;IA;Lucas;285;298
+Iowa;IA;Lyon;44;24
+Iowa;IA;Madison;226;263
+Iowa;IA;Mahaska;344;262
+Iowa;IA;Marion;305;263
+Iowa;IA;Marshall;313;181
+Iowa;IA;Mills;88;296
+Iowa;IA;Mitchell;329;29
+Iowa;IA;Monona;62;178
+Iowa;IA;Monroe;325;298
+Iowa;IA;Montgomery;128;297
+Iowa;IA;Muscatine;475;242
+Iowa;IA;O'Brien;92;59
+Iowa;IA;Osceola;93;25
+Iowa;IA;Page;128;331
+Iowa;IA;Palo Alto;171;61
+Iowa;IA;Plymouth;42;98
+Iowa;IA;Pocahontas;171;101
+Iowa;IA;Polk;264;222
+Iowa;IA;Pottawattamie;96;262
+Iowa;IA;Poweshiek;353;221
+Iowa;IA;Ringgold;206;332
+Iowa;IA;Sac;134;141
+Iowa;IA;Scott;516;223
+Iowa;IA;Shelby;116;222
+Iowa;IA;Sioux;46;58
+Iowa;IA;Story;273;182
+Iowa;IA;Tama;352;176
+Iowa;IA;Taylor;167;332
+Iowa;IA;Union;207;298
+Iowa;IA;Van Buren;405;328
+Iowa;IA;Wapello;365;297
+Iowa;IA;Warren;265;263
+Iowa;IA;Washington;424;261
+Iowa;IA;Wayne;286;332
+Iowa;IA;Webster;213;136
+Iowa;IA;Winnebago;250;26
+Iowa;IA;Winneshiek;408;35
+Iowa;IA;Woodbury;55;139
+Iowa;IA;Worth;290;26
+Iowa;IA;Wright;250;101
+Kansas;KS;Allen;533;225
+Kansas;KS;Anderson;533;192
+Kansas;KS;Atchison;526;62
+Kansas;KS;Barber;273;294
+Kansas;KS;Barton;267;171
+Kansas;KS;Bourbon;568;227
+Kansas;KS;Brown;507;33
+Kansas;KS;Butler;415;238
+Kansas;KS;Chase;433;186
+Kansas;KS;Chautauqua;462;300
+Kansas;KS;Cherokee;571;294
+Kansas;KS;Cheyenne;45;38
+Kansas;KS;Clark;185;293
+Kansas;KS;Clay;388;84
+Kansas;KS;Cloud;351;71
+Kansas;KS;Coffey;499;191
+Kansas;KS;Comanche;227;298
+Kansas;KS;Cowley;416;292
+Kansas;KS;Crawford;569;261
+Kansas;KS;Decatur;140;40
+Kansas;KS;Dickinson;389;131
+Kansas;KS;Doniphan;538;36
+Kansas;KS;Douglas;530;126
+Kansas;KS;Edwards;225;229
+Kansas;KS;Elk;462;270
+Kansas;KS;Ellis;225;127
+Kansas;KS;Ellsworth;309;149
+Kansas;KS;Finney;115;212
+Kansas;KS;Ford;180;248
+Kansas;KS;Franklin;532;158
+Kansas;KS;Geary;419;118
+Kansas;KS;Gove;137;126
+Kansas;KS;Graham;182;83
+Kansas;KS;Grant;70;258
+Kansas;KS;Gray;138;243
+Kansas;KS;Greeley;35;167
+Kansas;KS;Greenwood;462;228
+Kansas;KS;Hamilton;34;214
+Kansas;KS;Harper;320;298
+Kansas;KS;Harvey;369;213
+Kansas;KS;Haskell;104;259
+Kansas;KS;Hodgeman;180;209
+Kansas;KS;Jackson;491;75
+Kansas;KS;Jefferson;522;91
+Kansas;KS;Jewell;308;41
+Kansas;KS;Johnson;566;125
+Kansas;KS;Kearny;71;215
+Kansas;KS;Kingman;315;261
+Kansas;KS;Kiowa;227;262
+Kansas;KS;Labette;536;293
+Kansas;KS;Lane;137;169
+Kansas;KS;Leavenworth;548;94
+Kansas;KS;Lincoln;309;114
+Kansas;KS;Linn;567;191
+Kansas;KS;Logan;86;125
+Kansas;KS;Lyon;466;170
+Kansas;KS;McPherson;352;179
+Kansas;KS;Marion;394;182
+Kansas;KS;Marshall;435;40
+Kansas;KS;Meade;143;292
+Kansas;KS;Miami;566;156
+Kansas;KS;Mitchell;309;80
+Kansas;KS;Montgomery;501;294
+Kansas;KS;Morris;428;148
+Kansas;KS;Morton;31;294
+Kansas;KS;Nemaha;473;39
+Kansas;KS;Neosho;534;257
+Kansas;KS;Ness;179;170
+Kansas;KS;Norton;182;41
+Kansas;KS;Osage;498;150
+Kansas;KS;Osborne;267;84
+Kansas;KS;Ottawa;351;106
+Kansas;KS;Pawnee;231;200
+Kansas;KS;Phillips;223;41
+Kansas;KS;Pottawatomie;449;79
+Kansas;KS;Pratt;269;253
+Kansas;KS;Rawlins;94;39
+Kansas;KS;Reno;319;223
+Kansas;KS;Republic;351;37
+Kansas;KS;Rice;310;184
+Kansas;KS;Riley;420;88
+Kansas;KS;Rooks;225;84
+Kansas;KS;Rush;225;166
+Kansas;KS;Russell;267;128
+Kansas;KS;Saline;352;140
+Kansas;KS;Scott;103;168
+Kansas;KS;Sedgwick;368;249
+Kansas;KS;Seward;105;296
+Kansas;KS;Shawnee;495;111
+Kansas;KS;Sheridan;140;83
+Kansas;KS;Sherman;44;81
+Kansas;KS;Smith;265;41
+Kansas;KS;Stafford;270;215
+Kansas;KS;Stanton;33;256
+Kansas;KS;Stevens;69;295
+Kansas;KS;Sumner;367;293
+Kansas;KS;Thomas;94;82
+Kansas;KS;Trego;183;127
+Kansas;KS;Wabaunsee;461;121
+Kansas;KS;Wallace;39;124
+Kansas;KS;Washington;393;40
+Kansas;KS;Wichita;70;168
+Kansas;KS;Wilson;500;258
+Kansas;KS;Woodson;499;226
+Kansas;KS;Wyandotte;569;102
+Kentucky;KY;Adair;330;208
+Kentucky;KY;Allen;261;243
+Kentucky;KY;Anderson;351;121
+Kentucky;KY;Ballard;49;210
+Kentucky;KY;Barren;281;222
+Kentucky;KY;Bath;443;106
+Kentucky;KY;Bell;452;242
+Kentucky;KY;Boone;369;28
+Kentucky;KY;Bourbon;408;101
+Kentucky;KY;Boyd;521;83
+Kentucky;KY;Boyle;360;158
+Kentucky;KY;Bracken;416;54
+Kentucky;KY;Breathitt;476;165
+Kentucky;KY;Breckinridge;243;144
+Kentucky;KY;Bullitt;298;125
+Kentucky;KY;Butler;224;199
+Kentucky;KY;Caldwell;135;204
+Kentucky;KY;Calloway;103;253
+Kentucky;KY;Campbell;395;30
+Kentucky;KY;Carlisle;51;230
+Kentucky;KY;Carroll;340;58
+Kentucky;KY;Carter;495;88
+Kentucky;KY;Casey;356;187
+Kentucky;KY;Christian;163;228
+Kentucky;KY;Clark;414;123
+Kentucky;KY;Clay;448;201
+Kentucky;KY;Clinton;341;244
+Kentucky;KY;Crittenden;117;183
+Kentucky;KY;Cumberland;322;239
+Kentucky;KY;Daviess;194;148
+Kentucky;KY;Edmonson;258;199
+Kentucky;KY;Elliott;492;107
+Kentucky;KY;Estill;428;150
+Kentucky;KY;Fayette;390;117
+Kentucky;KY;Fleming;446;84
+Kentucky;KY;Floyd;520;160
+Kentucky;KY;Franklin;359;99
+Kentucky;KY;Fulton;36;258
+Kentucky;KY;Gallatin;359;49
+Kentucky;KY;Garrard;386;157
+Kentucky;KY;Grant;377;59
+Kentucky;KY;Graves;74;243
+Kentucky;KY;Grayson;250;174
+Kentucky;KY;Green;309;193
+Kentucky;KY;Greenup;503;66
+Kentucky;KY;Hancock;217;138
+Kentucky;KY;Hardin;278;152
+Kentucky;KY;Harlan;486;229
+Kentucky;KY;Harrison;399;79
+Kentucky;KY;Hart;284;190
+Kentucky;KY;Henderson;158;142
+Kentucky;KY;Henry;340;79
+Kentucky;KY;Hickman;49;247
+Kentucky;KY;Hopkins;159;188
+Kentucky;KY;Jackson;426;176
+Kentucky;KY;Jefferson;301;104
+Kentucky;KY;Jessamine;382;133
+Kentucky;KY;Johnson;512;132
+Kentucky;KY;Kenton;383;31
+Kentucky;KY;Knott;505;180
+Kentucky;KY;Knox;438;227
+Kentucky;KY;Larue;298;166
+Kentucky;KY;Laurel;418;206
+Kentucky;KY;Lawrence;519;111
+Kentucky;KY;Lee;447;159
+Kentucky;KY;Leslie;473;206
+Kentucky;KY;Letcher;513;202
+Kentucky;KY;Lewis;469;68
+Kentucky;KY;Lincoln;376;174
+Kentucky;KY;Livingston;98;196
+Kentucky;KY;Logan;209;232
+Kentucky;KY;Lyon;118;216
+Kentucky;KY;McCracken;71;211
+Kentucky;KY;McCreary;391;242
+Kentucky;KY;McLean;181;168
+Kentucky;KY;Madison;404;148
+Kentucky;KY;Magoffin;495;146
+Kentucky;KY;Marion;330;165
+Kentucky;KY;Marshall;99;228
+Kentucky;KY;Martin;536;136
+Kentucky;KY;Mason;436;63
+Kentucky;KY;Meade;260;126
+Kentucky;KY;Menifee;455;125
+Kentucky;KY;Mercer;359;140
+Kentucky;KY;Metcalfe;304;219
+Kentucky;KY;Monroe;297;246
+Kentucky;KY;Montgomery;431;117
+Kentucky;KY;Morgan;480;126
+Kentucky;KY;Muhlenberg;189;198
+Kentucky;KY;Nelson;315;141
+Kentucky;KY;Nicholas;423;88
+Kentucky;KY;Ohio;212;173
+Kentucky;KY;Oldham;316;84
+Kentucky;KY;Owen;362;72
+Kentucky;KY;Owsley;450;175
+Kentucky;KY;Pendleton;396;54
+Kentucky;KY;Perry;485;191
+Kentucky;KY;Pike;546;167
+Kentucky;KY;Powell;438;136
+Kentucky;KY;Pulaski;383;207
+Kentucky;KY;Robertson;420;71
+Kentucky;KY;Rockcastle;402;182
+Kentucky;KY;Rowan;467;100
+Kentucky;KY;Russell;347;219
+Kentucky;KY;Scott;381;93
+Kentucky;KY;Shelby;335;101
+Kentucky;KY;Simpson;232;243
+Kentucky;KY;Spencer;325;119
+Kentucky;KY;Taylor;326;183
+Kentucky;KY;Todd;186;234
+Kentucky;KY;Trigg;134;236
+Kentucky;KY;Trimble;324;63
+Kentucky;KY;Union;130;155
+Kentucky;KY;Warren;244;219
+Kentucky;KY;Washington;337;146
+Kentucky;KY;Wayne;365;237
+Kentucky;KY;Webster;149;168
+Kentucky;KY;Whitley;416;240
+Kentucky;KY;Wolfe;463;144
+Kentucky;KY;Woodford;369;117
+Louisiana;LA;Acadia;141;273
+Louisiana;LA;Allen;107;238
+Louisiana;LA;Ascension;263;282
+Louisiana;LA;Assumption;251;310
+Louisiana;LA;Avoyelles;175;199
+Louisiana;LA;Beauregard;66;237
+Louisiana;LA;Bienville;93;77
+Louisiana;LA;Bossier;50;45
+Louisiana;LA;Caddo;27;53
+Louisiana;LA;Calcasieu;63;277
+Louisiana;LA;Caldwell;167;103
+Louisiana;LA;Cameron;76;311
+Louisiana;LA;Catahoula;188;143
+Louisiana;LA;Claiborne;98;32
+Louisiana;LA;Concordia;204;164
+Louisiana;LA;De Soto;38;104
+Louisiana;LA;East Baton Rouge;248;250
+Louisiana;LA;East Carroll;237;43
+Louisiana;LA;East Feliciana;252;221
+Louisiana;LA;Evangeline;142;231
+Louisiana;LA;Franklin;202;99
+Louisiana;LA;Grant;131;149
+Louisiana;LA;Iberia;198;304
+Louisiana;LA;Iberville;228;277
+Louisiana;LA;Jackson;132;82
+Louisiana;LA;Jefferson;326;312
+Louisiana;LA;Jefferson Davis;108;274
+Louisiana;LA;Lafayette;169;281
+Louisiana;LA;Lafourche;302;341
+Louisiana;LA;La Salle;163;142
+Louisiana;LA;Lincoln;124;54
+Louisiana;LA;Livingston;278;260
+Louisiana;LA;Madison;236;78
+Louisiana;LA;Madison;254;64
+Louisiana;LA;Madison;253;98
+Louisiana;LA;Morehouse;193;34
+Louisiana;LA;Natchitoches;88;137
+Louisiana;LA;Orleans;343;294
+Louisiana;LA;Ouachita;164;66
+Louisiana;LA;Plaquemines;368;352
+Louisiana;LA;Pointe Coupee;207;235
+Louisiana;LA;Rapides;132;187
+Louisiana;LA;Red River;69;101
+Louisiana;LA;Richland;195;72
+Louisiana;LA;Sabine;51;150
+Louisiana;LA;St. Bernard;363;313
+Louisiana;LA;St. Charles;308;309
+Louisiana;LA;St. Helena;279;224
+Louisiana;LA;St. James;272;299
+Louisiana;LA;St. John the Baptist;296;290
+Louisiana;LA;St. Landry;174;244
+Louisiana;LA;St. Martin;196;279
+Louisiana;LA;St. Martin;231;315
+Louisiana;LA;St. Mary;219;327
+Louisiana;LA;St. Tammany;340;262
+Louisiana;LA;Tangipahoa;304;241
+Louisiana;LA;Tensas;229;112
+Louisiana;LA;Tensas;232;135
+Louisiana;LA;Terrebonne;269;352
+Louisiana;LA;Terrebonne;234;368
+Louisiana;LA;Terrebonne;248;370
+Louisiana;LA;Union;148;32
+Louisiana;LA;Vermilion;147;315
+Louisiana;LA;Vermilion;183;341
+Louisiana;LA;Vermilion;170;338
+Louisiana;LA;Vernon;80;194
+Louisiana;LA;Washington;334;220
+Louisiana;LA;Webster;71;42
+Louisiana;LA;West Baton Rouge;230;258
+Louisiana;LA;West Carroll;220;38
+Louisiana;LA;West Feliciana;223;218
+Louisiana;LA;West Feliciana;201;203
+Louisiana;LA;Winn;125;116
+Maine;ME;Androscoggin;66;303
+Maine;ME;Aroostook;168;83
+Maine;ME;Cumberland;51;330
+Maine;ME;Franklin;53;231
+Maine;ME;Hancock;185;252
+Maine;ME;Hancock;190;286
+Maine;ME;Hancock;164;296
+Maine;ME;Kennebec;94;282
+Maine;ME;Knox;128;301
+Maine;ME;Knox;154;312
+Maine;ME;Knox;167;313
+Maine;ME;Lincoln;109;308
+Maine;ME;Oxford;32;272
+Maine;ME;Penobscot;165;195
+Maine;ME;Piscataquis;126;155
+Maine;ME;Sagadahoc;85;314
+Maine;ME;Sagadahoc;89;327
+Maine;ME;Sagadahoc;93;320
+Maine;ME;Somerset;83;184
+Maine;ME;Waldo;133;273
+Maine;ME;Washington;227;224
+Maine;ME;York;33;362
+Maryland;MD;Allegany;115;33
+Maryland;MD;Anne Arundel;384;139
+Maryland;MD;Baltimore;379;58
+Maryland;MD;Baltimore City;384;85
+Maryland;MD;Baltimore City;393;104
+Maryland;MD;Calvert;392;214
+Maryland;MD;Caroline;488;160
+Maryland;MD;Carroll;332;44
+Maryland;MD;Cecil;477;30
+Maryland;MD;Charles;337;223
+Maryland;MD;Dorchester;469;226
+Maryland;MD;Dorchester;461;278
+Maryland;MD;Dorchester;438;254
+Maryland;MD;Dorchester;443;261
+Maryland;MD;Dorchester;450;262
+Maryland;MD;Frederick;283;60
+Maryland;MD;Garrett;40;48
+Maryland;MD;Harford;422;41
+Maryland;MD;Harford;454;61
+Maryland;MD;Harford;436;76
+Maryland;MD;Harford;439;73
+Maryland;MD;Howard;344;97
+Maryland;MD;Kent;463;92
+Maryland;MD;Montgomery;309;117
+Maryland;MD;Prince George's;356;168
+Maryland;MD;Queen Anne's;470;123
+Maryland;MD;Queen Anne's;426;142
+Maryland;MD;Somerset;505;285
+Maryland;MD;Somerset;466;294
+Maryland;MD;St. Mary's;387;256
+Maryland;MD;Talbot;460;174
+Maryland;MD;Talbot;431;180
+Maryland;MD;Talbot;429;185
+Maryland;MD;Talbot;428;183
+Maryland;MD;Washington;230;37
+Maryland;MD;Wicomico;518;244
+Maryland;MD;Worcester;550;270
+Maryland;MD;Worcester;576;285
+Maryland;MD;Worcester;569;300
+Maryland;MD;Worcester;584;259
+Massachusetts;MA;Barnstable;475;249
+Massachusetts;MA;Barnstable;523;269
+Massachusetts;MA;Berkshire;56;110
+Massachusetts;MA;Bristol;358;209
+Massachusetts;MA;Dukes;429;307
+Massachusetts;MA;Dukes;452;310
+Massachusetts;MA;Dukes;402;334
+Massachusetts;MA;Dukes;385;301
+Massachusetts;MA;Dukes;394;298
+Massachusetts;MA;Dukes;408;291
+Massachusetts;MA;Dukes;399;295
+Massachusetts;MA;Essex;380;53
+Massachusetts;MA;Franklin;146;69
+Massachusetts;MA;Hampden;139;158
+Massachusetts;MA;Hampshire;134;117
+Massachusetts;MA;Middlesex;319;90
+Massachusetts;MA;Nantucket;512;329
+Massachusetts;MA;Nantucket;484;323
+Massachusetts;MA;Nantucket;477;318
+Massachusetts;MA;Norfolk;342;156
+Massachusetts;MA;Norfolk;353;123
+Massachusetts;MA;Norfolk;401;140
+Massachusetts;MA;Plymouth;402;196
+Massachusetts;MA;Suffolk;364;122
+Massachusetts;MA;Suffolk;353;117
+Massachusetts;MA;Worcester;244;117
+Michigan;MI;Alcona;328;192
+Michigan;MI;Alger;187;80
+Michigan;MI;Alger;184;71
+Michigan;MI;Allegan;220;332
+Michigan;MI;Alpena;325;169
+Michigan;MI;Antrim;255;173
+Michigan;MI;Arenac;314;234
+Michigan;MI;Baraga;107;62
+Michigan;MI;Barry;248;332
+Michigan;MI;Bay;310;257
+Michigan;MI;Benzie;214;196
+Michigan;MI;Berrien;194;373
+Michigan;MI;Branch;260;376
+Michigan;MI;Calhoun;263;355
+Michigan;MI;Cass;214;376
+Michigan;MI;Charlevoix;259;158
+Michigan;MI;Charlevoix;236;129
+Michigan;MI;Cheboygan;284;143
+Michigan;MI;Chippewa;274;85
+Michigan;MI;Chippewa;297;75
+Michigan;MI;Chippewa;299;87
+Michigan;MI;Chippewa;324;106
+Michigan;MI;Clare;269;239
+Michigan;MI;Clinton;282;308
+Michigan;MI;Crawford;280;193
+Michigan;MI;Delta;171;110
+Michigan;MI;Delta;173;103
+Michigan;MI;Dickinson;129;105
+Michigan;MI;Eaton;270;331
+Michigan;MI;Emmet;266;138
+Michigan;MI;Genesee;324;302
+Michigan;MI;Gladwin;291;239
+Michigan;MI;Gogebic;46;76
+Michigan;MI;Grand Traverse;235;195
+Michigan;MI;Gratiot;281;285
+Michigan;MI;Hillsdale;283;378
+Michigan;MI;Houghton;89;51
+Michigan;MI;Houghton;102;25
+Michigan;MI;Huron;356;248
+Michigan;MI;Ingham;293;331
+Michigan;MI;Ionia;259;308
+Michigan;MI;Iosco;326;214
+Michigan;MI;Iron;99;91
+Michigan;MI;Isabella;269;262
+Michigan;MI;Jackson;291;354
+Michigan;MI;Kalamazoo;237;355
+Michigan;MI;Kalkaska;257;193
+Michigan;MI;Kent;236;303
+Michigan;MI;Keweenaw;119;16
+Michigan;MI;Lake;224;239
+Michigan;MI;Lapeer;348;297
+Michigan;MI;Leelanau;224;179
+Michigan;MI;Leelanau;213;165
+Michigan;MI;Leelanau;209;171
+Michigan;MI;Lenawee;309;377
+Michigan;MI;Livingston;315;330
+Michigan;MI;Luce;236;76
+Michigan;MI;Mackinac;254;100
+Michigan;MI;Mackinac;286;122
+Michigan;MI;Macomb;362;323
+Michigan;MI;Manistee;212;217
+Michigan;MI;Marquette;140;77
+Michigan;MI;Mason;203;239
+Michigan;MI;Mecosta;247;262
+Michigan;MI;Menominee;143;134
+Michigan;MI;Midland;291;262
+Michigan;MI;Missaukee;257;216
+Michigan;MI;Monroe;334;375
+Michigan;MI;Montcalm;255;284
+Michigan;MI;Montmorency;302;170
+Michigan;MI;Muskegon;207;286
+Michigan;MI;Newaygo;224;268
+Michigan;MI;Oakland;340;326
+Michigan;MI;Oceana;202;262
+Michigan;MI;Ogemaw;303;216
+Michigan;MI;Ontonagon;64;60
+Michigan;MI;Osceola;247;239
+Michigan;MI;Oscoda;303;193
+Michigan;MI;Otsego;280;171
+Michigan;MI;Ottawa;214;308
+Michigan;MI;Presque Isle;312;150
+Michigan;MI;Roscommon;280;216
+Michigan;MI;Saginaw;308;282
+Michigan;MI;St. Clair;374;306
+Michigan;MI;St. Clair;380;329
+Michigan;MI;St. Joseph;237;376
+Michigan;MI;Sanilac;366;275
+Michigan;MI;Schoolcraft;206;94
+Michigan;MI;Shiawassee;303;307
+Michigan;MI;Tuscola;337;273
+Michigan;MI;Van Buren;213;354
+Michigan;MI;Washtenaw;319;353
+Michigan;MI;Wayne;346;350
+Michigan;MI;Wexford;235;216
+Minnesota;MN;Aitkin;178;190
+Minnesota;MN;Anoka;185;279
+Minnesota;MN;Becker;75;167
+Minnesota;MN;Beltrami;110;100
+Minnesota;MN;Benton;150;250
+Minnesota;MN;Big Stone;38;266
+Minnesota;MN;Blue Earth;146;361
+Minnesota;MN;Brown;115;347
+Minnesota;MN;Carlton;212;191
+Minnesota;MN;Carver;159;309
+Minnesota;MN;Cass;137;167
+Minnesota;MN;Chippewa;76;294
+Minnesota;MN;Chisago;201;264
+Minnesota;MN;Clay;38;169
+Minnesota;MN;Clearwater;90;125
+Minnesota;MN;Cook;307;104
+Minnesota;MN;Cottonwood;93;361
+Minnesota;MN;Crow Wing;148;199
+Minnesota;MN;Dakota;193;319
+Minnesota;MN;Dodge;204;362
+Minnesota;MN;Douglas;83;234
+Minnesota;MN;Faribault;151;384
+Minnesota;MN;Fillmore;240;385
+Minnesota;MN;Freeborn;180;385
+Minnesota;MN;Goodhue;210;336
+Minnesota;MN;Grant;57;233
+Minnesota;MN;Hennepin;174;296
+Minnesota;MN;Houston;269;385
+Minnesota;MN;Hubbard;110;157
+Minnesota;MN;Isanti;183;260
+Minnesota;MN;Itasca;169;131
+Minnesota;MN;Jackson;94;383
+Minnesota;MN;Kanabec;183;235
+Minnesota;MN;Kandiyohi;103;286
+Minnesota;MN;Kittson;30;44
+Minnesota;MN;Koochiching;162;83
+Minnesota;MN;Lac qui Parle;48;295
+Minnesota;MN;Lake;267;123
+Minnesota;MN;Lake of the Woods;113;48
+Minnesota;MN;Le Sueur;163;338
+Minnesota;MN;Lincoln;42;333
+Minnesota;MN;Lyon;62;334
+Minnesota;MN;McLeod;137;308
+Minnesota;MN;Mahnomen;70;141
+Minnesota;MN;Marshall;47;73
+Minnesota;MN;Martin;123;384
+Minnesota;MN;Meeker;125;288
+Minnesota;MN;Mille Lacs;168;235
+Minnesota;MN;Morrison;138;230
+Minnesota;MN;Mower;208;385
+Minnesota;MN;Murray;65;360
+Minnesota;MN;Nicollet;138;340
+Minnesota;MN;Nobles;65;383
+Minnesota;MN;Norman;40;140
+Minnesota;MN;Olmsted;225;363
+Minnesota;MN;Otter Tail;73;202
+Minnesota;MN;Pennington;61;92
+Minnesota;MN;Pine;209;223
+Minnesota;MN;Pipestone;42;359
+Minnesota;MN;Polk;43;111
+Minnesota;MN;Pope;83;257
+Minnesota;MN;Ramsey;192;296
+Minnesota;MN;Red Lake;58;105
+Minnesota;MN;Redwood;90;335
+Minnesota;MN;Renville;105;314
+Minnesota;MN;Rice;183;340
+Minnesota;MN;Rock;41;382
+Minnesota;MN;Roseau;72;46
+Minnesota;MN;St. Louis;221;125
+Minnesota;MN;Scott;171;320
+Minnesota;MN;Sherburne;161;267
+Minnesota;MN;Sibley;139;324
+Minnesota;MN;Stearns;122;259
+Minnesota;MN;Steele;186;362
+Minnesota;MN;Stevens;57;256
+Minnesota;MN;Swift;72;276
+Minnesota;MN;Todd;109;225
+Minnesota;MN;Traverse;36;243
+Minnesota;MN;Wabasha;233;344
+Minnesota;MN;Wadena;107;191
+Minnesota;MN;Waseca;169;362
+Minnesota;MN;Washington;202;295
+Minnesota;MN;Watonwan;120;364
+Minnesota;MN;Wilkin;38;204
+Minnesota;MN;Winona;254;364
+Minnesota;MN;Wright;151;285
+Minnesota;MN;Yellow Medicine;62;314
+Mississippi;MS;Adams;31;288
+Mississippi;MS;Alcorn;215;18
+Mississippi;MS;Amite;66;314
+Mississippi;MS;Attala;150;162
+Mississippi;MS;Benton;176;23
+Mississippi;MS;Bolivar;65;105
+Mississippi;MS;Calhoun;167;94
+Mississippi;MS;Carroll;127;133
+Mississippi;MS;Chickasaw;192;95
+Mississippi;MS;Choctaw;172;141
+Mississippi;MS;Claiborne;60;251
+Mississippi;MS;Claiborne;44;243
+Mississippi;MS;Clarke;210;246
+Mississippi;MS;Clay;202;116
+Mississippi;MS;Coahoma;84;70
+Mississippi;MS;Copiah;91;259
+Mississippi;MS;Covington;151;278
+Mississippi;MS;DeSoto;124;18
+Mississippi;MS;Forrest;172;314
+Mississippi;MS;Franklin;60;290
+Mississippi;MS;George;214;340
+Mississippi;MS;Greene;214;312
+Mississippi;MS;Grenada;136;107
+Mississippi;MS;Hancock;155;376
+Mississippi;MS;Harrison;181;368
+Mississippi;MS;Hinds;92;227
+Mississippi;MS;Holmes;116;159
+Mississippi;MS;Humphreys;87;159
+Mississippi;MS;Issaquena;56;188
+Mississippi;MS;Itawamba;230;66
+Mississippi;MS;Jackson;214;366
+Mississippi;MS;Jasper;181;248
+Mississippi;MS;Jefferson;51;270
+Mississippi;MS;Jefferson Davis;133;284
+Mississippi;MS;Jones;177;279
+Mississippi;MS;Kemper;213;189
+Mississippi;MS;Lafayette;157;60
+Mississippi;MS;Lamar;154;313
+Mississippi;MS;Lauderdale;211;217
+Mississippi;MS;Lawrence;114;285
+Mississippi;MS;Leake;154;189
+Mississippi;MS;Lee;209;65
+Mississippi;MS;Leflore;102;125
+Mississippi;MS;Lincoln;90;286
+Mississippi;MS;Lowndes;225;131
+Mississippi;MS;Madison;120;198
+Mississippi;MS;Marion;133;311
+Mississippi;MS;Marshall;155;27
+Mississippi;MS;Monroe;223;97
+Mississippi;MS;Montgomery;148;129
+Mississippi;MS;Neshoba;181;189
+Mississippi;MS;Newton;181;217
+Mississippi;MS;Noxubee;217;160
+Mississippi;MS;Oktibbeha;197;135
+Mississippi;MS;Panola;126;59
+Mississippi;MS;Pearl River;148;348
+Mississippi;MS;Perry;190;316
+Mississippi;MS;Pike;93;315
+Mississippi;MS;Pontotoc;186;70
+Mississippi;MS;Prentiss;220;39
+Mississippi;MS;Quitman;104;68
+Mississippi;MS;Rankin;125;228
+Mississippi;MS;Scott;153;217
+Mississippi;MS;Sharkey;68;178
+Mississippi;MS;Simpson;127;256
+Mississippi;MS;Smith;155;248
+Mississippi;MS;Stone;181;346
+Mississippi;MS;Sunflower;83;121
+Mississippi;MS;Tallahatchie;111;92
+Mississippi;MS;Tate;127;37
+Mississippi;MS;Tippah;194;27
+Mississippi;MS;Tishomingo;238;29
+Mississippi;MS;Tunica;99;37
+Mississippi;MS;Union;188;49
+Mississippi;MS;Walthall;113;317
+Mississippi;MS;Warren;67;220
+Mississippi;MS;Warren;54;204
+Mississippi;MS;Washington;60;146
+Mississippi;MS;Wayne;209;278
+Mississippi;MS;Webster;170;120
+Mississippi;MS;Wilkinson;32;315
+Mississippi;MS;Winston;186;162
+Mississippi;MS;Yalobusha;142;87
+Mississippi;MS;Yazoo;96;186
+Missouri;MO;Adair;207;44
+Missouri;MO;Andrew;67;59
+Missouri;MO;Atchison;29;21
+Missouri;MO;Audrain;255;126
+Missouri;MO;Barry;124;336
+Missouri;MO;Barton;91;269
+Missouri;MO;Bates;93;205
+Missouri;MO;Benton;161;203
+Missouri;MO;Bollinger;375;284
+Missouri;MO;Boone;225;145
+Missouri;MO;Buchanan;66;86
+Missouri;MO;Butler;351;335
+Missouri;MO;Caldwell;118;88
+Missouri;MO;Callaway;250;158
+Missouri;MO;Camden;195;226
+Missouri;MO;Cape Girardeau;397;278
+Missouri;MO;Carroll;148;107
+Missouri;MO;Carter;314;317
+Missouri;MO;Cass;92;172
+Missouri;MO;Cedar;123;251
+Missouri;MO;Chariton;183;100
+Missouri;MO;Christian;167;315
+Missouri;MO;Clark;261;25
+Missouri;MO;Clay;89;116
+Missouri;MO;Clinton;91;92
+Missouri;MO;Cole;227;186
+Missouri;MO;Cooper;193;157
+Missouri;MO;Crawford;290;230
+Missouri;MO;Dade;123;275
+Missouri;MO;Dallas;178;255
+Missouri;MO;Daviess;118;62
+Missouri;MO;DeKalb;92;67
+Missouri;MO;Dent;277;261
+Missouri;MO;Douglas;212;318
+Missouri;MO;Dunklin;373;385
+Missouri;MO;Franklin;305;193
+Missouri;MO;Gasconade;277;191
+Missouri;MO;Gentry;92;41
+Missouri;MO;Greene;157;290
+Missouri;MO;Grundy;145;49
+Missouri;MO;Harrison;119;29
+Missouri;MO;Henry;128;195
+Missouri;MO;Hickory;159;233
+Missouri;MO;Holt;41;49
+Missouri;MO;Howard;200;132
+Missouri;MO;Howell;253;331
+Missouri;MO;Iron;332;265
+Missouri;MO;Jackson;94;142
+Missouri;MO;Jasper;91;294
+Missouri;MO;Jefferson;340;205
+Missouri;MO;Johnson;128;165
+Missouri;MO;Knox;235;49
+Missouri;MO;Laclede;206;257
+Missouri;MO;Lafayette;130;138
+Missouri;MO;Lawrence;124;302
+Missouri;MO;Lewis;262;52
+Missouri;MO;Lincoln;312;138
+Missouri;MO;Linn;174;71
+Missouri;MO;Livingston;146;78
+Missouri;MO;McDonald;89;342
+Missouri;MO;Macon;209;74
+Missouri;MO;Madison;354;271
+Missouri;MO;Maries;250;214
+Missouri;MO;Marion;269;76
+Missouri;MO;Mercer;145;24
+Missouri;MO;Miller;217;210
+Missouri;MO;Mississippi;425;325
+Missouri;MO;Moniteau;207;175
+Missouri;MO;Monroe;245;102
+Missouri;MO;Montgomery;279;149
+Missouri;MO;Morgan;187;192
+Missouri;MO;New Madrid;401;344
+Missouri;MO;Newton;90;319
+Missouri;MO;Nodaway;62;27
+Missouri;MO;Oregon;285;338
+Missouri;MO;Osage;255;189
+Missouri;MO;Ozark;215;342
+Missouri;MO;Pemiscot;393;377
+Missouri;MO;Perry;388;251
+Missouri;MO;Pettis;162;166
+Missouri;MO;Phelps;259;238
+Missouri;MO;Pike;298;115
+Missouri;MO;Platte;67;110
+Missouri;MO;Polk;153;260
+Missouri;MO;Pulaski;231;243
+Missouri;MO;Putnam;180;19
+Missouri;MO;Ralls;275;99
+Missouri;MO;Randolph;213;107
+Missouri;MO;Ray;117;113
+Missouri;MO;Reynolds;313;281
+Missouri;MO;Ripley;321;341
+Missouri;MO;St. Charles;330;162
+Missouri;MO;St. Clair;129;224
+Missouri;MO;Ste. Genevieve;363;236
+Missouri;MO;St. Francois;344;243
+Missouri;MO;St. Louis;345;173
+Missouri;MO;Saline;167;133
+Missouri;MO;Schuyler;212;20
+Missouri;MO;Scotland;236;22
+Missouri;MO;Scott;406;306
+Missouri;MO;Shannon;285;299
+Missouri;MO;Shelby;240;77
+Missouri;MO;Stoddard;382;323
+Missouri;MO;Stone;149;334
+Missouri;MO;Sullivan;174;42
+Missouri;MO;Taney;176;341
+Missouri;MO;Texas;248;286
+Missouri;MO;Vernon;92;239
+Missouri;MO;Warren;300;164
+Missouri;MO;Washington;319;231
+Missouri;MO;Wayne;347;302
+Missouri;MO;Webster;187;289
+Missouri;MO;Worth;92;18
+Missouri;MO;Wright;214;290
+Missouri;MO;St. Louis City;358;174
+Montana;MT;Beaverhead;157;290
+Montana;MT;Big Horn;424;270
+Montana;MT;Blaine;349;62
+Montana;MT;Broadwater;228;208
+Montana;MT;Carbon;348;286
+Montana;MT;Carter;568;258
+Montana;MT;Cascade;236;140
+Montana;MT;Chouteau;280;101
+Montana;MT;Custer;515;209
+Montana;MT;Daniels;508;33
+Montana;MT;Dawson;544;137
+Montana;MT;Deer Lodge;151;225
+Montana;MT;Fallon;571;200
+Montana;MT;Fergus;337;144
+Montana;MT;Flathead;109;68
+Montana;MT;Gallatin;243;263
+Montana;MT;Garfield;444;141
+Montana;MT;Glacier;160;42
+Montana;MT;Golden Valley;340;204
+Montana;MT;Granite;134;201
+Montana;MT;Hill;295;49
+Montana;MT;Jefferson;198;221
+Montana;MT;Judith Basin;288;159
+Montana;MT;Lake;106;113
+Montana;MT;Lewis and Clark;186;153
+Montana;MT;Liberty;252;53
+Montana;MT;Lincoln;47;48
+Montana;MT;McCone;500;113
+Montana;MT;Madison;206;280
+Montana;MT;Meagher;258;190
+Montana;MT;Mineral;61;146
+Montana;MT;Missoula;112;156
+Montana;MT;Musselshell;377;196
+Montana;MT;Park;274;268
+Montana;MT;Petroleum;384;153
+Montana;MT;Phillips;398;74
+Montana;MT;Pondera;195;76
+Montana;MT;Powder River;515;269
+Montana;MT;Powell;159;170
+Montana;MT;Prairie;523;166
+Montana;MT;Ravalli;100;222
+Montana;MT;Richland;558;100
+Montana;MT;Roosevelt;534;66
+Montana;MT;Rosebud;459;213
+Montana;MT;Sanders;57;109
+Montana;MT;Sheridan;557;35
+Montana;MT;Silver Bow;170;237
+Montana;MT;Stillwater;330;255
+Montana;MT;Sweet Grass;303;245
+Montana;MT;Teton;194;103
+Montana;MT;Toole;221;47
+Montana;MT;Treasure;433;215
+Montana;MT;Valley;457;65
+Montana;MT;Wheatland;308;199
+Montana;MT;Wibaux;576;157
+Montana;MT;Yellowstone;384;236
+Nebraska;NE;Adams;377;243
+Nebraska;NE;Antelope;406;96
+Nebraska;NE;Arthur;168;146
+Nebraska;NE;Banner;36;142
+Nebraska;NE;Blaine;282;119
+Nebraska;NE;Boone;407;138
+Nebraska;NE;Box Butte;80;84
+Nebraska;NE;Boyd;361;32
+Nebraska;NE;Brown;286;73
+Nebraska;NE;Buffalo;340;213
+Nebraska;NE;Burt;520;124
+Nebraska;NE;Butler;468;180
+Nebraska;NE;Cass;534;208
+Nebraska;NE;Cedar;459;59
+Nebraska;NE;Chase;165;239
+Nebraska;NE;Cherry;209;61
+Nebraska;NE;Cheyenne;82;173
+Nebraska;NE;Clay;407;243
+Nebraska;NE;Colfax;471;150
+Nebraska;NE;Cuming;490;119
+Nebraska;NE;Custer;297;165
+Nebraska;NE;Dakota;504;77
+Nebraska;NE;Dawes;80;40
+Nebraska;NE;Dawson;290;211
+Nebraska;NE;Deuel;125;185
+Nebraska;NE;Dixon;484;68
+Nebraska;NE;Dodge;499;149
+Nebraska;NE;Douglas;532;173
+Nebraska;NE;Dundy;164;269
+Nebraska;NE;Fillmore;438;243
+Nebraska;NE;Franklin;347;274
+Nebraska;NE;Frontier;252;241
+Nebraska;NE;Furnas;283;273
+Nebraska;NE;Gage;498;266
+Nebraska;NE;Garden;127;140
+Nebraska;NE;Garfield;346;120
+Nebraska;NE;Gosper;289;243
+Nebraska;NE;Grant;167;115
+Nebraska;NE;Greeley;377;151
+Nebraska;NE;Hall;377;212
+Nebraska;NE;Hamilton;409;213
+Nebraska;NE;Harlan;317;273
+Nebraska;NE;Hayes;207;240
+Nebraska;NE;Hitchcock;208;271
+Nebraska;NE;Holt;360;72
+Nebraska;NE;Hooker;206;116
+Nebraska;NE;Howard;377;181
+Nebraska;NE;Jefferson;468;274
+Nebraska;NE;Johnson;527;253
+Nebraska;NE;Kearney;348;244
+Nebraska;NE;Keith;170;179
+Nebraska;NE;Keya Paha;301;34
+Nebraska;NE;Kimball;34;172
+Nebraska;NE;Knox;418;56
+Nebraska;NE;Lancaster;498;219
+Nebraska;NE;Lincoln;230;194
+Nebraska;NE;Logan;248;149
+Nebraska;NE;Loup;316;119
+Nebraska;NE;McPherson;210;147
+Nebraska;NE;Madison;437;120
+Nebraska;NE;Merrick;408;186
+Nebraska;NE;Morrill;83;129
+Nebraska;NE;Nance;411;165
+Nebraska;NE;Nemaha;554;253
+Nebraska;NE;Nuckolls;408;274
+Nebraska;NE;Otoe;535;231
+Nebraska;NE;Pawnee;529;277
+Nebraska;NE;Perkins;169;210
+Nebraska;NE;Phelps;316;244
+Nebraska;NE;Pierce;437;88
+Nebraska;NE;Platte;442;150
+Nebraska;NE;Polk;439;184
+Nebraska;NE;Red Willow;245;272
+Nebraska;NE;Richardson;563;276
+Nebraska;NE;Rock;317;74
+Nebraska;NE;Saline;468;243
+Nebraska;NE;Sarpy;535;190
+Nebraska;NE;Saunders;501;180
+Nebraska;NE;Scotts Bluff;38;115
+Nebraska;NE;Seward;468;212
+Nebraska;NE;Sheridan;126;61
+Nebraska;NE;Sherman;347;181
+Nebraska;NE;Sioux;38;58
+Nebraska;NE;Stanton;463;119
+Nebraska;NE;Thayer;438;274
+Nebraska;NE;Thomas;244;118
+Nebraska;NE;Thurston;505;97
+Nebraska;NE;Valley;346;151
+Nebraska;NE;Washington;527;152
+Nebraska;NE;Wayne;468;93
+Nebraska;NE;Webster;377;273
+Nebraska;NE;Wheeler;376;120
+Nebraska;NE;York;438;212
+Nevada;NV;Churchill;81;147
+Nevada;NV;Clark;223;331
+Nevada;NV;Douglas;26;182
+Nevada;NV;Elko;204;60
+Nevada;NV;Esmeralda;110;246
+Nevada;NV;Eureka;167;125
+Nevada;NV;Humboldt;91;46
+Nevada;NV;Lander;135;128
+Nevada;NV;Lincoln;228;253
+Nevada;NV;Lyon;45;178
+Nevada;NV;Mineral;76;205
+Nevada;NV;Nye;159;232
+Nevada;NV;Pershing;79;100
+Nevada;NV;Storey;31;154
+Nevada;NV;Washoe;27;86
+Nevada;NV;White Pine;225;154
+Nevada;NV;Carson City;22;169
+New Hampshire;NH;Belknap;137;273
+New Hampshire;NH;Carroll;160;220
+New Hampshire;NH;Cheshire;48;361
+New Hampshire;NH;Coos;149;99
+New Hampshire;NH;Grafton;95;210
+New Hampshire;NH;Hillsborough;105;362
+New Hampshire;NH;Merrimack;109;305
+New Hampshire;NH;Rockingham;168;352
+New Hampshire;NH;Strafford;179;306
+New Hampshire;NH;Sullivan;51;295
+New Jersey;NJ;Atlantic;120;303
+New Jersey;NJ;Atlantic;163;305
+New Jersey;NJ;Bergen;194;68
+New Jersey;NJ;Burlington;123;240
+New Jersey;NJ;Camden;88;252
+New Jersey;NJ;Cape May;106;355
+New Jersey;NJ;Cumberland;69;320
+New Jersey;NJ;Essex;173;95
+New Jersey;NJ;Gloucester;66;265
+New Jersey;NJ;Hudson;195;102
+New Jersey;NJ;Hunterdon;94;130
+New Jersey;NJ;Mercer;119;175
+New Jersey;NJ;Middlesex;153;151
+New Jersey;NJ;Monmouth;176;180
+New Jersey;NJ;Morris;138;83
+New Jersey;NJ;Ocean;167;234
+New Jersey;NJ;Passaic;167;56
+New Jersey;NJ;Salem;40;286
+New Jersey;NJ;Somerset;129;131
+New Jersey;NJ;Sussex;121;39
+New Jersey;NJ;Union;166;115
+New Jersey;NJ;Warren;85;84
+New Mexico;NM;Bernalillo;153;151
+New Mexico;NM;Catron;55;227
+New Mexico;NM;Chaves;277;265
+New Mexico;NM;Cibola;80;159
+New Mexico;NM;Colfax;264;44
+New Mexico;NM;Curry;337;182
+New Mexico;NM;De Baca;278;199
+New Mexico;NM;Dona Ana;143;335
+New Mexico;NM;Eddy;287;326
+New Mexico;NM;Grant;55;307
+New Mexico;NM;Guadalupe;257;164
+New Mexico;NM;Harding;310;95
+New Mexico;NM;Hidalgo;34;363
+New Mexico;NM;Lea;337;303
+New Mexico;NM;Lincoln;221;240
+New Mexico;NM;Los Alamos;174;96
+New Mexico;NM;Luna;90;346
+New Mexico;NM;McKinley;66;113
+New Mexico;NM;Mora;248;85
+New Mexico;NM;Otero;205;317
+New Mexico;NM;Quay;325;146
+New Mexico;NM;Rio Arriba;153;51
+New Mexico;NM;Roosevelt;331;220
+New Mexico;NM;Sandoval;143;108
+New Mexico;NM;San Juan;65;50
+New Mexico;NM;San Miguel;255;122
+New Mexico;NM;Santa Fe;192;120
+New Mexico;NM;Sierra;123;282
+New Mexico;NM;Socorro;138;222
+New Mexico;NM;Taos;210;47
+New Mexico;NM;Torrance;198;179
+New Mexico;NM;Union;327;52
+New Mexico;NM;Valencia;145;174
+New York;NY;Chautauqua;34;248
+New York;NY;Niagara;74;167
+New York;NY;Erie;74;205
+New York;NY;Cattaraugus;76;247
+New York;NY;Wyoming;105;209
+New York;NY;Orleans;105;163
+New York;NY;Genesee;107;184
+New York;NY;Allegany;117;247
+New York;NY;Livingston;132;207
+New York;NY;Monroe;137;172
+New York;NY;Steuben;156;246
+New York;NY;Ontario;162;197
+New York;NY;Yates;174;215
+New York;NY;Wayne;178;171
+New York;NY;Schuyler;187;235
+New York;NY;Seneca;191;202
+New York;NY;Chemung;195;257
+New York;NY;Cayuga;207;192
+New York;NY;Tompkins;212;230
+New York;NY;Tioga;223;254
+New York;NY;Onondaga;229;184
+New York;NY;Oswego;232;148
+New York;NY;Cortland;237;218
+New York;NY;Jefferson;246;96
+New York;NY;Broome;253;254
+New York;NY;Madison;261;191
+New York;NY;Chenango;265;226
+New York;NY;Lewis;273;118
+New York;NY;Oneida;275;163
+New York;NY;St. Lawrence;294;58
+New York;NY;Otsego;301;213
+New York;NY;Herkimer;303;148
+New York;NY;Delaware;305;250
+New York;NY;Sullivan;319;290
+New York;NY;Hamilton;330;126
+New York;NY;Montgomery;336;190
+New York;NY;Fulton;336;172
+New York;NY;Schoharie;337;217
+New York;NY;Franklin;340;48
+New York;NY;Orange;348;316
+New York;NY;Ulster;350;275
+New York;NY;Greene;357;242
+New York;NY;Schenectady;360;196
+New York;NY;Richmond;361;383
+New York;NY;Albany;366;214
+New York;NY;Rockland;367;336
+New York;NY;Warren;370;133
+New York;NY;Saratoga;370;171
+New York;NY;New York;372;366
+New York;NY;Kings;373;378
+New York;NY;Essex;373;86
+New York;NY;Clinton;376;34
+New York;NY;Bronx;377;360
+New York;NY;Queens;381;371
+New York;NY;Dutchess;382;284
+New York;NY;Putnam;383;312
+New York;NY;Westchester;383;334
+New York;NY;Columbia;387;243
+New York;NY;Rensselaer;393;203
+New York;NY;Nassau;395;369
+New York;NY;Washington;396;153
+New York;NY;Suffolk;431;359
+North Carolina;NC;Alamance;334;64
+North Carolina;NC;Alexander;218;73
+North Carolina;NC;Alleghany;222;26
+North Carolina;NC;Anson;287;151
+North Carolina;NC;Ashe;198;30
+North Carolina;NC;Avery;170;59
+North Carolina;NC;Beaufort;501;100
+North Carolina;NC;Beaufort;495;119
+North Carolina;NC;Bertie;491;61
+North Carolina;NC;Bladen;389;180
+North Carolina;NC;Brunswick;410;224
+North Carolina;NC;Brunswick;428;240
+North Carolina;NC;Buncombe;129;95
+North Carolina;NC;Burke;184;86
+North Carolina;NC;Cabarrus;258;117
+North Carolina;NC;Caldwell;194;70
+North Carolina;NC;Camden;539;33
+North Carolina;NC;Carteret;510;162
+North Carolina;NC;Carteret;553;141
+North Carolina;NC;Caswell;338;36
+North Carolina;NC;Catawba;216;93
+North Carolina;NC;Chatham;343;92
+North Carolina;NC;Cherokee;27;130
+North Carolina;NC;Chowan;515;54
+North Carolina;NC;Clay;47;136
+North Carolina;NC;Cleveland;192;120
+North Carolina;NC;Columbus;383;209
+North Carolina;NC;Craven;479;129
+North Carolina;NC;Craven;489;153
+North Carolina;NC;Craven;511;156
+North Carolina;NC;Cumberland;371;145
+North Carolina;NC;Currituck;550;32
+North Carolina;NC;Currituck;557;28
+North Carolina;NC;Currituck;557;22
+North Carolina;NC;Currituck;562;24
+North Carolina;NC;Currituck;566;39
+North Carolina;NC;Dare;565;84
+North Carolina;NC;Dare;573;58
+North Carolina;NC;Dare;578;73
+North Carolina;NC;Dare;586;125
+North Carolina;NC;Dare;590;105
+North Carolina;NC;Dare;577;65
+North Carolina;NC;Dare;582;74
+North Carolina;NC;Dare;583;76
+North Carolina;NC;Davidson;281;84
+North Carolina;NC;Davie;259;73
+North Carolina;NC;Duplin;430;154
+North Carolina;NC;Durham;368;65
+North Carolina;NC;Edgecombe;451;75
+North Carolina;NC;Forsyth;278;56
+North Carolina;NC;Franklin;406;61
+North Carolina;NC;Gaston;217;124
+North Carolina;NC;Gates;509;30
+North Carolina;NC;Graham;43;113
+North Carolina;NC;Granville;382;43
+North Carolina;NC;Greene;447;109
+North Carolina;NC;Guilford;309;61
+North Carolina;NC;Halifax;447;46
+North Carolina;NC;Harnett;368;119
+North Carolina;NC;Haywood;100;99
+North Carolina;NC;Henderson;132;118
+North Carolina;NC;Hertford;490;37
+North Carolina;NC;Hoke;344;148
+North Carolina;NC;Hyde;540;102
+North Carolina;NC;Iredell;238;82
+North Carolina;NC;Jackson;88;120
+North Carolina;NC;Johnston;401;107
+North Carolina;NC;Jones;468;146
+North Carolina;NC;Lee;349;111
+North Carolina;NC;Lenoir;449;129
+North Carolina;NC;Lincoln;214;108
+North Carolina;NC;McDowell;161;91
+North Carolina;NC;Macon;69;130
+North Carolina;NC;Madison;118;75
+North Carolina;NC;Martin;483;80
+North Carolina;NC;Mecklenburg;240;128
+North Carolina;NC;Mitchell;154;64
+North Carolina;NC;Montgomery;300;122
+North Carolina;NC;Moore;328;124
+North Carolina;NC;Nash;426;70
+North Carolina;NC;New Hanover;434;209
+North Carolina;NC;Northampton;464;33
+North Carolina;NC;Northampton;546;201
+North Carolina;NC;Onslow;463;169
+North Carolina;NC;Onslow;480;178
+North Carolina;NC;Orange;352;63
+North Carolina;NC;Pamlico;505;137
+North Carolina;NC;Pasquotank;535;41
+North Carolina;NC;Pender;432;187
+North Carolina;NC;Perquimans;525;48
+North Carolina;NC;Person;362;36
+North Carolina;NC;Pitt;466;100
+North Carolina;NC;Polk;152;123
+North Carolina;NC;Randolph;307;91
+North Carolina;NC;Richmond;311;149
+North Carolina;NC;Robeson;353;178
+North Carolina;NC;Rockingham;309;35
+North Carolina;NC;Rowan;260;96
+North Carolina;NC;Rutherford;169;114
+North Carolina;NC;Sampson;401;150
+North Carolina;NC;Scotland;328;162
+North Carolina;NC;Stanly;278;123
+North Carolina;NC;Stokes;280;35
+North Carolina;NC;Surry;251;33
+North Carolina;NC;Swain;66;103
+North Carolina;NC;Transylvania;110;128
+North Carolina;NC;Tyrrell;541;80
+North Carolina;NC;Union;259;149
+North Carolina;NC;Vance;398;38
+North Carolina;NC;Wake;383;85
+North Carolina;NC;Warren;418;35
+North Carolina;NC;Washington;518;80
+North Carolina;NC;Watauga;185;47
+North Carolina;NC;Wayne;425;119
+North Carolina;NC;Wilkes;220;50
+North Carolina;NC;Wilson;430;92
+North Carolina;NC;Yadkin;252;54
+North Carolina;NC;Yancey;145;73
+North Dakota;ND;Adams;129;339
+North Dakota;ND;Barnes;471;247
+North Dakota;ND;Benson;371;124
+North Dakota;ND;Billings;68;235
+North Dakota;ND;Bottineau;262;45
+North Dakota;ND;Bowman;53;335
+North Dakota;ND;Burke;137;43
+North Dakota;ND;Burleigh;289;244
+North Dakota;ND;Cass;534;245
+North Dakota;ND;Cavalier;437;46
+North Dakota;ND;Dickey;440;338
+North Dakota;ND;Divide;66;39
+North Dakota;ND;Dunn;126;200
+North Dakota;ND;Eddy;407;162
+North Dakota;ND;Emmons;307;320
+North Dakota;ND;Foster;408;190
+North Dakota;ND;Golden Valley;32;243
+North Dakota;ND;Grand Forks;515;138
+North Dakota;ND;Grant;199;311
+North Dakota;ND;Griggs;457;189
+North Dakota;ND;Hettinger;136;302
+North Dakota;ND;Kidder;341;244
+North Dakota;ND;LaMoure;437;300
+North Dakota;ND;Logan;365;301
+North Dakota;ND;McHenry;277;106
+North Dakota;ND;McIntosh;368;339
+North Dakota;ND;McKenzie;69;157
+North Dakota;ND;McLean;225;175
+North Dakota;ND;Mercer;186;206
+North Dakota;ND;Morton;227;272
+North Dakota;ND;Mountrail;148;108
+North Dakota;ND;Nelson;459;139
+North Dakota;ND;Oliver;223;228
+North Dakota;ND;Pembina;505;45
+North Dakota;ND;Pierce;326;105
+North Dakota;ND;Ramsey;420;101
+North Dakota;ND;Ransom;504;299
+North Dakota;ND;Renville;201;52
+North Dakota;ND;Richland;559;318
+North Dakota;ND;Rolette;336;48
+North Dakota;ND;Sargent;507;337
+North Dakota;ND;Sheridan;298;178
+North Dakota;ND;Sioux;246;339
+North Dakota;ND;Slope;60;298
+North Dakota;ND;Stark;122;260
+North Dakota;ND;Steele;496;189
+North Dakota;ND;Stutsman;404;243
+North Dakota;ND;Towner;380;57
+North Dakota;ND;Traill;538;188
+North Dakota;ND;Walsh;493;89
+North Dakota;ND;Ward;209;108
+North Dakota;ND;Wells;350;177
+North Dakota;ND;Williams;65;90
+Ohio;OH;Adams;119;330
+Ohio;OH;Allen;72;130
+Ohio;OH;Ashland;214;123
+Ohio;OH;Ashtabula;330;33
+Ohio;OH;Athens;232;281
+Ohio;OH;Auglaize;62;152
+Ohio;OH;Belmont;315;209
+Ohio;OH;Brown;87;321
+Ohio;OH;Butler;33;268
+Ohio;OH;Carroll;305;150
+Ohio;OH;Champaign;97;196
+Ohio;OH;Clark;96;219
+Ohio;OH;Clermont;65;309
+Ohio;OH;Clinton;93;271
+Ohio;OH;Columbiana;329;131
+Ohio;OH;Coshocton;241;180
+Ohio;OH;Crawford;163;123
+Ohio;OH;Cuyahoga;261;63
+Ohio;OH;Darke;30;196
+Ohio;OH;Defiance;43;72
+Ohio;OH;Delaware;157;182
+Ohio;OH;Erie;187;71
+Ohio;OH;Fairfield;186;237
+Ohio;OH;Fayette;121;257
+Ohio;OH;Franklin;156;214
+Ohio;OH;Fulton;71;44
+Ohio;OH;Gallia;211;333
+Ohio;OH;Geauga;297;56
+Ohio;OH;Greene;87;242
+Ohio;OH;Guernsey;275;205
+Ohio;OH;Hamilton;34;293
+Ohio;OH;Hancock;106;107
+Ohio;OH;Hardin;106;142
+Ohio;OH;Harrison;306;180
+Ohio;OH;Henry;76;72
+Ohio;OH;Highland;109;295
+Ohio;OH;Hocking;198;264
+Ohio;OH;Holmes;241;153
+Ohio;OH;Huron;189;92
+Ohio;OH;Jackson;187;313
+Ohio;OH;Jefferson;331;170
+Ohio;OH;Knox;202;170
+Ohio;OH;Lake;292;35
+Ohio;OH;Lawrence;193;357
+Ohio;OH;Licking;197;202
+Ohio;OH;Logan;97;170
+Ohio;OH;Lorain;223;77
+Ohio;OH;Lucas;107;43
+Ohio;OH;Madison;125;222
+Ohio;OH;Mahoning;329;105
+Ohio;OH;Marion;145;150
+Ohio;OH;Medina;243;95
+Ohio;OH;Meigs;234;306
+Ohio;OH;Mercer;31;153
+Ohio;OH;Miami;61;204
+Ohio;OH;Monroe;307;239
+Ohio;OH;Montgomery;56;235
+Ohio;OH;Morgan;247;251
+Ohio;OH;Morrow;173;157
+Ohio;OH;Muskingum;240;215
+Ohio;OH;Noble;278;235
+Ohio;OH;Ottawa;145;52
+Ohio;OH;Ottawa;170;49
+Ohio;OH;Paulding;36;94
+Ohio;OH;Perry;217;239
+Ohio;OH;Pickaway;155;248
+Ohio;OH;Pike;151;307
+Ohio;OH;Portage;296;89
+Ohio;OH;Preble;28;236
+Ohio;OH;Putnam;70;104
+Ohio;OH;Richland;193;131
+Ohio;OH;Ross;152;280
+Ohio;OH;Sandusky;146;71
+Ohio;OH;Scioto;157;335
+Ohio;OH;Seneca;148;95
+Ohio;OH;Shelby;63;176
+Ohio;OH;Stark;284;126
+Ohio;OH;Summit;271;94
+Ohio;OH;Trumbull;329;74
+Ohio;OH;Tuscarawas;276;165
+Ohio;OH;Union;128;180
+Ohio;OH;Van Wert;35;121
+Ohio;OH;Vinton;197;289
+Ohio;OH;Warren;65;269
+Ohio;OH;Washington;276;267
+Ohio;OH;Wayne;243;125
+Ohio;OH;Williams;36;48
+Ohio;OH;Wood;110;70
+Ohio;OH;Wyandot;134;124
+Oklahoma;OK;Adair;573;116
+Oklahoma;OK;Alfalfa;325;46
+Oklahoma;OK;Atoka;481;246
+Oklahoma;OK;Beaver;180;41
+Oklahoma;OK;Beckham;231;168
+Oklahoma;OK;Blaine;317;119
+Oklahoma;OK;Bryan;466;281
+Oklahoma;OK;Caddo;320;178
+Oklahoma;OK;Canadian;347;147
+Oklahoma;OK;Carter;394;257
+Oklahoma;OK;Cherokee;550;115
+Oklahoma;OK;Choctaw;515;275
+Oklahoma;OK;Cimarron;44;35
+Oklahoma;OK;Cleveland;392;176
+Oklahoma;OK;Coal;463;228
+Oklahoma;OK;Comanche;313;221
+Oklahoma;OK;Cotton;319;253
+Oklahoma;OK;Craig;534;42
+Oklahoma;OK;Creek;457;117
+Oklahoma;OK;Custer;278;138
+Oklahoma;OK;Delaware;562;71
+Oklahoma;OK;Dewey;278;108
+Oklahoma;OK;Ellis;228;88
+Oklahoma;OK;Garfield;361;76
+Oklahoma;OK;Garvin;393;218
+Oklahoma;OK;Grady;353;192
+Oklahoma;OK;Grant;361;41
+Oklahoma;OK;Greer;238;197
+Oklahoma;OK;Harmon;218;213
+Oklahoma;OK;Harper;235;40
+Oklahoma;OK;Haskell;543;173
+Oklahoma;OK;Hughes;466;189
+Oklahoma;OK;Jackson;247;227
+Oklahoma;OK;Jefferson;356;268
+Oklahoma;OK;Johnston;438;251
+Oklahoma;OK;Kay;404;39
+Oklahoma;OK;Kingfisher;350;113
+Oklahoma;OK;Kiowa;278;199
+Oklahoma;OK;Latimer;534;203
+Oklahoma;OK;Le Flore;572;200
+Oklahoma;OK;Lincoln;422;134
+Oklahoma;OK;Logan;384;115
+Oklahoma;OK;Love;397;282
+Oklahoma;OK;McClain;382;192
+Oklahoma;OK;McCurtain;569;266
+Oklahoma;OK;McIntosh;505;161
+Oklahoma;OK;Major;310;82
+Oklahoma;OK;Marshall;430;276
+Oklahoma;OK;Mayes;533;81
+Oklahoma;OK;Murray;409;237
+Oklahoma;OK;Muskogee;525;140
+Oklahoma;OK;Noble;398;75
+Oklahoma;OK;Nowata;506;40
+Oklahoma;OK;Okfuskee;460;153
+Oklahoma;OK;Oklahoma;386;147
+Oklahoma;OK;Okmulgee;484;138
+Oklahoma;OK;Osage;454;55
+Oklahoma;OK;Ottawa;560;35
+Oklahoma;OK;Pawnee;433;81
+Oklahoma;OK;Payne;415;102
+Oklahoma;OK;Pittsburg;500;199
+Oklahoma;OK;Pontotoc;436;217
+Oklahoma;OK;Pottawatomie;417;176
+Oklahoma;OK;Pushmataha;527;242
+Oklahoma;OK;Roger Mills;230;133
+Oklahoma;OK;Rogers;508;76
+Oklahoma;OK;Seminole;440;179
+Oklahoma;OK;Sequoyah;567;149
+Oklahoma;OK;Stephens;355;237
+Oklahoma;OK;Texas;113;39
+Oklahoma;OK;Tillman;281;246
+Oklahoma;OK;Tulsa;486;97
+Oklahoma;OK;Wagoner;514;111
+Oklahoma;OK;Washington;487;47
+Oklahoma;OK;Washita;278;168
+Oklahoma;OK;Woods;289;43
+Oklahoma;OK;Woodward;261;71
+Oregon;OR;Baker;411;144
+Oregon;OR;Benton;81;162
+Oregon;OR;Clackamas;151;107
+Oregon;OR;Clatsop;72;42
+Oregon;OR;Columbia;104;46
+Oregon;OR;Coos;42;268
+Oregon;OR;Crook;258;193
+Oregon;OR;Curry;33;325
+Oregon;OR;Deschutes;207;210
+Oregon;OR;Douglas;94;261
+Oregon;OR;Gilliam;266;93
+Oregon;OR;Grant;335;164
+Oregon;OR;Harney;339;279
+Oregon;OR;Hood River;184;81
+Oregon;OR;Jackson;118;329
+Oregon;OR;Jefferson;210;153
+Oregon;OR;Josephine;69;333
+Oregon;OR;Klamath;182;310
+Oregon;OR;Lake;256;302
+Oregon;OR;Lane;114;207
+Oregon;OR;Lincoln;57;149
+Oregon;OR;Linn;133;163
+Oregon;OR;Malheur;418;267
+Oregon;OR;Marion;130;130
+Oregon;OR;Morrow;301;90
+Oregon;OR;Multnomah;140;79
+Oregon;OR;Polk;83;129
+Oregon;OR;Sherman;239;91
+Oregon;OR;Tillamook;68;83
+Oregon;OR;Umatilla;349;74
+Oregon;OR;Union;390;96
+Oregon;OR;Wallowa;437;73
+Oregon;OR;Wasco;211;110
+Oregon;OR;Washington;103;76
+Oregon;OR;Wheeler;277;145
+Oregon;OR;Yamhill;90;102
+Pennsylvania;PA;Adams;348;336
+Pennsylvania;PA;Allegheny;73;254
+Pennsylvania;PA;Armstrong;126;210
+Pennsylvania;PA;Beaver;37;224
+Pennsylvania;PA;Bedford;221;318
+Pennsylvania;PA;Berks;477;263
+Pennsylvania;PA;Blair;236;255
+Pennsylvania;PA;Bradford;417;82
+Pennsylvania;PA;Bucks;559;272
+Pennsylvania;PA;Butler;81;195
+Pennsylvania;PA;Cambria;199;253
+Pennsylvania;PA;Cameron;251;128
+Pennsylvania;PA;Carbon;498;196
+Pennsylvania;PA;Centre;289;198
+Pennsylvania;PA;Chester;496;321
+Pennsylvania;PA;Clarion;131;159
+Pennsylvania;PA;Clarion;112;186
+Pennsylvania;PA;Clearfield;224;186
+Pennsylvania;PA;Clinton;307;156
+Pennsylvania;PA;Columbia;429;180
+Pennsylvania;PA;Crawford;65;92
+Pennsylvania;PA;Cumberland;344;298
+Pennsylvania;PA;Dauphin;392;264
+Pennsylvania;PA;Delaware;531;328
+Pennsylvania;PA;Elk;207;129
+Pennsylvania;PA;Erie;73;52
+Pennsylvania;PA;Erie;66;30
+Pennsylvania;PA;Erie;64;31
+Pennsylvania;PA;Fayette;105;327
+Pennsylvania;PA;Forest;150;117
+Pennsylvania;PA;Franklin;298;329
+Pennsylvania;PA;Fulton;259;329
+Pennsylvania;PA;Greene;46;335
+Pennsylvania;PA;Huntingdon;272;264
+Pennsylvania;PA;Indiana;162;231
+Pennsylvania;PA;Jefferson;172;169
+Pennsylvania;PA;Juniata;329;249
+Pennsylvania;PA;Lackawanna;506;127
+Pennsylvania;PA;Lancaster;446;313
+Pennsylvania;PA;Lawrence;40;183
+Pennsylvania;PA;Lebanon;424;270
+Pennsylvania;PA;Lehigh;510;237
+Pennsylvania;PA;Luzerne;469;162
+Pennsylvania;PA;Lycoming;363;141
+Pennsylvania;PA;McKean;215;79
+Pennsylvania;PA;Mercer;49;142
+Pennsylvania;PA;Mifflin;309;239
+Pennsylvania;PA;Monroe;534;177
+Pennsylvania;PA;Montgomery;534;289
+Pennsylvania;PA;Montour;403;183
+Pennsylvania;PA;Northampton;538;217
+Pennsylvania;PA;Northumberland;399;206
+Pennsylvania;PA;Perry;344;266
+Pennsylvania;PA;Philadelphia;557;316
+Pennsylvania;PA;Pike;563;140
+Pennsylvania;PA;Potter;281;88
+Pennsylvania;PA;Schuylkill;448;225
+Pennsylvania;PA;Snyder;363;217
+Pennsylvania;PA;Somerset;167;322
+Pennsylvania;PA;Sullivan;418;127
+Pennsylvania;PA;Susquehanna;486;76
+Pennsylvania;PA;Tioga;344;84
+Pennsylvania;PA;Union;364;191
+Pennsylvania;PA;Venango;98;131
+Pennsylvania;PA;Warren;147;77
+Pennsylvania;PA;Washington;45;290
+Pennsylvania;PA;Wayne;536;98
+Pennsylvania;PA;Westmoreland;124;276
+Pennsylvania;PA;Wyoming;466;117
+Pennsylvania;PA;York;398;330
+Puerto Rico;PR;Adjuntas;218;84
+Puerto Rico;PR;Aguada;148;52
+Puerto Rico;PR;Aguadilla;157;35
+Puerto Rico;PR;Aguas Buenas;323;71
+Puerto Rico;PR;Aibonito;300;92
+Puerto Rico;PR;A±asco;158;65
+Puerto Rico;PR;Arecibo;232;44
+Puerto Rico;PR;Arroyo;335;115
+Puerto Rico;PR;Barceloneta;251;37
+Puerto Rico;PR;Barranquitas;292;80
+Puerto Rico;PR;Bayam=n;316;54
+Puerto Rico;PR;Cabo Rojo;152;108
+Puerto Rico;PR;Caguas;335;78
+Puerto Rico;PR;Camuy;201;42
+Puerto Rico;PR;Can=vanas;363;58
+Puerto Rico;PR;Carolina;351;50
+Puerto Rico;PR;Cata±o;319;39
+Puerto Rico;PR;Cayey;319;97
+Puerto Rico;PR;Ceiba;402;72
+Puerto Rico;PR;Ciales;258;64
+Puerto Rico;PR;Cidra;318;85
+Puerto Rico;PR;Coamo;284;98
+Puerto Rico;PR;Comerfo;307;76
+Puerto Rico;PR;Corozal;289;62
+Puerto Rico;PR;Culebra;464;59
+Puerto Rico;PR;Dorado;297;39
+Puerto Rico;PR;Fajardo;399;60
+Puerto Rico;PR;Florida;251;50
+Puerto Rico;PR;Guﬂnica;191;118
+Puerto Rico;PR;Guayama;322;114
+Puerto Rico;PR;Guayanilla;212;107
+Puerto Rico;PR;Guaynabo;325;56
+Puerto Rico;PR;Gurabo;348;68
+Puerto Rico;PR;Hatillo;211;43
+Puerto Rico;PR;Hormigueros;158;91
+Puerto Rico;PR;Humacao;376;89
+Puerto Rico;PR;Isabela;177;37
+Puerto Rico;PR;Jayuya;246;78
+Puerto Rico;PR;Juana Dfaz;262;107
+Puerto Rico;PR;Juncos;359;75
+Puerto Rico;PR;Lajas;171;113
+Puerto Rico;PR;Lares;199;68
+Puerto Rico;PR;Las Marfas;180;74
+Puerto Rico;PR;Las Piedras;366;83
+Puerto Rico;PR;Lofza;361;41
+Puerto Rico;PR;Luquillo;390;55
+Puerto Rico;PR;Manatf;262;42
+Puerto Rico;PR;Maricao;187;85
+Puerto Rico;PR;Maunabo;357;112
+Puerto Rico;PR;Mayagnez;159;79
+Puerto Rico;PR;Mayagnez;28;99
+Puerto Rico;PR;Moca;164;49
+Puerto Rico;PR;Morovis;274;60
+Puerto Rico;PR;Naguabo;385;75
+Puerto Rico;PR;Naranjito;302;65
+Puerto Rico;PR;Orocovis;272;77
+Puerto Rico;PR;Orocovis;254;88
+Puerto Rico;PR;Patillas;342;110
+Puerto Rico;PR;Pe±uelas;224;104
+Puerto Rico;PR;Ponce;242;105
+Puerto Rico;PR;Quebradillas;190;38
+Puerto Rico;PR;Rinc=n;139;56
+Puerto Rico;PR;Rfo Grande;375;55
+Puerto Rico;PR;Sabana Grande;186;100
+Puerto Rico;PR;Salinas;301;113
+Puerto Rico;PR;San Germﬂn;171;95
+Puerto Rico;PR;San Juan;334;48
+Puerto Rico;PR;San Lorenzo;348;89
+Puerto Rico;PR;San Sebastiﬂn;182;58
+Puerto Rico;PR;Santa Isabel;279;116
+Puerto Rico;PR;Toa Alta;303;52
+Puerto Rico;PR;Toa Baja;308;40
+Puerto Rico;PR;Trujillo Alto;344;56
+Puerto Rico;PR;Utuado;227;68
+Puerto Rico;PR;Vega Alta;288;44
+Puerto Rico;PR;Vega Baja;278;40
+Puerto Rico;PR;Vieques;436;93
+Puerto Rico;PR;Villalba;265;93
+Puerto Rico;PR;Yabucoa;361;103
+Puerto Rico;PR;Yauco;201;99
+Rhode Island;RI;Bristol;205;141
+Rhode Island;RI;Kent;104;159
+Rhode Island;RI;Newport;207;217
+Rhode Island;RI;Newport;242;217
+Rhode Island;RI;Newport;174;217
+Rhode Island;RI;Newport;194;185
+Rhode Island;RI;Newport;206;172
+Rhode Island;RI;Providence;108;70
+Rhode Island;RI;Washington;93;244
+South Carolina;SC;Abbeville;91;132
+South Carolina;SC;Aiken;170;213
+South Carolina;SC;Allendale;196;279
+South Carolina;SC;Anderson;75;96
+South Carolina;SC;Bamberg;226;253
+South Carolina;SC;Barnwell;189;246
+South Carolina;SC;Beaufort;237;370
+South Carolina;SC;Beaufort;254;326
+South Carolina;SC;Beaufort;278;341
+South Carolina;SC;Berkeley;334;255
+South Carolina;SC;Calhoun;253;199
+South Carolina;SC;Charleston;320;310
+South Carolina;SC;Charleston;359;284
+South Carolina;SC;Charleston;315;278
+South Carolina;SC;Cherokee;173;35
+South Carolina;SC;Chester;217;78
+South Carolina;SC;Chesterfield;314;85
+South Carolina;SC;Clarendon;308;200
+South Carolina;SC;Colleton;263;293
+South Carolina;SC;Darlington;333;121
+South Carolina;SC;Dillon;389;114
+South Carolina;SC;Dorchester;289;269
+South Carolina;SC;Edgefield;138;186
+South Carolina;SC;Fairfield;221;113
+South Carolina;SC;Florence;358;158
+South Carolina;SC;Georgetown;394;225
+South Carolina;SC;Greenville;102;53
+South Carolina;SC;Greenwood;123;141
+South Carolina;SC;Hampton;217;304
+South Carolina;SC;Horry;427;169
+South Carolina;SC;Jasper;227;344
+South Carolina;SC;Kershaw;272;121
+South Carolina;SC;Lancaster;262;80
+South Carolina;SC;Laurens;136;102
+South Carolina;SC;Lee;304;141
+South Carolina;SC;Lexington;206;172
+South Carolina;SC;McCormick;104;170
+South Carolina;SC;Marion;391;150
+South Carolina;SC;Marlboro;360;89
+South Carolina;SC;Newberry;174;125
+South Carolina;SC;Oconee;34;68
+South Carolina;SC;Orangeburg;251;227
+South Carolina;SC;Pickens;67;52
+South Carolina;SC;Richland;242;158
+South Carolina;SC;Saluda;162;159
+South Carolina;SC;Spartanburg;138;49
+South Carolina;SC;Sumter;292;171
+South Carolina;SC;Union;173;78
+South Carolina;SC;Williamsburg;356;205
+South Carolina;SC;York;215;45
+South Dakota;SD;Aurora;392;233
+South Dakota;SD;Beadle;410;167
+South Dakota;SD;Bennett;181;282
+South Dakota;SD;Bon Homme;440;300
+South Dakota;SD;Brookings;510;168
+South Dakota;SD;Brown;403;56
+South Dakota;SD;Brule;357;233
+South Dakota;SD;Buffalo;348;199
+South Dakota;SD;Butte;62;117
+South Dakota;SD;Campbell;291;40
+South Dakota;SD;Charles Mix;391;281
+South Dakota;SD;Clark;446;124
+South Dakota;SD;Clay;502;306
+South Dakota;SD;Codington;481;112
+South Dakota;SD;Corson;216;46
+South Dakota;SD;Custer;61;233
+South Dakota;SD;Davison;420;236
+South Dakota;SD;Day;453;76
+South Dakota;SD;Deuel;516;131
+South Dakota;SD;Dewey;237;98
+South Dakota;SD;Douglas;406;264
+South Dakota;SD;Edmunds;346;73
+South Dakota;SD;Fall River;55;274
+South Dakota;SD;Faulk;351;106
+South Dakota;SD;Grant;509;93
+South Dakota;SD;Gregory;350;282
+South Dakota;SD;Haakon;191;179
+South Dakota;SD;Hamlin;482;141
+South Dakota;SD;Hand;361;155
+South Dakota;SD;Hanson;445;235
+South Dakota;SD;Harding;65;54
+South Dakota;SD;Hughes;295;170
+South Dakota;SD;Hutchinson;448;267
+South Dakota;SD;Hyde;329;155
+South Dakota;SD;Jackson;184;235
+South Dakota;SD;Jerauld;387;200
+South Dakota;SD;Jones;248;210
+South Dakota;SD;Kingsbury;463;170
+South Dakota;SD;Lake;488;202
+South Dakota;SD;Lawrence;41;168
+South Dakota;SD;Lincoln;518;271
+South Dakota;SD;Lyman;305;217
+South Dakota;SD;McCook;473;235
+South Dakota;SD;McPherson;346;41
+South Dakota;SD;Marshall;452;40
+South Dakota;SD;Meade;113;151
+South Dakota;SD;Mellette;243;246
+South Dakota;SD;Miner;456;202
+South Dakota;SD;Minnehaha;512;234
+South Dakota;SD;Moody;519;201
+South Dakota;SD;Pennington;104;204
+South Dakota;SD;Perkins;132;65
+South Dakota;SD;Potter;298;107
+South Dakota;SD;Roberts;495;50
+South Dakota;SD;Sanborn;423;203
+South Dakota;SD;Shannon;121;267
+South Dakota;SD;Spink;405;117
+South Dakota;SD;Stanley;245;168
+South Dakota;SD;Sully;286;139
+South Dakota;SD;Todd;246;283
+South Dakota;SD;Tripp;303;269
+South Dakota;SD;Turner;489;268
+South Dakota;SD;Union;524;312
+South Dakota;SD;Walworth;293;73
+South Dakota;SD;Yankton;473;297
+South Dakota;SD;Ziebach;184;114
+Tennessee;TN;Anderson;420;58
+Tennessee;TN;Bedford;270;109
+Tennessee;TN;Benton;163;62
+Tennessee;TN;Bledsoe;354;102
+Tennessee;TN;Blount;440;93
+Tennessee;TN;Bradley;378;139
+Tennessee;TN;Campbell;423;34
+Tennessee;TN;Cannon;297;85
+Tennessee;TN;Carroll;137;70
+Tennessee;TN;Carter;558;39
+Tennessee;TN;Cheatham;229;47
+Tennessee;TN;Chester;125;115
+Tennessee;TN;Claiborne;455;26
+Tennessee;TN;Clay;331;23
+Tennessee;TN;Cocke;493;72
+Tennessee;TN;Coffee;296;111
+Tennessee;TN;Crockett;91;82
+Tennessee;TN;Cumberland;367;73
+Tennessee;TN;Davidson;248;55
+Tennessee;TN;Decatur;159;101
+Tennessee;TN;DeKalb;312;71
+Tennessee;TN;Dickson;210;56
+Tennessee;TN;Dyer;74;61
+Tennessee;TN;Fayette;71;132
+Tennessee;TN;Fentress;371;37
+Tennessee;TN;Franklin;295;139
+Tennessee;TN;Gibson;105;67
+Tennessee;TN;Giles;231;135
+Tennessee;TN;Grainger;466;43
+Tennessee;TN;Greene;510;51
+Tennessee;TN;Grundy;319;120
+Tennessee;TN;Hamblen;482;48
+Tennessee;TN;Hamilton;357;136
+Tennessee;TN;Hancock;483;22
+Tennessee;TN;Hardeman;99;132
+Tennessee;TN;Hardin;154;134
+Tennessee;TN;Hawkins;503;28
+Tennessee;TN;Haywood;81;100
+Tennessee;TN;Henderson;141;96
+Tennessee;TN;Henry;148;40
+Tennessee;TN;Hickman;202;85
+Tennessee;TN;Houston;187;45
+Tennessee;TN;Humphreys;182;65
+Tennessee;TN;Jackson;322;39
+Tennessee;TN;Jefferson;471;62
+Tennessee;TN;Johnson;575;24
+Tennessee;TN;Knox;438;68
+Tennessee;TN;Lake;69;37
+Tennessee;TN;Lauderdale;59;85
+Tennessee;TN;Lawrence;207;133
+Tennessee;TN;Lewis;200;108
+Tennessee;TN;Lincoln;261;140
+Tennessee;TN;Loudon;414;89
+Tennessee;TN;McMinn;393;116
+Tennessee;TN;McNairy;128;136
+Tennessee;TN;Macon;300;25
+Tennessee;TN;Madison;111;99
+Tennessee;TN;Marion;326;141
+Tennessee;TN;Marshall;249;113
+Tennessee;TN;Maury;229;100
+Tennessee;TN;Meigs;380;109
+Tennessee;TN;Monroe;418;114
+Tennessee;TN;Montgomery;209;27
+Tennessee;TN;Moore;277;129
+Tennessee;TN;Morgan;391;57
+Tennessee;TN;Obion;92;36
+Tennessee;TN;Overton;348;40
+Tennessee;TN;Perry;176;97
+Tennessee;TN;Pickett;361;22
+Tennessee;TN;Polk;400;141
+Tennessee;TN;Putnam;334;57
+Tennessee;TN;Rhea;373;101
+Tennessee;TN;Roane;399;81
+Tennessee;TN;Robertson;243;25
+Tennessee;TN;Rutherford;273;82
+Tennessee;TN;Scott;400;32
+Tennessee;TN;Sequatchie;341;121
+Tennessee;TN;Sevier;466;84
+Tennessee;TN;Shelby;39;132
+Tennessee;TN;Smith;303;48
+Tennessee;TN;Stewart;179;26
+Tennessee;TN;Sullivan;545;21
+Tennessee;TN;Sumner;270;30
+Tennessee;TN;Tipton;51;106
+Tennessee;TN;Trousdale;291;36
+Tennessee;TN;Unicoi;538;55
+Tennessee;TN;Union;444;43
+Tennessee;TN;Van Buren;337;94
+Tennessee;TN;Warren;315;95
+Tennessee;TN;Washington;533;40
+Tennessee;TN;Wayne;180;131
+Tennessee;TN;Weakley;120;42
+Tennessee;TN;White;337;75
+Tennessee;TN;Williamson;241;78
+Tennessee;TN;Wilson;281;57
+Texas;TX;Anderson;322;161
+Texas;TX;Andrews;120;149
+Texas;TX;Angelina;353;178
+Texas;TX;Aransas;286;292
+Texas;TX;Archer;233;103
+Texas;TX;Armstrong;157;59
+Texas;TX;Atascosa;242;264
+Texas;TX;Austin;307;227
+Texas;TX;Bailey;115;89
+Texas;TX;Bandera;220;236
+Texas;TX;Bastrop;277;222
+Texas;TX;Baylor;218;104
+Texas;TX;Bee;266;280
+Texas;TX;Bell;270;190
+Texas;TX;Bexar;241;246
+Texas;TX;Blanco;244;218
+Texas;TX;Borden;155;135
+Texas;TX;Bosque;264;161
+Texas;TX;Bowie;353;103
+Texas;TX;Brazoria;333;250
+Texas;TX;Brazos;305;201
+Texas;TX;Brewster;101;234
+Texas;TX;Briscoe;160;73
+Texas;TX;Brooks;253;327
+Texas;TX;Brown;225;166
+Texas;TX;Burleson;296;208
+Texas;TX;Burnet;250;199
+Texas;TX;Caldwell;268;231
+Texas;TX;Calhoun;299;274
+Texas;TX;Callahan;214;148
+Texas;TX;Cameron;275;356
+Texas;TX;Camp;338;120
+Texas;TX;Carson;157;43
+Texas;TX;Cass;356;115
+Texas;TX;Castro;131;73
+Texas;TX;Chambers;358;229
+Texas;TX;Cherokee;336;159
+Texas;TX;Childress;189;73
+Texas;TX;Clay;246;97
+Texas;TX;Cochran;115;105
+Texas;TX;Coke;181;164
+Texas;TX;Coleman;212;166
+Texas;TX;Collin;293;115
+Texas;TX;Collingsworth;187;58
+Texas;TX;Colorado;301;237
+Texas;TX;Comal;248;233
+Texas;TX;Comanche;238;160
+Texas;TX;Concho;200;183
+Texas;TX;Cooke;274;101
+Texas;TX;Coryell;260;178
+Texas;TX;Cottle;187;88
+Texas;TX;Crane;123;179
+Texas;TX;Crockett;156;203
+Texas;TX;Crosby;159;105
+Texas;TX;Culberson;65;177
+Texas;TX;Dallam;123;13
+Texas;TX;Dallas;288;130
+Texas;TX;Dawson;140;135
+Texas;TX;Deaf Smith;122;58
+Texas;TX;Delta;318;107
+Texas;TX;Denton;277;115
+Texas;TX;DeWitt;276;257
+Texas;TX;Dickens;173;105
+Texas;TX;Dimmit;206;282
+Texas;TX;Donley;171;58
+Texas;TX;Duval;244;305
+Texas;TX;Eastland;229;148
+Texas;TX;Ector;123;164
+Texas;TX;Edwards;188;229
+Texas;TX;El Paso;16;164
+Texas;TX;Ellis;288;144
+Texas;TX;Erath;247;150
+Texas;TX;Falls;285;182
+Texas;TX;Fannin;305;101
+Texas;TX;Fayette;288;229
+Texas;TX;Fisher;184;135
+Texas;TX;Floyd;159;89
+Texas;TX;Foard;201;92
+Texas;TX;Fort Bend;323;239
+Texas;TX;Franklin;331;113
+Texas;TX;Freestone;308;165
+Texas;TX;Frio;225;266
+Texas;TX;Gaines;121;135
+Texas;TX;Galveston;345;242
+Texas;TX;Galveston;364;234
+Texas;TX;Garza;159;120
+Texas;TX;Gillespie;228;216
+Texas;TX;Glasscock;153;165
+Texas;TX;Goliad;275;271
+Texas;TX;Gonzales;272;244
+Texas;TX;Gray;171;43
+Texas;TX;Grayson;289;101
+Texas;TX;Gregg;344;136
+Texas;TX;Grimes;315;205
+Texas;TX;Guadalupe;259;240
+Texas;TX;Hale;144;89
+Texas;TX;Hall;176;73
+Texas;TX;Hamilton;251;168
+Texas;TX;Hansford;156;13
+Texas;TX;Hardeman;202;81
+Texas;TX;Hardin;362;209
+Texas;TX;Harris;334;227
+Texas;TX;Harrison;357;133
+Texas;TX;Hartley;122;28
+Texas;TX;Haskell;203;119
+Texas;TX;Hays;255;224
+Texas;TX;Hemphill;187;28
+Texas;TX;Henderson;316;148
+Texas;TX;Hidalgo;255;348
+Texas;TX;Hill;279;157
+Texas;TX;Hockley;129;104
+Texas;TX;Hood;258;143
+Texas;TX;Hopkins;322;115
+Texas;TX;Houston;330;177
+Texas;TX;Howard;155;150
+Texas;TX;Hudspeth;40;176
+Texas;TX;Hunt;307;117
+Texas;TX;Hutchinson;157;28
+Texas;TX;Irion;168;184
+Texas;TX;Jack;247;116
+Texas;TX;Jackson;300;260
+Texas;TX;Jasper;372;194
+Texas;TX;Jeff Davis;75;202
+Texas;TX;Jefferson;370;224
+Texas;TX;Jim Hogg;239;327
+Texas;TX;Jim Wells;256;303
+Texas;TX;Johnson;271;144
+Texas;TX;Jones;199;134
+Texas;TX;Karnes;262;263
+Texas;TX;Kaufman;302;135
+Texas;TX;Kendall;235;229
+Texas;TX;Kenedy;268;330
+Texas;TX;Kent;174;120
+Texas;TX;Kerr;216;225
+Texas;TX;Kimble;204;211
+Texas;TX;King;188;104
+Texas;TX;Kinney;185;250
+Texas;TX;Kleberg;268;313
+Texas;TX;Knox;202;104
+Texas;TX;La Salle;225;283
+Texas;TX;Lamar;320;97
+Texas;TX;Lamb;128;89
+Texas;TX;Lampasas;248;186
+Texas;TX;Lavaca;289;246
+Texas;TX;Lee;286;214
+Texas;TX;Leon;313;179
+Texas;TX;Liberty;350;216
+Texas;TX;Limestone;295;171
+Texas;TX;Lipscomb;186;13
+Texas;TX;Live Oak;254;282
+Texas;TX;Llano;235;203
+Texas;TX;Loving;93;164
+Texas;TX;Lubbock;144;105
+Texas;TX;Lynn;144;120
+Texas;TX;Madison;316;190
+Texas;TX;Marion;356;125
+Texas;TX;Martin;140;150
+Texas;TX;Mason;219;203
+Texas;TX;Matagorda;318;262
+Texas;TX;Maverick;188;271
+Texas;TX;McCulloch;216;187
+Texas;TX;McLennan;277;172
+Texas;TX;McMullen;241;283
+Texas;TX;Medina;224;249
+Texas;TX;Menard;202;197
+Texas;TX;Midland;138;165
+Texas;TX;Milam;285;198
+Texas;TX;Mills;238;176
+Texas;TX;Mitchell;170;150
+Texas;TX;Montague;259;101
+Texas;TX;Montgomery;329;212
+Texas;TX;Moore;142;28
+Texas;TX;Morris;345;115
+Texas;TX;Motley;173;89
+Texas;TX;Nacogdoches;352;165
+Texas;TX;Navarro;298;154
+Texas;TX;Newton;380;192
+Texas;TX;Nolan;185;150
+Texas;TX;Nueces;270;303
+Texas;TX;Ochiltree;172;13
+Texas;TX;Oldham;122;43
+Texas;TX;Orange;377;215
+Texas;TX;Palo Pinto;244;133
+Texas;TX;Panola;360;146
+Texas;TX;Parker;259;131
+Texas;TX;Parmer;117;73
+Texas;TX;Pecos;116;201
+Texas;TX;Polk;348;194
+Texas;TX;Potter;141;43
+Texas;TX;Presidio;72;227
+Texas;TX;Rains;316;125
+Texas;TX;Randall;142;59
+Texas;TX;Reagan;152;181
+Texas;TX;Real;202;233
+Texas;TX;Red River;335;98
+Texas;TX;Reeves;89;182
+Texas;TX;Refugio;284;282
+Texas;TX;Roberts;172;28
+Texas;TX;Robertson;298;189
+Texas;TX;Rockwall;298;125
+Texas;TX;Runnels;197;165
+Texas;TX;Rusk;347;149
+Texas;TX;Sabine;375;173
+Texas;TX;San Augustine;366;172
+Texas;TX;San Jacinto;339;202
+Texas;TX;San Patricio;273;293
+Texas;TX;San Saba;231;188
+Texas;TX;Schleicher;181;197
+Texas;TX;Scurry;170;135
+Texas;TX;Shackelford;214;134
+Texas;TX;Shelby;365;159
+Texas;TX;Sherman;142;13
+Texas;TX;Smith;332;141
+Texas;TX;Somervell;260;150
+Texas;TX;Starr;238;343
+Texas;TX;Stephens;229;133
+Texas;TX;Sterling;166;166
+Texas;TX;Stonewall;188;120
+Texas;TX;Sutton;181;211
+Texas;TX;Swisher;146;74
+Texas;TX;Tarrant;273;131
+Texas;TX;Taylor;199;149
+Texas;TX;Terrell;136;221
+Texas;TX;Terry;129;120
+Texas;TX;Throckmorton;218;118
+Texas;TX;Titus;338;112
+Texas;TX;Tom Green;183;180
+Texas;TX;Travis;262;215
+Texas;TX;Trinity;339;184
+Texas;TX;Tyler;361;194
+Texas;TX;Upshur;340;128
+Texas;TX;Upton;137;182
+Texas;TX;Uvalde;205;250
+Texas;TX;Val Verde;163;231
+Texas;TX;Van Zandt;315;136
+Texas;TX;Victoria;289;266
+Texas;TX;Walker;326;197
+Texas;TX;Waller;316;223
+Texas;TX;Ward;106;176
+Texas;TX;Washington;303;217
+Texas;TX;Webb;219;304
+Texas;TX;Wharton;310;249
+Texas;TX;Wheeler;187;43
+Texas;TX;Wichita;231;91
+Texas;TX;Wilbarger;216;88
+Texas;TX;Willacy;270;345
+Texas;TX;Williamson;267;203
+Texas;TX;Wilson;255;254
+Texas;TX;Winkler;108;164
+Texas;TX;Wise;262;116
+Texas;TX;Wood;327;127
+Texas;TX;Yoakum;115;120
+Texas;TX;Young;233;119
+Texas;TX;Zapata;224;329
+Texas;TX;Zavala;205;267
+Utah;UT;Beaver;62;296
+Utah;UT;Box Elder;69;48
+Utah;UT;Box Elder;119;69
+Utah;UT;Cache;152;36
+Utah;UT;Carbon;220;196
+Utah;UT;Daggett;281;99
+Utah;UT;Davis;141;91
+Utah;UT;Davis;125;95
+Utah;UT;Duchesne;229;146
+Utah;UT;Emery;214;247
+Utah;UT;Garfield;169;336
+Utah;UT;Grand;281;247
+Utah;UT;Iron;58;335
+Utah;UT;Juab;90;192
+Utah;UT;Kane;142;380
+Utah;UT;Millard;71;241
+Utah;UT;Morgan;162;85
+Utah;UT;Piute;129;299
+Utah;UT;Rich;181;42
+Utah;UT;Salt Lake;142;118
+Utah;UT;San Juan;270;353
+Utah;UT;Sanpete;162;218
+Utah;UT;Sevier;148;267
+Utah;UT;Summit;198;102
+Utah;UT;Tooele;69;136
+Utah;UT;Uintah;282;158
+Utah;UT;Utah;156;160
+Utah;UT;Wasatch;186;144
+Utah;UT;Washington;44;380
+Utah;UT;Wayne;202;299
+Utah;UT;Weber;147;70
+Utah;UT;Weber;117;78
+Vermont;VT;Addison;46;180
+Vermont;VT;Bennington;51;349
+Vermont;VT;Caledonia;173;106
+Vermont;VT;Chittenden;54;107
+Vermont;VT;Essex;217;61
+Vermont;VT;Franklin;75;39
+Vermont;VT;Grand Isle;29;50
+Vermont;VT;Lamoille;108;82
+Vermont;VT;Orange;140;185
+Vermont;VT;Orleans;156;44
+Vermont;VT;Rutland;59;257
+Vermont;VT;Washington;111;139
+Vermont;VT;Windham;98;357
+Vermont;VT;Windsor;115;258
+Virgin Islands;VI;St. Thomas;528;55
+Virgin Islands;VI;St. John;553;55
+Virgin Islands;VI;St. Croix;542;148
+Virginia;VA;Accomack;561;156
+Virginia;VA;Albemarle;364;137
+Virginia;VA;Alleghany;265;156
+Virginia;VA;Amelia;402;197
+Virginia;VA;Amherst;323;173
+Virginia;VA;Appomattox;346;193
+Virginia;VA;Arlington;461;62
+Virginia;VA;Augusta;325;124
+Virginia;VA;Bath;284;133
+Virginia;VA;Bedford;297;204
+Virginia;VA;Bland;188;211
+Virginia;VA;Botetourt;278;176
+Virginia;VA;Brunswick;411;246
+Virginia;VA;Buchanan;126;198
+Virginia;VA;Buckingham;365;176
+Virginia;VA;Campbell;327;208
+Virginia;VA;Caroline;445;136
+Virginia;VA;Carroll;214;247
+Virginia;VA;Charles City;465;194
+Virginia;VA;Charlotte;356;225
+Virginia;VA;Chesterfield;429;193
+Virginia;VA;Clarke;401;42
+Virginia;VA;Craig;251;183
+Virginia;VA;Culpeper;404;96
+Virginia;VA;Cumberland;384;181
+Virginia;VA;Dickenson;104;209
+Virginia;VA;Dinwiddie;427;219
+Virginia;VA;Essex;472;144
+Virginia;VA;Fairfax;449;71
+Virginia;VA;Fauquier;414;75
+Virginia;VA;Floyd;239;230
+Virginia;VA;Fluvanna;382;153
+Virginia;VA;Franklin;273;225
+Virginia;VA;Frederick;384;34
+Virginia;VA;Giles;217;196
+Virginia;VA;Gloucester;499;186
+Virginia;VA;Goochland;407;163
+Virginia;VA;Grayson;180;252
+Virginia;VA;Greene;370;113
+Virginia;VA;Greensville;431;254
+Virginia;VA;Halifax;337;246
+Virginia;VA;Hanover;435;160
+Virginia;VA;Henrico;448;184
+Virginia;VA;Henrico;432;171
+Virginia;VA;Henry;269;259
+Virginia;VA;Highland;296;107
+Virginia;VA;Isle of Wight;489;235
+Virginia;VA;James City;483;195
+Virginia;VA;King and Queen;476;162
+Virginia;VA;King George;458;115
+Virginia;VA;King William;462;163
+Virginia;VA;Lancaster;505;159
+Virginia;VA;Lee;50;242
+Virginia;VA;Loudoun;425;44
+Virginia;VA;Louisa;404;141
+Virginia;VA;Lunenburg;384;230
+Virginia;VA;Madison;382;103
+Virginia;VA;Mathews;518;188
+Virginia;VA;Mecklenburg;377;253
+Virginia;VA;Middlesex;496;169
+Virginia;VA;Montgomery;238;209
+Virginia;VA;Nelson;341;157
+Virginia;VA;New Kent;468;182
+Virginia;VA;Northampton;544;191
+Virginia;VA;Northumberland;506;147
+Virginia;VA;Nottoway;397;214
+Virginia;VA;Orange;400;118
+Virginia;VA;Page;369;85
+Virginia;VA;Patrick;244;252
+Virginia;VA;Pittsylvania;305;241
+Virginia;VA;Powhatan;407;178
+Virginia;VA;Prince Edward;371;207
+Virginia;VA;Prince George;454;210
+Virginia;VA;Prince William;436;78
+Virginia;VA;Pulaski;215;218
+Virginia;VA;Rappahannock;390;80
+Virginia;VA;Richmond;488;143
+Virginia;VA;Roanoke;252;196
+Virginia;VA;Rockbridge;303;154
+Virginia;VA;Rockingham;342;95
+Virginia;VA;Russell;120;226
+Virginia;VA;Scott;85;244
+Virginia;VA;Shenandoah;363;65
+Virginia;VA;Smyth;159;235
+Virginia;VA;Southampton;463;250
+Virginia;VA;Spotsylvania;424;123
+Virginia;VA;Stafford;437;102
+Virginia;VA;Surry;477;216
+Virginia;VA;Sussex;452;232
+Virginia;VA;Tazewell;157;211
+Virginia;VA;Warren;387;60
+Virginia;VA;Washington;129;245
+Virginia;VA;Westmoreland;482;129
+Virginia;VA;Wise;84;221
+Virginia;VA;Wythe;190;230
+Virginia;VA;York;499;204
+Virginia;VA;Alexandria City;463;67
+Virginia;VA;Bedford City;298;196
+Virginia;VA;Bristol City;115;254
+Virginia;VA;Buena Vista City;310;161
+Virginia;VA;Charlottesville City;368;136
+Virginia;VA;Chesapeake City;518;251
+Virginia;VA;Colonial Heights City;443;203
+Virginia;VA;Covington City;267;157
+Virginia;VA;Danville City;305;262
+Virginia;VA;Emporia City;433;252
+Virginia;VA;Fairfax City;447;65
+Virginia;VA;Falls Church City;456;62
+Virginia;VA;Franklin City;475;253
+Virginia;VA;Fredericksburg City;436;113
+Virginia;VA;Galax City;201;252
+Virginia;VA;Hampton City;511;220
+Virginia;VA;Harrisonburg City;342;100
+Virginia;VA;Hopewell City;448;201
+Virginia;VA;Lexington City;304;157
+Virginia;VA;Lynchburg City;321;191
+Virginia;VA;Manassas City;436;74
+Virginia;VA;Manassas Park City;437;72
+Virginia;VA;Martinsville City;273;252
+Virginia;VA;Newport News City;502;213
+Virginia;VA;Newport News City;509;225
+Virginia;VA;Norfolk City;522;234
+Virginia;VA;Norton City;84;225
+Virginia;VA;Petersburg City;443;208
+Virginia;VA;Poquoson City;514;214
+Virginia;VA;Portsmouth City;515;240
+Virginia;VA;Portsmouth City;513;235
+Virginia;VA;Radford City;225;214
+Virginia;VA;Richmond City;437;180
+Virginia;VA;Roanoke City;268;200
+Virginia;VA;Salem City;261;200
+Virginia;VA;Staunton City;329;125
+Virginia;VA;Suffolk City;494;253
+Virginia;VA;Virginia Beach City;536;243
+Virginia;VA;Waynesboro City;339;133
+Virginia;VA;Williamsburg City;489;203
+Virginia;VA;Winchester City;389;36
+Washington;WA;Adams;461;233
+Washington;WA;Asotin;564;315
+Washington;WA;Benton;391;314
+Washington;WA;Chelan;309;141
+Washington;WA;Clallam;69;116
+Washington;WA;Clark;169;361
+Washington;WA;Columbia;511;306
+Washington;WA;Cowlitz;155;316
+Washington;WA;Douglas;377;154
+Washington;WA;Ferry;461;75
+Washington;WA;Franklin;436;282
+Washington;WA;Garfield;537;290
+Washington;WA;Grant;395;211
+Washington;WA;Grays Harbor;78;211
+Washington;WA;Island;177;125
+Washington;WA;Island;174;102
+Washington;WA;Jefferson;91;149
+Washington;WA;King;223;179
+Washington;WA;King;173;184
+Washington;WA;King;177;189
+Washington;WA;Kitsap;157;179
+Washington;WA;Kitsap;169;162
+Washington;WA;Kittitas;305;219
+Washington;WA;Klickitat;296;353
+Washington;WA;Lewis;177;276
+Washington;WA;Lincoln;470;170
+Washington;WA;Mason;119;192
+Washington;WA;Okanogan;373;68
+Washington;WA;Pacific;81;275
+Washington;WA;Pacific;60;285
+Washington;WA;Pend Oreille;550;67
+Washington;WA;Pierce;203;231
+Washington;WA;Pierce;154;190
+Washington;WA;Pierce;165;190
+Washington;WA;Pierce;157;208
+Washington;WA;Pierce;156;212
+Washington;WA;San Juan;132;66
+Washington;WA;San Juan;143;54
+Washington;WA;San Juan;145;73
+Washington;WA;San Juan;152;63
+Washington;WA;San Juan;152;69
+Washington;WA;San Juan;137;49
+Washington;WA;San Juan;141;63
+Washington;WA;Skagit;232;75
+Washington;WA;Skagit;165;66
+Washington;WA;Skagit;159;63
+Washington;WA;Skamania;212;336
+Washington;WA;Snohomish;232;120
+Washington;WA;Spokane;544;164
+Washington;WA;Stevens;509;82
+Washington;WA;Thurston;146;239
+Washington;WA;Wahkiakum;100;304
+Washington;WA;Walla Walla;468;313
+Washington;WA;Whatcom;232;38
+Washington;WA;Whatcom;160;47
+Washington;WA;Whatcom;164;52
+Washington;WA;Whitman;538;240
+Washington;WA;Yakima;300;291
+West Virginia;WV;Barbour;241;178
+West Virginia;WV;Berkeley;410;138
+West Virginia;WV;Boone;91;303
+West Virginia;WV;Braxton;179;227
+West Virginia;WV;Brooke;191;49
+West Virginia;WV;Cabell;46;257
+West Virginia;WV;Calhoun;144;211
+West Virginia;WV;Clay;148;254
+West Virginia;WV;Doddridge;180;163
+West Virginia;WV;Fayette;147;303
+West Virginia;WV;Gilmer;167;202
+West Virginia;WV;Grant;311;181
+West Virginia;WV;Greenbrier;202;313
+West Virginia;WV;Hampshire;361;156
+West Virginia;WV;Hancock;191;21
+West Virginia;WV;Hardy;340;191
+West Virginia;WV;Harrison;208;161
+West Virginia;WV;Jackson;96;212
+West Virginia;WV;Jefferson;425;156
+West Virginia;WV;Kanawha;108;268
+West Virginia;WV;Lewis;198;193
+West Virginia;WV;Lincoln;60;285
+West Virginia;WV;Logan;71;325
+West Virginia;WV;McDowell;96;376
+West Virginia;WV;Marion;220;136
+West Virginia;WV;Marshall;184;96
+West Virginia;WV;Mason;65;218
+West Virginia;WV;Mercer;144;374
+West Virginia;WV;Mineral;332;146
+West Virginia;WV;Mingo;54;336
+West Virginia;WV;Monongalia;237;122
+West Virginia;WV;Monroe;193;356
+West Virginia;WV;Morgan;391;128
+West Virginia;WV;Nicholas;172;274
+West Virginia;WV;Ohio;188;69
+West Virginia;WV;Pendleton;298;229
+West Virginia;WV;Pleasants;141;151
+West Virginia;WV;Pocahontas;241;269
+West Virginia;WV;Preston;269;139
+West Virginia;WV;Putnam;75;248
+West Virginia;WV;Raleigh;132;332
+West Virginia;WV;Randolph;252;219
+West Virginia;WV;Ritchie;149;173
+West Virginia;WV;Roane;124;225
+West Virginia;WV;Summers;166;346
+West Virginia;WV;Taylor;237;155
+West Virginia;WV;Tucker;279;180
+West Virginia;WV;Tyler;165;141
+West Virginia;WV;Upshur;221;205
+West Virginia;WV;Wayne;29;288
+West Virginia;WV;Webster;205;251
+West Virginia;WV;Wetzel;186;125
+West Virginia;WV;Wirt;122;191
+West Virginia;WV;Wood;110;169
+West Virginia;WV;Wyoming;105;350
+Wisconsin;WI;Adams;211;269
+Wisconsin;WI;Ashland;158;74
+Wisconsin;WI;Ashland;174;8
+Wisconsin;WI;Ashland;156;17
+Wisconsin;WI;Ashland;158;28
+Wisconsin;WI;Ashland;165;17
+Wisconsin;WI;Ashland;163;25
+Wisconsin;WI;Barron;88;143
+Wisconsin;WI;Bayfield;128;51
+Wisconsin;WI;Brown;318;228
+Wisconsin;WI;Buffalo;91;231
+Wisconsin;WI;Burnett;58;104
+Wisconsin;WI;Calumet;305;259
+Wisconsin;WI;Chippewa;121;174
+Wisconsin;WI;Clark;160;203
+Wisconsin;WI;Columbia;238;312
+Wisconsin;WI;Crawford;139;330
+Wisconsin;WI;Dane;232;345
+Wisconsin;WI;Dodge;275;316
+Wisconsin;WI;Door;364;179
+Wisconsin;WI;Door;346;201
+Wisconsin;WI;Door;383;148
+Wisconsin;WI;Door;356;165
+Wisconsin;WI;Douglas;86;58
+Wisconsin;WI;Dunn;84;183
+Wisconsin;WI;Eau Claire;120;203
+Wisconsin;WI;Florence;293;109
+Wisconsin;WI;Fond du Lac;289;287
+Wisconsin;WI;Forest;271;125
+Wisconsin;WI;Grant;152;361
+Wisconsin;WI;Green;220;378
+Wisconsin;WI;Green Lake;255;283
+Wisconsin;WI;Iowa;187;351
+Wisconsin;WI;Iron;185;74
+Wisconsin;WI;Jackson;148;238
+Wisconsin;WI;Jefferson;272;350
+Wisconsin;WI;Juneau;189;272
+Wisconsin;WI;Kenosha;317;387
+Wisconsin;WI;Kewaunee;341;222
+Wisconsin;WI;La Crosse;129;273
+Wisconsin;WI;Lafayette;187;379
+Wisconsin;WI;Langlade;253;159
+Wisconsin;WI;Lincoln;214;153
+Wisconsin;WI;Manitowoc;330;256
+Wisconsin;WI;Marathon;212;190
+Wisconsin;WI;Marinette;315;149
+Wisconsin;WI;Marquette;233;281
+Wisconsin;WI;Menominee;275;181
+Wisconsin;WI;Milwaukee;321;350
+Wisconsin;WI;Monroe;159;270
+Wisconsin;WI;Oconto;302;179
+Wisconsin;WI;Oneida;227;121
+Wisconsin;WI;Outagamie;290;231
+Wisconsin;WI;Ozaukee;322;318
+Wisconsin;WI;Pepin;76;208
+Wisconsin;WI;Pierce;51;201
+Wisconsin;WI;Polk;53;138
+Wisconsin;WI;Portage;227;226
+Wisconsin;WI;Price;177;123
+Wisconsin;WI;Racine;316;373
+Wisconsin;WI;Richland;170;319
+Wisconsin;WI;Rock;253;379
+Wisconsin;WI;Rusk;168;163
+Wisconsin;WI;St. Croix;51;175
+Wisconsin;WI;Sauk;199;315
+Wisconsin;WI;Sawyer;131;105
+Wisconsin;WI;Shawano;271;199
+Wisconsin;WI;Sheboygan;322;290
+Wisconsin;WI;Taylor;130;140
+Wisconsin;WI;Trempealeau;114;239
+Wisconsin;WI;Vernon;145;300
+Wisconsin;WI;Vilas;227;92
+Wisconsin;WI;Walworth;286;380
+Wisconsin;WI;Washburn;93;103
+Wisconsin;WI;Washington;305;320
+Wisconsin;WI;Waukesha;301;350
+Wisconsin;WI;Waupaca;259;226
+Wisconsin;WI;Waushara;243;257
+Wisconsin;WI;Winnebago;279;261
+Wisconsin;WI;Wood;194;227
+Wyoming;WY;Albany;362;316
+Wyoming;WY;Big Horn;214;61
+Wyoming;WY;Campbell;369;85
+Wyoming;WY;Carbon;283;313
+Wyoming;WY;Converse;374;198
+Wyoming;WY;Crook;430;53
+Wyoming;WY;Fremont;173;193
+Wyoming;WY;Goshen;451;275
+Wyoming;WY;Hot Springs;186;133
+Wyoming;WY;Johnson;304;105
+Wyoming;WY;Laramie;431;345
+Wyoming;WY;Lincoln;40;259
+Wyoming;WY;Natrona;291;200
+Wyoming;WY;Niobrara;440;189
+Wyoming;WY;Park;114;60
+Wyoming;WY;Platte;411;272
+Wyoming;WY;Sheridan;285;38
+Wyoming;WY;Sublette;89;215
+Wyoming;WY;Sweetwater;154;315
+Wyoming;WY;Teton;49;110
+Wyoming;WY;Uinta;44;346
+Wyoming;WY;Washakie;234;116
+Wyoming;WY;Weston;432;120
+<enddata>

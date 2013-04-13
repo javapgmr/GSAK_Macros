@@ -1,0 +1,23 @@
+# MacVersion = 1.01                                                            
+# MacDescription = Select caches placed during a specific period by hiders who have more than 10 hides in a specific period     
+# MacAuthor = Big Wolf                                                         
+# MacFileName = SelectHidesDuringaSpecificPeriod.gsk                                                      
+# MacURL = http://gsak.net/board/index.php?showtopic=16544&view=findpost&p=115149 
+
+
+
+# remove / add the comment symbol i.e. '#' to run the filter you want
+
+
+#Part 1   hidden within a special period of time (e.g. 1.1.2008 - 31.12.2008)
+#MFILTER where=PlacedDate >= '2008-01-01' and PlacedDate <= '2008-12-31' 
+
+
+#Part 2  hidden by owners who have hidden a special number of caches within that period (e.g. 3-6 caches or >10 caches )
+#MFILTER where=ownerid in (select ownerid from caches where PlacedDate >= '2008-01-01' and PlacedDate <= '2008-12-31' group by ownerid having count(ownerid) > 10)
+# or
+#MFILTER where=ownerid in (select ownerid from caches where PlacedDate >= '2008-01-01' and PlacedDate <= '2008-12-31' group by ownerid having count(ownerid) >=3  and count(ownerid) <=6  )
+
+
+#Part 1 & 2 combined
+MFILTER where=PlacedDate >= '2008-01-01' and PlacedDate <= '2008-12-31' and ownerid in (select ownerid from caches where PlacedDate >= '2008-01-01' and PlacedDate <= '2008-12-31' group by ownerid having count(ownerid) > 10)

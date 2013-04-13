@@ -1,0 +1,97 @@
+#***************************************
+#   Calculate Centroid of a Database
+#   v0.2 modified  11/30/12
+#   Lignumaqua
+#
+#***************************************
+
+# MacVersion = 0.2
+# MacDescription = Calculate Centroid of a Database
+# MacAuthor = Lignumaqua
+# MacFileName = Centroid.gsk
+
+VERCHECK Version=7.7.0.0 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+
+
+
+# Parameters for WGS84 ellipsoid
+# $ecc is eccentricity squared
+$axis = 6378137
+$ecc = 0.00669438038
+
+$x = 0
+$y = 0
+$z = 0
+$pi = 3.14159265359
+
+
+# x
+$_sql = "SELECT AVG(($axis / (SQRT(1-($ecc * SIN(RADIANS(Latitude + 0))) * SIN(RADIANS(Latitude + 0))))) * (COS(RADIANS(latitude + 0)) * SIN(RADIANS(longitude + 0)))) FROM caches"
+$x = Val(Sqlite("sql",$_sql))
+
+# y
+$_sql = "SELECT AVG(($axis / (SQRT(1-($ecc * SIN(RADIANS(Latitude + 0))) * SIN(RADIANS(Latitude + 0))))) * (-1 * COS(RADIANS(latitude + 0)) * COS(RADIANS(longitude + 0)))) FROM caches"
+$y = Val(Sqlite("sql",$_sql))
+
+# z
+$_sql = "SELECT AVG(($axis / (SQRT(1-($ecc * SIN(RADIANS(Latitude + 0))) * SIN(RADIANS(Latitude + 0))))) * (1 - $ecc) * SIN(RADIANS(latitude + 0))) FROM caches"
+$z = Val(Sqlite("sql",$_sql))
+
+
+# Project the average point back up to the surface of the WGS84 Ellipsoid
+# Note this requires iteration
+
+# Longitude = ArcTan2(x, -y)
+$y = -$y
+
+$longitudeN = ArcTan2($x,$y)
+
+# Latitude = ArcTan2(z, sqrt(x*x + y*y))
+
+$y = Sqrt(Sqr($x) + Sqr($y))
+
+$latitudeN = ArcTan2($z,($y * (1 - $ecc)))
+$v = $axis / (Sqrt(1-($ecc * Sin($LatitudeN) * Sin($LatitudeN))))
+$errvalue = 1
+$tmpN = 0
+
+$tmpM = 0
+WHILE $errvalue > 0.000001 AND $tmpM <5
+	$tmpM = $tmpM + 1
+	$x = ($ecc * $v * Sin($LatitudeN))
+	$tmpN = ArcTan2($z + $x, $y)
+	$errvalue = Abs($tmpN - $LatitudeN)
+	$LatitudeN = $tmpN
+ENDWHILE
+
+# Convert from radians to degrees and format as decimal minutes
+
+$latitudeN = 180 * $latitudeN / $pi
+$longitudeN = 180 * $longitudeN / $pi
+
+$latitude = NumToStr($latitudeN)
+$longitude = NumToStr($longitudeN)
+
+# Deal with commas as decimal separator
+$latitude = Replace(",",".",$latitude,TRUE)
+$longitude = Replace(",",".",$longitude,TRUE)
+
+$last_lat = $latitude
+$last_lon = $longitude
+
+$tmpS = $Latitude + " " + $Longitude
+$tmpS = GCalc($tmpS,"FormatMinutes")
+$Latitude = Extract($tmpS,";",1)
+$Longitude = Extract($tmpS,";",2)
+
+$tmpS = " <a target='_blank' href='http://maps.google.com/maps?q=" + $last_lat + "+" + $last_lon + "&z=8'><i>Map</i></a>"
+
+$text2 = "$Latitude $Longitude"
+$text1 = "Cache centroid: "
+
+$html = "http://gsak.net/google/gsak_gmap.php?"
+$html = $html + "lat=$last_lat&long=$last_lon&nam=Centroid of Database: $_CurrentDatabase"
+WEB url="$html"
+MSGOK msg="$text1 $text2"
+
+

@@ -1,0 +1,178 @@
+#*******************************************
+# MacVersion = 1.3
+# MacDescription = Generate a list of caches to plunder
+# MacAuthor = clyde
+# MacFileName = CacheRaid.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=1447&view=findpost&p=32598
+#*******************************************
+
+###################################################################
+# Cache Raid Macro
+#
+# The following macro will generate a route of caches that are the closest
+# distance from each other for a "cache raid". Basically, the macro allows
+# you to build a "cache chain". You select a cache then the macro will build
+# a database of a direct route of the caches that are the shortest distance
+# from last one (of course ignoring caches that are already in your "cache chain").
+# You can then use this "route" to plan your next cache raid. Note: this is
+# not quite as sophisticated as selecting a centre point then doing the
+# calculations to provide the shortest route to collect all caches within x
+# miles of this point.
+#
+# This version just keeps on selecting the cache that is the next closest
+# then adds it to the "cache raid" database. So depending what your starting
+# cache is, and how many you want for this "cache raid" you could end up anywhere
+# (of course you could always start by setting a filter that is x miles from your
+# starting point to make sure you don't end up too far from your starting point) 
+#
+# Depending on your settings some of the following commands may not
+# be required, however by putting these in this makes sure this macro
+# will work no matter what your current sort sequence is or what settings
+# you have.
+# 
+# Macro Requirements:
+#
+#
+# 1. Saved Filter called "Cache Raid":
+#    set up your required filter, for example status = not found
+#     
+# 
+# 
+#########################################################################
+
+# Un comment the next line if you want to run the macro one line at a time
+#DEBUG Status="on"
+
+# Prompt the user for how many caches in the cache chain
+INPUT Msg="Please enter number of caches for this raid" Default=10 VarName=$NoOfCaches
+
+# VarName of the input command always type casts the variable to string, must now convert to numeric
+SET $NumberOfCaches = Val($NoOfCaches)
+
+# Save the name of the current database we are working in
+SET $CurrentData = $_CurrentDatabase
+
+# first clear all macro flags
+MACROFLAG Type=clear Range=all
+
+# Save the currently selected code and make sure it is part of the cache raid filter
+$CurrentCode = $d_Code
+Filter Name="Cache Raid"
+MacroFlag Type=Set Range=Filter
+MFilter If="$CurrentCode" = $d_code .and. $d_MacroFlag
+IF $_FilterCount = 0
+   SET $Message = "The cache you first selected is not in your 'Cache Raid' filter" + $_NewLine + $_NewLine + "Macro will now abort"
+   PAUSE Msg="$Message"
+   CANCEL
+ENDIF
+
+
+# make sure the "Cache Raid" database is empty
+IF DatabaseExists("Cache Raid")
+  DATABASE Name="Cache Raid" Action=delete
+ENDIF
+
+MacroSet Dialog=DBProperties VarName=$DbProperties
+DATABASE Name="Cache Raid" Action=create Settings=<macro>
+
+
+# select the starting database again
+DATABASE Name="$CurrentData"
+
+# now set on the CacheRaid filter and copy over all the waypoints in this filter
+FILTER Name="Cache Raid"
+MacroSet Dialog=MoveCopy VarName=$Raid
+MoveCopy Settings=<Macro>
+
+
+# select the Cache Raid database
+DATABASE Name="Cache Raid"
+MacroFlag type=clear range=all
+
+#set center to the starting waypoint
+Mfilter If="$CurrentCode" = $d_code
+CENTER
+
+# select it as the first cache in the chain
+$d_MacroFlag = true
+$d_UserSort = 10
+CancelFilter
+
+SORT By="distance"
+Mfilter If=.not. ($d_MacroFlag)
+
+# now get the required caches 
+$j = 1
+WHILE $j < $NumberOfCaches
+   GOTO Position=top
+   CENTER
+   SORT By="distance"
+   $SortVal = ($j + 1) * 10
+   $d_UserSort = $SortVal
+   $d_Macroflag = true
+   SET $j = $j + 1
+ENDWHILE
+
+# delete all caches not required for the raid
+Mfilter If=.not. $d_MacroFlag
+if $_FilterCount > 0
+   MacroSet Dialog=Delete VarName=$Delete
+   Delete Settings=<macro>
+EndIf   
+
+# Show all distances from starting point
+Mfilter If="$CurrentCode" = $d_code
+CENTER
+
+CancelFilter
+
+# now sort in the order required of the cache raid
+SORT By="UserSort"
+GOTO Position=top
+
+
+##############################################################
+# embeded settings
+
+<data> VarName=$Raid
+[TfmMove]
+cbxDestination.Text=Cache Raid
+rbtAdd.Checked=True
+rbtAddFlag.Checked=False
+rbtAddIgnore.Checked=False
+rbtCopy.Checked=True
+rbtExistIgnore.Checked=False
+rbtFlagOnly.Checked=False
+rbtMove.Checked=False
+rbtReplace.Checked=True
+rbtReplaceFlag.Checked=False
+chkDisplay.Checked=False
+<enddata>
+
+<data> VarName=$Delete
+[TfmDelete]
+cbxStop.Checked=False
+rbtFilter.Checked=True
+rbtFlagged.Checked=False
+rbtOnly.Checked=False
+<enddata>
+
+
+<data> VarName=$DBProperties
+[General]
+chkDisableSmart.Checked=True
+cbxView.Text="SWB"
+cbxSplit.Text=Use current
+cbxSmart.Text=Use Config
+edtMacro.Filename=
+cbxSort.Text=Use current
+chkDefault.Checked=False
+chkCenter.Checked=True
+edtCenter.Text=
+edtLat.Text=
+edtLon.Text=
+chkDescend.Checked=False
+edtLatLon.Text=
+<enddata>
+
+

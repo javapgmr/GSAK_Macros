@@ -1,0 +1,218 @@
+#*******************************************
+# MacDescription = This macro retrieve the number of images you logged online
+# MacFileName = CountForShutterbug.gsk
+# MacAuthor = The CEO
+# MacVersion = 1.00
+# MacUrl = 
+#*******************************************
+
+VERCHECK Version=8.1.1.10 (please update GSAK to version 8.1.1.10 or later to run this macro)
+
+$status = sqlite("open","$_AppData\gsak.db3")
+$StartDate=StringToDate("20000101")
+$UserName = sqlite("sql","select uData from UserInfo where uKey = 'UserName'")
+$status = sqlite("close", "")
+
+GOSUB Name=ShowForm
+
+BEGINSUB Name=Main
+	# $USERNAME = sqlite("sql","SELECT lBy FROM Logs WHERE (lType = 'Found it' OR lType = 'Attended' OR lType = 'Webcam Photo Taken') AND lIsowner = '1' AND lParent = '$d_code'")
+	# $USERNAME = "The CEO"
+	# $USERNAME = "DrSigmund"
+	CANCELFILTER
+	$TempDateString=DateToString($StartDate)
+	$STARTDATESTRING = Left($TempDateString,4)+"-"+SubStr($TempDateString,5,2)+"-"+Right($TempDateString,2)
+	$TempDateString=DateToString($EndDate)
+	$ENDDATESTRING = Left($TempDateString,4)+"-"+SubStr($TempDateString,5,2)+"-"+Right($TempDateString,2)
+	GOSUB NAME=REPLACESPECIALCHARACTERS
+	$StatusOrig = Replace("~~USERNAME~~",$USERNAME,$StatusOrig)
+
+#	$data = GcApi("GetWptLogTypes")
+#	CANCEL
+
+	GOSUB Name=GetLogsForUser	
+ENDSUB
+
+BeginSub NAME=GetLogsForUser
+	$status = $statusOrig
+	$status = Replace("~~StartDate~~",$StartDateString,$status)
+	$status = Replace("~~EndDate~~",$EndDateString,$status)
+
+	$data = GcApi("GetUsersGeocacheLogs",$status)
+	
+	IF $_GcApiError
+		# error running api so show error message
+		MSGOK msg= $data
+	Else 
+		$CountForShutterbug = sqlite("sql","select count(data) from GcApi where key = '/GetGeocacheLogResponse/Logs/a:GeocacheLog/a:Images/a:ImageData/a:ImageGuid'","Headings=N")
+		$NumOfRows = $_SqlRows
+		IF $NumOfRows = 0
+			MsgOk msg=No images found
+		ELSE
+			MsgOk msg=$CountForShutterbug images logged online between $StartDateString and $EndDateString
+		ENDIF
+		CANCEL
+	ENDIF
+
+
+ENDSUB 
+
+<data> varname=$statusOrig
+<GetUsersGeocacheLogsRequest xmlns="http://www.geocaching.com/Geocaching.Live/data">
+  <AccessToken>{ACCESSTOKEN}</AccessToken>
+  <Username>~~USERNAME~~</Username>
+  <Range>
+    <EndDate>~~EndDate~~T23:59:59</EndDate>
+    <StartDate>~~StartDate~~T00:00:00</StartDate>
+  </Range>
+  <LogTypes>
+    <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">2</long>
+    <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">9</long>
+    <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">11</long>
+  </LogTypes>
+  <ExcludeArchived>true</ExcludeArchived>
+  <StartIndex>0</StartIndex>
+  <MaxPerPage>25000</MaxPerPage>
+</GetUsersGeocacheLogsRequest>
+<enddata>
+
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">1</long> = UnArchive
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">2</long> = Found It
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">3</long> = DNF
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">4</long> = Write Note
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">5</long> = Archive
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">6</long> = Permanently Archived
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">7</long> = Need Archived
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">9</long> = Will Attend
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">10</long> = Attended
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">11</long> = WebCam Photo Taken
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">12</long> = Unarchive
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">13</long> = Retrieved from a cache
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">22</long> = Temporary Disable
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">23</long> = Enable Listing
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">45</long> = Needs Maintenance
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">46</long> = Owner Maintenance
+
+
+BEGINSUB NAME=REPLACESPECIALCHARACTERS
+ $USERNAME = REPLACE("&","&amp;",$USERNAME )        
+ $USERNAME = REPLACE("<","&lt;",$USERNAME )
+ $USERNAME = REPLACE(">","&gt;",$USERNAME )
+ $USERNAME = REPLACE($_Quote,"&quot;",$USERNAME )
+ $USERNAME = REPLACE("'","&apos;",$USERNAME )
+ENDSUB
+
+
+BEGINSUB Name=ShowForm
+$AddCacheIfNotInDatabase=TRUE
+$FormExit = form($form,"")
+  BeginCase
+    Case $FormExit = "DelayExit"
+      # MsgOk msg="Macro will now CANCEL"
+      CANCEL
+    Case $FormExit = "SystemExit"
+      # MsgOk msg="Macro will now CANCEL"
+      CANCEL
+    Case $FormExit = "ExitButton"
+      # MsgOk msg="Macro will now CANCEL"
+      CANCEL
+    Case $FormExit = "StartButton"
+       GOSUB Name=Main
+  EndCase
+ENDSUB
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Thu 08-Mar-2012 01:06:47
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 229
+  Width = 322
+
+Name = UserName
+  Type = Edit
+  Height = 21
+  Left = 128
+  Top = 32
+  Width = 121
+  Taborder = 10
+
+Name = StartDate
+  Type = Date
+  Height = 21
+  Left = 128
+  Top = 66
+  Width = 121
+  Taborder = 11
+
+Name = EndDate
+  Type = Date
+  Height = 21
+  Left = 128
+  Top = 96
+  Width = 121
+  Taborder = 12
+
+Name = Label1
+  Type = Label
+  Height = 17
+  Left = 56
+  Top = 40
+  Width = 56
+  Caption = Username
+
+Name = Label2
+  Type = Label
+  Height = 17
+  Left = 56
+  Top = 68
+  Width = 53
+  Caption = StartDate
+
+Name = Label3
+  Type = Label
+  Height = 17
+  Left = 56
+  Top = 98
+  Width = 50
+  Caption = EndDate
+
+Name = StartButton
+  Type = Button
+  Height = 25
+  Left = 56
+  Top = 152
+  Width = 75
+  Taborder = 13
+  Caption = Start
+
+Name = ExitButton
+  Type = Button
+  Height = 25
+  Left = 176
+  Top = 152
+  Width = 75
+  Taborder = 14
+  Caption = Exit
+
+Name = AddCacheIfNotInDatabase
+  Type = Checkbox
+  Height = 20
+  Left = 232
+  Top = 128
+  Width = 17
+  Taborder = 15
+
+Name = Label4
+  Type = Label
+  Height = 17
+  Left = 56
+  Top = 130
+  Width = 127
+  Caption = Add cache if not in database
+
+<enddata>
+
+

@@ -1,0 +1,25 @@
+
+# Get User Sort values
+$count = RegExCount(";",$_MacroParms) + 1
+$i = 2
+$SortIncrement = Usersort("I")
+$SortCurrent = Usersort("C")
+
+IF Extract($_MacroParms,";",1) = "true"
+   $SortCurrent = 0
+ENDIF
+
+TRANSACTION action=begin
+WHILE $i <= $count
+   $code = Extract($_MacroParms,";",$i)
+   IF Seek($code)
+      IF NOT($code = Extract($_MacroParms,";",2) AND $i = $count)
+         $SortCurrent = Usersort("C",$SortCurrent + $SortIncrement)
+         $d_UserSort = $SortCurrent
+      ENDIF
+   ENDIF
+   $i = $i + 1
+ENDWHILE
+TRANSACTION action=end
+SQLSORT OrderBy=Usersort Asc
+

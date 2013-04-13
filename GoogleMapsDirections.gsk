@@ -1,0 +1,110 @@
+#####################################################
+# MacVersion = 1.1
+# MacDescription = Google Maps directions for filter from current waypoint
+# MacAuthor = beejay
+# MacFileName = GoogleMapsDirections.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=14229&view=getlastpost
+####################################################
+# Function:
+# Display directions for complete filter trip
+# in Google Map
+# History:
+# 020707 Cloned from Filter Directions Yahoo All
+# 031007 Found reference on Google help page to ability to add (text)
+#            after the coordinates to change the default labels to something else
+# 031107 Added destination number so maps easier to correlate with text
+# 053007 Put in stop at 25 destinations (new max)
+# 122107 Add subroutine to substitute "parking area" coordinates when available
+# 020508 Reduced to 24 since seemed 25 might be causing problems when deleting stop
+#            and then went back to 25.
+# 031808 Put in explicit parameters to make code a little faster and avoid typing mistakes
+# 012210 Cleaned up code for possible publication.  Fixed going too far in grid when hitting 25 limit
+#
+# Version history on GSAK forum
+# 01/22/2010 1.0 Published 
+# 01/25/2010 1.1 Changed name from "Google Map directions for filter" to "GoogleMapsDirections" to facilitate
+#                        GSAK synchronization options.
+
+# Multiple step Google Map allows saving and converting with GPSVisualizer
+# to a KML file that I can use for routes in GSAK and Geocaching.com
+# Better (12/2007) is to use the GMaptoGPX plug in on browser to get list of points for route
+# A reference source for URL parameters:
+# http://mapki.com/wiki/Google_Map_Parameters
+VERCHECK Version=6.6.1.15 (please update GSAK to the latest version to run this macro - see http://gsak.net)
+# Unknown required version.  If you have trouble running this macro at some version, let me know
+
+OPTION Explicit=Yes
+DECLARE Var=$MaxDest Type=Numeric
+DECLARE Var=$Step Type=Numeric
+
+DECLARE Var=$UseLon Type=String
+DECLARE Var=$UseLat Type=String
+DECLARE Var=$UseName Type=String
+DECLARE Var=$URL Type=String
+DECLARE Var=$Desta Type=String
+
+SPEEDMODE Status=On
+# SHOWSTATUS Msg="Creating URL for Google Map directions for next 25 waypoints" Width=800
+# Google's limit was 50 until 5/2007 when they made it 25
+$MaxDest = 25
+
+# Start from current point
+# Define the name/lat/lon to use
+$Uselon = $d_Longitude
+$Uselat = $d_Latitude
+$UseName = $d_Smartname
+GOSUB Name=CheckParking
+
+# Debug Status=On
+
+# This is a sample URL that Google creates when creating routes interactively
+#http://maps.google.com/maps?f=d&hl=en&saddr=39.829+-84.896&daddr=39.23865++-84.295167+to:39.1579++-83.987183+to:39.202283++-83.73335+to:39.024383++-83.42815+to:39.060517++-83.096183+to:38.87905++-83.06965+to:38.718833++-82.6306+to:38.778917++-82.580233+to:38.849633++-82.602767+to:39.04508++-82.630566
+
+
+$url = "http://maps.google.com/maps?f=d"
+# The following line could be activated with appropriate language code to force directions in another language
+# $url = $url + "&hl=de"
+$step = 1
+$url = $url + "&saddr" +  "=" +  $uselat + "+" + $uselon
+# Add label (instead of default lat/lon)
+$url = $url + "(" + $Usename + ")"
+$url = $url + "&daddr="
+
+WHILE ($step<$MaxDest)
+   GOTO Position=Next
+   IF $_eol
+      BREAK 
+   ENDIF 
+# I need to add the "to:" except for the first destination
+   IF $step > 1
+      $url = $url + "+to:"
+   ENDIF 
+   $desta = numtostr($step)
+# Destination number is one less than step
+   $step = $step + 1
+   $Uselon = $d_Longitude
+   $Uselat = $d_Latitude
+   $UseName = $d_Smartname
+   GOSUB Name=CheckParking
+   $url = $url + $UseLat + "++" + $UseLon
+# Add label (instead of default lat/lon)
+   $url = $url + "(" + "D" + $desta + ":" + $UseName + ")"
+ENDWHILE 
+
+# Display Google Map directions
+WEB url=$url
+
+# See if this cache has a parking location defined.  If so, use that for mapping
+BEGINSUB Name=CheckParking
+   TABLE active=waypoints scope=parent
+   WHILE not ($_eol)
+      IF $d_cType = "Parking Area"
+         $Uselon = $d_cLon
+         $Uselat = $d_CLat
+         $UseName = $d_cName
+         BREAK 
+      ENDIF 
+      GOTO Position=Next
+   ENDWHILE 
+   TABLE active=caches
+ENDSUB 

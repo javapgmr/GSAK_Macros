@@ -1,0 +1,98 @@
+# Create the List variable used for the SQL
+$List = List("sql","create",$_NewLine)
+
+#################### SQL ####################
+SHOWSTATUS Msg="Generating SQL Databases." Display=On
+
+$GCPE_Library = $_install + "\macros\"
+
+$Status = Sql("CONNECT TO '$GCPE_Library\'","")
+$Status = Sql("DROP TABLE GCPE_Caches","")
+$Status = DbToSql("Caches","SmartName,CacheType,Container,Difficulty,Terrain,Code,PlacedDate,LastFoundDate,PlacedBy,OwnerName,Archived,TempDisabled,DNF,Found,Hints,Latitude,Longitude,HasCorrected,UserNote,Name,OwnerID","$GCPE_Library\GCPE_Caches.txt","")
+#                           1        ,2        ,3        ,4         ,5      ,6   ,7         ,8            ,9       ,10       ,11      ,12          ,13 ,14   ,15   ,16      ,17       ,18          ,19      ,20  ,21
+$Status = Sql("DROP TABLE GCPE_Childs","")
+$Status = DbToSql("Waypoints","cParent,cCode,cPrefix,cName,cType,cLat,cLon,cComment","$GCPE_Library\GCPE_Childs.txt","")
+#                              1      ,2    ,3      ,4    ,5    ,6   ,7   ,8
+$Status = Sql("COMMIT","")
+
+#################### Querying SQL ####################
+SHOWSTATUS Msg="Query SQL Databases." Display=On
+
+# Traditional
+$TmpS = Sql("SELECT * FROM GCPE_Caches WHERE CacheType='T' AND Archived='F' AND TempDisabled='F' AND Found='F'","")
+$List = List("sql","replace",$TmpS)
+$Count = Val(List("sql","count",""))
+$CSVFileName="Traditional.csv"
+
+$I = 1
+$tempCSV = ""
+
+# SmartName,CacheType,Container,Difficulty,Terrain,Code,PlacedDate,LastFoundDate,PlacedBy,OwnerName,Archived,TempDisabled,DNF,Found,Hints,Latitude,Longitude,HasCorrected,UserNote,Name
+# 1        ,2        ,3        ,4         ,5      ,6   ,7         ,8            ,9       ,10       ,11      ,12          ,13 ,14   ,15   ,16      ,17       ,18          ,19      ,20
+WHILE $I <= $Count
+	$TmpS = NumToStr($I)
+	$List = List("sql","item",$TmpS)
+
+  $Longitude = Extract($List,";",17)
+  $Latitude = Extract($List,";",16)
+  $SmartName = Extract($List,";",1)
+  $OwnerName = Extract($List,";",10)
+  $tempCSV = $tempCSV + $Longitude + "," + $Latitude + "," + $SmartName + "," + $OwnerName + $_NewLine
+
+  $I = $I + 1
+ENDWHILE
+
+SHOWSTATUS Msg="." Display=Off
+
+$Msg = $CSVFileName + $_NewLine + $tempCSV
+PAUSE Msg=$Msg
+
+#################### SQLite ####################
+SHOWSTATUS Msg="Generating SQLite Databases." Display=On
+
+# Define the database file name
+$DBfile = "GCPELibrary.db3"
+# Create the caches and waypoints tables within the Database. If the database doesn't exist yet it will automatically be created. Same with the Tables - they will be overwritten if they exist or created if they don't.
+$Status = DbToSQLite("caches","SmartName,CacheType,Container,Difficulty,Terrain,Code,PlacedDate,LastFoundDate,PlacedBy,OwnerName,Archived,TempDisabled,DNF,Found,Hints,Latitude,Longitude,HasCorrected,UserNote,Name,OwnerID",$DBfile)
+#                              1        ,2        ,3        ,4         ,5      ,6   ,7         ,8            ,9       ,10       ,11      ,12          ,13 ,14   ,15   ,16      ,17       ,18          ,19      ,20  ,21
+$Status = DbToSQLite("waypoints","cParent,cCode,cPrefix,cName,cType,cLat,cLon,cComment",$DBfile)
+#                                 1      ,2    ,3      ,4    ,5    ,6   ,7   ,8
+# Open the database ready for querying
+$status = SQLite("open",$DBfile,"")
+
+
+#################### Querying SQLite ####################
+SHOWSTATUS Msg="Query SQLite Databases." Display=On
+
+# Traditional
+$TmpS = SQLite("SELECT * FROM caches WHERE CacheType='T' AND Archived='F' AND TempDisabled='F' AND Found='F';",$DBfile,"")
+$List = List("sql","replace",$TmpS)
+$Count = Val(List("sql","count",""))
+$CSVFileName="Traditional.csv"
+
+$I = 1
+$tempCSV = ""
+
+# SmartName,CacheType,Container,Difficulty,Terrain,Code,PlacedDate,LastFoundDate,PlacedBy,OwnerName,Archived,TempDisabled,DNF,Found,Hints,Latitude,Longitude,HasCorrected,UserNote,Name
+# 1        ,2        ,3        ,4         ,5      ,6   ,7         ,8            ,9       ,10       ,11      ,12          ,13 ,14   ,15   ,16      ,17       ,18          ,19      ,20
+WHILE $I <= $Count
+	$TmpS = NumToStr($I)
+	$List = List("sql","item",$TmpS)
+
+  $Longitude = Extract($List,";",17)
+  $Latitude = Extract($List,";",16)
+  $SmartName = Extract($List,";",1)
+  $OwnerName = Extract($List,";",10)
+  $tempCSV = $tempCSV + $Longitude + "," + $Latitude + "," + $SmartName + "," + $OwnerName + $_NewLine
+
+  $I = $I + 1
+ENDWHILE
+
+SHOWSTATUS Msg="." Display=Off
+
+$Msg = $CSVFileName + $_NewLine + $tempCSV
+PAUSE Msg=$Msg
+
+$status = SQLite("close",$dbfile,"")
+
+#################### End ####################

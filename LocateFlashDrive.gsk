@@ -1,0 +1,41 @@
+###############################################################################
+# MacFileName    = LocateFlashDrive.gsk
+# MacVersion     = 1.0 beta
+# MacAuthor      = Wayne (Team Red Roo)
+# MacDescription = To locate a flash drive with a specified file.
+# MacUrl         =
+###############################################################################
+# Usage:   Experimental macro which searches a drive list for the a file named
+#          'GsakId.Txt'. If the file is found, the user is notified.
+###############################################################################
+
+  $MaxDrives=RegExCount(";",$DriveList)
+  $Cnt=0
+  $FlashDrive=""
+  $Found=False
+  $IdFile="GsakSig.Txt"
+     WHILE Not ($Found) And ($Cnt<$MaxDrives)
+        $Cnt=$Cnt+1
+        $Drive=Extract($DriveList, ";", $Cnt)
+        $FileName=$Drive+":\$IdFile"
+        $InVar=GetFile($FileName)
+#        IF Extract($Invar,";",1)="Jack Black"
+        IF Left($InVar, 7) <> "*Error*"
+           $Found=True
+        ENDIF 
+     ENDWHILE 
+  IF ($Found)  
+     $FlashDrive="$Drive:"
+     MSGOK Msg="Found on $FlashDrive"
+  ENDIF 
+# Turn off the Usb Flash Drive ready for unplugging
+#  $windir = GetEnvV("windir")
+#  RUNPGM pgm="$windir\system32\RunDLL32.EXE" parms=shell32.dll,Control_RunDLL hotplug.dll
+  RETURN 
+###############################################################################
+<Data> Varname=$DriveList
+C;D;E;F;G;H;I;J;K;L;M;N;O;P;Q;R;S;T;U;V;W;X;Y;Z;
+<EndData>
+###############################################################################
+
+

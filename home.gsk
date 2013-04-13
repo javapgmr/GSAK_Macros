@@ -1,0 +1,118 @@
+#*******************************************
+# MacVersion = 1.0.3
+# MacDescription = Setup on Startup
+# MacAuthor = javapgmr
+# MacFileName = Home.gsk
+#*******************************************
+GOSUB Name=Declare
+SPEEDMODE Status=ON
+SplitScreen display=OFF 
+IF $_CurrentDatabase <> "Default"
+	SHOWSTATUS msg="Changing to default database" Width=350	
+DATABASE Name="Default"
+ENDIF
+
+SHOWSTATUS msg="Setting View" Width=350
+VIEW Name="SWB"
+
+
+SHOWSTATUS msg="Clearing MacroFlags" Width=350
+$status=clearMacroFlags
+SHOWSTATUS msg="Clearing Colors" Width=350
+SETCOLOR Color=clear Column=All Row=All
+SHOWSTATUS msg="Setting Home" Width=350
+CENTRE LOCATION="HOME" 
+SHOWSTATUS msg="Sort Distance" Width=350
+SqlSORT Orderby="distance, code"
+SPEEDMODE Status=Refresh
+
+$p_ownerid = 301976
+$p_homeID = "HOME"
+
+
+$COMMAND="SET COMSPEC=cmd.exe"
+$comspec = GetEnvV("comspec")
+runpgm pgm=$comspec parms=/C $COMMAND Hide=Yes
+
+
+IF  ($_ShiftKey)
+GOSUB Name=RunCheck
+		IF .NOT. $ranyet
+			MACRO File="\getMail.gsk"
+			DELAY MS=5000
+			GOSUB Name=MACROBackup
+		ENDIF
+ENDIF
+
+
+BEGINSUB Name=RunCheck
+		
+		 $dateFile = (".\setupran.dat")
+		 $s1 = DateToString($_Today)
+		 $ranyet = FALSE
+		
+		
+		$s2 = GetFile($datefile)
+		IF Left($s2,7) = "*Error*"
+		$s2 = ""
+		$ranyet = FALSE
+		ELSE
+			IF $s1 = $s2
+					$ranyet = TRUE
+				ELSE
+					$ranyet = FALSE
+				ENDIF	
+		ENDIF
+		 
+		IF .NOT. $ranyet
+			$Data = PutFile($datefile,$s1)
+			IF Left($Data,7) = "*Error*"
+			  Pause Msg="$Data"
+			  Cancel
+			ENDIF
+			
+ENDIF 
+ENDSUB
+
+
+
+INCLUDE File="backup.include"
+
+
+#*******************************************************
+#   Variable declarations for
+#   C:\apps\macros\startup.gsk
+#
+#   Generated 10/23/2007 5:35:32 PM on GSAKVariables.gsk Rev V0.20 B11
+#
+#*******************************************************
+
+
+BEGINSUB Name=Declare
+Option Explicit=Yes
+
+Declare Var=$BUFile Type=String
+Declare Var=$Data Type=String
+Declare Var=$dateFile Type=String
+Declare Var=$macrohome Type=String
+Declare Var=$MailMacro Type=String
+Declare Var=$OffSet Type=String
+Declare Var=$p_exporistDrive Type=String
+Declare Var=$p_homeID Type=String
+Declare Var=$p_ownerid Type=Numeric
+Declare Var=$ranyet Type=Boolean
+Declare Var=$s1 Type=String
+Declare Var=$s2 Type=String
+Declare Var=$status Type=String
+ENDSUB
+
+<data> varname=$pascal 
+Function clearMacroFlags : string;
+var _sql, status : string;
+
+begin
+_sql:='update caches set macroflag = 0 where macroflag = 1';
+status := sqlite('sql', _sql );
+result := 'OK';
+end;
+<enddata>

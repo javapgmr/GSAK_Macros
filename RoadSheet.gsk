@@ -1,0 +1,161 @@
+#*******************************************
+# MacVersion = 0.5.1
+# MacDescription = Road Sheet - Contact sheet using current filter.
+# MacAuthor = geo-mario
+# MacFileName = RoadSheet.gsk
+# MacUrl = http://gsak.net/board/index.php?act=ST&f=41&t=16733
+#
+# Customized road sheet with minimal information
+# processing just the caches currently filtered
+#
+# Change History:
+#  Ver - Date
+#  0.1   - 3rd October, 2010 - first beta
+#  0.2   - 7th October, 2010 - first test with customer
+#  0.3   - 8th October, 2010 - added L4 logs
+#  0.3.1 - 8th October, 2010 - corrected lineup for attributes
+#  0.4.0 - 14th October, 2010 - changed output of latitude longitude from decimal to UTM
+#  0.5.0 - 18th October, 2010 - added Showstatus; fixed "Not Chosen", "Terrain" and "Difficulty" icons not displaying under certain conditions
+#  0.5.1 - 21th October, 2010 - fixed coordinates not to display on more than 2 lines; added link on GC code to Waypoint URL; changed "Temp" to "temp" (altough this shouldn't change anything on Windows and on my own computer the folder is really named "Temp", if it can correct an issue without breaking the macro for others
+#
+#*******************************************
+
+#*******************************************************
+#   Variable declarations for roadsheet.gsk
+#
+#   Generated 10/07/2010 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+Option Explicit=Yes
+
+Declare Var=$attributes Type=String
+Declare Var=$GCcode Type=String
+Declare Var=$hasTB Type=String
+Declare Var=$i Type=Numeric
+Declare Var=$logcnt Type=Numeric
+Declare Var=$logDate Type=String
+Declare Var=$logs Type=String
+Declare Var=$logType Type=String
+Declare Var=$MyCacheType Type=String
+Declare Var=$MyContainer Type=String
+Declare Var=$MyDifficulty Type=String
+Declare Var=$MyLogs Type=String
+Declare Var=$MyTerrain Type=String
+Declare Var=$Output Type=String
+Declare Var=$result Type=String
+Declare Var=$thislog Type=String
+Declare Var=$UTMcoord Type=String
+Declare Var=$myLoop Type=Numeric
+Declare Var=$myContainer Type=String
+Declare Var=$myDifficulty Type=String
+Declare Var=$myTerrain Type=String
+
+# Version check
+VERCHECK Version=7.7.0.109 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+
+Goto position=top
+
+$result = "Code;Name;Type;Size;L4;Owner;Date Last Found;Coordinates;Difficulty<br>& Terrain;Attributes;Hint"
+$myLoop = 1
+
+# Main loop: cycling through the caches in the active filter
+While NOT ($_EOL)
+	showstatus msg="Cache $myLoop / $_Count"
+	GOSUB Name=ProcessCache
+	GOTO Position=Next
+	$myLoop = $myLoop + 1
+EndWhile
+# Output our results to a new web page for printing.
+$Output=SqlToHtml($result, "RoadSheet by geo-mario - Number of caches selected in current database/filter: "+ NumToStr($_Count),"Y")
+
+#######################
+BEGINSUB Name=ProcessCache
+	$GCcode = $d_Code
+	Set $myContainer = Lower($d_Container)
+	Set $myDifficulty = NumToStr($d_Difficulty)
+	Set $myTerrain = NumToStr($d_Terrain)
+	$hasTB = ""
+	$MyLogs=""
+	GOSUB Name=GetAttributes 
+	Set $attributes = RegExReplace(";tata;1",$attributes,".gif" + $_Quote + " height=15 witdh=15></td>")
+	Set $attributes = RegExReplace(";tata;0",$attributes,"x.gif" + $_Quote + " height=15 witdh=15></td>")
+	Set $attributes = RegExReplace("toto;",$attributes,"<td><img src=" + $_Quote + "file:///" + $_ExePath + "/images/att")
+	Set $attributes = RegExReplace("\r\n",$attributes,"")
+	Set $myContainer = RegExReplace("not chosen",$d_Container,"notchosen")
+	Set $myDifficulty = RegExReplace("[.,]",NumToStr($d_Difficulty),"_")
+	Set $myTerrain = RegExReplace("[.,]",NumToStr($d_Terrain),"_")
+	Set $attributes = "<table border=0><tr>" + $attributes + "</tr></table>"
+ 	#$MyCacheType = "<img src=" + $_Quote + "file:///" + $_ExePath + "/images/cache" + $d_CacheType + ".gif" + $_Quote + ">"
+ 	$MyCacheType = "<center><img src=" + $_Quote + "file:///" + $_AppData + "/temp/Print/cache" + $d_CacheType + ".gif" + $_Quote + "></center>"
+  $MyDifficulty = "<img src=" + $_Quote + "file:///" + $_ExePath + "/images/stars" + $myDifficulty + ".gif" + $_Quote + ">"
+  $MyTerrain = "<img src=" + $_Quote + "file:///" + $_ExePath + "/images/stars" + $myTerrain + ".gif" + $_Quote + ">"
+  $MyContainer = "<img src=" + $_Quote + "file:///" + $_ExePath + "/images/con_" + $myContainer + ".gif" + $_Quote + ">"
+  # $d_ShortDescription, $d_LongDescription, $d_Status
+  $UTMcoord = Replace(";","</td></tr><tr><td>",GCalc( $d_Latitude + " " + $d_Longitude, "FormatMinutes"),true)
+  Set $UTMcoord = RegExReplace(" ",$UTMcoord,"</td><td>")
+  Set $UTMcoord = "<table border=0><tr><td>" + $UTMcoord + "</td></tr></table>"
+  IF ($d_HasTravelBug)
+    $hasTB = "<img src=" + $_Quote + "file:///" + $_AppData + "/Temp/Print/bug.gif" + $_Quote + "> "
+  ENDIF
+	GOSUB Name=GetLogs
+	GOSUB Name=ExtractLogs
+	$result = $result + $_NewLine + "<a href=" + $_Quote + $d_url + $_Quote + ">" + $d_code + "</a> ; " + $d_Name + " ; " + $MyCacheType + " ; " + $MyContainer + " ; " + $MyLogs + " ; " + $d_OwnerName + " ; <center>" + DateFormat($d_LastFoundDate) + "</center> ; <center>" + $UTMcoord + "</center> ; " + $MyDifficulty + "<br>" + $MyTerrain + " ; " + $attributes + " ; " + $hasTB + RegExReplace("\r\n",$d_Hints,", ")
+ENDSUB
+
+#######################
+BEGINSUB Name=GetLogs
+  # retieve logs from DB
+	$_sql="SELECT lType,lDate FROM Logs where lParent='$GCcode' order by lDate desc"
+	$logs = Sqlite("sql",$_sql)
+ENDSUB
+
+########################
+BEGINSUB Name=ExtractLogs
+	$logcnt = RegExCount(";",$logs)
+	IF ($logcnt > 4)
+	  $logcnt = 4
+	ENDIF
+	$MyLogs = "<table border=0 height=6><tr>"
+	IF ($logcnt=0)
+		$logcnt=1
+	ELSE
+		$i = 1
+		# for each log retrieved by sql
+		WHILE $i <= $logcnt
+			$thislog = Extract($logs,$_CrLf,$i)
+			$logType=Extract($thislog,";",1)
+			$logDate=Extract($thislog,";",2)
+			#$MyLogs = $MyLogs + $logType
+			IF ($i = 3)
+			   $MyLogs = $MyLogs + "</tr><tr>"
+			ENDIF
+			BEGINCASE
+        CASE $logType="Found it"
+            $MyLogs = $MyLogs + "<td width=2 height=1 bgcolor=green><font size=-2 color=green>y</font></td>"
+        CASE $logType="Didn't find it"
+            $MyLogs = $MyLogs + "<td width=2 height=1 bgcolor=red><font size=-2 color=red>n</font></td>"
+        OtherWise
+            $MyLogs = $MyLogs + "<td width=2 height=1 bgcolor=yellow><font size=-2 color=yellow>o</font></td>"
+      ENDCASE
+			$i = $i + 1
+		ENDWHILE
+	ENDIF
+	IF ($logcnt < 4)
+	   WHILE $i <= 4
+	      IF ($i = 3)
+			     $MyLogs = $MyLogs + "</tr><tr>"
+			  ENDIF
+	      $MyLogs = $MyLogs + "<td width=2 height=1 bgcolor=gray><font size=-2 color=gray>x</font></td>"
+			  $i = $i + 1
+		 ENDWHILE
+	ENDIF
+	$MyLogs = $MyLogs + "</tr></table>"
+ENDSUB
+
+#######################
+BEGINSUB Name=GetAttributes
+  # retieve attributes from DB
+	$_sql="SELECT 'toto;',aId,'tata;',aInc FROM Attributes where aCode='$GCcode'"
+	$attributes = Sqlite("sql",$_sql)
+ENDSUB

@@ -1,0 +1,33 @@
+#*******************************************
+# MacDescription = Export OpenLayers
+# MacFileName = ExportOpenLayers.gsk
+# MacAuthor = frigu23
+# MacVersion=0.1
+# MacUrl=
+#*******************************************
+
+#Set the headline to description of input text file
+$Output="lat" + $_Tab +	"lon" + $_Tab +	"title" $_Tab +	"description"	+ $_Tab + "icon" $_Tab +	"iconSize" + $_Tab +	"iconOffset"  +  $_NewLine
+
+#Have the user input the filename to export to:
+INPUT Msg="Enter the full path and name of (or browse to) the file to export" Default=".\MyFinds.txt" VarName=$datafile Browse=File
+
+#Iterate through the current database or filter
+#Goto the top of the list (database or filter)
+GOTO Position=top
+WHILE NOT($_EOL)
+    #Construct the output in comma separated format, using the desired database varaibles.
+    $Output = $Output + $d_Latitude + $_Tab + $d_Longitude + $_Tab + $d_Code + $_Tab + $d_Name + $_Tab + "found.png"+ $_Tab + "16,16" + $_Tab + "-8,-8" +  $_NewLine
+
+    #Goto the next cache in the list (database or filter)
+	GOTO Position=Next
+ENDWHILE
+
+#Write the user designated datafile
+$TextFile = PutFile($datafile, $Output)
+
+#Check if there was an error writing the file
+IF Left($TextFile, 7) = "*Error*"
+    # If there's any error abort the macro
+	CANCEL Msg="Unable to write to $datafile!"
+ENDIF

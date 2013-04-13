@@ -1,0 +1,560 @@
+#*******************************************
+# MacDescription = Review for Archived Caches after loading a fresh pocket query
+# MacFileName = Review_For_Archive_API.gsk
+# MacAuthor = GeePa
+# MacVersion=1.84
+#MacUrl=http://gsak.net/board/index.php?showtopic=19171&view=findpost&p=183005
+#*******************************************
+VERCHECK Version=8.2.1.65 (please update GSAK to version 8.2.1.65 or later to run this macro - see http://gsak.net)
+$DB1=SysInfo("Databases")
+$DBs="*Current Database*" + ";" + $DB1
+$Filters = SysInfo("filters")
+$Filters = "*Current Filter*" + ";" + $Filters
+
+$DBCombobox="*Current Database*"
+$UpdateFrequency="7"
+$FlagsYes=FALSE
+$IgnoreYes=TRUE
+$WarnNum="100"
+$cboFilter="*Current Filter*"
+$MoveDB=$_CurrentDatabase
+$rbDelete=True
+$rbArchive=False
+$rbMove=False
+$DisabledDays="1"
+$IncludeDisabled=False
+
+IF SysInfo("JoinFilter")="N"
+	$SavedFilter = SaveFilter()
+	$Joined = False
+Else
+	$SavedFilter = $_Where
+	$Joined = True
+ENDIF
+
+#Allow for a setting file to be passed
+IF len($_MacroParms) > 0
+	$NoParams=False
+	$SettingsFile = $_MacroParms
+ELSE
+	$NoParams=True
+	$SettingsFile =  ""
+ENDIF
+
+IF len($SettingsFile) > 0
+	MACSETTINGS Type=R Filecheck=N File=$SettingsFile
+ELSE
+	MACSETTINGS Type=R Filecheck=N
+ENDIF
+GOSUB Name=MainForm
+
+BEGINSUB Name=MainForm
+	WHILE TRUE
+		IF $NoParams
+			$FormExit = form($ConfigForm,"")
+		Else
+			$FormExit="OK"
+		ENDIF
+		BEGINCASE
+			CASE $FormExit = "SystemExit"
+				RETURN #Msg="Macro Cancelled"
+
+			CASE $FormExit = "OK"
+				IF $NoParams
+					MACSETTINGS Type=S Vars=DBCombobox,UpdateFrequency,FlagsYes,IgnoreYes,WarnNum,cboFilter,MoveDB,rbDelete,rbArchive,rbMove,DisabledDays,IncludeDisabled
+				ENDIF
+				GOSUB Name=Run
+				BREAK
+
+			CASE $FormExit = "Cancel"
+				RETURN #Msg="Macro Cancelled"
+		ENDCASE
+	ENDWHILE
+	
+ENDSUB
+
+BEGINSUB Name=Run
+    IF $_CurrentDatabase<>$DBCombobox AND $DBCombobox<>"*Current Database*"
+        DATABASE Name=$DBCombobox Action=Select
+    ENDIF
+	
+	IF $cboFilter<>"*Current Filter*"
+		Filter name=$cboFilter Join=None
+	ENDIF
+	
+	$FreqNum=Val($UpdateFrequency)
+	
+	#Set Macroflag for caches already archived if requested
+	$_SQL = "Update Caches Set MACROFLAG=0"
+	$data = sqlite("sql",$_SQL,"")
+	IF $IgnoreYes=TRUE
+		$_SQL = "UPDATE CACHES SET MACROFLAG=1 WHERE STATUS='X' AND ($_Where)"
+		$data = sqlite("sql",$_SQL,"")
+	ENDIF
+    Resync
+
+	#Set UserFlag for caches Not updated if requested
+    IF $FlagsYes
+		$_SQL = "Update Caches Set UserFlag=0"
+		$data = sqlite("sql",$_SQL,"")
+		$_SQL = "Update Caches Set UserFlag=1 where LastGPXDate<date('now','localtime','-$FreqNum days') and Not MacroFlag and ($_Where)"
+		$data = sqlite("sql",$_SQL,"")
+		Resync
+    ENDIF
+
+	#Filter for caches Not updated
+	IF $IncludeDisabled=True
+		$nDisabledDays = Val($DisabledDays)
+	ELSE
+		$nDisabledDays = 0
+	ENDIF
+    MFILTER WHERE=(LastGPXDate<date('now','localtime','-$FreqNum days') and Not MacroFlag) OR (STATUS='T' and LastLog >= DATE('NOW','localtime','-$nDisabledDays days')) Join=AND
+    IF $_FilterCount=0
+		IF $NoParams
+			RETURN Msg=No caches met your review criteria.  Macro canceled.
+		ENDIF
+    ELSE
+		IF $_FilterCount>Val($WarnNum)
+			$frmWarn = EditForm($frmWarn,"lblWarn","Caption","Warning!!  If you continue you will be checking $_FilterCount caches!!")
+			WHILE TRUE
+				IF $NoParams
+					$FormExit = form($frmWarn,"")
+				ELSE
+					$FormExit = "btnContinue"
+				ENDIF
+				BEGINCASE
+					CASE $FormExit = "SystemExit"
+						GoSub Name=RestorFilt
+						RETURN Msg="Macro Cancelled"
+						
+					CASE $FormExit = "btnContinue"
+						BREAK
+
+					CASE $FormExit = "btnGoBack"
+						GoSub Name=RestorFilt
+						GOSUB Name=MainForm
+						RETURN
+				ENDCASE
+			ENDWHILE
+		ENDIF
+	ENDIF
+	
+	#SPEEDMODE Status=Refresh
+	GcStatusCheck Scope=Filter ShowSummary=N
+	
+	MFILTER WHERE=Status='X' Join=AND
+	
+    IF $_FilterCount>0
+		TRANSACTION Action=BEGIN
+			GOTO Position=Top
+			WHILE NOT($_EOL)
+				MACRODELETE Action=DelCurrent
+				IF $FlagsYes=TRUE
+					$d_UserFlag=False
+				ENDIF
+				GOTO Position=Next
+			ENDWHILE
+		TRANSACTION Action=End
+		
+        WHILE TRUE
+			#SPEEDMODE Status=Refresh
+			SPEEDMODE Status=Off
+			IF $NoParams
+				$FormExit = form($ConfirmForm,"")
+			ELSE
+				$FormExit = "OK"
+			ENDIF
+            BEGINCASE
+                CASE $FormExit = "SystemExit"
+					GoSub Name=RestorFilt
+					RETURN #Msg="Macro Cancelled"
+				CASE $FormExit = "OK"
+					IF $NoParams
+						MACSETTINGS Type=S Vars=DBCombobox,UpdateFrequency,FlagsYes,IgnoreYes,WarnNum,cboFilter,MoveDB,rbDelete,rbArchive,rbMove,DisabledDays,IncludeDisabled
+					ENDIF
+					
+					IF $rbDelete
+						MACRODELETE Action=Commit
+						GoSub Name=RestorFilt
+						BREAK
+					ENDIF
+
+					IF $rbArchive
+						GoSub Name=RestorFilt
+						BREAK
+					ENDIF
+				
+					IF $rbMove
+						IF $MoveDB<>$_CurrentDatabase
+							$MoveCopy = Replace("XXXDBXXX",$MoveDB,$MoveCopy)
+							MacroSet Dialog=MoveCopy VarName=$MoveCopy
+							MoveCopy Settings=<macro>
+						ENDIF
+						GoSub Name=RestorFilt
+						BREAK
+					ENDIF
+            ENDCASE
+        ENDWHILE
+    ELSE
+        IF $FlagsYes=TRUE
+            MFILTER Where=USERFLAG
+            MSGOK Msg=Caches NOT marked as 'archived' during review are now displayed.
+        ENDIF
+		IF $NoParams
+			GoSub Name=RestorFilt
+			RETURN Msg=No caches marked as archived.  Macro canceled.
+		ENDIF
+    ENDIF
+    IF $FlagsYes=TRUE
+        MFILTER Where=USERFLAG
+        MSGOK Msg=Caches NOT marked as 'archived' during review are now displayed.
+    ENDIF
+ENDSUB
+
+BEGINSUB Name=RestorFilt
+	If $Joined
+		$_SQL=$SavedFilter
+		MFILTER Where=$_SQL
+	Else
+		$X = RestoreFilter($SavedFilter,True)
+	EndIf
+ENDSUB
+
+<Data> VarName=$ConfigForm
+#********************************************************************
+# Form generated by GSAK form designer on Sun 04-Dec-2011 11:12:02
+#********************************************************************
+
+Name = ConfigForm
+  Type = Form
+  Caption = Review for Archived
+  Color = 8388608
+  Height = 342
+  Top = 371
+  Width = 504
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 126
+  Top = 270
+  Width = 75
+  Taborder = 0
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 282
+  Top = 270
+  Width = 75
+  Taborder = 1
+  Caption = Cancel
+
+Name = Label1
+  Type = Label
+  Color = 16777088
+  Height = 16
+  Left = 13
+  Size = 10
+  Top = 14
+  Width = 226
+  Caption = Select the GSAK database to review:
+
+Name = DBCombobox
+  Type = Combobox
+  Height = 21
+  Left = 240
+  Top = 12
+  Values = $DBs
+  Width = 219
+  Taborder = 2
+
+Name = Label2
+  Type = Label
+  Color = 16777088
+  Height = 16
+  Left = 13
+  Size = 10
+  Top = 51
+  Width = 404
+  Caption = Enter the frequency of your Pocket Queries, in days (e.g. weekly=7):
+
+Name = UpdateFrequency
+  Type = Edit
+  Height = 21
+  Left = 419
+  Top = 49
+  Width = 40
+  Taborder = 3
+
+Name = IgnoreYes
+  Type = Checkbox
+  Fontcolor = 16777088
+  Fontsize = 10
+  Height = 17
+  Left = 13
+  Top = 173
+  Width = 433
+  Taborder = 4
+  Caption = Ignore caches already marked as archived in your GSAK DB
+
+Name = FlagsYes
+  Type = Checkbox
+  Fontcolor = 16777088
+  Fontsize = 10
+  Height = 17
+  Left = 13
+  Top = 198
+  Width = 466
+  Taborder = 5
+  Caption = Clear user flags and set for caches not marked archived during review
+
+Name = Label3
+  Type = Label
+  Color = 16777088
+  Height = 15
+  Left = 13
+  Size = 9
+  Style = bold
+  Top = 150
+  Width = 61
+  Caption = Options:
+
+Name = WarnNum
+  Type = Edit
+  Height = 21
+  Left = 419
+  Top = 75
+  Width = 40
+  Taborder = 16
+
+Name = HTMLabel2
+  Type = Label
+  Color = 16777088
+  Height = 16
+  Left = 13
+  Size = 10
+  Top = 77
+  Width = 273
+  Caption = Warn if more than this many caches to check:
+
+Name = cboFilter
+  Type = Combobox
+  Height = 21
+  Left = 240
+  Top = 110
+  Values = $filters
+  Width = 219
+  Taborder = 17
+
+Name = HTMLabel3
+  Type = Label
+  Color = 16777088
+  Height = 16
+  Left = 13
+  Size = 10
+  Top = 112
+  Width = 220
+  Caption = Select filter to perform before check:
+
+Name = IncludeDisabled
+  Type = Checkbox
+  Fontcolor = 16777088
+  Fontsize = 10
+  Height = 20
+  Left = 13
+  Top = 224
+  Width = 228
+  Taborder = 18
+  Caption = Include temp disabled for less than
+
+Name = DisabledDays
+  Type = Edit
+  Height = 21
+  Left = 244
+  Top = 227
+  Width = 33
+  Taborder = 19
+
+Name = Label4
+  Type = Label
+  Color = 16777088
+  Height = 17
+  Left = 283
+  Size = 10
+  Top = 228
+  Width = 38
+  Caption = days
+
+<enddata>
+
+
+
+
+
+<Data> VarName=$ConfirmForm
+#********************************************************************
+# Form generated by GSAK form designer on Wed 24-Aug-2011 21:15:59
+#********************************************************************
+
+Name = ConfirmForm
+  Type = Form
+  Caption = Confirm Action
+  Color = 8404992
+  Height = 230
+  Top = 387
+  Width = 392
+
+Name = Groupbox1
+  Type = Groupbox
+  Height = 121
+  Left = 16
+  Top = 36
+  Width = 353
+  Taborder = 2
+
+Name = Label1
+  Type = Label
+  Color = 16777088
+  Height = 16
+  Left = 34
+  Size = 10
+  Top = 12
+  Width = 317
+  Caption = Action to take on all caches shown in the GSAK grid?
+
+Name = rbDelete
+  Type = Radiobutton
+  Container = Groupbox1
+  Fontcolor = 16777088
+  Height = 20
+  Left = 10
+  Top = 18
+  Width = 98
+  Taborder = 0
+  Caption = Delete All
+
+Name = rbArchive
+  Type = Radiobutton
+  Container = Groupbox1
+  Fontcolor = 16777088
+  Height = 20
+  Left = 10
+  Top = 50
+  Width = 98
+  Taborder = 1
+  Caption = Leave Archived
+
+Name = rbMove
+  Type = Radiobutton
+  Container = Groupbox1
+  Fontcolor = 16777088
+  Height = 20
+  Left = 10
+  Top = 82
+  Width = 98
+  Taborder = 2
+  Caption = Move to DB:
+
+Name = MoveDB
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 114
+  Top = 82
+  Values = $DB1
+  Width = 219
+  Taborder = 3
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 143
+  Top = 168
+  Width = 99
+  Taborder = 3
+  Caption = OK
+
+<enddata>
+
+
+<Data> VarName=$frmWarn
+#********************************************************************
+# Form generated by GSAK form designer on Sat 13-Aug-2011 00:23:20
+#********************************************************************
+
+Name = frmWarn
+  Type = Form
+  Caption = Warning!!
+  Exitonclick = Yes
+  Height = 177
+  Width = 461
+
+Name = lblWarn
+  Type = Label
+  Color = 255
+  Height = 17
+  Left = 14
+  Size = 10
+  Style = bold
+  Top = 16
+  Width = 417
+  Caption = Warning!!  If you continue you will be checking xxxx caches!!
+
+Name = lblInstruct
+  Type = Label
+  Color = 255
+  Height = 17
+  Left = 87
+  Style = bold
+  Top = 56
+  Width = 271
+  Caption = Click 'Go Back' if you want to change options.
+
+Name = btnContinue
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 128
+  Top = 96
+  Width = 75
+  Taborder = 10
+  Caption = Continue
+
+Name = btnGoBack
+  Type = Button
+  Escape = Yes
+  Height = 25
+  Left = 233
+  Top = 96
+  Width = 75
+  Taborder = 11
+  Caption = Go Back
+
+<enddata>
+
+<data> VarName=$MoveCopy
+[TfmMove]
+cbxDestination.Text=XXXDBXXX
+rbtAdd.Checked=True
+rbtAddFlag.Checked=False
+rbtAddIgnore.Checked=False
+rbtCopy.Checked=False
+rbtExistIgnore.Checked=False
+rbtFlagOnly.Checked=False
+rbtMove.Checked=True
+rbtReplace.Checked=True
+rbtReplaceFlag.Checked=False
+chkDisplay.Checked=False
+chkAddIgnore.Checked=False
+chkMergeLogs.Checked=True
+chkMergeWaypoints.Checked=True
+rbtCustomHalt.Checked=False
+rbtCustomIgnore.Checked=False
+rbtCustomSync.Checked=True
+<enddata>
+
+
+
+

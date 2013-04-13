@@ -1,0 +1,1136 @@
+  ##########################################################################################
+  # MacFileName = Nuvi60CsxGarminCsvPoiExport.gsk
+  # MacDescription = Garmin CSV POI Export with icons and variable formats for either the 60Csx or Nuvi
+  # MacUrl = http://gsak.net/board/index.php?showtopic=6918&view=getnewpost
+  # MacAuthor = javapgmr (original macro by by Rene Boe (alias "ProsperoDK"))
+  # MacVersion = 1.0.11
+  ########################################################################################### 
+  # 
+  # 10/01/2012
+  # Remove deprecated commands
+  # Allow for newer versions of the POI Loader by testing for both possible names and selecting the right one.
+  #
+  # 10/01/2009
+  # Modify screen to work with a netbook, include the settings to save the selected MaxSaveLength
+  # 
+  # 01/07/2009
+  # Add logic to correctly handle conditions where there are no MFilters present and we need to 
+  # handle the join logic.  Thanks Sharkbait!!
+  #
+  # 12/13/2008
+  # Update save/restore options to use new GSAK commands.  This will allow the addition of future 
+  #  	parameters without losing existing paramters
+  # 
+  # Added better scoping for VSUB.
+  # Added KFBradley's cache writing subroutine. 
+  # Added option to use existing filter.
+  # Added option not to combine micro and traditional caches
+  #
+  # Added support for Maze and Mega cache types.
+  # Added ability to format output for Child waypoints.
+  # Added additional cache icon file names for Micro disabled and Micro Corrected
+  # Change scoping of VSUB to better catch areas variable substitution is needed.
+  #
+  # 12/13/2007
+  # Add testing for non-selected database and exit if DB not selected.
+  # 
+  # 12-12-2007
+  # 
+  # Modified from the GarminCsvPoiExport.gsk macro to output only a single line of hints
+  # and allow for variable format of both the name and comment sections.
+  # 
+  # Requires:
+  # - Premium Membership from www.geocaching.com, so you have all the data for the caches and child waypoints
+  # - The custom icons file created by ThePropers. (Should be included with this macro)
+  # - Requires GSAK 7.0.0 or higher
+  # 
+  # Thanks To:
+  # - Rene Boe (alias "ProsperoDK") for providing the original macro that gave me the
+  # - basis for modeling this.
+  # 
+  # Features:
+  # - Export each cachetype to its own file.
+  # - Export each child waypoint type to its own file.
+  # - Besides looking in each database on the GPSr the first characters shows if the cache is
+  #   archived or found or has corrected coordinates.
+  # - For best use with the GPSmap 60CSx use the included icons.
+  # 
+  # 
+  # This macro will run through your database and export all the caches and child waypoints to
+  # separate files depending on the cache-type or cache-status. If there's a hint for the cache
+  # it will be added to an additional line for that cache or split over more lines if the hint
+  # is longer than 88 characters. Also if the comment for the child waypoints is longer than 88
+  # characters they too will be split. The generated CSV-files will have the same name as BMP-files
+  # published along with this macro thus enabling Garmin's POIloader to give the waypoint in
+  # each file the correct symbol according to geocaching.com. Be sure to unzip the file with the
+  # icons to the folder where you will put the CSV-files.
+  # 
+  # Instructions for use:
+  # - Create a directory where you will put the CSV-files, (f.x. C:\POI),
+  # - Unzip the "CustomPoiIcons_1.2-1.4.zip" from http://gsak.net/board/index.php?showtopic=3172&view=findpost&p=25613
+  #   to that directory,
+  # - Copy this macro to your GSAK macro directory,
+  # - Run the macro,
+  # - When asked where to put the CSV-files, point to where you unzipped the custom icons, (f.x. C:\POI),
+  # - Then chose the database,
+  # - And finally input you geocacher name,
+  # - Start Garmin's POIloader and point it to the directory where you put the CSV-files and custom icons,
+  # - When finished you should have all your caches and child waypoints as POI's in your GPSr.
+  # 
+  # 
+  # ---------- Initial Variable Setup ----------
+  # 
+
+  # Version check
+  GOSUB Name=Declare
+
+	# Remove the # from the following line to run the poiloader in silent mode
+	#$POIParms="/silent"
+
+
+#----------------- No user editable fields after this point. ------------------------------------	
+  VSUB Status=Off
+  VERCHECK Version=7.5.0.000 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+	$MacroVersion=Alltrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath") + "\" + SysInfo("Macrofile")),1,1))
+	$Caption = "POI Export for Garmin v. " + $MacroVersion
+	$form = editform($form,"form1","Caption",$Caption)
+  # Save various settings for restoration later
+  DATASAVE Data=$d_UserFlag
+  $CurrentSort = $_SortBy
+  $CurrentFilter = SaveFilter()
+  $CurrentDB = $_CurrentDatabase
+
+  # Define the cachetypes, used when writing the different CSV-files,
+  # if you change them here also remember to change the name of the bmp-files.
+  $CacheTypeFull = "Traditional~Mystery~Virtual~Event~WebCam~Letterbox~Locationless~Multi~CITO~Benchmark~Other~Earth~Ape~Mega~Maze"
+  $CacheType = "TUVEWBLMCGORAZX"
+  $CacheTotal = RegExCount("~",$CacheTypeFull) + 1
+
+  # Define the childtypes, used when writing the different CSV-files,
+  # if you change them here also remember to change the name of the bmp-files.
+  $ChildTypeFull = "Parking Area~Trailhead~Reference Point~Stages of a Multicache~Final Location~Question to Answer"
+  $ChildType = "PTRSFQ"
+  $ChildTotal = RegExCount("~",$ChildTypeFull) + 1
+
+  # Keep track of problems that were encountered, used together with $Verbose
+  $ErrorLog = "Errors occured during processing:" + $_NewLine + $_NewLine
+  $ErrorCount = 0
+
+  # Will the macro keep you updated about the progress
+  $Verbose = True
+
+  # set variable to contain double quote character - needed for processing Child WP's
+  $QT = chr(34)
+
+  # Determine and save storage path
+  # It will be saved in the Macros subdirectory to the GSAK install-directory
+
+  # Set up the variables to count the numbers of caches with hint split into 2 or more lines.
+  $HintCountDB = List("HintDB","create",";")
+
+  # Will the found, archived and caches with corrected coordinates have a prefix character.
+  $UsePrefix = False
+
+  # Will there be generated a line in the csv file for the hint? Defaults to True put can be changed in the form.
+  $OutputHint = True
+
+  # Indicate whether found caches should be filtered out. Defaults to False but can be changed in the form.
+  $FilterOutFound = False
+
+  # default the add owner to true
+  $addOwner = TRUE
+
+  # Indicate the maximum hint length
+  $MaxHintLength = 256
+  $MaxHintLengthStr = "256"
+
+  # setup the default name format
+  $csvNameFmt = "%smart/%code"
+
+  # setup the default comment format
+  $csvCommentFmt = " %typ=2/%con=3 (%dif/%ter) Pl:%datepl (%last4  Lf:%datelf) "
+
+  #default Child Name format
+  $csvChildNameFmt = "%c_Type=1-%smart-%c_Prefix %c_Type"
+
+  #default Child comment format
+  $csvChildCommentFmt = "%c_comment"
+
+  # 
+  # ---------- Code ----------
+  # 
+  # Check if the data-file exist?
+  $MacLoc=SlashAdd($_Install) + "Macros\Nuvi60CsxGarminCsvPoiExport.xml"
+IF FileExists($MacLoc)
+	MacSettings Type=R 
+ELSE
+     # No saved file so set defaults for form
+
+      # Set the database to export POIs from.
+      $DB="Default"
+
+      # Set the folder to store the CSV files in.
+      $csvFolder = ""
+
+      # Set the username.
+      $Me=""
+
+      # Set whether to output the hint or not.
+      $OutputHint = True
+
+      # Set whether to honor any existing filters
+      $UseFilter = FALSE
+
+      # Set whether to Split Micros from Traditionals
+      $SplitMicros = True
+
+      # Set whether found caches will be filtered out
+      $FilterOutFound = False
+
+      # Set whether found caches will be filtered out
+      $FilterOutArchived = False
+
+      # Set whether found caches will be filtered out
+      $FilterOutDisabled = FALSE
+
+      # Set whether found caches will be filtered out
+      $SkipChildren = False
+
+      # Indicate the maximum hint length
+      $MaxHintLength = 256
+
+      # Indicate if to add owner to comment
+      $AddOwner = TRUE
+
+      # default name format
+      $csvNameFmt = "%smart/%code"
+
+      # default comment format
+      $csvCommentFmt = " %typ=2/%con=3 (%dif/%ter) Pl:%datepl (%last4  Lf:%datelf) "
+      
+      #default Child Name format
+      $csvChildNameFmt = "%c_Type=1-%smart-%c_Prefix %c_Type"
+
+      #default Child comment format
+      $csvChildCommentFmt = "%c_comment"
+
+  ENDIF 
+
+  # ---------- Form ----------
+
+  $dblist = SysInfo("databases")
+  $formexit = form($form, "")
+BEGINCASE
+  CASE $FormExit="DelayExit"
+	  CANCEL Msg="Macro cancelled"
+      BREAK
+  CASE $cancel
+      CANCEL Msg="Macro cancelled"
+      BREAK		  
+  CASE $Ok
+	  GOSUB Name=Process
+	  BREAK 
+  ENDCASE
+  
+# ---------- Form ----------
+  BEGINSUB Name=Process
+  $MaxHintLength = Val($MaxHintLengthStr)
+  # remove semicolons form the format strings
+  $csvNameFmt = Replace(";",":",$csvNameFmt,TRUE)
+  $csvCommentFmt = Replace(";",":",$csvCommentFmt,TRUE)
+  $csvChildNameFmt = Replace(";",":",$csvChildNameFmt,TRUE)
+  $csvChildCommentFmt = Replace(";",":",$csvChildCommentFmt,TRUE)
+  
+  # Save the value into $datafile to be reused the next time the macro is run
+
+  GOSUB Name=SaveVsubStatus
+  VSUB Status=Off
+  MACSettings Type=S  Vars=csvFolder,DB,Me,OutputHint,FilterOutFound,FilterOutArchived,FilterOutDisabled,SkipChildren,AddOwner,MaxHintLength,MaxHintLengthStr,UseFilter,SplitMicros,csvNameFmt,csvCommentFmt,csvChildNameFmt,csvChildCommentFmt,UseFilter,SplitMicros,poiLocation,poiLoader
+  GOSUB Name=RestoreVsubStatus
+
+  # If we get to here then the user must have clicked on the OK button
+  # CANCEL Msg="OK pressed"
+
+  # Remove previously saved CSV files (but not BMP-files, or any other file-type)
+  $EraseFiles = SlashAdd($csvFolder) +  "*.csv"
+  IF FileExists($EraseFiles)
+      FILEERASE File=$EraseFiles
+  ENDIF 
+
+  IF (IsEmpty($DB))
+      PAUSE Msg="Database has not been selected.  Macro Ending"
+      RETURN 
+  ENDIF 
+
+  # Select the correct database if necessary
+  IF $CurrentDB <> $DB
+      DATABASE Name=$DB Action=Select
+  ENDIF 
+
+IF NOT ($UseFilter)
+	CANCELFILTER	
+ENDIF
+
+IF $FilterOutFound
+IF $_FilterActive
+ MFILTER Expression=NOT($d_Found) join=AND
+ELSE
+ MFILTER Expression=NOT($d_Found)
+ENDIF
+ENDIF
+ 
+IF $FilterOutArchived
+IF $_FilterActive
+ MFILTER Expression=NOT($d_Archived) join=AND
+ELSE
+ MFILTER Expression=NOT($d_Archived)
+ENDIF
+ENDIF
+ 
+IF $FilterOutDisabled
+IF $_FilterActive
+ MFILTER Expression=NOT($d_TempDisabled) join=AND
+ELSE
+ MFILTER Expression=NOT($d_TempDisabled)
+ENDIF
+ENDIF 
+
+VSUB Status=on
+  # Set this counter to tell the user how the export progresses
+  $ThisRecord = 0
+  $csvLines = 0
+
+  # Iterate through the whole database, start at the first cache in the grid
+  GOTO Position=Top
+  WHILE NOT($_EOL)
+
+      # Show which record we are at
+      $ThisRecord = $ThisRecord + 1
+      IF $Verbose
+          IF Frac($ThisRecord/10) = 0
+              $Msg = "Now processing: " + "$ThisRecord" + " of " + "$_Count caches. $csvLines POI's"
+              SHOWSTATUS msg="$Msg"
+          ENDIF 
+      ENDIF 
+
+      $csvLon = "$d_Longitude"
+      $csvLat = "$d_Latitude"
+      $csvName = ""
+
+      IF $UsePrefix
+          # Previously found caches will have a "*" in front of the smart-name
+          IF $d_Found
+              $csvName = "*"
+          ENDIF 
+
+          # Archived caches will have a "-" in front of the smart-name
+          IF $d_Archived
+              $csvName = "-"
+          ENDIF 
+
+          # Caches with corrected coordinates will have a "!" in front of the smart-name
+          IF $d_HasCorrected
+              $csvName = "!"
+          ENDIF 
+      ENDIF 
+
+      $By = $d_OwnerName
+      # Note that double quote character MUST be removed to prevent csv file problems
+      IF At($_Quote,$By) > 0
+          #REPLACE double quotes with single quotes
+          $By = Replace($_Quote,"'",$By, True)
+      ENDIF 
+
+      # Change these lines for different data in the POI-files
+      # - CacheNameSetup
+      $csvName = $csvName + Eval($csvNameFmt)
+      # Note that double quote character MUST be removed to prevent csv file problems
+      IF At($QT,$csvName) > 0
+          #REPLACE double quotes with single quotes
+          $csvName = Replace($QT,"'",$csvName, True)
+      ENDIF 
+
+      # - CacheCommentSetup
+      $csvComment = Eval($csvCommentFmt)
+
+      IF $AddOwner
+          $csvComment = Trim($csvComment) + " " + $By
+      ENDIF 
+
+      # Note that double quote character MUST be removed to prevent csv file problems
+      IF At($QT,$csvComment) > 0
+          #REPLACE double quotes with single quotes
+          $csvComment = Replace($QT,"'",$csvComment, True)
+      ENDIF 
+
+      $csvCommentLen = Len($csvComment)
+      $workingLen = $MaxHintLength - $csvCommentLen
+
+      $hint = $d_Hints
+      IF Len($hint)+1 > $MaxHintLength
+          $hint = SMARTNAME($hint, $MaxHintLength-1)
+      ENDIF 
+
+      # if we need to output the hint, combine it with the original comment Now
+      IF $OutputHint
+          $csvComment = $csvComment + "|" + $hint
+      ENDIF 
+
+      GOSUB Name=FixHints
+
+      # This line goes in the CSV file
+      $csvOut = $csvLon + "," + $csvLat + "," + Quote($csvName) + "," + Quote($csvComment) + $_NewLine
+
+      # Write first line to CSV file
+      GOSUB Name=WriteCacheFile
+
+      # Now check the Child waypoints for this cache
+      IF NOT($SkipChildren)
+          GOSUB Name=ChildWpt
+      ENDIF 
+
+      # Goto next cache in view
+      GOTO Position=Next
+  ENDWHILE 
+
+  # Show which record we are at so it shows the right number when the macro ends
+  IF $Verbose
+      $Msg = "Now processing: " + "$ThisRecord" + " of " + "$_Count caches. $csvLines POI's"
+      SHOWSTATUS msg="$Msg"
+  ENDIF 
+
+  # Return to original database, if different
+  IF $_CurrentDatabase <> $CurrentDB
+      DATABASE Name=$CurrentDB Action=select
+  ENDIF 
+
+  # Restore userflags, filter, and sort
+  DATARESTORE Data=$d_UserFlag
+  IF RESTOREFILTER($CurrentFilter, True) = 0
+      PAUSE Msg="Previously-set filter now would show no records. Clearing."
+  ENDIF 
+  $sortdata = Extract($CurrentSort, "=",1)
+  $sequence = Extract($CurrentSort, "=",2)
+If $Sequence = "D"
+  SQLSORT OrderBy=$sortdata Desc
+  else
+  SQLSORT OrderBy=$sortdata Asc
+ ENDIF
+IF $POILoader
+	IF IsEmpty($POILocation)
+		MSGOK  Msg="The POI Location has not been set.  The POI command will not be run."
+		ELSE	
+# Try the old program name first.
+		$POIPgm=SlashAdd($POILocation) + "PoiLoader.exe"
+	IF NOT (FileExists($POIPGM))
+# Try the new program name if the old one doesn't exist.
+	$POIPgm=SlashAdd($POILocation) + "Poi Loader.exe"	
+	ENDIF
+# If the program still doesn't exist we can't do anything.	
+  	IF FileExists($POIPGM)	
+  		RUNPGM PGM=$POIPgm Wait=NO Parms=$POIParms
+  	ELSE 
+	   MSGOK MSG="POILoader program does not exist at the specified location and will not run."  		
+  	ENDIF
+	ENDIF
+ENDIF
+
+
+  IF $Verbose
+      #DISPLAY summary information
+
+      $Message = "$ThisRecord records processed." + $_NewLine
+      $Message = $Message + "$csvLines POI's generated." + $_NewLine + $_NewLine
+
+      MSGOK Msg=$Message  Caption="Nuvi60CsxGarminCvsPoiExport.gsk"
+  ENDIF 
+  ENDSUB
+
+  
+  # 
+  # ---------- SubRoutines ----------
+  # 
+
+  BEGINSUB Name=ChildWpt
+
+      # Switch to Additional Waypoint table
+
+      TABLE Active=Waypoints scope=Parent
+
+      # Is there any additional waypoints for this cache
+      IF $_count > 0
+          WHILE NOT($_EOL)
+              $PreProcess = $csvChildNameFmt
+              GOSUB Name=PreProcess
+              $csvChildNameFmt = $PreProcess
+
+              # First character in the name indicates the type of child waypoint
+              
+              # Change these lines for different data in the POI-files
+              # - ChildNameSetup
+              $csvName = Eval($csvChildNameFmt)
+              $SpecTags = $csvName
+              GOSUB Name=SpecTags
+              $csvName = $SpecTags
+
+              # - ChildCommentSetup
+              $PreProcess = $csvChildCommentFmt
+              GOSUB Name=PreProcess
+              $csvChildCommentFmt = $PreProcess
+
+              $csvComment = Eval($csvChildCommentFmt)
+              $SpecTags = $csvComment
+              GOSUB Name=SpecTags
+              $csvComment = $SpecTags
+              GOSUB Name=FixHints
+
+              $csvLon = $d_cLon
+              $csvLat = $d_cLat
+
+              IF Len($csvComment) > $MaxHintLength
+                $csvComment = SMARTNAME($csvComment, $MaxHintLength)
+              ENDIF
+              $csvOut = $csvLon + "," + $csvLat + "," + Quote($csvName) + "," + Quote($csvComment) + $_NewLine
+              GOSUB Name=WriteChildFile
+              GOTO Position=Next
+          ENDWHILE 
+      ENDIF 
+      TABLE Active=Caches
+
+  ENDSUB 
+
+BEGINSUB name=WriteCacheFile
+# Called to write the data about the cache to the file
+# The data must be in $csvOut
+
+# Default filename
+# Any waypoint not in the list of geocaching.com cache-types will be put in the "Unknown" file
+ $FileName = "Unknown"
+
+# Native cache types
+ $Index = At($d_CacheType,$CacheType)
+ IF $Index > 0
+   $FileName = Extract($CacheTypeFull,"~",$Index)
+ ENDIF
+
+# If the cache is a micro and you want to split out micros from traditionals
+IF $SplitMicros 
+	 IF $d_CacheType = "T" AND $d_Container = "Micro"
+	   $Filename = "Micro"
+	 ENDIF
+ENDIF
+
+# Found status takes precedence over cachetype
+ IF $d_Found
+   $FileName = "Found"
+ ENDIF
+
+# Corrected coordinates will be indicated with a green check-mark, only meaningfull for multi's and mystery's
+ IF $d_HasCorrected
+   $FileName = $FileName + " Solved"
+ ENDIF
+ 
+# Disabled status takes precedence over cachetype, found-status and corrected coordinates
+ IF $d_TempDisabled
+    $FileName = $FileName + " Disabled"
+ ENDIF
+
+# Archived status takes precedence over cachetype, found-status, corrected coordinates and disabled-ness
+ IF $d_Archived
+   $FileName = "Archived"
+ ENDIF
+
+# Any cache that I have placed will be indicated as such, independent of type
+# Will only match if your name is part of the OwnerName
+ $Index = At($Me,$d_OwnerName)
+ IF $Index > 0
+   $FileName = "Placed"
+ ENDIF
+
+ $FileName = "\" + $FileName + ".csv"
+ $error = Appendfile($csvFolder + $FileName, $csvOut)
+ $csvLines = $csvLines + 1
+ENDSUB 
+
+  BEGINSUB name=WriteChildFile
+
+      # Called to write the data about the child to the file
+      # The data must be in $csvOut
+
+      # Default filename
+      $FileName = "UnknownChild"
+
+      $ChildType1 = Left($d_cType, 1)
+      $Index = At($ChildType1,$ChildType)
+      IF $Index > 0
+          $FileName = Extract($ChildTypeFull,"~",$Index)
+      ENDIF 
+
+      $FileName = $FileName + ".csv"
+      $error = Appendfile(SlashAdd($csvFolder) + $FileName, $csvOut)
+      $csvLines = $csvLines + 1
+      
+  ENDSUB 
+
+  BEGINSUB Name=FixHints
+		  # clean up $csvComment:
+      # remove returns, html, etc
+      $csvComment = Replace($_NewLine," ",$csvComment, True)
+
+      IF At("<",$csvComment) > 0
+          # remove common html tags
+          $csvComment = Replace("<br>"," ",$csvComment, True)
+          $csvComment = Replace("<p>","",$csvComment, True)
+          $csvComment = Replace("</p>","",$csvComment, True)
+      ENDIF 
+
+      # Note that double quote character MUST be removed to prevent csv file problems
+      IF At($QT,$csvName) > 0
+          #REPLACE double quotes with single quotes
+          $csvName = Replace($QT,"'",$csvName, True)
+      ENDIF 
+
+      # Note that double quote character MUST be removed to prevent csv file problems
+      IF At($QT,$csvComment) > 0
+          #REPLACE double quotes with single quotes
+          $csvComment = Replace($QT,"'",$csvComment, True)
+      ENDIF 
+
+      IF At("  ",$csvComment) > 0
+          # convert 3, and then 2, sequential spaces into one
+          # note: this if/endif could be removed to enhance speed
+          $csvComment = Replace("   "," ",$csvComment, True)
+          $csvComment = Alltrim(Replace("  "," ",$csvComment, True))
+      ENDIF     
+  ENDSUB 
+  
+  BEGINSUB Name=PREPROCESS
+  	GoSub Name=SaveVsubStatus
+  		VSUB Status=Off
+      $PreProcess = Replace("$d_c","%c_",$PreProcess,TRUE)
+		GoSub Name=RestoreVsubStatus      
+    ENDSUB
+
+  BEGINSUB Name=SpecTags
+  	GOSUB Name=SaveVsubStatus
+  			VSUB Status=Off
+      $SpecTags = Replace("%c_comment",$d_cComment,$SpecTags,True)     
+	  GOSUB Name=RestoreVsubStatus			
+  ENDSUB  
+  
+ BEGINSUB Name=SaveVsubStatus
+	 $vsubtest1 = "wombat"
+ 	 $vsubtest2 = "$vsubtest1"
+ IF $vsubtest2 = "wombat"
+   $VsubStatus = true
+ ELSE
+   $VsubStatus = false
+ ENDIF
+ENDSUB
+
+BEGINSUB Name=RestoreVsubStatus
+ IF $VsubStatus
+   VSUB Status=On
+ ELSE
+   VSUB Status=Off
+ ENDIF
+ENDSUB
+
+ #*******************************************************
+#   Variable declarations for
+#   Nuvi60CsxGarminCsvPoiExport.gsk
+#
+#   Generated 12/14/2007 6:49:47 AM on GSAKVariables.gsk Rev V0.20 B11
+#
+#*******************************************************
+
+BEGINSUB Name=Declare
+Option Explicit=Yes
+
+Declare Var=$addOwner Type=Boolean
+Declare Var=$BatFile Type=String
+Declare Var=$By Type=String
+Declare Var=$CacheTotal Type=Numeric
+Declare Var=$CacheType Type=String
+Declare Var=$CacheTypeFull Type=String
+Declare Var=$Caption Type=String
+Declare Var=$ChildTotal Type=Numeric
+Declare Var=$ChildType Type=String
+Declare Var=$ChildType1 Type=String
+Declare Var=$ChildTypeFull Type=String
+DECLARE Var=$csvChildCommentFmt Type=String
+Declare Var=$csvChildNameFmt Type=String
+Declare Var=$csvComment Type=String
+Declare Var=$csvCommentFmt Type=String
+Declare Var=$csvCommentLen Type=Numeric
+Declare Var=$csvFolder Type=String
+Declare Var=$csvLat Type=String
+Declare Var=$csvLines Type=Numeric
+Declare Var=$csvLon Type=String
+Declare Var=$csvName Type=String
+Declare Var=$csvNameFmt Type=String
+Declare Var=$csvOut Type=String
+Declare Var=$CurrentDB Type=String
+Declare Var=$CurrentFilter Type=String
+Declare Var=$CurrentSort Type=String
+Declare Var=$csvName Type=String
+Declare Var=$csvComment Type=String
+DECLARE Var=$DB Type=String
+Declare Var=$dblist Type=String
+Declare Var=$DisabledIndex Type=Numeric
+Declare Var=$EraseFiles Type=String
+Declare Var=$error Type=String
+Declare Var=$ErrorCount Type=Numeric
+Declare Var=$ErrorLog Type=String
+Declare Var=$FileName Type=String
+Declare Var=$FilterOutArchived Type=Boolean
+Declare Var=$FilterOutDisabled Type=Boolean
+Declare Var=$FilterOutFound Type=Boolean
+Declare Var=$FormExit Type=String
+Declare Var=$JType Type=String
+Declare Var=$form Type=String
+Declare Var=$hint Type=String
+Declare Var=$HintCountDB Type=String
+Declare Var=$Index Type=Numeric
+Declare Var=$MacLoc Type=String
+Declare Var=$MacroVersion Type=String
+Declare Var=$MaxHintLength Type=Numeric
+Declare Var=$MaxHintLengthStr Type=String
+Declare Var=$Me Type=String
+Declare Var=$Message Type=String
+Declare Var=$Msg Type=String
+Declare Var=$OutputHint Type=Boolean
+Declare Var=$PreProcess Type=String
+DECLARE Var=$POILoader Type=Boolean
+DECLARE Var=$POILocation Type=String
+DECLARE Var=$POIParms Type=String
+DECLARE Var=$POIPgm Type=String
+Declare Var=$QT Type=String
+Declare Var=$Result Type=String
+Declare Var=$sequence Type=String
+Declare Var=$SkipChildren Type=Boolean
+Declare Var=$sortdata Type=String
+Declare Var=$SpecTags Type=String
+Declare Var=$SplitMicros Type=Boolean
+Declare Var=$ThisRecord Type=Numeric
+Declare Var=$UsePrefix Type=Boolean
+Declare Var=$UseFilter Type=Boolean
+Declare Var=$variables Type=String
+Declare Var=$Verbose Type=Boolean
+DECLARE Var=$VSubStatus Type=Boolean
+DECLARE Var=$VSubTest1  Type=String
+DECLARE Var=$VSubTest2  Type=String
+Declare Var=$workingLen Type=Numeric
+ENDSUB
+
+  <DATA> VarName=$form
+Name = Form1
+  Type = Form
+  Color = 12632256
+  Delay = 15
+  Height = 380
+  Left = 174
+  Top = 193
+  Width = 939
+
+Name = Label1
+  Type = Label
+  Color = 16744448
+  Enabled = No
+  Height = 24
+  Left = 285
+  Size = 14
+  Style = bold
+  Top = 6
+  Width = 340
+  Caption = POI Export for Garmin 60Csx or Nuvi
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 10
+  Style = bold
+  Top = 45
+  Width = 108
+  Caption = Database to export
+
+Name = db
+  Type = Combobox
+  Height = 21
+  Left = 176
+  Top = 40
+  Values = $dblist
+  Width = 146
+  Taborder = 8
+
+Name = Label3
+  Type = Label
+  Height = 13
+  Left = 10
+  Style = bold
+  Top = 154
+  Width = 136
+  Caption = Folder to save CSV files
+
+Name = csvFolder
+  Type = Folder
+  Height = 21
+  Left = 176
+  Top = 150
+  Width = 292
+  Taborder = 9
+
+Name = Label4
+  Type = Label
+  Height = 13
+  Left = 10
+  Style = bold
+  Top = 204
+  Width = 104
+  Caption = Geocaching Name
+
+Name = me
+  Type = Edit
+  Height = 21
+  Left = 176
+  Top = 200
+  Width = 91
+  Taborder = 10
+
+Name = Warning1
+  Type = Label
+  Color = 255
+  Height = 18
+  Left = 176
+  Size = 11
+  Style = bold
+  Top = 78
+  Width = 104
+  Caption = ***Warning***
+
+Name = Warning2
+  Type = Label
+  Color = 255
+  Height = 15
+  Left = 24
+  Size = 9
+  Style = bold
+  Top = 98
+  Width = 449
+  Caption = All CSV files in the destination folder will be deleted before generation
+
+Name = Warning3
+  Type = Label
+  Color = 255
+  Height = 15
+  Left = 37
+  Size = 9
+  Style = bold
+  Top = 118
+  Width = 428
+  Caption = (but not other types of files, so your .BMP or .GPX files will be safe)
+
+Name = Label11
+  Type = Label
+  Height = 13
+  Left = 10
+  Style = bold
+  Top = 256
+  Width = 78
+  Caption = Name Format:
+
+Name = csvNameFmt
+  Type = Edit
+  Height = 21
+  Left = 176
+  Top = 252
+  Width = 295
+  Taborder = 11
+
+Name = Label12
+  Type = Label
+  Height = 13
+  Left = 10
+  Style = bold
+  Top = 284
+  Width = 97
+  Caption = Comment Format:
+
+Name = csvCommentFmt
+  Type = Edit
+  Height = 21
+  Left = 176
+  Top = 280
+  Width = 295
+  Taborder = 12
+
+Name = Label10
+  Type = Label
+  Height = 13
+  Left = 490
+  Style = bold
+  Top = 118
+  Width = 98
+  Caption = Comment Length:
+
+Name = Label16
+  Type = Label
+  Height = 13
+  Left = 490
+  Style = bold
+  Top = 44
+  Width = 110
+  Caption = Child Name Format:
+
+Name = Label17
+  Type = Label
+  Height = 13
+  Left = 490
+  Style = bold
+  Top = 72
+  Width = 129
+  Caption = Child Comment Format:
+
+Name = csvChildNameFmt
+  Type = Edit
+  Height = 21
+  Left = 656
+  Top = 40
+  Width = 254
+  Taborder = 13
+
+Name = csvChildCommentFmt
+  Type = Edit
+  Height = 21
+  Left = 656
+  Top = 68
+  Width = 254
+  Taborder = 14
+
+Name = MaxHintLengthStr
+  Type = Combobox
+  Directinput = Yes
+  Height = 21
+  Left = 656
+  Top = 114
+  Values = 88;256
+  Width = 145
+  Taborder = 15
+
+Name = Label13
+  Type = Label
+  Height = 13
+  Left = 490
+  Style = bold
+  Top = 161
+  Width = 133
+  Caption = Add owner to comment:
+
+Name = addOwner
+  Type = Checkbox
+  Height = 17
+  Left = 656
+  Top = 159
+  Width = 15
+  Taborder = 16
+
+Name = Label5
+  Type = Label
+  Height = 13
+  Left = 490
+  Style = bold
+  Top = 185
+  Width = 70
+  Caption = Output hint?
+
+Name = OutputHint
+  Type = Checkbox
+  Height = 17
+  Left = 656
+  Top = 183
+  Width = 15
+  Taborder = 17
+
+Name = Label6
+  Type = Label
+  Height = 13
+  Left = 736
+  Style = bold
+  Top = 185
+  Width = 138
+  Caption = Filter out found caches?
+
+Name = FilterOutFound
+  Type = Checkbox
+  Height = 17
+  Left = 901
+  Top = 183
+  Width = 15
+  Taborder = 18
+
+Name = Label7
+  Type = Label
+  Height = 13
+  Left = 490
+  Style = bold
+  Top = 209
+  Width = 155
+  Caption = Filter out archived caches?
+
+Name = FilterOutArchived
+  Type = Checkbox
+  Height = 17
+  Left = 656
+  Top = 207
+  Width = 15
+  Taborder = 19
+
+Name = Label8
+  Type = Label
+  Height = 13
+  Left = 736
+  Style = bold
+  Top = 209
+  Width = 153
+  Caption = Filter out disabled caches?
+
+Name = FilterOutDisabled
+  Type = Checkbox
+  Height = 17
+  Left = 901
+  Top = 207
+  Width = 15
+  Taborder = 20
+
+Name = SkipChildren
+  Type = Checkbox
+  Height = 17
+  Left = 656
+  Top = 233
+  Width = 15
+  Taborder = 21
+
+Name = Label9
+  Type = Label
+  Height = 13
+  Left = 490
+  Style = bold
+  Top = 235
+  Width = 127
+  Caption = Skip Child Waypoints?
+
+Name = ok
+  Type = Button
+  Height = 23
+  Left = 337
+  Top = 322
+  Width = 75
+  Taborder = 22
+  Caption = OK
+
+Name = cancel
+  Type = Button
+  Height = 23
+  Left = 512
+  Top = 322
+  Width = 75
+  Taborder = 23
+  Caption = Cancel
+
+Name = Label14
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 819
+  Style = bold
+  Top = 128
+  Width = 52
+  Caption = 60Csx:88
+
+Name = Label15
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 819
+  Style = bold
+  Top = 113
+  Width = 59
+  Caption = Nuvi:  256
+
+Name = Label18
+  Type = Label
+  Height = 13
+  Left = 736
+  Style = bold
+  Top = 161
+  Width = 102
+  Caption = Use existing filter:
+
+Name = UseFilter
+  Type = Checkbox
+  Height = 17
+  Left = 901
+  Top = 159
+  Width = 15
+  Taborder = 24
+
+Name = Label19
+  Type = Label
+  Height = 13
+  Left = 736
+  Style = bold
+  Top = 235
+  Width = 96
+  Caption = Separate Micros:
+
+Name = SplitMicros
+  Type = Checkbox
+  Height = 17
+  Left = 901
+  Top = 233
+  Width = 15
+  Taborder = 25
+
+Name = POILocation
+  Type = Folder
+  Height = 21
+  Left = 736
+  Top = 258
+  Width = 177
+  Taborder = 26
+
+Name = Label20
+  Type = Label
+  Height = 13
+  Left = 490
+  Style = bold
+  Top = 262
+  Width = 179
+  Caption = Location of Garmin POI Loader:
+
+Name = Label21
+  Type = Label
+  Height = 13
+  Left = 490
+  Style = bold
+  Top = 291
+  Width = 95
+  Caption = Run POI Loader:
+
+Name = POILoader
+  Type = Checkbox
+  Height = 17
+  Left = 656
+  Top = 289
+  Width = 15
+  Taborder = 27
+
+<enddata>
+
+
+
+
+ 
+
+
+

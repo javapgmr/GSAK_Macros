@@ -1,0 +1,87 @@
+# Inspired by Beejay's macro to retick PQ so they don't expire in 30 days. I wrote this cos I have 28 PQs and know they may change.
+#
+# This macro looks your web page of Pocket queries and finds which ones are currently turned on and turns them on again,
+# so you don't need to be cutting and pasting all those horrible urls.
+# There is some manual intervention at the start which involves:-
+# 1. from the new browser window (that is opened for you) copy your PQ web page source code
+#     (right click, select "View Source", "Select All" and "Copy" for IE6)
+# 2. paste this code into the newly open Notepad file. 
+#        (NB the secoond time round your old code will be still there if needed. eg turning them all off and then the same ones on again)
+#    or select all before pasting to start with the current PQ list
+# 3. save and close the Notepad window so that the macro can do its stuff.
+#
+# You may have a few windows to close depending on your PCs configuration. You can play around with the delay depending on the GC servers.
+#
+# Let me know if you any ideas for improvement, particurlarly if you can get rid of the manual part.
+# I hope it works for you - RODZ.
+# MacVersion = 1.0
+# MacDescription = AutoRetick of Pocket Queries at GC.com
+# MacFileName = autoRetick.gsk
+# MacAuthor = RODZ
+
+GOSUB Name=DeclareVariables
+
+$delaytime=4000                                             #delay time in milliseconds - required for IE6, or set to 0
+$switch="1"                                                 #sets PQs on or off - check you have saved copy of Notepad file if turning off.
+$title_next=false
+$titlestr="http://www.geocaching.com/pocket/gcquery.aspx"
+$startstr = "pocket/Default.aspx"
+$endstr="&opt=0"
+$len_startstr=len($startstr)
+$len_endstr=len($endstr)
+$url="http://www.geocaching.com/pocket/"
+web url=$url
+$file=$_install+"\temp\PQ_copy.txt"
+Runpgm pgm="notepad.exe" parms=$file wait=yes
+FileRead File=$file
+   $data=$line
+   If RegEx($endstr,$data)
+      $currentPQ_status=true
+      $cnt=0
+      While $cnt<=len($data)
+         $cnt=$cnt+1
+         If substr($data,$cnt,$len_startstr)=$startstr
+            $startcnt=$cnt
+         EndIf
+         If substr($data,$cnt,$len_endstr)=$endstr
+            $endcnt=$cnt+$len_endstr
+         EndIf
+      EndWhile
+      $url=substr($data,$startcnt,$endcnt-$startcnt)
+      $url="http://www.geocaching.com/"+$url+$switch
+      web url=$url
+      delay ms=$delaytime
+   EndIf
+EndRead
+Pause msg="Macro complete"
+
+
+BEGINSUB Name=DeclareVariables
+	#*******************************************************
+#   Variable declarations for
+#   autoRetick.gsk
+#
+#   Generated 06/12/2007 9:37:54 PM on GSAKVariables.gsk Rev V0.20 B8
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$cnt Type=Numeric
+Declare Var=$currentPQ_status Type=Boolean
+# Declare Var=$data Type=Unknown
+Declare Var=$delaytime Type=Numeric
+Declare Var=$endcnt Type=Numeric
+Declare Var=$endstr Type=String
+Declare Var=$file Type=String
+Declare Var=$len_endstr Type=Numeric
+Declare Var=$len_startstr Type=Numeric
+Declare Var=$startcnt Type=Numeric
+Declare Var=$startstr Type=String
+Declare Var=$switch Type=String
+Declare Var=$title_next Type=Boolean
+Declare Var=$titlestr Type=String
+Declare Var=$url Type=String
+ENDSUB
+

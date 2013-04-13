@@ -1,0 +1,684 @@
+#*******************************************
+# MacVersion = 20120806
+# MacDescription = Plot 161m radius geocache saturation/separation circles in Google Earth
+# MacAuthor = Rex-N-Marie and PDOPs and Rutson
+# MacFileName = GoogleEarthCirclesPLUS.gsk
+# MacUrl = http://gsak.net/board/index.php?act=ST&f=28&t=22880
+#*******************************************
+
+# Adapted from PDOPs GoogleEarthCircles Macro
+# 20120806 Added green shaded circles for Archived Caches, Puzzle Caches, and Events.
+# Adapted from Rutson's KMLcircles macro
+# 20080214 Added macro form, color choices and circle line width choices. Default name of 
+#          database and todays date used for the Placemark Folder created in Google Earth
+# 20080215 Added fill color options
+# 20080219 Added MacURL and code the screen position of the form
+# 20080304 Dropdown List for Opacity
+# 20081202.Dropdown List for Circle Line Width
+# 20081202 Option to include Child waypoints for "Final Location" and "Stages of a Multicache"
+# 20081215 Fixed bug in circle fill opacity code
+#***********************************************************************************************
+
+VERCHECK Version=7.2.3.35 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+
+#   User Configurable Variables       
+#==============================================================================================#
+			# Possible Variables For Default Settings
+
+# Circle Color
+$RBred = True         # $RBred  $RBblue  $RByellow  $RBblack  $RBwhite
+
+# Line Width Pixels
+$LineWidth="5"        # 0;1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;18;19;20;22;23;24;25 
+
+# Fill Color
+$RByellowF = True     # $RBredF  $RBblueF   $RByellowF  $RBblackF  $RBwhiteF
+
+# Fill Opacity %	# 0;5;10;15;20;25;30;35;40;45;50;55;60;65;70;75;80;85;90;95;100
+$OPACITY= "50"
+
+# Include Child Waypoints
+$CBchildren = True	# False		          
+
+	#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+
+# Default Name for KML file and Google Earth Placemark Folder (Database + "Separation Circles" + YYYYMMDD)
+$CirclesName=$_CurrentDatabase + " Separation Circles"+ "  " + DateToString($_Today)
+
+#   End User Configurable Variables       
+#==============================================================================================#
+
+# Define values in dropdown list for Opacity and Line Width
+
+$OpacityDDL="0;5;10;15;20;25;30;35;40;45;50;55;60;65;70;75;80;85;90;95;100"
+
+$LineWidthDDL="0;1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;18;19;20;22;23;24;25"
+
+# Show version number in Form caption
+
+$Form = EditForm($Form,"Form1","Caption","Google Earth Cache Separation Circles v20120806")
+
+While True # Infinite loop to redisplay form as required
+
+# Save the screen position of the form for later
+ $Form = EditForm($Form,"Form1","Top",$_FormTop)
+ $Form = EditForm($Form,"Form1","Left",$_FormLeft)
+
+  $FormExit = form($form,"")
+
+  BeginCase
+
+    Case $FormExit = "SystemExit"
+
+      break
+
+    Case $FormExit = "btnExit"
+
+      break
+
+  EndCase
+
+# RUN button
+IF $btnRun
+
+	# Choose circle line color radio buttons
+
+	  BeginCase
+
+	    Case $RBred
+
+	      $LineColor = "ff0000ff"
+
+	    Case $RBblue
+
+	      $LineColor = "ffff0000"
+
+	    Case $RByellow
+
+	      $LineColor = "ff00ffff"
+
+	    Case $RBblack
+
+	      $LineColor = "ff000000"
+
+	    Case $RBwhite
+
+	      $LineColor = "ffffffff"
+
+	  EndCase
+
+	# Circle line width now directly from dropdown list
+
+	# Choose circle fill color radio buttons
+
+	  BeginCase
+
+	    Case $RBredF
+
+	      $FillColor = "0000ff"
+
+	    Case $RBblueF
+
+	      $FillColor = "ff0000"
+
+	    Case $RByellowF
+
+	      $FillColor = "00ffff"
+
+	    Case $RBblackF
+
+	      $FillColor = "000000"
+
+	    Case $RBwhiteF
+
+	      $FillColor = "ffffff"
+
+	  EndCase
+	     
+
+	# Choose circle fill opacity
+
+	$Percent=val($OPACITY)
+
+	$dec= ($Percent/100)*255
+
+	$aFillColor ="00ff00"
+	GoSUB name=Dectohex
+
+	BEGINSUB name=Dectohex
+
+		# Takes input from 0-255 as a decimal number in $dec
+		# and returns it as a two character hex string in $hex
+
+		$hexlookup="0123456789ABCDEF"
+		$d = Int($dec)
+		$q = Int($d/16)
+		$r = $d - ($q*16)
+		$hex = SubStr($hexlookup,$q+1,1) + SubStr($hexlookup,$r+1,1)
+	
+	ENDSUB
+
+	$OpacityHex=$hex
+
+
+	# build KML file code combining static code in <data> statements with dynamic variables
+
+	$head = "<Folder>" + $_Newline + "<name>"
+	$head = $head + $CirclesName + "</name>" + $_NewLine
+	$head = $head + "<visibility>1</visibility>" + $_NewLine
+	$head = $head + "<Style id=" + $_Quote + "z0" + $_Quote + ">" + $_NewLine
+	$head = $head + "<LineStyle><color>$LineColor</color><width>$LineWidth</width></LineStyle>" + $_NewLine
+	$head = $head + "<PolyStyle><color>" + $OpacityHex + $FillColor + "</color></PolyStyle>" + $_NewLine
+	$head = $head + "</Style>" + $_NewLine
+	$head = $head + "<Style id=" + $_Quote + "z1" + $_Quote + ">" + $_NewLine
+	$head = $head + "<LineStyle><color>$LineColor</color><width>$LineWidth</width></LineStyle>" + $_NewLine
+	$head = $head + "<PolyStyle><color>" + $OpacityHex + $aFillColor + "</color></PolyStyle>" + $_NewLine
+	$head = $head + "</Style>" + $_NewLine
+
+	$out = "<Placemark>" + $_NewLine
+	$out = $out + "$circlenametags"
+	$out = $out + "<styleUrl>#z0</styleUrl>" + $_NewLine
+	$out = $out + "<Polygon><tessellate>1</tessellate><altitudeMode>clampToGround</altitudeMode>" + $_NewLine
+	$out = $out + "<outerBoundaryIs><LinearRing><coordinates>" + $_NewLine
+
+	# Iterate through filter/database
+
+	$Points="" 
+
+	GOTO position=top
+
+	WHILE not($_EoL)
+		$cache = Replace("circle",$d_Code,$out,TRUE) 
+		$lat1 = $d_latitude
+		$lon1 = $d_longitude
+		IF $d_status = "X" OR $d_CacheType = "U" OR $d_CacheType = "E"
+			$cache = Replace("z0","z1",$cache, TRUE)
+		EndIf
+
+		$angle =0
+		$step  = 10
+	
+		$coords = ""
+
+		WHILE $angle <=360
+			$data = $lat1 + " " + $lon1 + ";" + "$angle;161;T"
+			$text = GCalc($data,"Project")
+			$coords = $coords + Extract($text,";",2) + "," +  Extract($text,";",1)  + ",0" + "$_Newline"
+			$angle=$angle + $step
+		ENDWHILE
+	
+		$cache = $cache + $coords + $circtail
+
+		$Points=$Points+$cache
+
+		If TotChild("current") > 0 AND $CBchildren = True
+
+			Table active=waypoints scope=parent
+
+			while not($_EOL)
+
+				If $d_cType="Final Location" OR $d_cType="Stages of a Multicache"
+
+					$child = Replace("circle",$d_cCode,$out,TRUE) 
+					$lat1 = $d_cLat
+					$lon1 = $d_cLon
+
+					$angle =0
+					$step  = 10
+	
+					$coords = ""
+
+					WHILE $angle <=360
+						$data = $lat1 + " " + $lon1 + ";" + "$angle;161;T"
+						$text = GCalc($data,"Project")
+						$coords = $coords + Extract($text,";",2) + "," +  Extract($text,";",1)  + ",0" + "$_Newline"
+						$angle=$angle + $step
+					ENDWHILE
+
+					$child = $child + $coords + $circtail
+
+					$Points=$Points+$child
+
+				EndIf	
+
+				GoTo Position=Next
+
+			EndWhile
+  
+
+			Table Active=caches
+
+		EndIf
+
+		GOTO position=next
+
+	ENDWHILE
+
+	$final = $head + $Points + $_NewLine + "</Folder>"
+
+	# File is saved to \temp\ folder and will be deleted at shutdown
+
+	$KMLFile=$_Install + "\temp\$CirclesName.kml"
+
+	$tmp = PutFile($kmlfile,$final)
+
+	FILEOPEN file=$kmlfile
+
+ENDIF  # Run Button
+
+EndWhile # form display
+
+# Data statements of static code  *************************************************************
+
+<data> Varname=$circlenametags
+<name>circle</name>
+<EndData>
+
+<data> Varname=$circTail
+</coordinates>
+</LinearRing></outerBoundaryIs></Polygon>
+</Placemark>
+<enddata>
+
+# Main Form
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Mon 06-Aug-2012 16:45:46
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = set by EditForm()
+  Height = 466
+  Width = 656
+
+Name = LineColor
+  Type = Groupbox
+  Caption = Circle Line
+  Height = 226
+  Left = 24
+  Top = 160
+  Width = 68
+  Taborder = 1
+
+Name = FillColor
+  Type = Groupbox
+  Caption = Circle Fill
+  Height = 226
+  Left = 253
+  Top = 160
+  Width = 68
+  Taborder = 5
+
+Name = FillOpacity
+  Type = Groupbox
+  Caption = Fill Opacity
+  Height = 226
+  Left = 348
+  Top = 160
+  Width = 68
+  Taborder = 4
+
+Name = WidthGroupbox
+  Type = Groupbox
+  Caption = Line Width
+  Height = 226
+  Left = 118
+  Top = 160
+  Width = 68
+  Taborder = 2
+
+Name = Label1
+  Type = Label
+  Color = 16711680
+  Height = 20
+  Left = 24
+  Size = 13
+  Style = bold
+  Top = 16
+  Width = 398
+  Caption = Plot 161 Metre Radius Circles in Google Earth
+
+Name = Label8
+  Type = Label
+  Color = 16711680
+  Height = 20
+  Left = 69
+  Size = 13
+  Style = bold
+  Top = 42
+  Width = 309
+  Caption = for Geocache Saturation Separation
+
+Name = CirclesName
+  Type = Edit
+  Height = 21
+  Left = 140
+  Top = 78
+  Width = 270
+  Taborder = 3
+
+Name = Label2
+  Type = Label
+  Height = 16
+  Left = 20
+  Size = 10
+  Style = bold
+  Top = 80
+  Width = 121
+  Caption = PlaceMark / File
+
+Name = Memo1
+  Type = Memo
+  Color = 255
+  Container = LineColor
+  Height = 30
+  Left = 20
+  Readonly = Yes
+  Top = 20
+  Width = 30
+  Taborder = 0
+
+Name = RBred
+  Type = Radiobutton
+  Color = 255
+  Container = LineColor
+  Height = 16
+  Left = 28
+  Top = 28
+  Width = 16
+  Taborder = 4
+
+Name = Memo2
+  Type = Memo
+  Color = 16744448
+  Container = LineColor
+  Height = 30
+  Left = 20
+  Readonly = Yes
+  Top = 60
+  Width = 30
+  Taborder = 1
+
+Name = RBblue
+  Type = Radiobutton
+  Color = 16744448
+  Container = LineColor
+  Height = 16
+  Left = 28
+  Top = 68
+  Width = 16
+  Taborder = 5
+
+Name = Memo3
+  Type = Memo
+  Color = 8454143
+  Container = LineColor
+  Height = 30
+  Left = 20
+  Readonly = Yes
+  Top = 100
+  Width = 30
+  Taborder = 2
+
+Name = RByellow
+  Type = Radiobutton
+  Color = 8454143
+  Container = LineColor
+  Height = 16
+  Left = 28
+  Top = 108
+  Width = 16
+  Taborder = 6
+
+Name = Memo4
+  Type = Memo
+  Color = 4194368
+  Container = LineColor
+  Height = 30
+  Left = 20
+  Readonly = Yes
+  Top = 140
+  Width = 30
+  Taborder = 9
+
+Name = RBblack
+  Type = Radiobutton
+  Color = 4194368
+  Container = LineColor
+  Height = 16
+  Left = 28
+  Top = 148
+  Width = 16
+  Taborder = 8
+
+Name = Memo5
+  Type = Memo
+  Color = 16777215
+  Container = LineColor
+  Height = 30
+  Left = 20
+  Readonly = Yes
+  Top = 180
+  Width = 30
+  Taborder = 3
+
+Name = RBwhite
+  Type = Radiobutton
+  Color = 16777215
+  Container = LineColor
+  Height = 17
+  Left = 28
+  Top = 188
+  Width = 15
+  Taborder = 7
+
+Name = Memo21
+  Type = Memo
+  Color = 255
+  Container = FillColor
+  Height = 30
+  Left = 20
+  Readonly = Yes
+  Top = 20
+  Width = 30
+  Taborder = 0
+
+Name = RBredF
+  Type = Radiobutton
+  Color = 255
+  Container = FillColor
+  Height = 16
+  Left = 28
+  Top = 28
+  Width = 16
+  Taborder = 4
+
+Name = Memo22
+  Type = Memo
+  Color = 16744448
+  Container = FillColor
+  Height = 30
+  Left = 20
+  Readonly = Yes
+  Top = 60
+  Width = 30
+  Taborder = 1
+
+Name = RBblueF
+  Type = Radiobutton
+  Color = 16744448
+  Container = FillColor
+  Height = 16
+  Left = 28
+  Top = 68
+  Width = 16
+  Taborder = 5
+
+Name = Memo23
+  Type = Memo
+  Color = 8454143
+  Container = FillColor
+  Height = 30
+  Left = 20
+  Readonly = Yes
+  Top = 100
+  Width = 30
+  Taborder = 2
+
+Name = RByellowF
+  Type = Radiobutton
+  Color = 8454143
+  Container = FillColor
+  Height = 16
+  Left = 28
+  Top = 108
+  Width = 16
+  Taborder = 6
+
+Name = Memo24
+  Type = Memo
+  Color = 4194368
+  Container = FillColor
+  Height = 30
+  Left = 20
+  Readonly = Yes
+  Top = 140
+  Width = 30
+  Taborder = 9
+
+Name = RBblackF
+  Type = Radiobutton
+  Color = 4194368
+  Container = FillColor
+  Height = 16
+  Left = 28
+  Top = 148
+  Width = 16
+  Taborder = 8
+
+Name = Memo25
+  Type = Memo
+  Color = 16777215
+  Container = FillColor
+  Height = 30
+  Left = 20
+  Readonly = Yes
+  Top = 180
+  Width = 30
+  Taborder = 3
+
+Name = RBwhiteF
+  Type = Radiobutton
+  Color = 16777215
+  Container = FillColor
+  Height = 17
+  Left = 28
+  Top = 188
+  Width = 15
+  Taborder = 7
+
+Name = OPACITY
+  Type = Combobox
+  Container = FillOpacity
+  Display = 14
+  Height = 21
+  Left = 12
+  Top = 38
+  Values = $OpacityDDL
+  Width = 44
+  Taborder = 0
+
+Name = LblPercent
+  Type = Label
+  Container = FillOpacity
+  Height = 16
+  Left = 6
+  Size = 10
+  Style = bold
+  Top = 19
+  Width = 61
+  Caption = Percent
+
+Name = btnRun
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 97
+  Top = 398
+  Width = 75
+  Taborder = 0
+  Caption = RUN
+
+Name = btnExit
+  Type = Button
+  Height = 25
+  Left = 266
+  Top = 398
+  Width = 75
+  Taborder = 6
+  Caption = Exit
+
+Name = LineWidth
+  Type = Combobox
+  Container = WidthGroupbox
+  Display = 14
+  Height = 21
+  Left = 12
+  Top = 38
+  Values = $LineWidthDDL
+  Width = 44
+  Taborder = 0
+
+Name = Label3
+  Type = Label
+  Container = WidthGroupbox
+  Height = 16
+  Left = 13
+  Size = 10
+  Style = bold
+  Top = 19
+  Width = 50
+  Caption = Pixels
+
+Name = CBchildren
+  Type = Checkbox
+  Height = 17
+  Left = 20
+  Top = 112
+  Width = 15
+  Taborder = 9
+
+Name = Label4
+  Type = Label
+  Height = 16
+  Left = 41
+  Size = 10
+  Style = bold
+  Top = 112
+  Width = 339
+  Caption = Include Child waypoints for  "Final Location" and
+
+Name = Label5
+  Type = Label
+  Height = 15
+  Left = 377
+  Size = 9
+  Style = bold
+  Top = 113
+  Width = 228
+  Caption = "Stages of a Multicache" if present
+
+Name = Label6
+  Type = Label
+  Height = 25
+  Left = 24
+  Style = bold
+  Top = 136
+  Width = 501
+  Caption =  Archived Caches will be filled with GREEN,  indicating  area is available for new hides.
+
+<enddata>
+
+

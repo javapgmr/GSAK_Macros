@@ -1,0 +1,13 @@
+#*******************************************
+# MacDescription =Compare movement of corrected coordinates to resolution of elevation
+# MacFileName =CorrectedDistResol.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.0
+#*******************************************
+
+
+$Result="Code;Distance;Resolution"
+$_sql="Select kCode,round(g_Distance(kBeforeLat,kBeforeLon,kAfterLat,kAfterLon,'K')*1000),(Select Resolution from Caches WHERE Code=kCode) from Corrected"
+$Result=$Result + $_Crlf + Sqlite("sql",$_sql)
+
+$Display=SqlToHtml($Result,"Distance vs Resolution","Y")

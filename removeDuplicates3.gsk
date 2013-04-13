@@ -1,0 +1,86 @@
+#REMOVE WAYPOINTS WITH DUPLICATE COORDINATES - RemoveDups version 3
+
+#Version Check
+VERCHECK version=6.6.5.15 (This macro requires GSAK version 6.6.5 Build 15 or later.  Please update GSAK to run this macro - see http://gsak.net and http://gsak.net/board/index.php?showtopic=3347&view=findpost&p=19692)
+
+#Initialize variables
+$ThisRecord=0
+$OrigSortOrder = $_SortBy
+
+#Save existing UserData2 information for later restoration
+DATASAVE Data=$d_User2
+
+#Clear all macroflags
+MacroFlag Type=Clear Range=All
+
+#Gather user's preference for keeping newest or oldest of the waypoints with duplicated coordinates.
+CHOOSE Msg="For those waypoints with duplicate coordinates, do you want to keep:"  Opt1="Those Created First (oldest among duplicates)" Opt2="Those created last (newest among duplicates)"
+IF $Result=1
+     $Sequence="A"
+ELSE
+     $Sequence="D"
+EndIF
+
+#Copy Lattitude and Longitdue to UserData2
+GOTO Position=Top
+While not($_EoL)
+    # Show status of macro (every 10 records)
+    $ThisRecord = $ThisRecord + 1
+    IF frac($ThisRecord/10) = 0
+         $status = "Gathering Coordinates: " + "$ThisRecord" + " of " + "$_Count"
+         ShowStatus msg="$status" Width=250
+    EndIF
+    $d_User2=$d_Latitude + ";" + $d_Longitude
+    GOTO Position=next
+EndWhile
+
+#Sort by UserData2 and date created, based on user preference
+Sort By="user2;created" Sequence=$Sequence
+
+#Identify and flag waypoints with duplicate coordinates
+GOTO Position=Top
+$ThisRecord=0
+While not($_EoL)
+    # Show status of macro (every 10 records)
+    $ThisRecord = $ThisRecord + 1
+    IF frac($ThisRecord/10) = 0
+        $status = "Comparing Coordinates: " + "$ThisRecord" + " of " + "$_Count"
+        ShowStatus msg="$status" Width=350
+    EndIF
+   $Control=$d_User2
+   GOTO Position=Next
+   IF $_EoL
+       Break
+   EndIF
+   $Comparison=$d_User2
+   IF ($Comparison=$Control)
+       $d_MacroFlag=True
+   EndIF
+EndWhile
+
+#Filter for and delete all flagged waypoints
+MFilter IF=$d_MacroFlag
+IF $_FilterCount>0
+   $status = "Deleting " + "$_FilterCount" + " Duplicate Waypoints. Please wait for the macro to finish."
+        ShowStatus msg="$status" Width=350
+   MacroSet Dialog=Delete VarName=$Delete
+   Delete Settings=<macro>
+ELSE
+   $Message="There are no duplicate waypoints to delete." + $_NewLine +  $_NewLine + "Please click 'Continue' and wait a few seconds for the macro to clean up after itself."
+   PAUSE Msg=$Message
+EndIF
+
+#Cancel Filter, Restore UserData2 & User's Original Sort Order
+CancelFilter
+DATARESTORE Data=$d_User2
+$OrigSort = Extract($OrigSortOrder, "=",1)
+$OrigSequence = Extract($OrigSortOrder, "=",2)
+SORT By=$OrigSort Sequence=$OrigSequence 
+
+<data> VarName=$Delete
+[TfmDelete]
+cbxStop.Checked=False
+rbtFilter.Checked=True
+rbtFlagged.Checked=False
+rbtOnly.Checked=False
+<enddata>

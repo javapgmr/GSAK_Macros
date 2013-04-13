@@ -1,0 +1,328 @@
+# MacVersion = 1.2
+# MacDescription = Macro Command Line Tool
+# MacAuthor = Bronstein
+# MacFileName = MacroCommandLine.gsk
+# MacURL = http://gsak.net/board/index.php?showtopic=9550
+# Based on Clydes Snippet http://gsak.net/board/index.php?showtopic=9075&view=findpost&p=57969
+
+# V1.1
+# - Fixed when using a ";" in a command line
+# - Fixed the history length when a new command was entered
+# - Added the option to enter more than one command by using "|" as a line separator
+# - Added Favourites
+# - Added Declared variables
+
+# V1.2
+# - Added option to exit this macro on execute
+
+#*******************************************************
+#   Variable declarations for
+#   C:\Programme\gsak\Macros\MacroCommandLine.gsk
+#
+#   Generated 28.09.2008 21:58:56 on GSAKVariables.gsk Rev V0.20 B15
+#
+#*******************************************************
+
+Option Explicit=Yes
+
+Declare Var=$CMD_Divider Type=String
+Declare Var=$CMD_F_Command Type=String
+Declare Var=$CMD_F_ExitOnExecute Type=Boolean
+Declare Var=$CMD_F_HistoryDepth Type=String
+Declare Var=$CMD_Favourites Type=String
+Declare Var=$CMD_FavouritesTop Type=String
+Declare Var=$CMD_History Type=String
+Declare Var=$CMD_HistoryDepth Type=String
+Declare Var=$CMD_HistoryTop Type=String
+Declare Var=$CMD_MacroCmd Type=String
+Declare Var=$CMD_MacroCmdHistory Type=String
+Declare Var=$CMD_MacroFavourites Type=String
+Declare Var=$CMD_MacroHistory Type=String
+Declare Var=$CMD_MainForm Type=String
+Declare Var=$CMD_result Type=String
+Declare Var=$CMD_Semikolon Type=String
+Declare Var=$CMD_SQLfile Type=String
+Declare Var=$CMD_status Type=String
+Declare Var=$CMD_tempS Type=String
+
+$CMD_Divider = "~~1~~"+$_NewLine
+$CMD_Semikolon = "{:,}"
+$CMD_MacroCmdHistory = SysInfo("MacroPath") + "\MacroCommandLine.dat"
+$CMD_MacroCmd = "$_Install\temp\MacroCmd.gsk"
+$CMD_HistoryTop = "- History - Please select -"
+$CMD_FavouritesTop = "- Favourites - Please select -"
+If FileExists($CMD_MacroCmdHistory)
+	$CMD_tempS = GetFile($CMD_MacroCmdHistory)
+	If At($CMD_Divider,$CMD_tempS)=0
+		# Old config file
+		$CMD_F_HistoryDepth = Extract($CMD_tempS,$_NewLine,1)
+		$CMD_MacroHistory = Replace($CMD_F_HistoryDepth+$_NewLine,"",$CMD_tempS,True)
+		$CMD_F_HistoryDepth = Replace("~","",$CMD_F_HistoryDepth,False)
+		$CMD_MacroFavourites = ""
+	Else
+		$CMD_F_HistoryDepth = Extract($CMD_tempS,$CMD_Divider,1)
+		$CMD_F_HistoryDepth = Left($CMD_F_HistoryDepth,Len($CMD_F_HistoryDepth)-2)
+		$CMD_MacroHistory = Extract($CMD_tempS,$CMD_Divider,2)
+		$CMD_MacroHistory = Left($CMD_MacroHistory,Len($CMD_MacroHistory)-2)
+		$CMD_MacroFavourites = Extract($CMD_tempS,$CMD_Divider,3)
+		$CMD_MacroFavourites = Left($CMD_MacroFavourites,Len($CMD_MacroFavourites)-2)
+	EndIf
+Else
+	$CMD_MacroHistory = ""
+	$CMD_F_HistoryDepth = "~10~"
+EndIf
+$CMD_HistoryDepth = "5;10;20;30"
+$CMD_result = ""
+$CMD_F_ExitOnExecute = True
+While True
+	$CMD_History = $CMD_HistoryTop + $_NewLine + Replace(";",$CMD_Semikolon,$CMD_MacroHistory,False)
+	$CMD_Favourites = $CMD_FavouritesTop + $_NewLine + Replace(";",$CMD_Semikolon,$CMD_MacroFavourites,False)
+	$CMD_MainForm=Editform($CMD_Mainform,"CMD_F_History","Display",NumToStr(Val($CMD_F_HistoryDepth)+1))
+	$CMD_result = Form($CMD_MainForm,"")
+	BeginCase
+		Case $CMD_result = "Button_OK"
+			If $CMD_F_Command = ""
+				Break
+			EndIf
+			$CMD_MacroHistory = Replace($_NewLine+$CMD_F_Command+$_NewLine,$_NewLine,"~~~"+$_NewLine+$CMD_MacroHistory+$_NewLine+"~~~",False)
+			$CMD_MacroHistory = Replace("~~~"+$_NewLine,"",$CMD_MacroHistory,False)
+			$CMD_MacroHistory = Replace($_NewLine+"~~~","",$CMD_MacroHistory,False)
+			While RegExCount($_NewLine, $CMD_MacroHistory) > Val($CMD_F_HistoryDepth)-2
+				$CMD_MacroHistory = Replace(Extract($CMD_MacroHistory,$_NewLine,1)+$_NewLine,"",$CMD_MacroHistory,False)
+			EndWhile
+			If Not(IsEmpty($CMD_F_Command))
+				$CMD_MacroHistory = $CMD_MacroHistory + $_NewLine + $CMD_F_Command
+			EndIf
+			Gosub Name=Store
+			$CMD_status = PutFile("$_Install\temp.gsk",Replace("|",$_NewLine,$CMD_F_Command,False))
+			macro File=$_Install\temp.gsk
+			If $CMD_F_ExitOnExecute
+				Break
+			EndIf
+		Case $CMD_result = "Button_Cancel"
+			Break
+		Case $CMD_result = "CMD_F_History"
+			If $CMD_F_History <> $CMD_HistoryTop
+				$CMD_F_Command = Replace($CMD_Semikolon,";",$CMD_F_History,False)
+			EndIf
+		Case $CMD_result = "CMD_F_HistoryDepth"
+			While RegExCount($_NewLine, $CMD_MacroHistory) > Val($CMD_F_HistoryDepth)-1
+				$CMD_MacroHistory = Replace(Extract($CMD_MacroHistory,$_NewLine,1)+$_NewLine,"",$CMD_MacroHistory,False)
+			EndWhile
+		Case $CMD_result = "Button_Add"
+			If $CMD_F_Command <> ""
+				If At($_NewLine+$CMD_F_Command+$_NewLine,$_NewLine+$CMD_MacroFavourites+$_NewLine) = 0
+					If Not(IsEmpty($CMD_MacroFavourites))
+						$CMD_MacroFavourites = $CMD_MacroFavourites + $_NewLine
+					EndIf
+					$CMD_MacroFavourites = $CMD_MacroFavourites + $CMD_F_Command
+				EndIf
+				#Sort the list of favourites using SQL
+				$CMD_SQLfile = ":memory:"
+				$CMD_status = Sqlite("open",$CMD_sqlfile)
+				$_sql = "DROP TABLE IF EXISTS strings;"
+				$_sql = $_sql + "create table strings (name text)"
+				$CMD_status = SQLite("sql",$_sql)
+				$CMD_status = SQLite("import",$CMD_MacroFavourites,"table=strings delim=~~~")
+				$_sql = "Select name from strings Order by name"
+				$CMD_status = SQLite("sql",$_sql)
+				$CMD_MacroFavourites = $CMD_status
+				Gosub Name=Store
+			EndIf
+		Case $CMD_result = "Button_Del"
+			If $CMD_F_Favourites <> $CMD_FavouritesTop
+				$CMD_MacroFavourites = Replace($_NewLine+$CMD_F_Command+$_NewLine,$_NewLine,"~~~"+$_NewLine+$CMD_MacroFavourites+$_NewLine+$_NewLine+"~~~",False)
+				$CMD_MacroFavourites = Replace("~~~"+$_NewLine,"",$CMD_MacroFavourites,False)
+				$CMD_MacroFavourites = Replace($_NewLine+"~~~","",$CMD_MacroFavourites,False)
+				If Right($CMD_MacroFavourites,2)=$_NewLine
+					$CMD_MacroFavourites = Left($CMD_MacroFavourites,len($CMD_MacroFavourites)-2)
+				EndIf
+			EndIf
+			Gosub Name=Store
+		Case $CMD_result = "CMD_F_Favourites"
+			If $CMD_F_Favourites <> $CMD_FavouritesTop
+				$CMD_F_Command = Replace($CMD_Semikolon,";",$CMD_F_Favourites,False)
+			EndIf
+	EndCase
+EndWhile
+Return
+	
+BeginSub Name=Store
+	$CMD_tempS = $CMD_F_HistoryDepth + $_NewLine + $CMD_Divider
+	If Not(IsEmpty($CMD_MacroHistory))
+		$CMD_tempS = $CMD_tempS + $CMD_MacroHistory + $_NewLine
+	EndIf
+	$CMD_tempS = $CMD_tempS + $CMD_Divider
+	If Not(IsEmpty($CMD_MacroFavourites))
+		$CMD_tempS = $CMD_tempS + $CMD_MacroFavourites + $_NewLine
+	EndIf
+	$CMD_tempS = $CMD_tempS + $CMD_Divider
+	$CMD_status = PutFile($CMD_MacroCmdHistory,$CMD_tempS)
+EndSub
+
+<Data> VarName=$CMD_MainForm
+#********************************************************************
+# Form generated by GSAK form designer on So 28-Sep-2008 22:31:04
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 339
+  Width = 475
+
+Name = Groupbox1
+  Type = Groupbox
+  Height = 153
+  Left = 16
+  Top = 40
+  Width = 433
+  Taborder = 3
+
+Name = CMD_F_History
+  Type = Combobox
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 21
+  Left = 8
+  Top = 96
+  Values = $CMD_History
+  Width = 417
+  Taborder = 1
+
+Name = CMD_F_Command
+  Type = Edit
+  Height = 21
+  Left = 24
+  Top = 224
+  Width = 417
+  Taborder = 0
+
+Name = Label1
+  Type = Label
+  Height = 24
+  Left = 104
+  Size = 14
+  Top = 8
+  Width = 230
+  Caption = Macro Command Line Tool
+
+Name = Label2
+  Type = Label
+  Container = Groupbox1
+  Height = 16
+  Left = 8
+  Size = 10
+  Top = 82
+  Width = 42
+  Caption = History
+
+Name = Label3
+  Type = Label
+  Height = 16
+  Left = 22
+  Size = 10
+  Top = 210
+  Width = 62
+  Caption = Command
+
+Name = Button_OK
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 88
+  Top = 264
+  Width = 75
+  Taborder = 1
+  Caption = Execute
+
+Name = Button_Cancel
+  Type = Button
+  Height = 25
+  Left = 304
+  Top = 264
+  Width = 75
+  Taborder = 2
+  Caption = Cancel
+
+Name = CMD_F_HistoryDepth
+  Type = Combobox
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 21
+  Left = 344
+  Top = 24
+  Values = $CMD_HistoryDepth
+  Width = 81
+  Taborder = 4
+
+Name = Label4
+  Type = Label
+  Container = Groupbox1
+  Height = 16
+  Left = 344
+  Size = 10
+  Top = 8
+  Width = 78
+  Caption = HistoryDepth
+
+Name = Label5
+  Type = Label
+  Container = Groupbox1
+  Height = 16
+  Left = 8
+  Size = 10
+  Top = 40
+  Width = 63
+  Caption = Favourites
+
+Name = CMD_F_Favourites
+  Type = Combobox
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 21
+  Left = 8
+  Top = 56
+  Values = $CMD_Favourites
+  Width = 417
+  Taborder = 0
+
+Name = Button_Add
+  Type = Button
+  Container = Groupbox1
+  Height = 25
+  Left = 112
+  Top = 24
+  Width = 73
+  Taborder = 2
+  Caption = Add
+
+Name = Button_Del
+  Type = Button
+  Container = Groupbox1
+  Height = 25
+  Left = 224
+  Top = 24
+  Width = 73
+  Taborder = 3
+  Caption = Del
+
+Name = CMD_F_ExitOnExecute
+  Type = Checkbox
+  Container = Groupbox1
+  Height = 17
+  Left = 8
+  Top = 128
+  Width = 15
+  Taborder = 5
+
+Name = Label6
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 24
+  Top = 130
+  Width = 73
+  Caption = Exit on execute
+
+<enddata>
+

@@ -1,0 +1,750 @@
+#*******************************************
+# MacVersion = 1.5.1
+# MacDescription = Update Geocaching.com Personal Note
+# MacAuthor = XpunkX
+# MacFileName = UpdateGCNotes.gsk
+# MacUrl =http://gsak.net/board/index.php?showtopic=21201
+#*******************************************
+
+
+#PROGRAM
+
+VERCHECK Version=8.0.0.00
+SPEEDMODE Status=Off
+$SettingsFile=$_AppData + "\macros\UpdateGCNotes.xml"
+$IncludeOptions="User Note"
+$CorLat=""
+$CorLon=""
+$Note=""
+$PostEmptyNo=TRUE
+$PostEmptyYes=FALSE
+$currentcache = true
+
+
+
+
+
+#Check for settings file and if dosnt exist then create it
+IF Not(FileExists($SettingsFile))
+ GOSUB name=settings
+#MACSETTINGS File=$SettingsFile Type=S Vars=IncludeOptions,PostEmptyNo,PostEmptyYes
+ELSE
+    MACSETTINGS File=$SettingsFile Type=R FileCheck=N
+ENDIF
+
+
+
+
+BEGINSUB name=settings
+
+
+#SET UP THE LOAD GPX FILTER
+$File=$_AppData + "\gsak.db3"
+$Status=Sqlite("Open",$File)
+$_sql="Select Description from Settings where Type='SL' and Description ='UpdateGCnotesMacro' AND Data Like('[TfmGpxLoad]%')"
+$SettingsExist=Sqlite("sql",$_sql)
+$Status=Sqlite("Close","")
+
+IF $SettingsExist=""
+   
+MacroSet Dialog=Load VarName=$Load Name=UpdateGCnotesMacro
+
+ENDIF
+
+
+ MACSETTINGS File=$SettingsFile Type=R FileCheck=N
+    WHILE TRUE
+        $FormExit = form($SettingsForm,"")
+        BEGINCASE
+            CASE $FormExit = "SystemExit"
+            RETURN Msg="Macro Canceled"
+
+            CASE $FormExit = "OK"
+            MACSETTINGS File=$SettingsFile Type=S Vars=IncludeOptions,PostEmptyNo,PostEmptyYes
+            BREAK
+
+            CASE $FormExit = "Cancel"
+		IF Not(FileExists($SettingsFile))            
+		RETURN Msg="Macro Canceled"
+		ELSE
+		Break
+		EndIF
+        ENDCASE
+    ENDWHILE
+ENDSUB
+
+GOSUB name=mainmenu
+
+
+BEGINSUB Name=mainmenu
+$code = $d_Code 
+$PCN = Replace("{CODE}",$code,$PCN)
+$notetext= $d_GcNote
+$Form = EditForm($Form,"geocachename","Caption", "$d_Name")
+$Form = EditForm($Form,"geocachecode","Caption", "$d_Code")
+$notetext= $d_GcNote
+
+#SHOW FORM
+WHILE TRUE
+
+$result = Form($form,"")
+# Reset the screen position of the menu form to where the user left it
+$Form = EditForm($Form,"Form1","Top",$_FormTop)
+$Form = EditForm($Form,"Form1","Left",$_FormLeft)  	
+  	
+
+BEGINCASE #Buttons
+
+
+CASE $OK
+$note = $notetext
+$PCN = Replace("{NOTE}",$note,$PCN)
+   			$data = gcapi("UpdateCacheNote",$PCN)
+if $_GcApiError
+# error running api so show error message
+msgok msg=$data
+else
+# api OK now do what you want with the return data
+GcRefresh LoadSettings=UpdateGCnotesMacro
+
+Break
+endif
+
+
+CASE $copy
+IF $currentcache
+    $Note=""
+    $Code=$d_Code
+
+    IF At("User Note",$IncludeOptions)>0
+        $Note=Extract($d_UserNote,"$~",1)
+    ENDIF
+
+    IF At("Corrected Coordinates",$IncludeOptions)>0
+        $_sql="Select kCode from Corrected WHERE Kcode IN (Select Code from caches Where $_Where)"
+        $kCodes=Sqlite("sql",$_sql)
+
+        IF At($d_Code,$kCodes)>0
+            TABLE Active=Corrected Scope=Parent
+            $Coordinates=$d_kAfterLat + "," + $d_kAfterLon
+            $Coordinates=GCalc($Coordinates,"FormatMinutes")
+            $Coordinates=Replace(";"," ",$Coordinates)
+            IF $Note<>""
+                $Note=$Coordinates + $_CrLf + $Note
+            ELSE
+                $Note=$Coordinates
+            ENDIF
+            TABLE Active=Caches
+        ENDIF
+    ENDIF
+
+    IF At("User Log",$IncludeOptions)>0
+        $Log=Extract($d_UserNote,"$~",2)
+        IF $Note<>""
+            $Note=$Note + $_CrLf + $Log
+        ELSE
+            $Note=$Log
+        ENDIF
+    ENDIF
+
+    IF $Note<>""
+        $Note=Left($Note,500)
+    ELSE
+        IF $PostEmptyNo
+            CANCEL Msg=There is no data to post for cache $Code.  Macro canceled.
+        ENDIF
+    ENDIF
+
+    $PCN=Replace("{CODE}",$Code,$PCN)
+    $PCN=Replace("{NOTE}",$Note,$PCN)
+
+    $data = GcApi("UpdateCacheNote",$PCN)
+    IF $_GcApiError
+        MSGOK msg=$data
+    ENDIF
+
+    #Reset $PCN with tokens for next replacement (used RegEx to fix case where $Code is contained in $Note)
+    $PCN=RegExReplace("(?s)\s<CacheCode>.*</CacheCode>", $PCN," <CacheCode>{CODE}</CacheCode>")
+    $PCN=RegExReplace("(?s)\s<Note>.*</Note>", $PCN," <Note>{NOTE}</Note>")
+
+
+
+
+GcRefresh LoadSettings=UpdateGCnotesMacro
+
+Break	
+ENDIF
+
+
+IF $Allcaches
+#Filter out caches which would result in blank PCN, if selected
+IF $PostEmptyNo
+    $_sql=""
+    BEGINCASE
+    #Nothing selected
+    CASE At("User Note",$IncludeOptions)=0 AND At("Corrected Coordinates",$IncludeOptions)=0 AND At("User Log",$IncludeOptions)=0
+        CANCEL Msg=You must include at least one piece of data (User Note, User Log, Corrected Coordinates).  Macro canceled.
+
+    #User Note only
+    CASE At("Corrected Coordinates",$IncludeOptions)=0 AND At("User Log",$IncludeOptions)=0 AND At("User Note",$IncludeOptions)>0
+        $_Sql="Code IN(SELECT Code from CachesAll Where g_RegExReplace('(?s)\$~.*',UserNote,'','')<>'')"
+
+    #User Log only
+    CASE At("User Note",$IncludeOptions)=0 AND At("Corrected Coordinates",$IncludeOptions)=0 AND At("User Log",$IncludeOptions)>0
+        $_Sql="Code IN(SELECT Code from CachesAll Where g_RegEx('.*\$~',UserNote)=1)"
+
+    #Corrected Coordiantes Only
+    CASE At("User Note",$IncludeOptions)=0 AND At("User Log",$IncludeOptions)=0 AND At("Corrected Coordinates",$IncludeOptions)>0
+        $_Sql="Code IN(SELECT Code from CachesAll Where HasCorrected=1)"
+
+    #User Note and User Logs Only
+    CASE At("Corrected Coordinates",$IncludeOptions)=0 AND At("User Note",$IncludeOptions)>0 AND At("User Log",$IncludeOptions)>0
+        $_Sql="Code IN(SELECT Code from CachesAll Where g_RegExReplace('(?s)\$~.*$',UserNote,'','')<>'' OR g_RegEx('.*\$~',UserNote)=1)"
+
+    #User Note and Corrected Only
+    CASE At("User Note",$IncludeOptions)>0 AND At("Corrected Coordinates",$IncludeOptions)>0 AND At("User Log",$IncludeOptions)=0
+        $_Sql="Code IN(SELECT Code from CachesAll Where g_RegExReplace('(?s)\$~.*$',UserNote,'','')<>'' OR HasCorrected=1)"
+
+    #User Log and Corrected Only
+    CASE At("User Note",$IncludeOptions)=0 AND At("Corrected Coordinates",$IncludeOptions)>0 AND At("User Log",$IncludeOptions)>0
+        $_Sql="Code IN(SELECT Code from CachesAll Where g_RegEx('.*\$~',UserNote)=1 OR HasCorrected=1)"
+
+    #Notes, Logs and Corrected
+    CASE At("User Note",$IncludeOptions)>0 AND At("Corrected Coordinates",$IncludeOptions)>0 AND At("User Log",$IncludeOptions)>0
+        $_Sql="Code IN(SELECT Code from CachesAll Where g_RegExReplace('(?s)\$~.*$',UserNote,'','')<>'' OR g_RegEx('.*\$~',UserNote)=1 OR HasCorrected=1)"
+    ENDCASE
+
+    IF $_FilterActive
+        $_sql=$_sql + "AND $_Where"
+        MFILTER Where=$_sql
+        IF $_FilterCount=0
+            CANCEL Msg=No caches in the filter have user notes or corrected coordinates.  Macro cancelled.
+        ENDIF
+    ELSE
+        MFILTER Where=$_sql
+        IF $_FilterCount=0
+            CANCEL Msg=No caches in the filter have user notes or corrected coordinates.  Macro cancelled.
+        ENDIF
+    ENDIF
+ENDIF
+
+GOTO Position=Top
+
+#Get start time for API timeout
+$Count=0
+$_sql="Select strftime('%s','now')"
+$StartTime=Sqlite("sql",$_sql)
+
+WHILE NOT($_EOL)
+    $Count=$Count + 1
+    $Note=""
+    $Code=$d_Code
+
+    IF At("User Note",$IncludeOptions)>0
+        $Note=Extract($d_UserNote,"$~",1)
+    ENDIF
+
+    IF At("Corrected Coordinates",$IncludeOptions)>0
+        $_sql="Select kCode from Corrected WHERE Kcode IN (Select Code from caches Where $_Where)"
+        $kCodes=Sqlite("sql",$_sql)
+
+        IF At($d_Code,$kCodes)>0
+            TABLE Active=Corrected Scope=Parent
+            $Coordinates=$d_kAfterLat + "," + $d_kAfterLon
+            $Coordinates=GCalc($Coordinates,"FormatMinutes")
+            $Coordinates=Replace(";"," ",$Coordinates)
+            IF $Note<>""
+                $Note=$Coordinates + $_CrLf + $Note
+            ELSE
+                $Note=$Coordinates
+            ENDIF
+            TABLE Active=Caches
+        ENDIF
+    ENDIF
+
+    IF At("User Log",$IncludeOptions)>0
+        $Log=Extract($d_UserNote,"$~",2)
+        IF $Note<>""
+            $Note=$Note + $_CrLf + $Log
+        ELSE
+            $Note=$Log
+        ENDIF
+    ENDIF
+
+    IF $Note<>""
+        $Note=Left($Note,500)
+    ELSE
+        IF $PostEmptyNo
+            CANCEL Msg=There is no data to post for cache $Code.  Macro canceled.
+        ENDIF
+    ENDIF
+
+    $PCN=Replace("{CODE}",$Code,$PCN)
+    $PCN=Replace("{NOTE}",$Note,$PCN)
+
+    $data = GcApi("UpdateCacheNote",$PCN)
+    IF $_GcApiError
+        MSGOK msg=$data
+    ENDIF
+
+    #Reset $PCN with tokens for next replacement (used RegEx to fix case where $Code is contained in $Note)
+    $PCN=RegExReplace("(?s)\s<CacheCode>.*</CacheCode>", $PCN," <CacheCode>{CODE}</CacheCode>")
+    $PCN=RegExReplace("(?s)\s<Note>.*</Note>", $PCN," <Note>{NOTE}</Note>")
+
+    #Pause for geocaching.com API 30 calls per minute limit, show status, leave GUI active
+    IF $Count=30
+        $_sql="Select strftime('%s','now')"
+        $Elapsed=Val(Sqlite("sql",$_sql)) - Val($StartTime)
+        $DelayTime=(60-$Elapsed)*1000
+        $d = 0
+        $Timeout=60-$Elapsed
+        WHILE $d<$Timeout
+            $PauseTime=NumToStr(($DelayTime/1000)-$d)
+            $Msg="30 API updates per minute limit reached. Pausing for " + $PauseTime + " seconds."
+            SHOWSTATUS Msg=$Msg Width=355
+            DELAY Ms=1000
+            $d = $d + 1
+        ENDWHILE
+        SHOWSTATUS Msg="" Display=Off
+        $Count=0
+        $_sql="Select strftime('%s','now')"
+        $StartTime=Sqlite("sql",$_sql)
+    ENDIF
+
+    GOTO Position=Next
+ENDWHILE
+GcRefresh Scope=Filter LogsPerCache=0 LoadSettings=UpdateGCnotesMacro
+
+
+Break
+ENDIF
+
+CASE $gc2gsak
+IF $currentcache
+GcRefresh LoadSettings=UpdateGCnotesMacro
+
+$templog=Extract($d_UserNote,"$~",2)
+IF Extract($d_UserNote,"$~",1) = ""
+$d_UserNote = $notetext + "$~" + $templog	
+else
+$tempnote=Extract($d_UserNote,"$~",1)
+$d_UserNote = $tempnote + $_NewLine + $_NewLine + $notetext + "$~" + $templog
+ENDIF
+BREAK	
+ENDIF
+IF $Allcaches
+GcRefresh Scope=Filter LogsPerCache=0 LoadSettings=UpdateGCnotesMacro
+
+$_sql="Update CacheMemo SET UserNote=(Select GcNote from Caches WHERE CacheMemo.Code=Caches.Code)"
+$_sql=$_sql + "||'$_Crlf'||UserNote WHERE Not(g_RegEx((Select GcNote from Caches WHERE CacheMemo.Code=Caches.Code),UserNote)) and "
+$_sql=$_sql + "Code IN (Select Code from Caches Where $_Where)"
+$Status=Sqlite("sql",$_sql)
+RESYNC
+BREAK
+ENDIF
+
+CASE $refresh
+IF $currentcache
+GcRefresh LoadSettings=UpdateGCnotesMacro
+
+$notetext= $d_GcNote
+ENDIF
+IF $Allcaches
+GcRefresh Scope=Filter LogsPerCache=0 LoadSettings=UpdateGCnotesMacro
+
+ENDIF
+
+
+CASE $help
+GOSUB name=showhelp
+
+CASE $settings
+GOSUB name=settings
+
+
+OTHERWISE 
+CANCEL
+
+ENDCASE	
+
+
+ENDWHILE # Form Loop
+ENDSUB #mainmenu
+
+
+
+BEGINSUB Name=showhelp
+
+While True # Infinite loop to redisplay form as required
+$FormExit = form($helpform,"")
+
+BeginCase
+
+OTHERWISE 
+BREAK
+
+EndCase
+
+EndWhile
+
+ENDSUB
+
+
+
+
+
+
+
+#++++++++++++DATA SECTION+++++++++++++
+
+
+<Data> Varname=$PCN
+<UpdateCacheNoteRequest xmlns="http://www.geocaching.com/Geocaching.Live/data">
+ <AccessToken>{ACCESSTOKEN}</AccessToken>
+<CacheCode>{CODE}</CacheCode>
+ <Note>{NOTE}</Note>
+</UpdateCacheNoteRequest>
+<enddata>
+
+
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Tue 02-Apr-2013 09:54:50
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Update Personal Note
+  Height = 311
+  Width = 500
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Update Personal Note
+  Height = 185
+  Left = 8
+  Top = 8
+  Width = 473
+  Taborder = 4
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = Scope
+  Height = 65
+  Left = 296
+  Top = 200
+  Width = 137
+  Taborder = 9
+
+Name = notetext
+  Type = Memo
+  Height = 113
+  Left = 16
+  Top = 72
+  Width = 457
+  Taborder = 2
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 8
+  Top = 208
+  Width = 75
+  Taborder = 3
+  Caption = OK
+
+Name = geocachename
+  Type = Label
+  Container = Groupbox1
+  Height = 20
+  Left = 8
+  Size = 12
+  Style = bold
+  Top = 40
+  Width = 54
+  Caption = Name
+
+Name = geocachecode
+  Type = Label
+  Container = Groupbox1
+  Height = 17
+  Left = 8
+  Size = 12
+  Top = 16
+  Width = 46
+  Caption = Code
+
+Name = copy
+  Type = Button
+  Height = 25
+  Left = 96
+  Top = 240
+  Width = 185
+  Taborder = 5
+  Caption = GSAK Note to Personal Cache Note
+
+Name = gc2gsak
+  Type = Button
+  Height = 25
+  Left = 96
+  Top = 208
+  Width = 185
+  Taborder = 6
+  Caption = Personal Cache Note To GSAK Note
+
+Name = refresh
+  Type = Button
+  Alignment = Center
+  Enabled = Yes
+  Height = 25
+  Left = 8
+  Top = 240
+  Visible = Yes
+  Width = 75
+  Taborder = 7
+  Caption = Refresh
+
+Name = help
+  Type = Button
+  Alignment = Center
+  Enabled = Yes
+  Height = 25
+  Left = 432
+  Top = 40
+  Visible = Yes
+  Width = 43
+  Taborder = 8
+  Caption = Help
+
+Name = currentcache
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 20
+  Left = 8
+  Top = 16
+  Width = 98
+  Taborder = 0
+  Caption = Current Cache
+
+Name = Allcaches
+  Type = Radiobutton
+  Container = Groupbox2
+  Enabled = Yes
+  Height = 20
+  Left = 8
+  Top = 40
+  Width = 121
+  Taborder = 1
+  Caption = All Caches In Filter
+
+Name = settings
+  Type = Button
+  Container = Groupbox1
+  Height = 25
+  Left = 416
+  Top = 8
+  Width = 51
+  Taborder = 0
+  Caption = Settings
+
+<enddata>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<Data> VarName=$helpform
+#********************************************************************
+# Form generated by GSAK form designer on Mon 30-Jan-2012 13:16:46
+#********************************************************************
+
+Name = Help
+  Type = Form
+  Caption = Update Personal Note Help
+  Exitonclick = No
+  Height = 303
+  Width = 766
+
+Name = Label1
+  Type = Label
+  Height = 33
+  Left = 8
+  Size = 20
+  Top = 8
+  Width = 338
+  Caption = Update Personal Note Help
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 8
+  Top = 224
+  Width = 75
+  Taborder = 3
+  Caption = Got It!
+
+Name = Label3
+  Type = Label
+  Height = 17
+  Left = 8
+  Top = 56
+  Width = 473
+  Caption = Ok - Sends what ever text is in the text box to geocaching.com and updates the personal note field
+
+Name = Label2
+  Type = Label
+  Height = 17
+  Left = 8
+  Top = 88
+  Width = 471
+  Caption = Personal Cache Note To GSAK Note - Copies the note that you have in on geocaching.com to your GSAK notes section
+
+Name = Label4
+  Type = Label
+  Height = 17
+  Left = 8
+  Top = 120
+  Width = 534
+  Caption = GSAK Note to Personal Cache Note - Copies the note that is in your GSAK notes section to your online geocaching.com notes (the settings button has extra settings for this button)
+
+Name = Label5
+  Type = Label
+  Height = 17
+  Left = 8
+  Top = 152
+  Width = 738
+  Caption = Refresh - Simply makes sure that your online geocaching.com note for the selected geocache is pulled down and in the GSAK Geocaching.com Notes field
+
+<enddata>
+
+
+
+<Data> VarName=$SettingsForm
+#********************************************************************
+# Form generated by GSAK form designer on Tue 02-Apr-2013 09:47:31
+#********************************************************************
+
+Name = SettingsForm
+  Type = Form
+  Caption = Optional Settings
+  Height = 278
+  Top = 297
+  Width = 414
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = Filtering
+  Height = 67
+  Left = 11
+  Top = 96
+  Width = 375
+  Taborder = 4
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Include the following in the personal cache note:
+  Height = 78
+  Left = 10
+  Top = 8
+  Width = 375
+  Taborder = 5
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 79
+  Top = 176
+  Width = 75
+  Taborder = 2
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 244
+  Top = 176
+  Width = 75
+  Taborder = 3
+  Caption = Cancel
+
+Name = Label3
+  Type = Label
+  Container = Groupbox2
+  Height = 17
+  Left = 55
+  Size = 10
+  Top = 18
+  Width = 265
+  Caption = Post Empty (blank) Personal Cache Notes?
+
+Name = PostEmptyNo
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 20
+  Left = 125
+  Top = 37
+  Width = 49
+  Taborder = 0
+  Caption = No
+
+Name = PostEmptyYes
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 20
+  Left = 186
+  Top = 37
+  Width = 49
+  Taborder = 1
+  Caption = Yes
+
+Name = IncludeOptions
+  Type = Checklistbox
+  Color = 15395562
+  Container = Groupbox1
+  Height = 53
+  Left = 7
+  Size = 10
+  Top = 17
+  Values = User Note;User Log;Corrected Coordinates
+  Width = 361
+  Taborder = 0
+
+Name = Label1
+  Type = Label
+  Color = 255
+  Height = 17
+  Left = 8
+  Top = 216
+  Width = 374
+  Caption = Note: These settings only apply to the button for GSAK Note to Personal Note
+
+<enddata>
+
+
+
+<data> VarName=$Load
+[TfmGpxLoad]
+chkKeepFocus.Checked=True
+chkSummary.Checked=False
+<enddata>
+
+
+

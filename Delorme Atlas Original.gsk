@@ -1,0 +1,205 @@
+##########################################
+# Delorme Topo, Street Altas HTML Export
+# Ver. 2.00		04/09/2006
+##########################################
+# Set Database name
+	$Database=$_CurrentDatabase
+
+# Delete files previously created by this macro by Database name.
+	FileErase File="C:\DeLorme Docs\Draw\SA_$Database.txt" OnError=Continue
+	FileErase File="C:\DeLorme Docs\Draw\$Database\Cache\*.*" OnError=Continue
+
+# Check To Make Sure The OfflineHTML Database Exist.
+	ShowStatus msg="Checking For Offline HTML Database"
+	If .not. DatabaseExists("OffLineHTML")
+	Database name="OffLineHTML" Action=create
+	EndIf
+
+# Delete Waypoints In Offline HTML Database
+	ShowStatus msg="Deleting All Waypoints From Offline HTML Database"
+	If DatabaseExists("OffLineHTML")
+	Database Name="OfflineHTML" Action=Select
+	USERFLAG type=set range=All
+	Macroset Dialog=Delete VarName=$DeleteOfflineHTML
+	Delete Settings=<macro>
+	EndIf
+
+# Copy Current Waypoints To Offline HTML Database
+	ShowStatus msg="Copy Current Waypoints To OfflineHTML Database"
+	Database Name=$Database Action=Select
+	Macroset Dialog=MoveCopy VarName=$MoveCopyOffline
+	MoveCopy Settings=<macro>
+ 	USERFLAG type=clear range=all
+	SORT By=Distance Sequence=A	
+
+# Create Delorme SA File
+	ShowStatus msg="Creating Delorme SA File"
+	$Folder = "C:\Delorme Docs\Draw\" + $Database
+	$BatFile = $_Install + "\Temp\temp.bat"
+	If .not. FolderExists($Folder)
+	$result = PutFile($BatFile, "MD " + quote($Folder))
+	FileOpen File="$BatFile" Wait=yes
+	EndIf 
+	$Folder = "C:\Delorme Docs\Draw\" + $Database
+	Macroset Dialog=HTML VarName=$HTML
+	Export Type=HTML Settings=<macro> File=$Folder
+	$dynamic = "[TfmTopoUsa]" + $_NewLine
+	$dynamic = $dynamic + "edtLocal.Text=C:\Delorme Docs\Draw\" + $Database + "\Cache" + $_NewLine
+	$Delorme = $dynamic + $Delorme  
+	Macroset Dialog=Delorme VarName=$Delorme 
+	Export Type=Del Settings=<macro> File="C:\DeLorme Docs\Draw\SA_$Database.txt"
+
+# Return To Defualt Database
+	Database Name=$Database Action=Select
+	USERFLAG type=clear range=all
+	SORT By=Distance Sequence=A
+
+
+##########################################################
+# embeded settings
+
+<data> VarName=$Delorme
+edtWaypoint.Text=%Code %typ1 %Shortname
+edtMaxGps.Text=15
+edtProblem.Text=
+chkUrl.Checked=True
+chkLocalUrl.Checked=True
+chkChild.Checked=True
+chkFlag.Checked=False
+chkMacro.Checked=False
+File1.Filename=
+[TfmIcons]
+rbtBoth.Checked=False
+rbtStatus.Checked=True
+rbtType.Checked=False
+[icons]Archived=Red Flag
+Benchmark+Archived=Benchmark Horizontal
+Benchmark+Found=Benchmark Horizontal
+Benchmark+Not Found=Benchmark Horizontal
+Benchmark+Placed=Benchmark Horizontal
+Benchmark=Benchmark Horizontal
+CITO+Archived=Arrow Left
+CITO+Found=Arrow Left
+CITO+Not Found=Arrow Left
+CITO+Placed=Arrow Left
+CITO=Arrow Left
+Earth+Archived=Benchmark Vertical
+Earth+Found=Benchmark Vertical
+Earth+Not Found=Benchmark Vertical
+Earth+Placed=Benchmark Vertical
+Earth=Benchmark Vertical
+Event+Archived=Arrow Right
+Event+Found=Arrow Right
+Event+Not Found=Arrow Right
+Event+Placed=Arrow Right
+Event=Arrow Right
+Final Location=Blue Map Pin
+Found=Geocache Found
+LetterBox+Archived=Arrow Down Right
+LetterBox+Found=Arrow Down Right
+LetterBox+Not Found=Arrow Down Right
+LetterBox+Placed=Arrow Down Right
+LetterBox=Arrow Down Right
+Locationless+Archived=Arrow Up
+Locationless+Found=Arrow Up
+Locationless+Not Found=Arrow Up
+Locationless+Placed=Arrow Up
+Locationless=Arrow Up
+Multi+Archived=Arrow Down Left
+Multi+Found=Arrow Down Left
+Multi+Not Found=Arrow Down Left
+Multi+Placed=Arrow Down Left
+Multi=Arrow Down Left
+Mystery+Archived=Benchmark
+Mystery+Found=Benchmark
+Mystery+Not Found=Benchmark
+Mystery+Placed=Benchmark
+Mystery=Benchmark
+Not Found=Geocache
+Other+Archived=Benchmark Horizontal Vertical
+Other+Found=Benchmark Horizontal Vertical
+Other+Not Found=Benchmark Horizontal Vertical
+Other+Placed=Benchmark Horizontal Vertical
+Other=Benchmark Horizontal Vertical
+Parking Area=Jeep
+Placed=House
+Question to Answer=Green Map Pin
+Stages of a Multicache=Red Map Pin
+Traditional+Archived=Arrow Down
+Traditional+Found=Arrow Down
+Traditional+Not Found=Arrow Down
+Traditional+Placed=Arrow Down
+Traditional=Arrow Down
+Trailhead=Hiker
+version4.3
+Virtual+Archived=Arrow Up Left
+Virtual+Found=Arrow Up Left
+Virtual+Not Found=Arrow Up Left
+Virtual+Placed=Arrow Up Left
+Virtual=Arrow Up Left
+Web Cam+Archived=Arrow Up Right
+Web Cam+Found=Arrow Up Right
+Web Cam+Not Found=Arrow Up Right
+Web Cam+Placed=Arrow Up Right
+Web Cam=Arrow Up Right
+
+<enddata>
+
+
+<data> VarName=$HTML
+[TfmHtml]
+
+edtMax.Text=40
+cbxIndex.Checked=True
+cbxHtmlFound.Checked=False
+cbxLimit.Text=5
+cbxHtmlPlaced.Checked=True
+cbxMakeZip.Checked=False
+cbxUseOwnerId.Checked=True
+edtHtmZip.Text=C:\GSAK\cache\cache.zip
+chkHints.Checked=True
+chkBearing.Checked=True
+chkBugs.Checked=True
+chkCode.Checked=True
+chkDistance.Checked=True
+chkFound.Checked=True
+chkFoundByMe.Checked=True
+chkName.Checked=True
+chkPlacedBy.Checked=True
+chkUnfound.Checked=True
+chkCustomUrl.Checked=False
+chkTopOfPage.Checked=False
+edtCode.Text=%code
+cbxLogLimit.Text=5
+chkDensity.Checked=True
+edtDisGroup.Text=20
+edtDensity.Text=5
+chkStrip.Checked=True
+chkCvtFile.Checked=False
+edtSpecial.Text=
+chkSpecial.Checked=False
+
+<enddata>
+
+<data> VarName=$MoveCopyOffline
+[TfmMove]
+cbxDestination.Text=OffLineHTML
+rbtAdd.Checked=True
+rbtAddFlag.Checked=False
+rbtAddIgnore.Checked=False
+rbtCopy.Checked=True
+rbtExistIgnore.Checked=False
+rbtFlagOnly.Checked=False
+rbtMove.Checked=False
+rbtReplace.Checked=True
+rbtReplaceFlag.Checked=False
+chkDisplay.Checked=True
+<enddata>
+
+<data> VarName=$DeleteOfflineHTML
+[TfmDelete]
+cbxStop.Checked=False
+rbtFilter.Checked=False
+rbtFlagged.Checked=True
+rbtOnly.Checked=False
+<enddata>

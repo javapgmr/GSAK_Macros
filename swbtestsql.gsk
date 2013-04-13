@@ -1,0 +1,85 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Test SQL
+# MacAuthor = javapgmr
+# MacFileName = swbtestsql.gsk
+# MacUrl =
+#*******************************************
+GOSUB Name=Declare
+SHOWSTATUS Msg="Generating SQLite Databases." Display=On
+# Define the database file name
+$DBfile = "C:\temp\temp.db3"
+# Create the caches and waypoints tables within the Database. If the database doesn't exist yet it will automatically be created. Same with the Tables - they will be overwritten if they exist or created if they don't.
+
+GoSub Name=LoadCaches
+GoSub Name=LoadWaypoints
+GoSub Name=LoadLogs
+
+SHOWSTATUS Msg="Loading Complete." Display=On
+# SmartName,CacheType,Container,Difficulty,Terrain,Code,PlacedDate,LastFoundDate,PlacedBy,OwnerName,Archived,TempDisabled,DNF,Found,Hints,Latitude,Longitude,HasCorrected,UserNote,Name,Url
+# 1        ,2        ,3        ,4         ,5      ,6   ,7         ,8            ,9       ,10       ,11      ,12          ,13 ,14   ,15   ,16      ,17       ,18          ,19      ,20  ,21
+# cParent,cCode,cPrefix,cName,cType,cLat,cLon,cComment
+# 1      ,2    ,3      ,4    ,5    ,6   ,7   ,8
+# lParent,lType,lText,lBy,lDate,lLogid,lLat,lLon,lEncoded,lOwnerid  
+# 1      ,2    ,3     ,4 ,5    ,6     ,7   ,8   ,9       ,10 
+#
+
+# Open the database ready for querying
+$status = SQLite("open",$DBfile,"")
+#*********************************************
+
+$TmpS = SQLite("sql","SELECT * FROM caches where OwnerName like '%Crow%'","")
+$html = sqltohtml($TmpS,"Summary by log type","y")
+
+$tempCSV = ""
+
+$List = List("sql","create","$_NewLine")
+Debug Status=On
+$List = List("sql","replace",$TmpS)
+$Count = Val(List("sql","count",""))
+
+$I = 1
+WHILE $I < $Count
+	$TmpS = NumToStr($I)
+	$List = List("sql","item",$TmpS)
+  $Longitude = Extract($List,";",17)
+  $Latitude = Extract($List,";",16)
+  $SmartName = Extract($List,";",1)
+  $OwnerName = Extract($List,";",10)
+  $tempCSV = $tempCSV + $Longitude + "," + $Latitude + "," + $SmartName + "," + $OwnerName + $_NewLine
+  $I = $I + 1
+ENDWHILE
+$status = SQLite("close",$dbfile,"")
+MsgOK  msg=$tempCSV
+
+
+#*******************************************************
+#   Variable declarations for
+#   swbtestsql.gsk
+#
+#   Generated 06/07/2008 4:01:42 PM on GSAKVariables.gsk Rev V0.20 B15
+#
+#*******************************************************
+
+
+BEGINSUB Name=Declare
+Option Explicit=Yes
+Declare Var=$Count Type=Numeric
+Declare Var=$DBfile Type=String
+Declare Var=$html Type=String
+Declare Var=$I Type=Numeric
+Declare Var=$Latitude Type=String
+Declare Var=$List Type=String
+Declare Var=$Longitude Type=String
+Declare Var=$OwnerName Type=String
+Declare Var=$SmartName Type=String
+Declare Var=$Status Type=String
+Declare Var=$tempCSV Type=String
+Declare Var=$TmpS Type=String
+Declare Var=$valx Type=String
+ENDSUB
+
+
+Include File="LoadCaches.include"
+Include File="LoadWaypoints.include"
+Include File="LoadLogs.include"

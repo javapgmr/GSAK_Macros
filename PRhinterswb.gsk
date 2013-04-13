@@ -1,0 +1,106 @@
+#*******************************************
+# MacVersion = 0.9 Apr 21 2007 
+# MacDescription = GSAK macro to create a file of hints suitable for printing
+# MacAuthor = Heiner Lieth (a.k.a. Hynr
+# MacFileName = PRhinterswb.gsk
+#*******************************************
+
+######### User selected settings #########################
+# Lots of geocaches don't have hints; if you don't want to waste a line
+# of printout on every empty hint, then make the next line =true
+$NoEmptyHints = FALSE
+
+# Do you want GCcodes, Smartnames or both? (don't make them both false)
+$IncludeGCcode = TRUE
+$IncludeSmart = TRUE
+$IncludeName = TRUE
+
+#Do you want column labels as the first line of the file?
+$ColumnLabels = TRUE
+
+#Do you want the file opened up with your default application for CSV?
+$OpenWithDefault = TRUE
+
+# Set file to whatever you need or want
+$FileName = $_Install + "\macros\PRhintER.csv"
+
+# Do you wish to trim the hint to some number of characters? 
+# If so, then put that number below (0 means no trim)
+$HintTrim = 0
+
+######### The macro itself ###############################
+
+# It makes no sense to have the hints without reference to the caches
+# If that is configured then fix it:
+if $IncludeGCcode= false .and. $IncludeSmart=false
+  $IncludeGCcode=true
+endif
+
+# This section generates a column label row in the csv file
+If $ColumnLabels
+	$OutHead="Hint"
+	If $IncludeName
+	   $OutHead = "Name,"+$OutHead
+	endif
+	IF $IncludeSmart
+	   $OutHead = "Smartname,"+$OutHead
+	endif
+	If $IncludeGCcode
+	   $OutHead = "GCcode,"+$OutHead
+	ENDIF
+
+	
+	$OutHead = $OutHead + $_NewLine
+  Else
+ $OutHead=""
+ENDIF
+
+# The output is going to be created for the current display grid
+# The current sort sequence will be the sort in the file
+GOTO position=top
+
+# Let's create the file, deleting any previous version
+$FileError = putfile($FileName, $OutHead)
+IF Left($FileError,7) = "*Error*"
+  $FileError=$FileError+" - file might be in use by another application"
+  Pause Msg="$FileError"
+  Cancel
+ENDIF
+
+While .not. $_eol
+ IF .not. (IsEmpty($d_Hints) .and. $NoEmptyHints)
+ # Hints can have characters that are a nuisance in csv files - FIX it
+ #   Let's start with removing return/linefeeds
+  $FixtHint=replace($_NewLine," ",$d_hints, true)
+
+  IF $HintTrim>0
+   # Hint trimming is requested if $HintTrim>0
+   $FixtHint=Left($FixtHint,$HintTrim)
+  EndIF
+
+ # change double quotes in the hint to apostrophes
+   $LineOut=quote(replace($_Quote,"'",$FixtHint, true))+ $_NewLine
+   If $IncludeName
+     $LineOut = $d_Name+","+$LineOut
+   endif   
+   If $IncludeSmart
+     $LineOut = quote($d_smartname)+","+$LineOut
+   endif
+   If $IncludeGCcode
+     $LineOut = $d_Code +","+$LineOut
+   ENDIF
+   $Error = AppendFile($FileName,$LineOut)
+ ENDIF
+
+ # Advance to next record
+ Goto Position=Next
+endwhile
+
+# next line launches csv file in whatever is set up as default application for that
+# perhaps a spreadsheet program or a text editor. 
+# NOTE: if this program is Excel and you run this macro a second time, you
+# need to close the file in Excel since GSAK won't be able to create a new one
+# with the same name
+if $OpenWithDefault 
+   FileOpen File=$FileName
+endif

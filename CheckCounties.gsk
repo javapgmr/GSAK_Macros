@@ -1,0 +1,3586 @@
+# MacVersion = 1.3
+# MacDescription = Check Counties for US County Challenge
+# MacAuthor = Lignumaqua
+# MacFileName = CheckCounties.gsk
+# 2-9-2013
+#
+# Universal version for GSAK 7.2/7.5
+
+VERCHECK Version=7.2.3.35 (Note: this macro requires At least GSAK 7.2.3.35)
+GOSUB name=DeclareVariables
+
+IF $_Version < "7.5"
+	$GSAKField="User2"
+ELSE
+	$GSAKField="County"
+ENDIF
+
+# Define SQL database
+$datafilepath = Sysinfo("MacroPath")
+#$File = $datafilepath + "\USCountiesSQL.db3"
+
+$file = ":memory:"
+
+#Open the SQL database ready for use
+#$status = Sqlite("open",$file,"")
+$_sql= "Attach " + SqlQuote("$file") + " as countiesdatabase"
+$status = Sqlite("sql",$_sql,"")
+
+$_sql = "drop table if exists countiesdatabase.USCounties"
+$status = Sqlite("sql",$_sql,"")
+
+# Create counties table
+$Data = "State text,Abbreviation text,County text"
+$_sql = "CREATE TABLE countiesdatabase.USCounties ($Data)"
+$status = Sqlite("sql",$_sql,"")
+
+# Import the master list of Counties to the SQL table
+$status = sqlite("import",$CountiesSQlFile,"table=USCounties")
+
+#Save the State and County fields from the current GSAK database out to an SQL table in the SQL database
+#$Status = DbToSQLite("caches","State,$GSAKField,CacheType",$file) 
+$_sql = "create table countiesdatabase.temp_caches as select State,$GSAKField,CacheType from caches"
+$status = Sqlite("sql",$_sql,"")
+
+# Get a list of States to populate the combo box on the menu form
+$_sql = "SELECT DISTINCT State FROM USCounties ORDER BY State"
+$result = Sqlite("SQL",$_sql,"")
+$StateList = Replace("$_NewLine",";",$result,true)
+
+# $StateList = "Alabama;Alaska;Arizona;Arkansas;California;Colorado;Connecticut;Delaware;District of Columbia;Florida;Georgia;Hawaii;Idaho;Illinois;Indiana;Iowa;Kansas;Kentucky;Louisiana;Maine;Maryland;Massachusetts;Michigan;Minnesota;Mississippi;Missouri;Montana;Nebraska;Nevada;New Hampshire;New Jersey;New Mexico;New York;North Carolina;North Dakota;Ohio;Oklahoma;Oregon;Pennsylvania;Rhode Island;South Carolina;South Dakota;Tennessee;Texas;Utah;Vermont;Virginia;Washington;West Virginia;Wisconsin;Wyoming"
+
+$Form = EditForm($Form,"Label5","Caption","Will overwrite $GSAKField field!")
+
+# Show the main form in a loop
+WHILE TRUE
+		$result = Form($form,"")
+		# Reset the screen position of the menu form to where the user left it
+  	$Form = EditForm($Form,"Form1","Top",$_FormTop)
+  	$Form = EditForm($Form,"Form1","Left",$_FormLeft)
+  	
+  	BEGINCASE #Buttons
+  		CASE $Cancel
+    		CANCEL
+    	CASE $GetCounties
+    		IF $GSAKField = "County"
+    			$tmpN = GetCounty("yb")
+    		ELSE
+    			$tmpN = GetCounty("2b")
+    		ENDIF
+    		#$Status = DbToSQLite("caches","State,$GSAKField,CacheType",$file) 
+    		$_sql = "drop table if exists countiesdatabase.temp_caches"
+				$status = Sqlite("sql",$_sql,"")
+    		$_sql = "create table countiesdatabase.temp_caches as select State,$GSAKField,CacheType from caches"
+				$status = Sqlite("sql",$_sql,"")
+			CASE $OK
+				GOSUB name=Main
+			OTHERWISE
+				CANCEL
+			ENDCASE	
+  	
+ENDWHILE # Form Loop
+
+BEGINSUB name=Main
+ # Exclude locationless?
+	IF $Excludelocationless
+		$Locationless = " AND Cachetype <> 'L'"
+	ELSE
+		$Locationless = ""
+	ENDIF
+ 
+ # Figure out if we are using full state names or abbreviations
+	$_sql = "SELECT AVG(LENGTH(state)) from temp_caches"
+	$tmpN = Val(Sqlite("SQL",$_sql,""))
+	
+	IF $tmpN > 3
+		$SearchState = $StateChosen
+	ELSE
+		$_sql = "SELECT Abbreviation FROM USCounties WHERE State = '$StateChosen'"
+		$SearchState = Left(Sqlite("SQL",$_sql,""),2)
+	ENDIF
+	
+	# Fill all the blank counties in with something more useful and descriptive
+	$_sql = "UPDATE temp_caches SET $GSAKField='*No County assigned*' WHERE $GSAKField = ''"
+	$work = Sqlite("SQL",$_sql,"")
+
+	# Count the number of counties we have finds in the selected State		
+	$_sql = "SELECT Count(Distinct $GSAKField) FROM temp_caches WHERE State = '$SearchState' $Locationless"
+	$CountFound = Val(Sqlite("SQL",$_sql,""))
+	
+	# Count the total number of finds we have in the selected State
+	$_sql = "SELECT Count($GSAKField) FROM  temp_caches WHERE State = '$SearchState' $Locationless"
+	$FoundTotal = Val(Sqlite("SQL",$_sql,""))
+	
+	# Get a result table of county names and number of finds in that county
+	$_sql = "SELECT $GSAKField, Count($GSAKField) FROM temp_caches WHERE State = '$SearchState' $Locationless GROUP BY $GSAKField ORDER BY $GSAKField"
+	$work = Sqlite("SQL",$_sql,"")
+			
+	
+	IF Left($work,7) <> "*ERROR*"
+		$Foundlist = $work
+		$FoundList = Replace(";",": ",$Foundlist,TRUE)
+	ELSE
+		$Foundlist = "No caches found in this State"
+	ENDIF
+	
+	# Get a list of counties we have finds in and massage it into a list suitable to use in a later statement
+	$_sql = "SELECT Distinct $GSAKField FROM temp_caches WHERE State = '$SearchState' $Locationless ORDER BY $GSAKField"
+	$result = Sqlite("SQL",$_sql,"")
+	$result = Replace("'","''",$result,true)
+	$result = Replace("$_NewLine","','",$result,true)
+	
+	# Get a count of counties where we DON'T have finds	
+	$_sql = "SELECT Count(County) from USCounties WHERE (State = '$StateChosen') AND (NOT(County IN ('$result')))"
+	$CountUnfound = Val(Sqlite("SQL",$_sql,""))
+
+	# Get a list of the counties where we DON'T have finds	
+	$_sql = "SELECT County from USCounties WHERE (State = '$StateChosen') AND (NOT(County IN ('$result')))"
+	$work = Sqlite("SQL",$_sql,"")
+	$ResultList = $work
+	
+	# Massage it into a format suitable for the GSAK filter box and load it into the Windows clipboard ready to go
+	$work = Replace("$_NewLine","|",$ResultList,true)
+	CLIP Data=$work
+	
+	IF $CountFound = 1
+		$Countytext = "County"
+	ELSE
+		$Countytext = "Counties"
+	ENDIF
+	
+	IF $FoundTotal = 1
+		$Cachetext = "cache"
+	ELSE
+		$Cachetext = "caches"
+	ENDIF
+	
+	$Form = EditForm($Form,"FoundLabel","Caption","$FoundTotal $Cachetext found in $CountFound $Countytext in $StateChosen:")
+	
+	IF $CountUnfound = 1
+		$Countytext = "County"
+	ELSE
+		$Countytext = "Counties"
+	ENDIF	
+	$Form = EditForm($Form,"MemoLabel","Caption","$CountUnfound $Countytext without finds in $StateChosen:")
+
+	#MSGOK msg=Counties not found $_NewLine================== $_NewLine$work
+
+ENDSUB #Main
+
+BEGINSUB name=DeclareVariables
+#*******************************************************
+#   Variable declarations for
+#   C:\Program Files\GSAK\Macros\CheckCounties.gsk
+#
+#   Generated 4/27/2008 7:38:41 PM on GSAKVariables.gsk Rev V0.20 B15
+#
+#*******************************************************
+
+Option Explicit=Yes
+
+Declare Var=$Cachetext Type=String
+Declare Var=$CountFound Type=Numeric
+Declare Var=$CountyCount Type=Numeric
+Declare Var=$CountUnfound Type=Numeric
+Declare Var=$CountiesSQlFile Type=String
+Declare Var=$Countytext Type=String
+Declare Var=$DataFile Type=String
+Declare Var=$Data Type=String
+Declare Var=$datafilepath Type=String
+Declare Var=$file Type=String
+Declare Var=$Form Type=String
+Declare Var=$Foundlist Type=String
+Declare Var=$FoundTotal Type=Numeric
+Declare Var=$GSAKField Type=String
+Declare Var=$list Type=String
+Declare Var=$locationless Type=String
+Declare Var=$result Type=String
+Declare Var=$ResultList Type=String
+Declare Var=$SearchState Type=String
+Declare Var=$_sql Type=String
+Declare Var=$sql Type=String
+Declare Var=$StateList Type=String
+Declare Var=$status Type=String
+Declare Var=$tmpN Type=Numeric
+Declare Var=$work Type=String
+
+ENDSUB #DeclareVariables
+
+<data> VarName=$form
+Name = Form1
+  Type = Form
+  Caption = County Challenge Tester
+  Height = 537
+  Width = 532
+
+Name = Groupbox1
+  Type = Groupbox
+  Height = 110
+  Left = 40
+  Top = 50
+  Width = 185
+  Taborder = 4
+
+Name = Groupbox2
+  Type = Groupbox
+  Height = 110
+  Left = 300
+  Top = 50
+  Width = 185
+  Taborder = 5
+
+Name = Label1
+  Type = Label
+  Color = 16744448
+  Height = 20
+  Left = 143
+  Size = 13
+  Style = bold
+  Top = 5
+  Width = 238
+  Caption = US County Challenge Tester
+
+Name = Label2
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 56
+  Top = 18
+  Width = 73
+  Caption = State to check:
+
+Name = Statechosen
+  Type = Combobox
+  Container = Groupbox2
+  Height = 21
+  Left = 22
+  Top = 43
+  Values = $StateList
+  Width = 145
+  Taborder = 0
+
+Name = MemoLabel
+  Type = Label
+  Height = 13
+  Left = 294
+  Top = 181
+  Width = 109
+  Caption = Counties not yet found:
+
+Name = ok
+  Type = Button
+  Height = 25
+  Left = 134
+  Top = 450
+  Width = 75
+  Taborder = 0
+  Caption = Check
+
+Name = cancel
+  Type = Button
+  Height = 25
+  Left = 314
+  Top = 450
+  Width = 75
+  Taborder = 1
+  Caption = Cancel
+
+Name = ResultList
+  Type = Memo
+  Height = 231
+  Left = 292
+  Scrollbars = Vertical
+  Top = 200
+  Width = 209
+  Taborder = 2
+
+Name = FoundLabel
+  Type = Label
+  Height = 13
+  Left = 34
+  Top = 181
+  Width = 74
+  Caption = Counties found:
+
+Name = FoundList
+  Type = Memo
+  Height = 231
+  Left = 32
+  Scrollbars = Vertical
+  Top = 200
+  Width = 209
+  Taborder = 3
+
+Name = GetCounties
+  Type = Button
+  Container = Groupbox1
+  Height = 25
+  Left = 46
+  Top = 27
+  Width = 91
+  Taborder = 0
+  Caption = Update Counties
+
+Name = Label3
+  Type = Label
+  Color = 255
+  Container = Groupbox1
+  Height = 13
+  Left = 70
+  Style = bold
+  Top = 65
+  Width = 44
+  Caption = Warning
+
+Name = excludelocationless
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 17
+  Left = 149
+  Top = 79
+  Width = 15
+  Taborder = 1
+
+Name = Label4
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 26
+  Top = 82
+  Width = 99
+  Caption = Exclude locationless:
+
+Name = Label5
+  Type = Label
+  Color = 255
+  Container = Groupbox1
+  Height = 13
+  Left = 18
+  Style = bold
+  Top = 81
+  Width = 143
+  Caption = Will overwrite County field!
+
+<enddata>
+
+<data> VarName=$CountiesSQlFile
+Alabama;AL;Autauga
+Alabama;AL;Baldwin
+Alabama;AL;Barbour
+Alabama;AL;Bibb
+Alabama;AL;Blount
+Alabama;AL;Bullock
+Alabama;AL;Butler
+Alabama;AL;Calhoun
+Alabama;AL;Chambers
+Alabama;AL;Cherokee
+Alabama;AL;Chilton
+Alabama;AL;Choctaw
+Alabama;AL;Clarke
+Alabama;AL;Clay
+Alabama;AL;Cleburne
+Alabama;AL;Coffee
+Alabama;AL;Colbert
+Alabama;AL;Conecuh
+Alabama;AL;Coosa
+Alabama;AL;Covington
+Alabama;AL;Crenshaw
+Alabama;AL;Cullman
+Alabama;AL;Dale
+Alabama;AL;Dallas
+Alabama;AL;DeKalb
+Alabama;AL;Elmore
+Alabama;AL;Escambia
+Alabama;AL;Etowah
+Alabama;AL;Fayette
+Alabama;AL;Franklin
+Alabama;AL;Geneva
+Alabama;AL;Greene
+Alabama;AL;Hale
+Alabama;AL;Henry
+Alabama;AL;Houston
+Alabama;AL;Jackson
+Alabama;AL;Jefferson
+Alabama;AL;Lamar
+Alabama;AL;Lauderdale
+Alabama;AL;Lawrence
+Alabama;AL;Lee
+Alabama;AL;Limestone
+Alabama;AL;Lowndes
+Alabama;AL;Macon
+Alabama;AL;Madison
+Alabama;AL;Marengo
+Alabama;AL;Marion
+Alabama;AL;Marshall
+Alabama;AL;Mobile
+Alabama;AL;Monroe
+Alabama;AL;Montgomery
+Alabama;AL;Morgan
+Alabama;AL;Perry
+Alabama;AL;Pickens
+Alabama;AL;Pike
+Alabama;AL;Randolph
+Alabama;AL;Russell
+Alabama;AL;St. Clair
+Alabama;AL;Shelby
+Alabama;AL;Sumter
+Alabama;AL;Talladega
+Alabama;AL;Tallapoosa
+Alabama;AL;Tuscaloosa
+Alabama;AL;Walker
+Alabama;AL;Washington
+Alabama;AL;Wilcox
+Alabama;AL;Winston
+Alaska;AK;Aleutians East
+Alaska;AK;Aleutians West
+Alaska;AK;Anchorage
+Alaska;AK;Bethel
+Alaska;AK;Bristol Bay
+Alaska;AK;Denali
+Alaska;AK;Dillingham
+Alaska;AK;Fairbanks North Star
+Alaska;AK;Haines
+Alaska;AK;Juneau
+Alaska;AK;Kenai Peninsula
+Alaska;AK;Ketchikan Gateway
+Alaska;AK;Kodiak Island
+Alaska;AK;Lake and Peninsula
+Alaska;AK;Susitna
+Alaska;AK;Nome
+Alaska;AK;North Slope
+Alaska;AK;Northwest Arctic
+Alaska;AK;Outer Ketchikan
+Alaska;AK;Sitka
+Alaska;AK;Angoon
+Alaska;AK;Southeast Fairbanks
+Alaska;AK;Cordova
+Alaska;AK;Wade Hampton
+Alaska;AK;Petersburg
+Alaska;AK;Yakutat
+Alaska;AK;Koyukuk
+Arizona;AZ;Apache
+Arizona;AZ;Cochise
+Arizona;AZ;Coconino
+Arizona;AZ;Gila
+Arizona;AZ;Graham
+Arizona;AZ;Greenlee
+Arizona;AZ;La Paz
+Arizona;AZ;Maricopa
+Arizona;AZ;Mohave
+Arizona;AZ;Navajo
+Arizona;AZ;Pima
+Arizona;AZ;Pinal
+Arizona;AZ;Santa Cruz
+Arizona;AZ;Yavapai
+Arizona;AZ;Yuma
+Arkansas;AR;Arkansas
+Arkansas;AR;Ashley
+Arkansas;AR;Baxter
+Arkansas;AR;Benton
+Arkansas;AR;Boone
+Arkansas;AR;Bradley
+Arkansas;AR;Calhoun
+Arkansas;AR;Carroll
+Arkansas;AR;Chicot
+Arkansas;AR;Clark
+Arkansas;AR;Clay
+Arkansas;AR;Cleburne
+Arkansas;AR;Cleveland
+Arkansas;AR;Columbia
+Arkansas;AR;Conway
+Arkansas;AR;Craighead
+Arkansas;AR;Crawford
+Arkansas;AR;Crittenden
+Arkansas;AR;Cross
+Arkansas;AR;Dallas
+Arkansas;AR;Desha
+Arkansas;AR;Drew
+Arkansas;AR;Faulkner
+Arkansas;AR;Franklin
+Arkansas;AR;Fulton
+Arkansas;AR;Garland
+Arkansas;AR;Grant
+Arkansas;AR;Greene
+Arkansas;AR;Hempstead
+Arkansas;AR;Hot Spring
+Arkansas;AR;Howard
+Arkansas;AR;Independence
+Arkansas;AR;Izard
+Arkansas;AR;Jackson
+Arkansas;AR;Jefferson
+Arkansas;AR;Johnson
+Arkansas;AR;Lafayette
+Arkansas;AR;Lawrence
+Arkansas;AR;Lee
+Arkansas;AR;Lincoln
+Arkansas;AR;Little River
+Arkansas;AR;Logan
+Arkansas;AR;Lonoke
+Arkansas;AR;Madison
+Arkansas;AR;Marion
+Arkansas;AR;Miller
+Arkansas;AR;Mississippi
+Arkansas;AR;Monroe
+Arkansas;AR;Montgomery
+Arkansas;AR;Nevada
+Arkansas;AR;Newton
+Arkansas;AR;Ouachita
+Arkansas;AR;Perry
+Arkansas;AR;Phillips
+Arkansas;AR;Pike
+Arkansas;AR;Poinsett
+Arkansas;AR;Polk
+Arkansas;AR;Pope
+Arkansas;AR;Prairie
+Arkansas;AR;Pulaski
+Arkansas;AR;Randolph
+Arkansas;AR;St. Francis
+Arkansas;AR;Saline
+Arkansas;AR;Scott
+Arkansas;AR;Searcy
+Arkansas;AR;Sebastian
+Arkansas;AR;Sevier
+Arkansas;AR;Sharp
+Arkansas;AR;Stone
+Arkansas;AR;Union
+Arkansas;AR;Van Buren
+Arkansas;AR;Washington
+Arkansas;AR;White
+Arkansas;AR;Woodruff
+Arkansas;AR;Yell
+California;CA;Alameda
+California;CA;Alpine
+California;CA;Amador
+California;CA;Butte
+California;CA;Calaveras
+California;CA;Colusa
+California;CA;Contra Costa
+California;CA;Del Norte
+California;CA;El Dorado
+California;CA;Fresno
+California;CA;Glenn
+California;CA;Humboldt
+California;CA;Imperial
+California;CA;Inyo
+California;CA;Kern
+California;CA;Kings
+California;CA;Lake
+California;CA;Lassen
+California;CA;Los Angeles
+California;CA;Madera
+California;CA;Marin
+California;CA;Mariposa
+California;CA;Mendocino
+California;CA;Merced
+California;CA;Modoc
+California;CA;Mono
+California;CA;Monterey
+California;CA;Napa
+California;CA;Nevada
+California;CA;Orange
+California;CA;Placer
+California;CA;Plumas
+California;CA;Riverside
+California;CA;Sacramento
+California;CA;San Benito
+California;CA;San Bernardino
+California;CA;San Diego
+California;CA;San Francisco
+California;CA;San Joaquin
+California;CA;San Luis Obispo
+California;CA;San Mateo
+California;CA;Santa Barbara
+California;CA;Santa Clara
+California;CA;Santa Cruz
+California;CA;Shasta
+California;CA;Sierra
+California;CA;Siskiyou
+California;CA;Solano
+California;CA;Sonoma
+California;CA;Stanislaus
+California;CA;Sutter
+California;CA;Tehama
+California;CA;Trinity
+California;CA;Tulare
+California;CA;Tuolumne
+California;CA;Ventura
+California;CA;Yolo
+California;CA;Yuba
+Colorado;CO;Adams
+Colorado;CO;Alamosa
+Colorado;CO;Arapahoe
+Colorado;CO;Archuleta
+Colorado;CO;Baca
+Colorado;CO;Bent
+Colorado;CO;Boulder
+Colorado;CO;Chaffee
+Colorado;CO;Cheyenne
+Colorado;CO;Clear Creek
+Colorado;CO;Conejos
+Colorado;CO;Costilla
+Colorado;CO;Crowley
+Colorado;CO;Custer
+Colorado;CO;Delta
+Colorado;CO;Denver
+Colorado;CO;Dolores
+Colorado;CO;Douglas
+Colorado;CO;Eagle
+Colorado;CO;Elbert
+Colorado;CO;El Paso
+Colorado;CO;Fremont
+Colorado;CO;Garfield
+Colorado;CO;Gilpin
+Colorado;CO;Grand
+Colorado;CO;Gunnison
+Colorado;CO;Hinsdale
+Colorado;CO;Huerfano
+Colorado;CO;Jackson
+Colorado;CO;Jefferson
+Colorado;CO;Kiowa
+Colorado;CO;Kit Carson
+Colorado;CO;Lake
+Colorado;CO;La Plata
+Colorado;CO;Larimer
+Colorado;CO;Las Animas
+Colorado;CO;Lincoln
+Colorado;CO;Logan
+Colorado;CO;Mesa
+Colorado;CO;Mineral
+Colorado;CO;Moffat
+Colorado;CO;Montezuma
+Colorado;CO;Montrose
+Colorado;CO;Morgan
+Colorado;CO;Otero
+Colorado;CO;Ouray
+Colorado;CO;Park
+Colorado;CO;Phillips
+Colorado;CO;Pitkin
+Colorado;CO;Prowers
+Colorado;CO;Pueblo
+Colorado;CO;Rio Blanco
+Colorado;CO;Rio Grande
+Colorado;CO;Routt
+Colorado;CO;Saguache
+Colorado;CO;San Juan
+Colorado;CO;San Miguel
+Colorado;CO;Sedgwick
+Colorado;CO;Summit
+Colorado;CO;Teller
+Colorado;CO;Washington
+Colorado;CO;Weld
+Colorado;CO;Yuma
+Connecticut;CT;Fairfield
+Connecticut;CT;Hartford
+Connecticut;CT;Litchfield
+Connecticut;CT;Middlesex
+Connecticut;CT;New Haven
+Connecticut;CT;New London
+Connecticut;CT;Tolland
+Connecticut;CT;Windham
+Delaware;DE;Kent
+Delaware;DE;New Castle
+Delaware;DE;Sussex
+DistrictOfColumbia;DC;District of Columbia
+Florida;FL;Alachua
+Florida;FL;Baker
+Florida;FL;Bay
+Florida;FL;Bradford
+Florida;FL;Brevard
+Florida;FL;Broward
+Florida;FL;Calhoun
+Florida;FL;Charlotte
+Florida;FL;Citrus
+Florida;FL;Clay
+Florida;FL;Collier
+Florida;FL;Columbia
+Florida;FL;DeSoto
+Florida;FL;Dixie
+Florida;FL;Duval
+Florida;FL;Escambia
+Florida;FL;Flagler
+Florida;FL;Franklin
+Florida;FL;Gadsden
+Florida;FL;Gilchrist
+Florida;FL;Glades
+Florida;FL;Gulf
+Florida;FL;Hamilton
+Florida;FL;Hardee
+Florida;FL;Hendry
+Florida;FL;Hernando
+Florida;FL;Highlands
+Florida;FL;Hillsborough
+Florida;FL;Holmes
+Florida;FL;Indian River
+Florida;FL;Jackson
+Florida;FL;Jefferson
+Florida;FL;Lafayette
+Florida;FL;Lake
+Florida;FL;Lee
+Florida;FL;Leon
+Florida;FL;Levy
+Florida;FL;Liberty
+Florida;FL;Madison
+Florida;FL;Manatee
+Florida;FL;Marion
+Florida;FL;Martin
+Florida;FL;Dade
+Florida;FL;Monroe
+Florida;FL;Nassau
+Florida;FL;Okaloosa
+Florida;FL;Okeechobee
+Florida;FL;Orange
+Florida;FL;Osceola
+Florida;FL;Palm Beach
+Florida;FL;Pasco
+Florida;FL;Pinellas
+Florida;FL;Polk
+Florida;FL;Putnam
+Florida;FL;St. Johns
+Florida;FL;St. Lucie
+Florida;FL;Santa Rosa
+Florida;FL;Sarasota
+Florida;FL;Seminole
+Florida;FL;Sumter
+Florida;FL;Suwannee
+Florida;FL;Taylor
+Florida;FL;Union
+Florida;FL;Volusia
+Florida;FL;Wakulla
+Florida;FL;Walton
+Florida;FL;Washington
+Georgia;GA;Appling
+Georgia;GA;Atkinson
+Georgia;GA;Bacon
+Georgia;GA;Baker
+Georgia;GA;Baldwin
+Georgia;GA;Banks
+Georgia;GA;Barrow
+Georgia;GA;Bartow
+Georgia;GA;Ben Hill
+Georgia;GA;Berrien
+Georgia;GA;Bibb
+Georgia;GA;Bleckley
+Georgia;GA;Brantley
+Georgia;GA;Brooks
+Georgia;GA;Bryan
+Georgia;GA;Bulloch
+Georgia;GA;Burke
+Georgia;GA;Butts
+Georgia;GA;Calhoun
+Georgia;GA;Camden
+Georgia;GA;Candler
+Georgia;GA;Carroll
+Georgia;GA;Catoosa
+Georgia;GA;Charlton
+Georgia;GA;Chatham
+Georgia;GA;Chattahoochee
+Georgia;GA;Chattooga
+Georgia;GA;Cherokee
+Georgia;GA;Clarke
+Georgia;GA;Clay
+Georgia;GA;Clayton
+Georgia;GA;Clinch
+Georgia;GA;Cobb
+Georgia;GA;Coffee
+Georgia;GA;Colquitt
+Georgia;GA;Columbia
+Georgia;GA;Cook
+Georgia;GA;Coweta
+Georgia;GA;Crawford
+Georgia;GA;Crisp
+Georgia;GA;Dade
+Georgia;GA;Dawson
+Georgia;GA;Decatur
+Georgia;GA;DeKalb
+Georgia;GA;Dodge
+Georgia;GA;Dooly
+Georgia;GA;Dougherty
+Georgia;GA;Douglas
+Georgia;GA;Early
+Georgia;GA;Echols
+Georgia;GA;Effingham
+Georgia;GA;Elbert
+Georgia;GA;Emanuel
+Georgia;GA;Evans
+Georgia;GA;Fannin
+Georgia;GA;Fayette
+Georgia;GA;Floyd
+Georgia;GA;Forsyth
+Georgia;GA;Franklin
+Georgia;GA;Fulton
+Georgia;GA;Gilmer
+Georgia;GA;Glascock
+Georgia;GA;Glynn
+Georgia;GA;Gordon
+Georgia;GA;Grady
+Georgia;GA;Greene
+Georgia;GA;Gwinnett
+Georgia;GA;Habersham
+Georgia;GA;Hall
+Georgia;GA;Hancock
+Georgia;GA;Haralson
+Georgia;GA;Harris
+Georgia;GA;Hart
+Georgia;GA;Heard
+Georgia;GA;Henry
+Georgia;GA;Houston
+Georgia;GA;Irwin
+Georgia;GA;Jackson
+Georgia;GA;Jasper
+Georgia;GA;Jeff Davis
+Georgia;GA;Jefferson
+Georgia;GA;Jenkins
+Georgia;GA;Johnson
+Georgia;GA;Jones
+Georgia;GA;Lamar
+Georgia;GA;Lanier
+Georgia;GA;Laurens
+Georgia;GA;Lee
+Georgia;GA;Liberty
+Georgia;GA;Lincoln
+Georgia;GA;Long
+Georgia;GA;Lowndes
+Georgia;GA;Lumpkin
+Georgia;GA;McDuffie
+Georgia;GA;McIntosh
+Georgia;GA;Macon
+Georgia;GA;Madison
+Georgia;GA;Marion
+Georgia;GA;Meriwether
+Georgia;GA;Miller
+Georgia;GA;Mitchell
+Georgia;GA;Monroe
+Georgia;GA;Montgomery
+Georgia;GA;Morgan
+Georgia;GA;Murray
+Georgia;GA;Muscogee
+Georgia;GA;Newton
+Georgia;GA;Oconee
+Georgia;GA;Oglethorpe
+Georgia;GA;Paulding
+Georgia;GA;Peach
+Georgia;GA;Pickens
+Georgia;GA;Pierce
+Georgia;GA;Pike
+Georgia;GA;Polk
+Georgia;GA;Pulaski
+Georgia;GA;Putnam
+Georgia;GA;Quitman
+Georgia;GA;Rabun
+Georgia;GA;Randolph
+Georgia;GA;Richmond
+Georgia;GA;Rockdale
+Georgia;GA;Schley
+Georgia;GA;Screven
+Georgia;GA;Seminole
+Georgia;GA;Spalding
+Georgia;GA;Stephens
+Georgia;GA;Stewart
+Georgia;GA;Sumter
+Georgia;GA;Talbot
+Georgia;GA;Taliaferro
+Georgia;GA;Tattnall
+Georgia;GA;Taylor
+Georgia;GA;Telfair
+Georgia;GA;Terrell
+Georgia;GA;Thomas
+Georgia;GA;Tift
+Georgia;GA;Toombs
+Georgia;GA;Towns
+Georgia;GA;Treutlen
+Georgia;GA;Troup
+Georgia;GA;Turner
+Georgia;GA;Twiggs
+Georgia;GA;Union
+Georgia;GA;Upson
+Georgia;GA;Walker
+Georgia;GA;Walton
+Georgia;GA;Ware
+Georgia;GA;Warren
+Georgia;GA;Washington
+Georgia;GA;Wayne
+Georgia;GA;Webster
+Georgia;GA;Wheeler
+Georgia;GA;White
+Georgia;GA;Whitfield
+Georgia;GA;Wilcox
+Georgia;GA;Wilkes
+Georgia;GA;Wilkinson
+Georgia;GA;Worth
+Hawaii;HI;Hawaii
+Hawaii;HI;Honolulu
+Hawaii;HI;Kalawao
+Hawaii;HI;Kauai
+Hawaii;HI;Maui
+Idaho;ID;Ada
+Idaho;ID;Adams
+Idaho;ID;Bannock
+Idaho;ID;Bear Lake
+Idaho;ID;Benewah
+Idaho;ID;Bingham
+Idaho;ID;Blaine
+Idaho;ID;Boise
+Idaho;ID;Bonner
+Idaho;ID;Bonneville
+Idaho;ID;Boundary
+Idaho;ID;Butte
+Idaho;ID;Camas
+Idaho;ID;Canyon
+Idaho;ID;Caribou
+Idaho;ID;Cassia
+Idaho;ID;Clark
+Idaho;ID;Clearwater
+Idaho;ID;Custer
+Idaho;ID;Elmore
+Idaho;ID;Franklin
+Idaho;ID;Fremont
+Idaho;ID;Gem
+Idaho;ID;Gooding
+Idaho;ID;Idaho
+Idaho;ID;Jefferson
+Idaho;ID;Jerome
+Idaho;ID;Kootenai
+Idaho;ID;Latah
+Idaho;ID;Lemhi
+Idaho;ID;Lewis
+Idaho;ID;Lincoln
+Idaho;ID;Madison
+Idaho;ID;Minidoka
+Idaho;ID;Nez Perce
+Idaho;ID;Oneida
+Idaho;ID;Owyhee
+Idaho;ID;Payette
+Idaho;ID;Power
+Idaho;ID;Shoshone
+Idaho;ID;Teton
+Idaho;ID;Twin Falls
+Idaho;ID;Valley
+Idaho;ID;Washington
+Illinois;IL;Adams
+Illinois;IL;Alexander
+Illinois;IL;Bond
+Illinois;IL;Boone
+Illinois;IL;Brown
+Illinois;IL;Bureau
+Illinois;IL;Calhoun
+Illinois;IL;Carroll
+Illinois;IL;Cass
+Illinois;IL;Champaign
+Illinois;IL;Christian
+Illinois;IL;Clark
+Illinois;IL;Clay
+Illinois;IL;Clinton
+Illinois;IL;Coles
+Illinois;IL;Cook
+Illinois;IL;Crawford
+Illinois;IL;Cumberland
+Illinois;IL;DeKalb
+Illinois;IL;De Witt
+Illinois;IL;Douglas
+Illinois;IL;DuPage
+Illinois;IL;Edgar
+Illinois;IL;Edwards
+Illinois;IL;Effingham
+Illinois;IL;Fayette
+Illinois;IL;Ford
+Illinois;IL;Franklin
+Illinois;IL;Fulton
+Illinois;IL;Gallatin
+Illinois;IL;Greene
+Illinois;IL;Grundy
+Illinois;IL;Hamilton
+Illinois;IL;Hancock
+Illinois;IL;Hardin
+Illinois;IL;Henderson
+Illinois;IL;Henry
+Illinois;IL;Iroquois
+Illinois;IL;Jackson
+Illinois;IL;Jasper
+Illinois;IL;Jefferson
+Illinois;IL;Jersey
+Illinois;IL;Jo Daviess
+Illinois;IL;Johnson
+Illinois;IL;Kane
+Illinois;IL;Kankakee
+Illinois;IL;Kendall
+Illinois;IL;Knox
+Illinois;IL;Lake
+Illinois;IL;La Salle
+Illinois;IL;Lawrence
+Illinois;IL;Lee
+Illinois;IL;Livingston
+Illinois;IL;Logan
+Illinois;IL;McDonough
+Illinois;IL;McHenry
+Illinois;IL;McLean
+Illinois;IL;Macon
+Illinois;IL;Macoupin
+Illinois;IL;Madison
+Illinois;IL;Marion
+Illinois;IL;Marshall
+Illinois;IL;Mason
+Illinois;IL;Massac
+Illinois;IL;Menard
+Illinois;IL;Mercer
+Illinois;IL;Monroe
+Illinois;IL;Montgomery
+Illinois;IL;Morgan
+Illinois;IL;Moultrie
+Illinois;IL;Ogle
+Illinois;IL;Peoria
+Illinois;IL;Perry
+Illinois;IL;Piatt
+Illinois;IL;Pike
+Illinois;IL;Pope
+Illinois;IL;Pulaski
+Illinois;IL;Putnam
+Illinois;IL;Randolph
+Illinois;IL;Richland
+Illinois;IL;Rock Island
+Illinois;IL;St. Clair
+Illinois;IL;Saline
+Illinois;IL;Sangamon
+Illinois;IL;Schuyler
+Illinois;IL;Scott
+Illinois;IL;Shelby
+Illinois;IL;Stark
+Illinois;IL;Stephenson
+Illinois;IL;Tazewell
+Illinois;IL;Union
+Illinois;IL;Vermilion
+Illinois;IL;Wabash
+Illinois;IL;Warren
+Illinois;IL;Washington
+Illinois;IL;Wayne
+Illinois;IL;White
+Illinois;IL;Whiteside
+Illinois;IL;Will
+Illinois;IL;Williamson
+Illinois;IL;Winnebago
+Illinois;IL;Woodford
+Indiana;IN;Adams
+Indiana;IN;Allen
+Indiana;IN;Bartholomew
+Indiana;IN;Benton
+Indiana;IN;Blackford
+Indiana;IN;Boone
+Indiana;IN;Brown
+Indiana;IN;Carroll
+Indiana;IN;Cass
+Indiana;IN;Clark
+Indiana;IN;Clay
+Indiana;IN;Clinton
+Indiana;IN;Crawford
+Indiana;IN;Daviess
+Indiana;IN;Dearborn
+Indiana;IN;Decatur
+Indiana;IN;DeKalb
+Indiana;IN;Delaware
+Indiana;IN;Dubois
+Indiana;IN;Elkhart
+Indiana;IN;Fayette
+Indiana;IN;Floyd
+Indiana;IN;Fountain
+Indiana;IN;Franklin
+Indiana;IN;Fulton
+Indiana;IN;Gibson
+Indiana;IN;Grant
+Indiana;IN;Greene
+Indiana;IN;Hamilton
+Indiana;IN;Hancock
+Indiana;IN;Harrison
+Indiana;IN;Hendricks
+Indiana;IN;Henry
+Indiana;IN;Howard
+Indiana;IN;Huntington
+Indiana;IN;Jackson
+Indiana;IN;Jasper
+Indiana;IN;Jay
+Indiana;IN;Jefferson
+Indiana;IN;Jennings
+Indiana;IN;Johnson
+Indiana;IN;Knox
+Indiana;IN;Kosciusko
+Indiana;IN;LaGrange
+Indiana;IN;Lake
+Indiana;IN;LaPorte
+Indiana;IN;Lawrence
+Indiana;IN;Madison
+Indiana;IN;Marion
+Indiana;IN;Marshall
+Indiana;IN;Martin
+Indiana;IN;Miami
+Indiana;IN;Monroe
+Indiana;IN;Montgomery
+Indiana;IN;Morgan
+Indiana;IN;Newton
+Indiana;IN;Noble
+Indiana;IN;Ohio
+Indiana;IN;Orange
+Indiana;IN;Owen
+Indiana;IN;Parke
+Indiana;IN;Perry
+Indiana;IN;Pike
+Indiana;IN;Porter
+Indiana;IN;Posey
+Indiana;IN;Pulaski
+Indiana;IN;Putnam
+Indiana;IN;Randolph
+Indiana;IN;Ripley
+Indiana;IN;Rush
+Indiana;IN;St. Joseph
+Indiana;IN;Scott
+Indiana;IN;Shelby
+Indiana;IN;Spencer
+Indiana;IN;Starke
+Indiana;IN;Steuben
+Indiana;IN;Sullivan
+Indiana;IN;Switzerland
+Indiana;IN;Tippecanoe
+Indiana;IN;Tipton
+Indiana;IN;Union
+Indiana;IN;Vanderburgh
+Indiana;IN;Vermillion
+Indiana;IN;Vigo
+Indiana;IN;Wabash
+Indiana;IN;Warren
+Indiana;IN;Warrick
+Indiana;IN;Washington
+Indiana;IN;Wayne
+Indiana;IN;Wells
+Indiana;IN;White
+Indiana;IN;Whitley
+Iowa;IA;Adair
+Iowa;IA;Adams
+Iowa;IA;Allamakee
+Iowa;IA;Appanoose
+Iowa;IA;Audubon
+Iowa;IA;Benton
+Iowa;IA;Black Hawk
+Iowa;IA;Boone
+Iowa;IA;Bremer
+Iowa;IA;Buchanan
+Iowa;IA;Buena Vista
+Iowa;IA;Butler
+Iowa;IA;Calhoun
+Iowa;IA;Carroll
+Iowa;IA;Cass
+Iowa;IA;Cedar
+Iowa;IA;Cerro Gordo
+Iowa;IA;Cherokee
+Iowa;IA;Chickasaw
+Iowa;IA;Clarke
+Iowa;IA;Clay
+Iowa;IA;Clayton
+Iowa;IA;Clinton
+Iowa;IA;Crawford
+Iowa;IA;Dallas
+Iowa;IA;Davis
+Iowa;IA;Decatur
+Iowa;IA;Delaware
+Iowa;IA;Des Moines
+Iowa;IA;Dickinson
+Iowa;IA;Dubuque
+Iowa;IA;Emmet
+Iowa;IA;Fayette
+Iowa;IA;Floyd
+Iowa;IA;Franklin
+Iowa;IA;Fremont
+Iowa;IA;Greene
+Iowa;IA;Grundy
+Iowa;IA;Guthrie
+Iowa;IA;Hamilton
+Iowa;IA;Hancock
+Iowa;IA;Hardin
+Iowa;IA;Harrison
+Iowa;IA;Henry
+Iowa;IA;Howard
+Iowa;IA;Humboldt
+Iowa;IA;Ida
+Iowa;IA;Iowa
+Iowa;IA;Jackson
+Iowa;IA;Jasper
+Iowa;IA;Jefferson
+Iowa;IA;Johnson
+Iowa;IA;Jones
+Iowa;IA;Keokuk
+Iowa;IA;Kossuth
+Iowa;IA;Lee
+Iowa;IA;Linn
+Iowa;IA;Louisa
+Iowa;IA;Lucas
+Iowa;IA;Lyon
+Iowa;IA;Madison
+Iowa;IA;Mahaska
+Iowa;IA;Marion
+Iowa;IA;Marshall
+Iowa;IA;Mills
+Iowa;IA;Mitchell
+Iowa;IA;Monona
+Iowa;IA;Monroe
+Iowa;IA;Montgomery
+Iowa;IA;Muscatine
+Iowa;IA;O'Brien
+Iowa;IA;Osceola
+Iowa;IA;Page
+Iowa;IA;Palo Alto
+Iowa;IA;Plymouth
+Iowa;IA;Pocahontas
+Iowa;IA;Polk
+Iowa;IA;Pottawattamie
+Iowa;IA;Poweshiek
+Iowa;IA;Ringgold
+Iowa;IA;Sac
+Iowa;IA;Scott
+Iowa;IA;Shelby
+Iowa;IA;Sioux
+Iowa;IA;Story
+Iowa;IA;Tama
+Iowa;IA;Taylor
+Iowa;IA;Union
+Iowa;IA;Van Buren
+Iowa;IA;Wapello
+Iowa;IA;Warren
+Iowa;IA;Washington
+Iowa;IA;Wayne
+Iowa;IA;Webster
+Iowa;IA;Winnebago
+Iowa;IA;Winneshiek
+Iowa;IA;Woodbury
+Iowa;IA;Worth
+Iowa;IA;Wright
+Kansas;KS;Allen
+Kansas;KS;Anderson
+Kansas;KS;Atchison
+Kansas;KS;Barber
+Kansas;KS;Barton
+Kansas;KS;Bourbon
+Kansas;KS;Brown
+Kansas;KS;Butler
+Kansas;KS;Chase
+Kansas;KS;Chautauqua
+Kansas;KS;Cherokee
+Kansas;KS;Cheyenne
+Kansas;KS;Clark
+Kansas;KS;Clay
+Kansas;KS;Cloud
+Kansas;KS;Coffey
+Kansas;KS;Comanche
+Kansas;KS;Cowley
+Kansas;KS;Crawford
+Kansas;KS;Decatur
+Kansas;KS;Dickinson
+Kansas;KS;Doniphan
+Kansas;KS;Douglas
+Kansas;KS;Edwards
+Kansas;KS;Elk
+Kansas;KS;Ellis
+Kansas;KS;Ellsworth
+Kansas;KS;Finney
+Kansas;KS;Ford
+Kansas;KS;Franklin
+Kansas;KS;Geary
+Kansas;KS;Gove
+Kansas;KS;Graham
+Kansas;KS;Grant
+Kansas;KS;Gray
+Kansas;KS;Greeley
+Kansas;KS;Greenwood
+Kansas;KS;Hamilton
+Kansas;KS;Harper
+Kansas;KS;Harvey
+Kansas;KS;Haskell
+Kansas;KS;Hodgeman
+Kansas;KS;Jackson
+Kansas;KS;Jefferson
+Kansas;KS;Jewell
+Kansas;KS;Johnson
+Kansas;KS;Kearny
+Kansas;KS;Kingman
+Kansas;KS;Kiowa
+Kansas;KS;Labette
+Kansas;KS;Lane
+Kansas;KS;Leavenworth
+Kansas;KS;Lincoln
+Kansas;KS;Linn
+Kansas;KS;Logan
+Kansas;KS;Lyon
+Kansas;KS;McPherson
+Kansas;KS;Marion
+Kansas;KS;Marshall
+Kansas;KS;Meade
+Kansas;KS;Miami
+Kansas;KS;Mitchell
+Kansas;KS;Montgomery
+Kansas;KS;Morris
+Kansas;KS;Morton
+Kansas;KS;Nemaha
+Kansas;KS;Neosho
+Kansas;KS;Ness
+Kansas;KS;Norton
+Kansas;KS;Osage
+Kansas;KS;Osborne
+Kansas;KS;Ottawa
+Kansas;KS;Pawnee
+Kansas;KS;Phillips
+Kansas;KS;Pottawatomie
+Kansas;KS;Pratt
+Kansas;KS;Rawlins
+Kansas;KS;Reno
+Kansas;KS;Republic
+Kansas;KS;Rice
+Kansas;KS;Riley
+Kansas;KS;Rooks
+Kansas;KS;Rush
+Kansas;KS;Russell
+Kansas;KS;Saline
+Kansas;KS;Scott
+Kansas;KS;Sedgwick
+Kansas;KS;Seward
+Kansas;KS;Shawnee
+Kansas;KS;Sheridan
+Kansas;KS;Sherman
+Kansas;KS;Smith
+Kansas;KS;Stafford
+Kansas;KS;Stanton
+Kansas;KS;Stevens
+Kansas;KS;Sumner
+Kansas;KS;Thomas
+Kansas;KS;Trego
+Kansas;KS;Wabaunsee
+Kansas;KS;Wallace
+Kansas;KS;Washington
+Kansas;KS;Wichita
+Kansas;KS;Wilson
+Kansas;KS;Woodson
+Kansas;KS;Wyandotte
+Kentucky;KY;Adair
+Kentucky;KY;Allen
+Kentucky;KY;Anderson
+Kentucky;KY;Ballard
+Kentucky;KY;Barren
+Kentucky;KY;Bath
+Kentucky;KY;Bell
+Kentucky;KY;Boone
+Kentucky;KY;Bourbon
+Kentucky;KY;Boyd
+Kentucky;KY;Boyle
+Kentucky;KY;Bracken
+Kentucky;KY;Breathitt
+Kentucky;KY;Breckinridge
+Kentucky;KY;Bullitt
+Kentucky;KY;Butler
+Kentucky;KY;Caldwell
+Kentucky;KY;Calloway
+Kentucky;KY;Campbell
+Kentucky;KY;Carlisle
+Kentucky;KY;Carroll
+Kentucky;KY;Carter
+Kentucky;KY;Casey
+Kentucky;KY;Christian
+Kentucky;KY;Clark
+Kentucky;KY;Clay
+Kentucky;KY;Clinton
+Kentucky;KY;Crittenden
+Kentucky;KY;Cumberland
+Kentucky;KY;Daviess
+Kentucky;KY;Edmonson
+Kentucky;KY;Elliott
+Kentucky;KY;Estill
+Kentucky;KY;Fayette
+Kentucky;KY;Fleming
+Kentucky;KY;Floyd
+Kentucky;KY;Franklin
+Kentucky;KY;Fulton
+Kentucky;KY;Gallatin
+Kentucky;KY;Garrard
+Kentucky;KY;Grant
+Kentucky;KY;Graves
+Kentucky;KY;Grayson
+Kentucky;KY;Green
+Kentucky;KY;Greenup
+Kentucky;KY;Hancock
+Kentucky;KY;Hardin
+Kentucky;KY;Harlan
+Kentucky;KY;Harrison
+Kentucky;KY;Hart
+Kentucky;KY;Henderson
+Kentucky;KY;Henry
+Kentucky;KY;Hickman
+Kentucky;KY;Hopkins
+Kentucky;KY;Jackson
+Kentucky;KY;Jefferson
+Kentucky;KY;Jessamine
+Kentucky;KY;Johnson
+Kentucky;KY;Kenton
+Kentucky;KY;Knott
+Kentucky;KY;Knox
+Kentucky;KY;Larue
+Kentucky;KY;Laurel
+Kentucky;KY;Lawrence
+Kentucky;KY;Lee
+Kentucky;KY;Leslie
+Kentucky;KY;Letcher
+Kentucky;KY;Lewis
+Kentucky;KY;Lincoln
+Kentucky;KY;Livingston
+Kentucky;KY;Logan
+Kentucky;KY;Lyon
+Kentucky;KY;McCracken
+Kentucky;KY;McCreary
+Kentucky;KY;McLean
+Kentucky;KY;Madison
+Kentucky;KY;Magoffin
+Kentucky;KY;Marion
+Kentucky;KY;Marshall
+Kentucky;KY;Martin
+Kentucky;KY;Mason
+Kentucky;KY;Meade
+Kentucky;KY;Menifee
+Kentucky;KY;Mercer
+Kentucky;KY;Metcalfe
+Kentucky;KY;Monroe
+Kentucky;KY;Montgomery
+Kentucky;KY;Morgan
+Kentucky;KY;Muhlenberg
+Kentucky;KY;Nelson
+Kentucky;KY;Nicholas
+Kentucky;KY;Ohio
+Kentucky;KY;Oldham
+Kentucky;KY;Owen
+Kentucky;KY;Owsley
+Kentucky;KY;Pendleton
+Kentucky;KY;Perry
+Kentucky;KY;Pike
+Kentucky;KY;Powell
+Kentucky;KY;Pulaski
+Kentucky;KY;Robertson
+Kentucky;KY;Rockcastle
+Kentucky;KY;Rowan
+Kentucky;KY;Russell
+Kentucky;KY;Scott
+Kentucky;KY;Shelby
+Kentucky;KY;Simpson
+Kentucky;KY;Spencer
+Kentucky;KY;Taylor
+Kentucky;KY;Todd
+Kentucky;KY;Trigg
+Kentucky;KY;Trimble
+Kentucky;KY;Union
+Kentucky;KY;Warren
+Kentucky;KY;Washington
+Kentucky;KY;Wayne
+Kentucky;KY;Webster
+Kentucky;KY;Whitley
+Kentucky;KY;Wolfe
+Kentucky;KY;Woodford
+Louisiana;LA;Acadia
+Louisiana;LA;Allen
+Louisiana;LA;Ascension
+Louisiana;LA;Assumption
+Louisiana;LA;Avoyelles
+Louisiana;LA;Beauregard
+Louisiana;LA;Bienville
+Louisiana;LA;Bossier
+Louisiana;LA;Caddo
+Louisiana;LA;Calcasieu
+Louisiana;LA;Caldwell
+Louisiana;LA;Cameron
+Louisiana;LA;Catahoula
+Louisiana;LA;Claiborne
+Louisiana;LA;Concordia
+Louisiana;LA;De Soto
+Louisiana;LA;East Baton Rouge
+Louisiana;LA;East Carroll
+Louisiana;LA;East Feliciana
+Louisiana;LA;Evangeline
+Louisiana;LA;Franklin
+Louisiana;LA;Grant
+Louisiana;LA;Iberia
+Louisiana;LA;Iberville
+Louisiana;LA;Jackson
+Louisiana;LA;Jefferson
+Louisiana;LA;Jefferson Davis
+Louisiana;LA;Lafayette
+Louisiana;LA;Lafourche
+Louisiana;LA;La Salle
+Louisiana;LA;Lincoln
+Louisiana;LA;Livingston
+Louisiana;LA;Madison
+Louisiana;LA;Morehouse
+Louisiana;LA;Natchitoches
+Louisiana;LA;Orleans
+Louisiana;LA;Ouachita
+Louisiana;LA;Plaquemines
+Louisiana;LA;Pointe Coupee
+Louisiana;LA;Rapides
+Louisiana;LA;Red River
+Louisiana;LA;Richland
+Louisiana;LA;Sabine
+Louisiana;LA;St. Bernard
+Louisiana;LA;St. Charles
+Louisiana;LA;St. Helena
+Louisiana;LA;St. James
+Louisiana;LA;St. John the Baptist
+Louisiana;LA;St. Landry
+Louisiana;LA;St. Martin
+Louisiana;LA;St. Mary
+Louisiana;LA;St. Tammany
+Louisiana;LA;Tangipahoa
+Louisiana;LA;Tensas
+Louisiana;LA;Terrebonne
+Louisiana;LA;Union
+Louisiana;LA;Vermilion
+Louisiana;LA;Vernon
+Louisiana;LA;Washington
+Louisiana;LA;Webster
+Louisiana;LA;West Baton Rouge
+Louisiana;LA;West Carroll
+Louisiana;LA;West Feliciana
+Louisiana;LA;Winn
+Maine;ME;Androscoggin
+Maine;ME;Aroostook
+Maine;ME;Cumberland
+Maine;ME;Franklin
+Maine;ME;Hancock
+Maine;ME;Kennebec
+Maine;ME;Knox
+Maine;ME;Lincoln
+Maine;ME;Oxford
+Maine;ME;Penobscot
+Maine;ME;Piscataquis
+Maine;ME;Sagadahoc
+Maine;ME;Somerset
+Maine;ME;Waldo
+Maine;ME;Washington
+Maine;ME;York
+Maryland;MD;Allegany
+Maryland;MD;Anne Arundel
+Maryland;MD;Baltimore
+Maryland;MD;Calvert
+Maryland;MD;Caroline
+Maryland;MD;Carroll
+Maryland;MD;Cecil
+Maryland;MD;Charles
+Maryland;MD;Dorchester
+Maryland;MD;Frederick
+Maryland;MD;Garrett
+Maryland;MD;Harford
+Maryland;MD;Howard
+Maryland;MD;Kent
+Maryland;MD;Montgomery
+Maryland;MD;Prince George's
+Maryland;MD;Queen Anne's
+Maryland;MD;St. Mary's
+Maryland;MD;Somerset
+Maryland;MD;Talbot
+Maryland;MD;Washington
+Maryland;MD;Wicomico
+Maryland;MD;Worcester
+Maryland;MD;Baltimore City
+Massachusetts;MA;Barnstable
+Massachusetts;MA;Berkshire
+Massachusetts;MA;Bristol
+Massachusetts;MA;Dukes
+Massachusetts;MA;Essex
+Massachusetts;MA;Franklin
+Massachusetts;MA;Hampden
+Massachusetts;MA;Hampshire
+Massachusetts;MA;Middlesex
+Massachusetts;MA;Nantucket
+Massachusetts;MA;Norfolk
+Massachusetts;MA;Plymouth
+Massachusetts;MA;Suffolk
+Massachusetts;MA;Worcester
+Michigan;MI;Alcona
+Michigan;MI;Alger
+Michigan;MI;Allegan
+Michigan;MI;Alpena
+Michigan;MI;Antrim
+Michigan;MI;Arenac
+Michigan;MI;Baraga
+Michigan;MI;Barry
+Michigan;MI;Bay
+Michigan;MI;Benzie
+Michigan;MI;Berrien
+Michigan;MI;Branch
+Michigan;MI;Calhoun
+Michigan;MI;Cass
+Michigan;MI;Charlevoix
+Michigan;MI;Cheboygan
+Michigan;MI;Chippewa
+Michigan;MI;Clare
+Michigan;MI;Clinton
+Michigan;MI;Crawford
+Michigan;MI;Delta
+Michigan;MI;Dickinson
+Michigan;MI;Eaton
+Michigan;MI;Emmet
+Michigan;MI;Genesee
+Michigan;MI;Gladwin
+Michigan;MI;Gogebic
+Michigan;MI;Grand Traverse
+Michigan;MI;Gratiot
+Michigan;MI;Hillsdale
+Michigan;MI;Houghton
+Michigan;MI;Huron
+Michigan;MI;Ingham
+Michigan;MI;Ionia
+Michigan;MI;Iosco
+Michigan;MI;Iron
+Michigan;MI;Isabella
+Michigan;MI;Jackson
+Michigan;MI;Kalamazoo
+Michigan;MI;Kalkaska
+Michigan;MI;Kent
+Michigan;MI;Keweenaw
+Michigan;MI;Lake
+Michigan;MI;Lapeer
+Michigan;MI;Leelanau
+Michigan;MI;Lenawee
+Michigan;MI;Livingston
+Michigan;MI;Luce
+Michigan;MI;Mackinac
+Michigan;MI;Macomb
+Michigan;MI;Manistee
+Michigan;MI;Marquette
+Michigan;MI;Mason
+Michigan;MI;Mecosta
+Michigan;MI;Menominee
+Michigan;MI;Midland
+Michigan;MI;Missaukee
+Michigan;MI;Monroe
+Michigan;MI;Montcalm
+Michigan;MI;Montmorency
+Michigan;MI;Muskegon
+Michigan;MI;Newaygo
+Michigan;MI;Oakland
+Michigan;MI;Oceana
+Michigan;MI;Ogemaw
+Michigan;MI;Ontonagon
+Michigan;MI;Osceola
+Michigan;MI;Oscoda
+Michigan;MI;Otsego
+Michigan;MI;Ottawa
+Michigan;MI;Presque Isle
+Michigan;MI;Roscommon
+Michigan;MI;Saginaw
+Michigan;MI;St. Clair
+Michigan;MI;St. Joseph
+Michigan;MI;Sanilac
+Michigan;MI;Schoolcraft
+Michigan;MI;Shiawassee
+Michigan;MI;Tuscola
+Michigan;MI;Van Buren
+Michigan;MI;Washtenaw
+Michigan;MI;Wayne
+Michigan;MI;Wexford
+Minnesota;MN;Aitkin
+Minnesota;MN;Anoka
+Minnesota;MN;Becker
+Minnesota;MN;Beltrami
+Minnesota;MN;Benton
+Minnesota;MN;Big Stone
+Minnesota;MN;Blue Earth
+Minnesota;MN;Brown
+Minnesota;MN;Carlton
+Minnesota;MN;Carver
+Minnesota;MN;Cass
+Minnesota;MN;Chippewa
+Minnesota;MN;Chisago
+Minnesota;MN;Clay
+Minnesota;MN;Clearwater
+Minnesota;MN;Cook
+Minnesota;MN;Cottonwood
+Minnesota;MN;Crow Wing
+Minnesota;MN;Dakota
+Minnesota;MN;Dodge
+Minnesota;MN;Douglas
+Minnesota;MN;Faribault
+Minnesota;MN;Fillmore
+Minnesota;MN;Freeborn
+Minnesota;MN;Goodhue
+Minnesota;MN;Grant
+Minnesota;MN;Hennepin
+Minnesota;MN;Houston
+Minnesota;MN;Hubbard
+Minnesota;MN;Isanti
+Minnesota;MN;Itasca
+Minnesota;MN;Jackson
+Minnesota;MN;Kanabec
+Minnesota;MN;Kandiyohi
+Minnesota;MN;Kittson
+Minnesota;MN;Koochiching
+Minnesota;MN;Lac qui Parle
+Minnesota;MN;Lake
+Minnesota;MN;Lake of the Woods
+Minnesota;MN;Le Sueur
+Minnesota;MN;Lincoln
+Minnesota;MN;Lyon
+Minnesota;MN;McLeod
+Minnesota;MN;Mahnomen
+Minnesota;MN;Marshall
+Minnesota;MN;Martin
+Minnesota;MN;Meeker
+Minnesota;MN;Mille Lacs
+Minnesota;MN;Morrison
+Minnesota;MN;Mower
+Minnesota;MN;Murray
+Minnesota;MN;Nicollet
+Minnesota;MN;Nobles
+Minnesota;MN;Norman
+Minnesota;MN;Olmsted
+Minnesota;MN;Otter Tail
+Minnesota;MN;Pennington
+Minnesota;MN;Pine
+Minnesota;MN;Pipestone
+Minnesota;MN;Polk
+Minnesota;MN;Pope
+Minnesota;MN;Ramsey
+Minnesota;MN;Red Lake
+Minnesota;MN;Redwood
+Minnesota;MN;Renville
+Minnesota;MN;Rice
+Minnesota;MN;Rock
+Minnesota;MN;Roseau
+Minnesota;MN;St. Louis
+Minnesota;MN;Scott
+Minnesota;MN;Sherburne
+Minnesota;MN;Sibley
+Minnesota;MN;Stearns
+Minnesota;MN;Steele
+Minnesota;MN;Stevens
+Minnesota;MN;Swift
+Minnesota;MN;Todd
+Minnesota;MN;Traverse
+Minnesota;MN;Wabasha
+Minnesota;MN;Wadena
+Minnesota;MN;Waseca
+Minnesota;MN;Washington
+Minnesota;MN;Watonwan
+Minnesota;MN;Wilkin
+Minnesota;MN;Winona
+Minnesota;MN;Wright
+Minnesota;MN;Yellow Medicine
+Mississippi;MS;Adams
+Mississippi;MS;Alcorn
+Mississippi;MS;Amite
+Mississippi;MS;Attala
+Mississippi;MS;Benton
+Mississippi;MS;Bolivar
+Mississippi;MS;Calhoun
+Mississippi;MS;Carroll
+Mississippi;MS;Chickasaw
+Mississippi;MS;Choctaw
+Mississippi;MS;Claiborne
+Mississippi;MS;Clarke
+Mississippi;MS;Clay
+Mississippi;MS;Coahoma
+Mississippi;MS;Copiah
+Mississippi;MS;Covington
+Mississippi;MS;DeSoto
+Mississippi;MS;Forrest
+Mississippi;MS;Franklin
+Mississippi;MS;George
+Mississippi;MS;Greene
+Mississippi;MS;Grenada
+Mississippi;MS;Hancock
+Mississippi;MS;Harrison
+Mississippi;MS;Hinds
+Mississippi;MS;Holmes
+Mississippi;MS;Humphreys
+Mississippi;MS;Issaquena
+Mississippi;MS;Itawamba
+Mississippi;MS;Jackson
+Mississippi;MS;Jasper
+Mississippi;MS;Jefferson
+Mississippi;MS;Jefferson Davis
+Mississippi;MS;Jones
+Mississippi;MS;Kemper
+Mississippi;MS;Lafayette
+Mississippi;MS;Lamar
+Mississippi;MS;Lauderdale
+Mississippi;MS;Lawrence
+Mississippi;MS;Leake
+Mississippi;MS;Lee
+Mississippi;MS;Leflore
+Mississippi;MS;Lincoln
+Mississippi;MS;Lowndes
+Mississippi;MS;Madison
+Mississippi;MS;Marion
+Mississippi;MS;Marshall
+Mississippi;MS;Monroe
+Mississippi;MS;Montgomery
+Mississippi;MS;Neshoba
+Mississippi;MS;Newton
+Mississippi;MS;Noxubee
+Mississippi;MS;Oktibbeha
+Mississippi;MS;Panola
+Mississippi;MS;Pearl River
+Mississippi;MS;Perry
+Mississippi;MS;Pike
+Mississippi;MS;Pontotoc
+Mississippi;MS;Prentiss
+Mississippi;MS;Quitman
+Mississippi;MS;Rankin
+Mississippi;MS;Scott
+Mississippi;MS;Sharkey
+Mississippi;MS;Simpson
+Mississippi;MS;Smith
+Mississippi;MS;Stone
+Mississippi;MS;Sunflower
+Mississippi;MS;Tallahatchie
+Mississippi;MS;Tate
+Mississippi;MS;Tippah
+Mississippi;MS;Tishomingo
+Mississippi;MS;Tunica
+Mississippi;MS;Union
+Mississippi;MS;Walthall
+Mississippi;MS;Warren
+Mississippi;MS;Washington
+Mississippi;MS;Wayne
+Mississippi;MS;Webster
+Mississippi;MS;Wilkinson
+Mississippi;MS;Winston
+Mississippi;MS;Yalobusha
+Mississippi;MS;Yazoo
+Missouri;MO;Adair
+Missouri;MO;Andrew
+Missouri;MO;Atchison
+Missouri;MO;Audrain
+Missouri;MO;Barry
+Missouri;MO;Barton
+Missouri;MO;Bates
+Missouri;MO;Benton
+Missouri;MO;Bollinger
+Missouri;MO;Boone
+Missouri;MO;Buchanan
+Missouri;MO;Butler
+Missouri;MO;Caldwell
+Missouri;MO;Callaway
+Missouri;MO;Camden
+Missouri;MO;Cape Girardeau
+Missouri;MO;Carroll
+Missouri;MO;Carter
+Missouri;MO;Cass
+Missouri;MO;Cedar
+Missouri;MO;Chariton
+Missouri;MO;Christian
+Missouri;MO;Clark
+Missouri;MO;Clay
+Missouri;MO;Clinton
+Missouri;MO;Cole
+Missouri;MO;Cooper
+Missouri;MO;Crawford
+Missouri;MO;Dade
+Missouri;MO;Dallas
+Missouri;MO;Daviess
+Missouri;MO;DeKalb
+Missouri;MO;Dent
+Missouri;MO;Douglas
+Missouri;MO;Dunklin
+Missouri;MO;Franklin
+Missouri;MO;Gasconade
+Missouri;MO;Gentry
+Missouri;MO;Greene
+Missouri;MO;Grundy
+Missouri;MO;Harrison
+Missouri;MO;Henry
+Missouri;MO;Hickory
+Missouri;MO;Holt
+Missouri;MO;Howard
+Missouri;MO;Howell
+Missouri;MO;Iron
+Missouri;MO;Jackson
+Missouri;MO;Jasper
+Missouri;MO;Jefferson
+Missouri;MO;Johnson
+Missouri;MO;Knox
+Missouri;MO;Laclede
+Missouri;MO;Lafayette
+Missouri;MO;Lawrence
+Missouri;MO;Lewis
+Missouri;MO;Lincoln
+Missouri;MO;Linn
+Missouri;MO;Livingston
+Missouri;MO;McDonald
+Missouri;MO;Macon
+Missouri;MO;Madison
+Missouri;MO;Maries
+Missouri;MO;Marion
+Missouri;MO;Mercer
+Missouri;MO;Miller
+Missouri;MO;Mississippi
+Missouri;MO;Moniteau
+Missouri;MO;Monroe
+Missouri;MO;Montgomery
+Missouri;MO;Morgan
+Missouri;MO;New Madrid
+Missouri;MO;Newton
+Missouri;MO;Nodaway
+Missouri;MO;Oregon
+Missouri;MO;Osage
+Missouri;MO;Ozark
+Missouri;MO;Pemiscot
+Missouri;MO;Perry
+Missouri;MO;Pettis
+Missouri;MO;Phelps
+Missouri;MO;Pike
+Missouri;MO;Platte
+Missouri;MO;Polk
+Missouri;MO;Pulaski
+Missouri;MO;Putnam
+Missouri;MO;Ralls
+Missouri;MO;Randolph
+Missouri;MO;Ray
+Missouri;MO;Reynolds
+Missouri;MO;Ripley
+Missouri;MO;St. Charles
+Missouri;MO;St. Clair
+Missouri;MO;Ste. Genevieve
+Missouri;MO;St. Francois
+Missouri;MO;St. Louis
+Missouri;MO;Saline
+Missouri;MO;Schuyler
+Missouri;MO;Scotland
+Missouri;MO;Scott
+Missouri;MO;Shannon
+Missouri;MO;Shelby
+Missouri;MO;Stoddard
+Missouri;MO;Stone
+Missouri;MO;Sullivan
+Missouri;MO;Taney
+Missouri;MO;Texas
+Missouri;MO;Vernon
+Missouri;MO;Warren
+Missouri;MO;Washington
+Missouri;MO;Wayne
+Missouri;MO;Webster
+Missouri;MO;Worth
+Missouri;MO;Wright
+Missouri;MO;St. Louis City
+Montana;MT;Beaverhead
+Montana;MT;Big Horn
+Montana;MT;Blaine
+Montana;MT;Broadwater
+Montana;MT;Carbon
+Montana;MT;Carter
+Montana;MT;Cascade
+Montana;MT;Chouteau
+Montana;MT;Custer
+Montana;MT;Daniels
+Montana;MT;Dawson
+Montana;MT;Deer Lodge
+Montana;MT;Fallon
+Montana;MT;Fergus
+Montana;MT;Flathead
+Montana;MT;Gallatin
+Montana;MT;Garfield
+Montana;MT;Glacier
+Montana;MT;Golden Valley
+Montana;MT;Granite
+Montana;MT;Hill
+Montana;MT;Jefferson
+Montana;MT;Judith Basin
+Montana;MT;Lake
+Montana;MT;Lewis and Clark
+Montana;MT;Liberty
+Montana;MT;Lincoln
+Montana;MT;McCone
+Montana;MT;Madison
+Montana;MT;Meagher
+Montana;MT;Mineral
+Montana;MT;Missoula
+Montana;MT;Musselshell
+Montana;MT;Park
+Montana;MT;Petroleum
+Montana;MT;Phillips
+Montana;MT;Pondera
+Montana;MT;Powder River
+Montana;MT;Powell
+Montana;MT;Prairie
+Montana;MT;Ravalli
+Montana;MT;Richland
+Montana;MT;Roosevelt
+Montana;MT;Rosebud
+Montana;MT;Sanders
+Montana;MT;Sheridan
+Montana;MT;Silver Bow
+Montana;MT;Stillwater
+Montana;MT;Sweet Grass
+Montana;MT;Teton
+Montana;MT;Toole
+Montana;MT;Treasure
+Montana;MT;Valley
+Montana;MT;Wheatland
+Montana;MT;Wibaux
+Montana;MT;Yellowstone
+Nebraska;NE;Adams
+Nebraska;NE;Antelope
+Nebraska;NE;Arthur
+Nebraska;NE;Banner
+Nebraska;NE;Blaine
+Nebraska;NE;Boone
+Nebraska;NE;Box Butte
+Nebraska;NE;Boyd
+Nebraska;NE;Brown
+Nebraska;NE;Buffalo
+Nebraska;NE;Burt
+Nebraska;NE;Butler
+Nebraska;NE;Cass
+Nebraska;NE;Cedar
+Nebraska;NE;Chase
+Nebraska;NE;Cherry
+Nebraska;NE;Cheyenne
+Nebraska;NE;Clay
+Nebraska;NE;Colfax
+Nebraska;NE;Cuming
+Nebraska;NE;Custer
+Nebraska;NE;Dakota
+Nebraska;NE;Dawes
+Nebraska;NE;Dawson
+Nebraska;NE;Deuel
+Nebraska;NE;Dixon
+Nebraska;NE;Dodge
+Nebraska;NE;Douglas
+Nebraska;NE;Dundy
+Nebraska;NE;Fillmore
+Nebraska;NE;Franklin
+Nebraska;NE;Frontier
+Nebraska;NE;Furnas
+Nebraska;NE;Gage
+Nebraska;NE;Garden
+Nebraska;NE;Garfield
+Nebraska;NE;Gosper
+Nebraska;NE;Grant
+Nebraska;NE;Greeley
+Nebraska;NE;Hall
+Nebraska;NE;Hamilton
+Nebraska;NE;Harlan
+Nebraska;NE;Hayes
+Nebraska;NE;Hitchcock
+Nebraska;NE;Holt
+Nebraska;NE;Hooker
+Nebraska;NE;Howard
+Nebraska;NE;Jefferson
+Nebraska;NE;Johnson
+Nebraska;NE;Kearney
+Nebraska;NE;Keith
+Nebraska;NE;Keya Paha
+Nebraska;NE;Kimball
+Nebraska;NE;Knox
+Nebraska;NE;Lancaster
+Nebraska;NE;Lincoln
+Nebraska;NE;Logan
+Nebraska;NE;Loup
+Nebraska;NE;McPherson
+Nebraska;NE;Madison
+Nebraska;NE;Merrick
+Nebraska;NE;Morrill
+Nebraska;NE;Nance
+Nebraska;NE;Nemaha
+Nebraska;NE;Nuckolls
+Nebraska;NE;Otoe
+Nebraska;NE;Pawnee
+Nebraska;NE;Perkins
+Nebraska;NE;Phelps
+Nebraska;NE;Pierce
+Nebraska;NE;Platte
+Nebraska;NE;Polk
+Nebraska;NE;Red Willow
+Nebraska;NE;Richardson
+Nebraska;NE;Rock
+Nebraska;NE;Saline
+Nebraska;NE;Sarpy
+Nebraska;NE;Saunders
+Nebraska;NE;Scotts Bluff
+Nebraska;NE;Seward
+Nebraska;NE;Sheridan
+Nebraska;NE;Sherman
+Nebraska;NE;Sioux
+Nebraska;NE;Stanton
+Nebraska;NE;Thayer
+Nebraska;NE;Thomas
+Nebraska;NE;Thurston
+Nebraska;NE;Valley
+Nebraska;NE;Washington
+Nebraska;NE;Wayne
+Nebraska;NE;Webster
+Nebraska;NE;Wheeler
+Nebraska;NE;York
+Nevada;NV;Churchill
+Nevada;NV;Clark
+Nevada;NV;Douglas
+Nevada;NV;Elko
+Nevada;NV;Esmeralda
+Nevada;NV;Eureka
+Nevada;NV;Humboldt
+Nevada;NV;Lander
+Nevada;NV;Lincoln
+Nevada;NV;Lyon
+Nevada;NV;Mineral
+Nevada;NV;Nye
+Nevada;NV;Pershing
+Nevada;NV;Storey
+Nevada;NV;Washoe
+Nevada;NV;White Pine
+Nevada;NV;Carson City
+New Hampshire;NH;Belknap
+New Hampshire;NH;Carroll
+New Hampshire;NH;Cheshire
+New Hampshire;NH;Coos
+New Hampshire;NH;Grafton
+New Hampshire;NH;Hillsborough
+New Hampshire;NH;Merrimack
+New Hampshire;NH;Rockingham
+New Hampshire;NH;Strafford
+New Hampshire;NH;Sullivan
+New Jersey;NJ;Atlantic
+New Jersey;NJ;Bergen
+New Jersey;NJ;Burlington
+New Jersey;NJ;Camden
+New Jersey;NJ;Cape May
+New Jersey;NJ;Cumberland
+New Jersey;NJ;Essex
+New Jersey;NJ;Gloucester
+New Jersey;NJ;Hudson
+New Jersey;NJ;Hunterdon
+New Jersey;NJ;Mercer
+New Jersey;NJ;Middlesex
+New Jersey;NJ;Monmouth
+New Jersey;NJ;Morris
+New Jersey;NJ;Ocean
+New Jersey;NJ;Passaic
+New Jersey;NJ;Salem
+New Jersey;NJ;Somerset
+New Jersey;NJ;Sussex
+New Jersey;NJ;Union
+New Jersey;NJ;Warren
+New Mexico;NM;Bernalillo
+New Mexico;NM;Catron
+New Mexico;NM;Chaves
+New Mexico;NM;Cibola
+New Mexico;NM;Colfax
+New Mexico;NM;Curry
+New Mexico;NM;De Baca
+New Mexico;NM;Dona Ana
+New Mexico;NM;Eddy
+New Mexico;NM;Grant
+New Mexico;NM;Guadalupe
+New Mexico;NM;Harding
+New Mexico;NM;Hidalgo
+New Mexico;NM;Lea
+New Mexico;NM;Lincoln
+New Mexico;NM;Los Alamos
+New Mexico;NM;Luna
+New Mexico;NM;McKinley
+New Mexico;NM;Mora
+New Mexico;NM;Otero
+New Mexico;NM;Quay
+New Mexico;NM;Rio Arriba
+New Mexico;NM;Roosevelt
+New Mexico;NM;Sandoval
+New Mexico;NM;San Juan
+New Mexico;NM;San Miguel
+New Mexico;NM;Santa Fe
+New Mexico;NM;Sierra
+New Mexico;NM;Socorro
+New Mexico;NM;Taos
+New Mexico;NM;Torrance
+New Mexico;NM;Union
+New Mexico;NM;Valencia
+New York;NY;Albany
+New York;NY;Allegany
+New York;NY;Bronx
+New York;NY;Broome
+New York;NY;Cattaraugus
+New York;NY;Cayuga
+New York;NY;Chautauqua
+New York;NY;Chemung
+New York;NY;Chenango
+New York;NY;Clinton
+New York;NY;Columbia
+New York;NY;Cortland
+New York;NY;Delaware
+New York;NY;Dutchess
+New York;NY;Erie
+New York;NY;Essex
+New York;NY;Franklin
+New York;NY;Fulton
+New York;NY;Genesee
+New York;NY;Greene
+New York;NY;Hamilton
+New York;NY;Herkimer
+New York;NY;Jefferson
+New York;NY;Kings
+New York;NY;Lewis
+New York;NY;Livingston
+New York;NY;Madison
+New York;NY;Monroe
+New York;NY;Montgomery
+New York;NY;Nassau
+New York;NY;New York
+New York;NY;Niagara
+New York;NY;Oneida
+New York;NY;Onondaga
+New York;NY;Ontario
+New York;NY;Orange
+New York;NY;Orleans
+New York;NY;Oswego
+New York;NY;Otsego
+New York;NY;Putnam
+New York;NY;Queens
+New York;NY;Rensselaer
+New York;NY;Richmond
+New York;NY;Rockland
+New York;NY;St. Lawrence
+New York;NY;Saratoga
+New York;NY;Schenectady
+New York;NY;Schoharie
+New York;NY;Schuyler
+New York;NY;Seneca
+New York;NY;Steuben
+New York;NY;Suffolk
+New York;NY;Sullivan
+New York;NY;Tioga
+New York;NY;Tompkins
+New York;NY;Ulster
+New York;NY;Warren
+New York;NY;Washington
+New York;NY;Wayne
+New York;NY;Westchester
+New York;NY;Wyoming
+New York;NY;Yates
+North Carolina;NC;Alamance
+North Carolina;NC;Alexander
+North Carolina;NC;Alleghany
+North Carolina;NC;Anson
+North Carolina;NC;Ashe
+North Carolina;NC;Avery
+North Carolina;NC;Beaufort
+North Carolina;NC;Bertie
+North Carolina;NC;Bladen
+North Carolina;NC;Brunswick
+North Carolina;NC;Buncombe
+North Carolina;NC;Burke
+North Carolina;NC;Cabarrus
+North Carolina;NC;Caldwell
+North Carolina;NC;Camden
+North Carolina;NC;Carteret
+North Carolina;NC;Caswell
+North Carolina;NC;Catawba
+North Carolina;NC;Chatham
+North Carolina;NC;Cherokee
+North Carolina;NC;Chowan
+North Carolina;NC;Clay
+North Carolina;NC;Cleveland
+North Carolina;NC;Columbus
+North Carolina;NC;Craven
+North Carolina;NC;Cumberland
+North Carolina;NC;Currituck
+North Carolina;NC;Dare
+North Carolina;NC;Davidson
+North Carolina;NC;Davie
+North Carolina;NC;Duplin
+North Carolina;NC;Durham
+North Carolina;NC;Edgecombe
+North Carolina;NC;Forsyth
+North Carolina;NC;Franklin
+North Carolina;NC;Gaston
+North Carolina;NC;Gates
+North Carolina;NC;Graham
+North Carolina;NC;Granville
+North Carolina;NC;Greene
+North Carolina;NC;Guilford
+North Carolina;NC;Halifax
+North Carolina;NC;Harnett
+North Carolina;NC;Haywood
+North Carolina;NC;Henderson
+North Carolina;NC;Hertford
+North Carolina;NC;Hoke
+North Carolina;NC;Hyde
+North Carolina;NC;Iredell
+North Carolina;NC;Jackson
+North Carolina;NC;Johnston
+North Carolina;NC;Jones
+North Carolina;NC;Lee
+North Carolina;NC;Lenoir
+North Carolina;NC;Lincoln
+North Carolina;NC;McDowell
+North Carolina;NC;Macon
+North Carolina;NC;Madison
+North Carolina;NC;Martin
+North Carolina;NC;Mecklenburg
+North Carolina;NC;Mitchell
+North Carolina;NC;Montgomery
+North Carolina;NC;Moore
+North Carolina;NC;Nash
+North Carolina;NC;New Hanover
+North Carolina;NC;Northampton
+North Carolina;NC;Onslow
+North Carolina;NC;Orange
+North Carolina;NC;Pamlico
+North Carolina;NC;Pasquotank
+North Carolina;NC;Pender
+North Carolina;NC;Perquimans
+North Carolina;NC;Person
+North Carolina;NC;Pitt
+North Carolina;NC;Polk
+North Carolina;NC;Randolph
+North Carolina;NC;Richmond
+North Carolina;NC;Robeson
+North Carolina;NC;Rockingham
+North Carolina;NC;Rowan
+North Carolina;NC;Rutherford
+North Carolina;NC;Sampson
+North Carolina;NC;Scotland
+North Carolina;NC;Stanly
+North Carolina;NC;Stokes
+North Carolina;NC;Surry
+North Carolina;NC;Swain
+North Carolina;NC;Transylvania
+North Carolina;NC;Tyrrell
+North Carolina;NC;Union
+North Carolina;NC;Vance
+North Carolina;NC;Wake
+North Carolina;NC;Warren
+North Carolina;NC;Washington
+North Carolina;NC;Watauga
+North Carolina;NC;Wayne
+North Carolina;NC;Wilkes
+North Carolina;NC;Wilson
+North Carolina;NC;Yadkin
+North Carolina;NC;Yancey
+North Dakota;ND;Adams
+North Dakota;ND;Barnes
+North Dakota;ND;Benson
+North Dakota;ND;Billings
+North Dakota;ND;Bottineau
+North Dakota;ND;Bowman
+North Dakota;ND;Burke
+North Dakota;ND;Burleigh
+North Dakota;ND;Cass
+North Dakota;ND;Cavalier
+North Dakota;ND;Dickey
+North Dakota;ND;Divide
+North Dakota;ND;Dunn
+North Dakota;ND;Eddy
+North Dakota;ND;Emmons
+North Dakota;ND;Foster
+North Dakota;ND;Golden Valley
+North Dakota;ND;Grand Forks
+North Dakota;ND;Grant
+North Dakota;ND;Griggs
+North Dakota;ND;Hettinger
+North Dakota;ND;Kidder
+North Dakota;ND;LaMoure
+North Dakota;ND;Logan
+North Dakota;ND;McHenry
+North Dakota;ND;McIntosh
+North Dakota;ND;McKenzie
+North Dakota;ND;McLean
+North Dakota;ND;Mercer
+North Dakota;ND;Morton
+North Dakota;ND;Mountrail
+North Dakota;ND;Nelson
+North Dakota;ND;Oliver
+North Dakota;ND;Pembina
+North Dakota;ND;Pierce
+North Dakota;ND;Ramsey
+North Dakota;ND;Ransom
+North Dakota;ND;Renville
+North Dakota;ND;Richland
+North Dakota;ND;Rolette
+North Dakota;ND;Sargent
+North Dakota;ND;Sheridan
+North Dakota;ND;Sioux
+North Dakota;ND;Slope
+North Dakota;ND;Stark
+North Dakota;ND;Steele
+North Dakota;ND;Stutsman
+North Dakota;ND;Towner
+North Dakota;ND;Traill
+North Dakota;ND;Walsh
+North Dakota;ND;Ward
+North Dakota;ND;Wells
+North Dakota;ND;Williams
+Ohio;OH;Adams
+Ohio;OH;Allen
+Ohio;OH;Ashland
+Ohio;OH;Ashtabula
+Ohio;OH;Athens
+Ohio;OH;Auglaize
+Ohio;OH;Belmont
+Ohio;OH;Brown
+Ohio;OH;Butler
+Ohio;OH;Carroll
+Ohio;OH;Champaign
+Ohio;OH;Clark
+Ohio;OH;Clermont
+Ohio;OH;Clinton
+Ohio;OH;Columbiana
+Ohio;OH;Coshocton
+Ohio;OH;Crawford
+Ohio;OH;Cuyahoga
+Ohio;OH;Darke
+Ohio;OH;Defiance
+Ohio;OH;Delaware
+Ohio;OH;Erie
+Ohio;OH;Fairfield
+Ohio;OH;Fayette
+Ohio;OH;Franklin
+Ohio;OH;Fulton
+Ohio;OH;Gallia
+Ohio;OH;Geauga
+Ohio;OH;Greene
+Ohio;OH;Guernsey
+Ohio;OH;Hamilton
+Ohio;OH;Hancock
+Ohio;OH;Hardin
+Ohio;OH;Harrison
+Ohio;OH;Henry
+Ohio;OH;Highland
+Ohio;OH;Hocking
+Ohio;OH;Holmes
+Ohio;OH;Huron
+Ohio;OH;Jackson
+Ohio;OH;Jefferson
+Ohio;OH;Knox
+Ohio;OH;Lake
+Ohio;OH;Lawrence
+Ohio;OH;Licking
+Ohio;OH;Logan
+Ohio;OH;Lorain
+Ohio;OH;Lucas
+Ohio;OH;Madison
+Ohio;OH;Mahoning
+Ohio;OH;Marion
+Ohio;OH;Medina
+Ohio;OH;Meigs
+Ohio;OH;Mercer
+Ohio;OH;Miami
+Ohio;OH;Monroe
+Ohio;OH;Montgomery
+Ohio;OH;Morgan
+Ohio;OH;Morrow
+Ohio;OH;Muskingum
+Ohio;OH;Noble
+Ohio;OH;Ottawa
+Ohio;OH;Paulding
+Ohio;OH;Perry
+Ohio;OH;Pickaway
+Ohio;OH;Pike
+Ohio;OH;Portage
+Ohio;OH;Preble
+Ohio;OH;Putnam
+Ohio;OH;Richland
+Ohio;OH;Ross
+Ohio;OH;Sandusky
+Ohio;OH;Scioto
+Ohio;OH;Seneca
+Ohio;OH;Shelby
+Ohio;OH;Stark
+Ohio;OH;Summit
+Ohio;OH;Trumbull
+Ohio;OH;Tuscarawas
+Ohio;OH;Union
+Ohio;OH;Van Wert
+Ohio;OH;Vinton
+Ohio;OH;Warren
+Ohio;OH;Washington
+Ohio;OH;Wayne
+Ohio;OH;Williams
+Ohio;OH;Wood
+Ohio;OH;Wyandot
+Oklahoma;OK;Adair
+Oklahoma;OK;Alfalfa
+Oklahoma;OK;Atoka
+Oklahoma;OK;Beaver
+Oklahoma;OK;Beckham
+Oklahoma;OK;Blaine
+Oklahoma;OK;Bryan
+Oklahoma;OK;Caddo
+Oklahoma;OK;Canadian
+Oklahoma;OK;Carter
+Oklahoma;OK;Cherokee
+Oklahoma;OK;Choctaw
+Oklahoma;OK;Cimarron
+Oklahoma;OK;Cleveland
+Oklahoma;OK;Coal
+Oklahoma;OK;Comanche
+Oklahoma;OK;Cotton
+Oklahoma;OK;Craig
+Oklahoma;OK;Creek
+Oklahoma;OK;Custer
+Oklahoma;OK;Delaware
+Oklahoma;OK;Dewey
+Oklahoma;OK;Ellis
+Oklahoma;OK;Garfield
+Oklahoma;OK;Garvin
+Oklahoma;OK;Grady
+Oklahoma;OK;Grant
+Oklahoma;OK;Greer
+Oklahoma;OK;Harmon
+Oklahoma;OK;Harper
+Oklahoma;OK;Haskell
+Oklahoma;OK;Hughes
+Oklahoma;OK;Jackson
+Oklahoma;OK;Jefferson
+Oklahoma;OK;Johnston
+Oklahoma;OK;Kay
+Oklahoma;OK;Kingfisher
+Oklahoma;OK;Kiowa
+Oklahoma;OK;Latimer
+Oklahoma;OK;Le Flore
+Oklahoma;OK;Lincoln
+Oklahoma;OK;Logan
+Oklahoma;OK;Love
+Oklahoma;OK;McClain
+Oklahoma;OK;McCurtain
+Oklahoma;OK;McIntosh
+Oklahoma;OK;Major
+Oklahoma;OK;Marshall
+Oklahoma;OK;Mayes
+Oklahoma;OK;Murray
+Oklahoma;OK;Muskogee
+Oklahoma;OK;Noble
+Oklahoma;OK;Nowata
+Oklahoma;OK;Okfuskee
+Oklahoma;OK;Oklahoma
+Oklahoma;OK;Okmulgee
+Oklahoma;OK;Osage
+Oklahoma;OK;Ottawa
+Oklahoma;OK;Pawnee
+Oklahoma;OK;Payne
+Oklahoma;OK;Pittsburg
+Oklahoma;OK;Pontotoc
+Oklahoma;OK;Pottawatomie
+Oklahoma;OK;Pushmataha
+Oklahoma;OK;Roger Mills
+Oklahoma;OK;Rogers
+Oklahoma;OK;Seminole
+Oklahoma;OK;Sequoyah
+Oklahoma;OK;Stephens
+Oklahoma;OK;Texas
+Oklahoma;OK;Tillman
+Oklahoma;OK;Tulsa
+Oklahoma;OK;Wagoner
+Oklahoma;OK;Washington
+Oklahoma;OK;Washita
+Oklahoma;OK;Woods
+Oklahoma;OK;Woodward
+Oregon;OR;Baker
+Oregon;OR;Benton
+Oregon;OR;Clackamas
+Oregon;OR;Clatsop
+Oregon;OR;Columbia
+Oregon;OR;Coos
+Oregon;OR;Crook
+Oregon;OR;Curry
+Oregon;OR;Deschutes
+Oregon;OR;Douglas
+Oregon;OR;Gilliam
+Oregon;OR;Grant
+Oregon;OR;Harney
+Oregon;OR;Hood River
+Oregon;OR;Jackson
+Oregon;OR;Jefferson
+Oregon;OR;Josephine
+Oregon;OR;Klamath
+Oregon;OR;Lake
+Oregon;OR;Lane
+Oregon;OR;Lincoln
+Oregon;OR;Linn
+Oregon;OR;Malheur
+Oregon;OR;Marion
+Oregon;OR;Morrow
+Oregon;OR;Multnomah
+Oregon;OR;Polk
+Oregon;OR;Sherman
+Oregon;OR;Tillamook
+Oregon;OR;Umatilla
+Oregon;OR;Union
+Oregon;OR;Wallowa
+Oregon;OR;Wasco
+Oregon;OR;Washington
+Oregon;OR;Wheeler
+Oregon;OR;Yamhill
+Pennsylvania;PA;Adams
+Pennsylvania;PA;Allegheny
+Pennsylvania;PA;Armstrong
+Pennsylvania;PA;Beaver
+Pennsylvania;PA;Bedford
+Pennsylvania;PA;Berks
+Pennsylvania;PA;Blair
+Pennsylvania;PA;Bradford
+Pennsylvania;PA;Bucks
+Pennsylvania;PA;Butler
+Pennsylvania;PA;Cambria
+Pennsylvania;PA;Cameron
+Pennsylvania;PA;Carbon
+Pennsylvania;PA;Centre
+Pennsylvania;PA;Chester
+Pennsylvania;PA;Clarion
+Pennsylvania;PA;Clearfield
+Pennsylvania;PA;Clinton
+Pennsylvania;PA;Columbia
+Pennsylvania;PA;Crawford
+Pennsylvania;PA;Cumberland
+Pennsylvania;PA;Dauphin
+Pennsylvania;PA;Delaware
+Pennsylvania;PA;Elk
+Pennsylvania;PA;Erie
+Pennsylvania;PA;Fayette
+Pennsylvania;PA;Forest
+Pennsylvania;PA;Franklin
+Pennsylvania;PA;Fulton
+Pennsylvania;PA;Greene
+Pennsylvania;PA;Huntingdon
+Pennsylvania;PA;Indiana
+Pennsylvania;PA;Jefferson
+Pennsylvania;PA;Juniata
+Pennsylvania;PA;Lackawanna
+Pennsylvania;PA;Lancaster
+Pennsylvania;PA;Lawrence
+Pennsylvania;PA;Lebanon
+Pennsylvania;PA;Lehigh
+Pennsylvania;PA;Luzerne
+Pennsylvania;PA;Lycoming
+Pennsylvania;PA;McKean
+Pennsylvania;PA;Mercer
+Pennsylvania;PA;Mifflin
+Pennsylvania;PA;Monroe
+Pennsylvania;PA;Montgomery
+Pennsylvania;PA;Montour
+Pennsylvania;PA;Northampton
+Pennsylvania;PA;Northumberland
+Pennsylvania;PA;Perry
+Pennsylvania;PA;Philadelphia
+Pennsylvania;PA;Pike
+Pennsylvania;PA;Potter
+Pennsylvania;PA;Schuylkill
+Pennsylvania;PA;Snyder
+Pennsylvania;PA;Somerset
+Pennsylvania;PA;Sullivan
+Pennsylvania;PA;Susquehanna
+Pennsylvania;PA;Tioga
+Pennsylvania;PA;Union
+Pennsylvania;PA;Venango
+Pennsylvania;PA;Warren
+Pennsylvania;PA;Washington
+Pennsylvania;PA;Wayne
+Pennsylvania;PA;Westmoreland
+Pennsylvania;PA;Wyoming
+Pennsylvania;PA;York
+PuertoRico;PR;Adjuntas
+PuertoRico;PR;Aguada
+PuertoRico;PR;Aguadilla
+PuertoRico;PR;Aguas Buenas
+PuertoRico;PR;Aibonito
+PuertoRico;PR;A±asco
+PuertoRico;PR;Arecibo
+PuertoRico;PR;Arroyo
+PuertoRico;PR;Barceloneta
+PuertoRico;PR;Barranquitas
+PuertoRico;PR;Bayam=n
+PuertoRico;PR;Cabo Rojo
+PuertoRico;PR;Caguas
+PuertoRico;PR;Camuy
+PuertoRico;PR;Can=vanas
+PuertoRico;PR;Carolina
+PuertoRico;PR;Cata±o
+PuertoRico;PR;Cayey
+PuertoRico;PR;Ceiba
+PuertoRico;PR;Ciales
+PuertoRico;PR;Cidra
+PuertoRico;PR;Coamo
+PuertoRico;PR;Comerfo
+PuertoRico;PR;Corozal
+PuertoRico;PR;Culebra
+PuertoRico;PR;Dorado
+PuertoRico;PR;Fajardo
+PuertoRico;PR;Florida
+PuertoRico;PR;Guﬂnica
+PuertoRico;PR;Guayama
+PuertoRico;PR;Guayanilla
+PuertoRico;PR;Guaynabo
+PuertoRico;PR;Gurabo
+PuertoRico;PR;Hatillo
+PuertoRico;PR;Hormigueros
+PuertoRico;PR;Humacao
+PuertoRico;PR;Isabela
+PuertoRico;PR;Jayuya
+PuertoRico;PR;Juana Dfaz
+PuertoRico;PR;Juncos
+PuertoRico;PR;Lajas
+PuertoRico;PR;Lares
+PuertoRico;PR;Las Marfas
+PuertoRico;PR;Las Piedras
+PuertoRico;PR;Lofza
+PuertoRico;PR;Luquillo
+PuertoRico;PR;Manatf
+PuertoRico;PR;Maricao
+PuertoRico;PR;Maunabo
+PuertoRico;PR;Mayagnez
+PuertoRico;PR;Moca
+PuertoRico;PR;Morovis
+PuertoRico;PR;Naguabo
+PuertoRico;PR;Naranjito
+PuertoRico;PR;Orocovis
+PuertoRico;PR;Patillas
+PuertoRico;PR;Pe±uelas
+PuertoRico;PR;Ponce
+PuertoRico;PR;Quebradillas
+PuertoRico;PR;Rinc=n
+PuertoRico;PR;Rfo Grande
+PuertoRico;PR;Sabana Grande
+PuertoRico;PR;Salinas
+PuertoRico;PR;San Germﬂn
+PuertoRico;PR;San Juan
+PuertoRico;PR;San Lorenzo
+PuertoRico;PR;San Sebastiﬂn
+PuertoRico;PR;Santa Isabel
+PuertoRico;PR;Toa Alta
+PuertoRico;PR;Toa Baja
+PuertoRico;PR;Trujillo Alto
+PuertoRico;PR;Utuado
+PuertoRico;PR;Vega Alta
+PuertoRico;PR;Vega Baja
+PuertoRico;PR;Vieques
+PuertoRico;PR;Villalba
+PuertoRico;PR;Yabucoa
+PuertoRico;PR;Yauco
+Rhode Island;RI;Bristol
+Rhode Island;RI;Kent
+Rhode Island;RI;Newport
+Rhode Island;RI;Providence
+Rhode Island;RI;Washington
+South Carolina;SC;Abbeville
+South Carolina;SC;Aiken
+South Carolina;SC;Allendale
+South Carolina;SC;Anderson
+South Carolina;SC;Bamberg
+South Carolina;SC;Barnwell
+South Carolina;SC;Beaufort
+South Carolina;SC;Berkeley
+South Carolina;SC;Calhoun
+South Carolina;SC;Charleston
+South Carolina;SC;Cherokee
+South Carolina;SC;Chester
+South Carolina;SC;Chesterfield
+South Carolina;SC;Clarendon
+South Carolina;SC;Colleton
+South Carolina;SC;Darlington
+South Carolina;SC;Dillon
+South Carolina;SC;Dorchester
+South Carolina;SC;Edgefield
+South Carolina;SC;Fairfield
+South Carolina;SC;Florence
+South Carolina;SC;Georgetown
+South Carolina;SC;Greenville
+South Carolina;SC;Greenwood
+South Carolina;SC;Hampton
+South Carolina;SC;Horry
+South Carolina;SC;Jasper
+South Carolina;SC;Kershaw
+South Carolina;SC;Lancaster
+South Carolina;SC;Laurens
+South Carolina;SC;Lee
+South Carolina;SC;Lexington
+South Carolina;SC;McCormick
+South Carolina;SC;Marion
+South Carolina;SC;Marlboro
+South Carolina;SC;Newberry
+South Carolina;SC;Oconee
+South Carolina;SC;Orangeburg
+South Carolina;SC;Pickens
+South Carolina;SC;Richland
+South Carolina;SC;Saluda
+South Carolina;SC;Spartanburg
+South Carolina;SC;Sumter
+South Carolina;SC;Union
+South Carolina;SC;Williamsburg
+South Carolina;SC;York
+South Dakota;SD;Aurora
+South Dakota;SD;Beadle
+South Dakota;SD;Bennett
+South Dakota;SD;Bon Homme
+South Dakota;SD;Brookings
+South Dakota;SD;Brown
+South Dakota;SD;Brule
+South Dakota;SD;Buffalo
+South Dakota;SD;Butte
+South Dakota;SD;Campbell
+South Dakota;SD;Charles Mix
+South Dakota;SD;Clark
+South Dakota;SD;Clay
+South Dakota;SD;Codington
+South Dakota;SD;Corson
+South Dakota;SD;Custer
+South Dakota;SD;Davison
+South Dakota;SD;Day
+South Dakota;SD;Deuel
+South Dakota;SD;Dewey
+South Dakota;SD;Douglas
+South Dakota;SD;Edmunds
+South Dakota;SD;Fall River
+South Dakota;SD;Faulk
+South Dakota;SD;Grant
+South Dakota;SD;Gregory
+South Dakota;SD;Haakon
+South Dakota;SD;Hamlin
+South Dakota;SD;Hand
+South Dakota;SD;Hanson
+South Dakota;SD;Harding
+South Dakota;SD;Hughes
+South Dakota;SD;Hutchinson
+South Dakota;SD;Hyde
+South Dakota;SD;Jackson
+South Dakota;SD;Jerauld
+South Dakota;SD;Jones
+South Dakota;SD;Kingsbury
+South Dakota;SD;Lake
+South Dakota;SD;Lawrence
+South Dakota;SD;Lincoln
+South Dakota;SD;Lyman
+South Dakota;SD;McCook
+South Dakota;SD;McPherson
+South Dakota;SD;Marshall
+South Dakota;SD;Meade
+South Dakota;SD;Mellette
+South Dakota;SD;Miner
+South Dakota;SD;Minnehaha
+South Dakota;SD;Moody
+South Dakota;SD;Pennington
+South Dakota;SD;Perkins
+South Dakota;SD;Potter
+South Dakota;SD;Roberts
+South Dakota;SD;Sanborn
+South Dakota;SD;Shannon
+South Dakota;SD;Spink
+South Dakota;SD;Stanley
+South Dakota;SD;Sully
+South Dakota;SD;Todd
+South Dakota;SD;Tripp
+South Dakota;SD;Turner
+South Dakota;SD;Union
+South Dakota;SD;Walworth
+South Dakota;SD;Yankton
+South Dakota;SD;Ziebach
+Tennessee;TN;Anderson
+Tennessee;TN;Bedford
+Tennessee;TN;Benton
+Tennessee;TN;Bledsoe
+Tennessee;TN;Blount
+Tennessee;TN;Bradley
+Tennessee;TN;Campbell
+Tennessee;TN;Cannon
+Tennessee;TN;Carroll
+Tennessee;TN;Carter
+Tennessee;TN;Cheatham
+Tennessee;TN;Chester
+Tennessee;TN;Claiborne
+Tennessee;TN;Clay
+Tennessee;TN;Cocke
+Tennessee;TN;Coffee
+Tennessee;TN;Crockett
+Tennessee;TN;Cumberland
+Tennessee;TN;Davidson
+Tennessee;TN;Decatur
+Tennessee;TN;DeKalb
+Tennessee;TN;Dickson
+Tennessee;TN;Dyer
+Tennessee;TN;Fayette
+Tennessee;TN;Fentress
+Tennessee;TN;Franklin
+Tennessee;TN;Gibson
+Tennessee;TN;Giles
+Tennessee;TN;Grainger
+Tennessee;TN;Greene
+Tennessee;TN;Grundy
+Tennessee;TN;Hamblen
+Tennessee;TN;Hamilton
+Tennessee;TN;Hancock
+Tennessee;TN;Hardeman
+Tennessee;TN;Hardin
+Tennessee;TN;Hawkins
+Tennessee;TN;Haywood
+Tennessee;TN;Henderson
+Tennessee;TN;Henry
+Tennessee;TN;Hickman
+Tennessee;TN;Houston
+Tennessee;TN;Humphreys
+Tennessee;TN;Jackson
+Tennessee;TN;Jefferson
+Tennessee;TN;Johnson
+Tennessee;TN;Knox
+Tennessee;TN;Lake
+Tennessee;TN;Lauderdale
+Tennessee;TN;Lawrence
+Tennessee;TN;Lewis
+Tennessee;TN;Lincoln
+Tennessee;TN;Loudon
+Tennessee;TN;McMinn
+Tennessee;TN;McNairy
+Tennessee;TN;Macon
+Tennessee;TN;Madison
+Tennessee;TN;Marion
+Tennessee;TN;Marshall
+Tennessee;TN;Maury
+Tennessee;TN;Meigs
+Tennessee;TN;Monroe
+Tennessee;TN;Montgomery
+Tennessee;TN;Moore
+Tennessee;TN;Morgan
+Tennessee;TN;Obion
+Tennessee;TN;Overton
+Tennessee;TN;Perry
+Tennessee;TN;Pickett
+Tennessee;TN;Polk
+Tennessee;TN;Putnam
+Tennessee;TN;Rhea
+Tennessee;TN;Roane
+Tennessee;TN;Robertson
+Tennessee;TN;Rutherford
+Tennessee;TN;Scott
+Tennessee;TN;Sequatchie
+Tennessee;TN;Sevier
+Tennessee;TN;Shelby
+Tennessee;TN;Smith
+Tennessee;TN;Stewart
+Tennessee;TN;Sullivan
+Tennessee;TN;Sumner
+Tennessee;TN;Tipton
+Tennessee;TN;Trousdale
+Tennessee;TN;Unicoi
+Tennessee;TN;Union
+Tennessee;TN;Van Buren
+Tennessee;TN;Warren
+Tennessee;TN;Washington
+Tennessee;TN;Wayne
+Tennessee;TN;Weakley
+Tennessee;TN;White
+Tennessee;TN;Williamson
+Tennessee;TN;Wilson
+Texas;TX;Anderson
+Texas;TX;Andrews
+Texas;TX;Angelina
+Texas;TX;Aransas
+Texas;TX;Archer
+Texas;TX;Armstrong
+Texas;TX;Atascosa
+Texas;TX;Austin
+Texas;TX;Bailey
+Texas;TX;Bandera
+Texas;TX;Bastrop
+Texas;TX;Baylor
+Texas;TX;Bee
+Texas;TX;Bell
+Texas;TX;Bexar
+Texas;TX;Blanco
+Texas;TX;Borden
+Texas;TX;Bosque
+Texas;TX;Bowie
+Texas;TX;Brazoria
+Texas;TX;Brazos
+Texas;TX;Brewster
+Texas;TX;Briscoe
+Texas;TX;Brooks
+Texas;TX;Brown
+Texas;TX;Burleson
+Texas;TX;Burnet
+Texas;TX;Caldwell
+Texas;TX;Calhoun
+Texas;TX;Callahan
+Texas;TX;Cameron
+Texas;TX;Camp
+Texas;TX;Carson
+Texas;TX;Cass
+Texas;TX;Castro
+Texas;TX;Chambers
+Texas;TX;Cherokee
+Texas;TX;Childress
+Texas;TX;Clay
+Texas;TX;Cochran
+Texas;TX;Coke
+Texas;TX;Coleman
+Texas;TX;Collin
+Texas;TX;Collingsworth
+Texas;TX;Colorado
+Texas;TX;Comal
+Texas;TX;Comanche
+Texas;TX;Concho
+Texas;TX;Cooke
+Texas;TX;Coryell
+Texas;TX;Cottle
+Texas;TX;Crane
+Texas;TX;Crockett
+Texas;TX;Crosby
+Texas;TX;Culberson
+Texas;TX;Dallam
+Texas;TX;Dallas
+Texas;TX;Dawson
+Texas;TX;Deaf Smith
+Texas;TX;Delta
+Texas;TX;Denton
+Texas;TX;DeWitt
+Texas;TX;Dickens
+Texas;TX;Dimmit
+Texas;TX;Donley
+Texas;TX;Duval
+Texas;TX;Eastland
+Texas;TX;Ector
+Texas;TX;Edwards
+Texas;TX;Ellis
+Texas;TX;El Paso
+Texas;TX;Erath
+Texas;TX;Falls
+Texas;TX;Fannin
+Texas;TX;Fayette
+Texas;TX;Fisher
+Texas;TX;Floyd
+Texas;TX;Foard
+Texas;TX;Fort Bend
+Texas;TX;Franklin
+Texas;TX;Freestone
+Texas;TX;Frio
+Texas;TX;Gaines
+Texas;TX;Galveston
+Texas;TX;Garza
+Texas;TX;Gillespie
+Texas;TX;Glasscock
+Texas;TX;Goliad
+Texas;TX;Gonzales
+Texas;TX;Gray
+Texas;TX;Grayson
+Texas;TX;Gregg
+Texas;TX;Grimes
+Texas;TX;Guadalupe
+Texas;TX;Hale
+Texas;TX;Hall
+Texas;TX;Hamilton
+Texas;TX;Hansford
+Texas;TX;Hardeman
+Texas;TX;Hardin
+Texas;TX;Harris
+Texas;TX;Harrison
+Texas;TX;Hartley
+Texas;TX;Haskell
+Texas;TX;Hays
+Texas;TX;Hemphill
+Texas;TX;Henderson
+Texas;TX;Hidalgo
+Texas;TX;Hill
+Texas;TX;Hockley
+Texas;TX;Hood
+Texas;TX;Hopkins
+Texas;TX;Houston
+Texas;TX;Howard
+Texas;TX;Hudspeth
+Texas;TX;Hunt
+Texas;TX;Hutchinson
+Texas;TX;Irion
+Texas;TX;Jack
+Texas;TX;Jackson
+Texas;TX;Jasper
+Texas;TX;Jeff Davis
+Texas;TX;Jefferson
+Texas;TX;Jim Hogg
+Texas;TX;Jim Wells
+Texas;TX;Johnson
+Texas;TX;Jones
+Texas;TX;Karnes
+Texas;TX;Kaufman
+Texas;TX;Kendall
+Texas;TX;Kenedy
+Texas;TX;Kent
+Texas;TX;Kerr
+Texas;TX;Kimble
+Texas;TX;King
+Texas;TX;Kinney
+Texas;TX;Kleberg
+Texas;TX;Knox
+Texas;TX;Lamar
+Texas;TX;Lamb
+Texas;TX;Lampasas
+Texas;TX;La Salle
+Texas;TX;Lavaca
+Texas;TX;Lee
+Texas;TX;Leon
+Texas;TX;Liberty
+Texas;TX;Limestone
+Texas;TX;Lipscomb
+Texas;TX;Live Oak
+Texas;TX;Llano
+Texas;TX;Loving
+Texas;TX;Lubbock
+Texas;TX;Lynn
+Texas;TX;McCulloch
+Texas;TX;McLennan
+Texas;TX;McMullen
+Texas;TX;Madison
+Texas;TX;Marion
+Texas;TX;Martin
+Texas;TX;Mason
+Texas;TX;Matagorda
+Texas;TX;Maverick
+Texas;TX;Medina
+Texas;TX;Menard
+Texas;TX;Midland
+Texas;TX;Milam
+Texas;TX;Mills
+Texas;TX;Mitchell
+Texas;TX;Montague
+Texas;TX;Montgomery
+Texas;TX;Moore
+Texas;TX;Morris
+Texas;TX;Motley
+Texas;TX;Nacogdoches
+Texas;TX;Navarro
+Texas;TX;Newton
+Texas;TX;Nolan
+Texas;TX;Nueces
+Texas;TX;Ochiltree
+Texas;TX;Oldham
+Texas;TX;Orange
+Texas;TX;Palo Pinto
+Texas;TX;Panola
+Texas;TX;Parker
+Texas;TX;Parmer
+Texas;TX;Pecos
+Texas;TX;Polk
+Texas;TX;Potter
+Texas;TX;Presidio
+Texas;TX;Rains
+Texas;TX;Randall
+Texas;TX;Reagan
+Texas;TX;Real
+Texas;TX;Red River
+Texas;TX;Reeves
+Texas;TX;Refugio
+Texas;TX;Roberts
+Texas;TX;Robertson
+Texas;TX;Rockwall
+Texas;TX;Runnels
+Texas;TX;Rusk
+Texas;TX;Sabine
+Texas;TX;San Augustine
+Texas;TX;San Jacinto
+Texas;TX;San Patricio
+Texas;TX;San Saba
+Texas;TX;Schleicher
+Texas;TX;Scurry
+Texas;TX;Shackelford
+Texas;TX;Shelby
+Texas;TX;Sherman
+Texas;TX;Smith
+Texas;TX;Somervell
+Texas;TX;Starr
+Texas;TX;Stephens
+Texas;TX;Sterling
+Texas;TX;Stonewall
+Texas;TX;Sutton
+Texas;TX;Swisher
+Texas;TX;Tarrant
+Texas;TX;Taylor
+Texas;TX;Terrell
+Texas;TX;Terry
+Texas;TX;Throckmorton
+Texas;TX;Titus
+Texas;TX;Tom Green
+Texas;TX;Travis
+Texas;TX;Trinity
+Texas;TX;Tyler
+Texas;TX;Upshur
+Texas;TX;Upton
+Texas;TX;Uvalde
+Texas;TX;Val Verde
+Texas;TX;Van Zandt
+Texas;TX;Victoria
+Texas;TX;Walker
+Texas;TX;Waller
+Texas;TX;Ward
+Texas;TX;Washington
+Texas;TX;Webb
+Texas;TX;Wharton
+Texas;TX;Wheeler
+Texas;TX;Wichita
+Texas;TX;Wilbarger
+Texas;TX;Willacy
+Texas;TX;Williamson
+Texas;TX;Wilson
+Texas;TX;Winkler
+Texas;TX;Wise
+Texas;TX;Wood
+Texas;TX;Yoakum
+Texas;TX;Young
+Texas;TX;Zapata
+Texas;TX;Zavala
+Utah;UT;Beaver
+Utah;UT;Box Elder
+Utah;UT;Cache
+Utah;UT;Carbon
+Utah;UT;Daggett
+Utah;UT;Davis
+Utah;UT;Duchesne
+Utah;UT;Emery
+Utah;UT;Garfield
+Utah;UT;Grand
+Utah;UT;Iron
+Utah;UT;Juab
+Utah;UT;Kane
+Utah;UT;Millard
+Utah;UT;Morgan
+Utah;UT;Piute
+Utah;UT;Rich
+Utah;UT;Salt Lake
+Utah;UT;San Juan
+Utah;UT;Sanpete
+Utah;UT;Sevier
+Utah;UT;Summit
+Utah;UT;Tooele
+Utah;UT;Uintah
+Utah;UT;Utah
+Utah;UT;Wasatch
+Utah;UT;Washington
+Utah;UT;Wayne
+Utah;UT;Weber
+Vermont;VT;Addison
+Vermont;VT;Bennington
+Vermont;VT;Caledonia
+Vermont;VT;Chittenden
+Vermont;VT;Essex
+Vermont;VT;Franklin
+Vermont;VT;Grand Isle
+Vermont;VT;Lamoille
+Vermont;VT;Orange
+Vermont;VT;Orleans
+Vermont;VT;Rutland
+Vermont;VT;Washington
+Vermont;VT;Windham
+Vermont;VT;Windsor
+Virginia;VA;Accomack
+Virginia;VA;Albemarle
+Virginia;VA;Alleghany
+Virginia;VA;Amelia
+Virginia;VA;Amherst
+Virginia;VA;Appomattox
+Virginia;VA;Arlington
+Virginia;VA;Augusta
+Virginia;VA;Bath
+Virginia;VA;Bedford
+Virginia;VA;Bland
+Virginia;VA;Botetourt
+Virginia;VA;Brunswick
+Virginia;VA;Buchanan
+Virginia;VA;Buckingham
+Virginia;VA;Campbell
+Virginia;VA;Caroline
+Virginia;VA;Carroll
+Virginia;VA;Charles City
+Virginia;VA;Charlotte
+Virginia;VA;Chesterfield
+Virginia;VA;Clarke
+Virginia;VA;Craig
+Virginia;VA;Culpeper
+Virginia;VA;Cumberland
+Virginia;VA;Dickenson
+Virginia;VA;Dinwiddie
+Virginia;VA;Essex
+Virginia;VA;Fairfax
+Virginia;VA;Fauquier
+Virginia;VA;Floyd
+Virginia;VA;Fluvanna
+Virginia;VA;Franklin
+Virginia;VA;Frederick
+Virginia;VA;Giles
+Virginia;VA;Gloucester
+Virginia;VA;Goochland
+Virginia;VA;Grayson
+Virginia;VA;Greene
+Virginia;VA;Greensville
+Virginia;VA;Halifax
+Virginia;VA;Hanover
+Virginia;VA;Henrico
+Virginia;VA;Henry
+Virginia;VA;Highland
+Virginia;VA;Isle of Wight
+Virginia;VA;James City
+Virginia;VA;King and Queen
+Virginia;VA;King George
+Virginia;VA;King William
+Virginia;VA;Lancaster
+Virginia;VA;Lee
+Virginia;VA;Loudoun
+Virginia;VA;Louisa
+Virginia;VA;Lunenburg
+Virginia;VA;Madison
+Virginia;VA;Mathews
+Virginia;VA;Mecklenburg
+Virginia;VA;Middlesex
+Virginia;VA;Montgomery
+Virginia;VA;Nelson
+Virginia;VA;New Kent
+Virginia;VA;Northampton
+Virginia;VA;Northumberland
+Virginia;VA;Nottoway
+Virginia;VA;Orange
+Virginia;VA;Page
+Virginia;VA;Patrick
+Virginia;VA;Pittsylvania
+Virginia;VA;Powhatan
+Virginia;VA;Prince Edward
+Virginia;VA;Prince George
+Virginia;VA;Prince William
+Virginia;VA;Pulaski
+Virginia;VA;Rappahannock
+Virginia;VA;Richmond
+Virginia;VA;Roanoke
+Virginia;VA;Rockbridge
+Virginia;VA;Rockingham
+Virginia;VA;Russell
+Virginia;VA;Scott
+Virginia;VA;Shenandoah
+Virginia;VA;Smyth
+Virginia;VA;Southampton
+Virginia;VA;Spotsylvania
+Virginia;VA;Stafford
+Virginia;VA;Surry
+Virginia;VA;Sussex
+Virginia;VA;Tazewell
+Virginia;VA;Warren
+Virginia;VA;Washington
+Virginia;VA;Westmoreland
+Virginia;VA;Wise
+Virginia;VA;Wythe
+Virginia;VA;York
+Virginia;VA;Alexandria City
+Virginia;VA;Bedford City
+Virginia;VA;Bristol City
+Virginia;VA;Buena Vista City
+Virginia;VA;Charlottesville City
+Virginia;VA;Chesapeake City
+Virginia;VA;Clifton Forge City
+Virginia;VA;Colonial Heights City
+Virginia;VA;Covington City
+Virginia;VA;Danville City
+Virginia;VA;Emporia City
+Virginia;VA;Fairfax City
+Virginia;VA;Falls Church City
+Virginia;VA;Franklin City
+Virginia;VA;Fredericksburg City
+Virginia;VA;Galax City
+Virginia;VA;Hampton City
+Virginia;VA;Harrisonburg City
+Virginia;VA;Hopewell City
+Virginia;VA;Lexington City
+Virginia;VA;Lynchburg City
+Virginia;VA;Manassas City
+Virginia;VA;Manassas Park City
+Virginia;VA;Martinsville City
+Virginia;VA;Newport News City
+Virginia;VA;Norfolk City
+Virginia;VA;Norton City
+Virginia;VA;Petersburg City
+Virginia;VA;Poquoson City
+Virginia;VA;Portsmouth City
+Virginia;VA;Radford City
+Virginia;VA;Richmond City
+Virginia;VA;Roanoke City
+Virginia;VA;Salem City
+Virginia;VA;Staunton City
+Virginia;VA;Suffolk City
+Virginia;VA;Virginia Beach City
+Virginia;VA;Waynesboro City
+Virginia;VA;Williamsburg City
+Virginia;VA;Winchester City
+Washington;WA;Adams
+Washington;WA;Asotin
+Washington;WA;Benton
+Washington;WA;Chelan
+Washington;WA;Clallam
+Washington;WA;Clark
+Washington;WA;Columbia
+Washington;WA;Cowlitz
+Washington;WA;Douglas
+Washington;WA;Ferry
+Washington;WA;Franklin
+Washington;WA;Garfield
+Washington;WA;Grant
+Washington;WA;Grays Harbor
+Washington;WA;Island
+Washington;WA;Jefferson
+Washington;WA;King
+Washington;WA;Kitsap
+Washington;WA;Kittitas
+Washington;WA;Klickitat
+Washington;WA;Lewis
+Washington;WA;Lincoln
+Washington;WA;Mason
+Washington;WA;Okanogan
+Washington;WA;Pacific
+Washington;WA;Pend Oreille
+Washington;WA;Pierce
+Washington;WA;San Juan
+Washington;WA;Skagit
+Washington;WA;Skamania
+Washington;WA;Snohomish
+Washington;WA;Spokane
+Washington;WA;Stevens
+Washington;WA;Thurston
+Washington;WA;Wahkiakum
+Washington;WA;Walla Walla
+Washington;WA;Whatcom
+Washington;WA;Whitman
+Washington;WA;Yakima
+West Virginia;WV;Barbour
+West Virginia;WV;Berkeley
+West Virginia;WV;Boone
+West Virginia;WV;Braxton
+West Virginia;WV;Brooke
+West Virginia;WV;Cabell
+West Virginia;WV;Calhoun
+West Virginia;WV;Clay
+West Virginia;WV;Doddridge
+West Virginia;WV;Fayette
+West Virginia;WV;Gilmer
+West Virginia;WV;Grant
+West Virginia;WV;Greenbrier
+West Virginia;WV;Hampshire
+West Virginia;WV;Hancock
+West Virginia;WV;Hardy
+West Virginia;WV;Harrison
+West Virginia;WV;Jackson
+West Virginia;WV;Jefferson
+West Virginia;WV;Kanawha
+West Virginia;WV;Lewis
+West Virginia;WV;Lincoln
+West Virginia;WV;Logan
+West Virginia;WV;McDowell
+West Virginia;WV;Marion
+West Virginia;WV;Marshall
+West Virginia;WV;Mason
+West Virginia;WV;Mercer
+West Virginia;WV;Mineral
+West Virginia;WV;Mingo
+West Virginia;WV;Monongalia
+West Virginia;WV;Monroe
+West Virginia;WV;Morgan
+West Virginia;WV;Nicholas
+West Virginia;WV;Ohio
+West Virginia;WV;Pendleton
+West Virginia;WV;Pleasants
+West Virginia;WV;Pocahontas
+West Virginia;WV;Preston
+West Virginia;WV;Putnam
+West Virginia;WV;Raleigh
+West Virginia;WV;Randolph
+West Virginia;WV;Ritchie
+West Virginia;WV;Roane
+West Virginia;WV;Summers
+West Virginia;WV;Taylor
+West Virginia;WV;Tucker
+West Virginia;WV;Tyler
+West Virginia;WV;Upshur
+West Virginia;WV;Wayne
+West Virginia;WV;Webster
+West Virginia;WV;Wetzel
+West Virginia;WV;Wirt
+West Virginia;WV;Wood
+West Virginia;WV;Wyoming
+Wisconsin;WI;Adams
+Wisconsin;WI;Ashland
+Wisconsin;WI;Barron
+Wisconsin;WI;Bayfield
+Wisconsin;WI;Brown
+Wisconsin;WI;Buffalo
+Wisconsin;WI;Burnett
+Wisconsin;WI;Calumet
+Wisconsin;WI;Chippewa
+Wisconsin;WI;Clark
+Wisconsin;WI;Columbia
+Wisconsin;WI;Crawford
+Wisconsin;WI;Dane
+Wisconsin;WI;Dodge
+Wisconsin;WI;Door
+Wisconsin;WI;Douglas
+Wisconsin;WI;Dunn
+Wisconsin;WI;Eau Claire
+Wisconsin;WI;Florence
+Wisconsin;WI;Fond du Lac
+Wisconsin;WI;Forest
+Wisconsin;WI;Grant
+Wisconsin;WI;Green
+Wisconsin;WI;Green Lake
+Wisconsin;WI;Iowa
+Wisconsin;WI;Iron
+Wisconsin;WI;Jackson
+Wisconsin;WI;Jefferson
+Wisconsin;WI;Juneau
+Wisconsin;WI;Kenosha
+Wisconsin;WI;Kewaunee
+Wisconsin;WI;La Crosse
+Wisconsin;WI;Lafayette
+Wisconsin;WI;Langlade
+Wisconsin;WI;Lincoln
+Wisconsin;WI;Manitowoc
+Wisconsin;WI;Marathon
+Wisconsin;WI;Marinette
+Wisconsin;WI;Marquette
+Wisconsin;WI;Menominee
+Wisconsin;WI;Milwaukee
+Wisconsin;WI;Monroe
+Wisconsin;WI;Oconto
+Wisconsin;WI;Oneida
+Wisconsin;WI;Outagamie
+Wisconsin;WI;Ozaukee
+Wisconsin;WI;Pepin
+Wisconsin;WI;Pierce
+Wisconsin;WI;Polk
+Wisconsin;WI;Portage
+Wisconsin;WI;Price
+Wisconsin;WI;Racine
+Wisconsin;WI;Richland
+Wisconsin;WI;Rock
+Wisconsin;WI;Rusk
+Wisconsin;WI;St. Croix
+Wisconsin;WI;Sauk
+Wisconsin;WI;Sawyer
+Wisconsin;WI;Shawano
+Wisconsin;WI;Sheboygan
+Wisconsin;WI;Taylor
+Wisconsin;WI;Trempealeau
+Wisconsin;WI;Vernon
+Wisconsin;WI;Vilas
+Wisconsin;WI;Walworth
+Wisconsin;WI;Washburn
+Wisconsin;WI;Washington
+Wisconsin;WI;Waukesha
+Wisconsin;WI;Waupaca
+Wisconsin;WI;Waushara
+Wisconsin;WI;Winnebago
+Wisconsin;WI;Wood
+Wyoming;WY;Albany
+Wyoming;WY;Big Horn
+Wyoming;WY;Campbell
+Wyoming;WY;Carbon
+Wyoming;WY;Converse
+Wyoming;WY;Crook
+Wyoming;WY;Fremont
+Wyoming;WY;Goshen
+Wyoming;WY;Hot Springs
+Wyoming;WY;Johnson
+Wyoming;WY;Laramie
+Wyoming;WY;Lincoln
+Wyoming;WY;Natrona
+Wyoming;WY;Niobrara
+Wyoming;WY;Park
+Wyoming;WY;Platte
+Wyoming;WY;Sheridan
+Wyoming;WY;Sublette
+Wyoming;WY;Sweetwater
+Wyoming;WY;Teton
+Wyoming;WY;Uinta
+Wyoming;WY;Washakie
+Wyoming;WY;Weston
+<enddata>

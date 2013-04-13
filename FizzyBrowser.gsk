@@ -1,0 +1,1182 @@
+################################################################################
+#                          Fizzy Challenge Browser
+#
+# This macro generates and displays an HTML page in your default web browser based
+# on the Fizzy-style challenge cache selected by the user. The page contains a
+# number of tables that reflect the requirements of that particular challenge
+# cache with the entries in the tables showing the found and unfound counts. Each
+# of those counts is a link, which when clicked, causes GSAK to list all of the
+# corresponding caches.
+#
+# MacDescription = Fizzy Challenge Browser macro
+# MacVersion = 1.6.14
+# MacAuthor = Cache U Nuts
+# MacFileName = FizzyBrowser.gsk
+# MacUrl = http://gsak.net/board/index.php?act=ST&f=37&t=10334
+#
+# Version History:
+# v1.0.0 12/25/08 - Initial release.
+# v1.0.1 12/30/08 - Fixed found counts for caches with multiple finds.
+# v1.0.2 01/01/09 - Fixed Archived/Disabled exclusion problem.
+# v1.1.0 01/02/09 - Added support for Placed Months table and GC1GBC1.
+# v1.1.1 01/02/09 - Allow full or abbreviated state names in DB.
+# v1.1.2 02/12/09 - Updated GC13P6B cutoff date.
+# v1.2.0 03/13/09 - Added option to flag unfound candidates and GC11PZW.
+# v1.3.0 03/21/09 - Added persistence of settings.
+# v1.3.1 05/29/09 - Handle "," radix points.
+# v1.4.0 09/28/09 - Added support for GC1Z47V (QC).
+# v1.4.1 10/07/09 - Changed cutoff date for GC15E8N to 08/26/09.
+# v1.5.0 10/13/09 - Added support for GC1ZFYN (IA).
+# v1.5.1 11/01/09 - Added support for GC1T965 (MO) and GC1GVN6 (WI).
+# v1.5.2 11/02/09 - Added support for GC1TMTQ (NY).
+# v1.5.3 12/29/09 - Added support for GC1XN92 (WV).
+# v1.5.4 01/27/10 - Correction to GC1T965 (MO).
+# v1.5.5 02/03/10 - Added support for GC1X61M (SD).
+# v1.5.6 03/30/10 - GSAK v7.7 fixes for icons, Archived/Disabled, and Placed Date.
+# v1.6.0 08/05/10 - Added option to flag found candidates, added GC2BM13 (NS),
+#                   corrected GC161AX (UT) and GC13P6B (WA).
+# v1.6.1 08/06/10 - Bug fix for flag found candidates
+# v1.6.2 08/08/10 - Bug fix for VACUUM error when Found DB = Unfound DB
+# v1.6.3 08/11/10 - Bug fix to allow for unconventional Database Folder paths
+# v1.6.4 12/02/10 - Updated GC16QQZ (MD) cutoff date.
+# v1.6.5 01/10/11 - Updated GC15E8N (MA) cutoff date.
+# v1.6.6 07/09/11 - Updated GC100KG (IL) cutoff date to 2009-07-01.
+# v1.6.7 07/10/11 - Updated GC100KG (IL) cutoff date to 2010-07-01.
+# v1.6.8 07/14/11 - Updated GC12QFK (IN) cutoff date to 2010-05-07.
+#                   Updated GC18KF1 (TN) cutoff date to 2010-11-15.
+#                   Updated GC1F92W (MI) removed cutoff date.
+# v1.6.9 08/11/11 - Updated GC1AHN3 (OH) cutoff date to 2010-04-17.
+# v1.6.10 02/28/12 - Updated GC1X61M (SD) cutoff date to 2010-08-21.
+# v1.6.11 04/07/12 - Added support for GC24DA6 (MS).
+# v1.6.12 07/19/12 - Updated GC12QFK (IN) cutoff date to 2012-05-07.
+#                    Updated GC1Z47V (QC) cutoff date to 2011-09-25.
+# v1.6.13 08/02/12 - Added support for GC3QTAW (AR).
+# v1.6.14 09/22/12 - Updated GC1AHN3 (OH) to remove cutoff date requirement.
+#                    Updated GC1ZFYN (IA) cutoff date to 2010-01-01.
+#
+################################################################################
+
+VERCHECK Version=7.7.0.109 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+
+GOSUB name=DeclareVariables
+GOSUB name=Initialize
+$vers = MacHeader("MacVersion")
+$form = EditForm($form,"Form1","Caption","FizzyBrowser.gsk  v$vers")
+
+WHILE True
+  $FormExit = Form($form,"")
+  BEGINCASE
+  CASE $FormExit = "SystemExit"
+    BREAK
+  CASE $FormExit = "bu_Cancel"
+    BREAK
+  CASE $FormExit = "bu_OK"
+    MACSETTINGS Type=S Vars=$cfgVars
+    GOSUB Name=ProcessOK
+    BREAK
+  ENDCASE
+ENDWHILE
+RETURN
+
+BEGINSUB Name=Initialize
+  $images = "file://$_Exepath\images"  # GSAK icon image files are stored here
+  $stHeadT = "background: #C8C8DD;"    # table headings
+  $stHeadV = "background: #CCCCD4;"    # table value headings
+  $stCellB = "background: #BABADD;"    # blank cell in chart
+  $stCellX = "background: #736F6E;"    # inval cell in chart   (Gray)
+  $stCellF = "background: #41A317;"    # found cell in chart   (Lime Green)
+  $stCellU = "background: #F88017;"    # unfound cell in chart (Dark Orange)
+  $stCellL = "color: #FFFFFF;"         # link in chart         (white)
+  $mapSZ = "M:Micro;S:Small;R:Regular;L:Large;O:Other;V:Virtual;U:Unknown;N:Not Chosen;"
+  $mapTY = "T:Traditional;M:Multi;U:Puzzle;V:Virtual;B:Letterbox;R:Earth;W:Webcam;E:Event;C:CITO;G:Benchmark;Z:Mega;X:Maze;I:Wherigo;L:Locationless;A:A.P.E.;Y:Waymark;O:Other;F:10 Years! Event;H:Groundspeak HQ;"
+  $mapFM = "Jan;Feb;Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec;"
+  $CR = $_NewLine
+  $Q = $_Quote
+  $out = ""
+  $pdate = ""                        # placed date restriction of selected challenge
+  $state = ""                        # state restriction of selected challenge
+  # get the GSAK method for matching found caches and the match text itself
+  $matchexact = Sysinfo("gsakini;TfmConfig;rbtExact.Checked")  # Exact match ("True"/"False")
+  $matchid    = Sysinfo("gsakini;TfmConfig;rbtId.Checked")     # Owner ID# match ("True"/"False")
+  $matchtext  = Sysinfo("gsakini;TfmConfig;EdtGeoName.Text")   # Match text used for comparison
+  BEGINCASE
+  CASE $matchexact = "True"
+    $rb_Name = True
+    $rb_Identifier = False
+    $ed_Cacher = $matchtext
+  CASE $matchid = "True"
+    $rb_Name = False
+    $rb_Identifier = True
+    $ed_Cacher = $matchtext
+  OTHERWISE
+    $rb_Name = True
+    $rb_Identifier = False
+    $ed_Cacher = ""
+  ENDCASE
+  $attributes = Replace($CR,";",$attributes,true)
+  $status = List("listA","create",";")
+  $status = List("listA","replace",$attributes)
+  $challenges = Replace($CR,";",$challenges,true)
+  $status = List("listC","create",";")
+  $status = List("listC","replace",$challenges)
+  $form = EditForm($form,"co_Challenge","values",$challenges)
+  $dblist = SysInfo("databases")
+  $dbcurr = SysInfo("gsakini;TfmOffline;lblDbase.Caption")
+  $form = EditForm($form,"co_DatabaseF","values",$dblist)
+  $co_DatabaseF = $dbcurr
+  $cb_ArchivedF = True
+  $cb_DisabledF = True
+  $cb_FlagCandidatesF = False
+  $cb_ClearFlagsF = False
+  $form = EditForm($form,"co_DatabaseU","values",$dblist)
+  $co_DatabaseU = $dbcurr
+  $cb_ArchivedU = False
+  $cb_DisabledU = False
+  $cb_FlagCandidatesU = False
+  $cb_ClearFlagsU = False
+  MACSETTINGS Type=R FileCheck=N
+  # create a fresh copy of the URI support filter macro
+  $filterfile = $_AppData + "\Macros\FizzyBrowserFilter.gsk"
+  IF FileExists($filterfile)
+    FILEERASE File=$filterfile OnError=prompt
+  ENDIF
+  $ret = PutFile($filterfile,$filtermacro)
+  IF Left($ret,7) = "*Error*"
+    PAUSE Msg="$ret"
+    CANCEL
+  ENDIF
+ENDSUB
+
+BEGINSUB Name=ProcessOK
+  $uriF = "gsak://%FF/Macro/FizzyBrowserFilter?CF~<where>//$co_DatabaseF"  # base URI for Found caches
+  $uriU = "gsak://%FF/Macro/FizzyBrowserFilter?CU~<where>//$co_DatabaseU"  # base URI for Unfound caches
+
+  # get the attributes associated with the user selected Challenge
+  $select = List("listC","find",$co_Challenge)
+  $attrib = List("listA","item",$select)
+  $attrib = Right($attrib,Len($attrib)-14)  # strip off the label
+
+  # process sections based on attributes of selected Challenge
+  TRANSACTION Action=begin
+  $flagHdr = True
+  $sectNum = 1
+  WHILE True
+    $sect = Extract($attrib,",",$sectNum)
+    IF $sect = ""
+      BREAK
+    ENDIF
+    $sectPat = "([A-Z]+)(([<=>]+)([A-Z0-9()-]+))?"
+    $sectTyp = RegExSub($sectPat,$sect,1,1)
+    $sectOpr = RegExSub($sectPat,$sect,1,3)
+    $sectVal = RegExSub($sectPat,$sect,1,4)
+    IF $flagHdr AND $sectTyp <> "PD" AND $sectTyp <> "ST"
+      GOSUB Name=BuildSqlTables
+      GOSUB Name=BuildHeader
+      $flagHdr = False
+    ENDIF
+    BEGINCASE
+    CASE $sectTyp = "PD"  # Placed Date section
+      $pdate = $sectVal
+      IF $sectOpr = "<="
+        $pdopr = "on or before"
+      ELSE
+        $pdopr = "before"
+      ENDIF
+    CASE $sectTyp = "ST"  # State section
+      $state = $sectVal
+    CASE $sectTyp = "DT"  # Difficulty/Terrain section
+      GOSUB Name=ProcessDT
+    CASE $sectTyp = "TY"  # Cache Type section
+      GOSUB Name=ProcessTY
+    CASE $sectTyp = "SZ"  # Container Size section
+      GOSUB Name=ProcessSZ
+    CASE $sectTyp = "PY"  # Placed Year section
+      GOSUB Name=ProcessPY
+    CASE $sectTyp = "PM"  # Placed Month section
+      GOSUB Name=ProcessPM
+    CASE $sectTyp = "FM"  # Found Month section
+      GOSUB Name=ProcessFM
+    OTHERWISE
+      PAUSE Msg="Unrecognized section type: $sectTyp"
+    ENDCASE
+    $sectNum = $sectNum + 1
+  ENDWHILE
+  TRANSACTION Action=end
+  $status = SQLite("sql","DETACH gsakdbF")
+  $status = SQLite("sql","DETACH gsakdbU")
+  $status = SQLite("sql","VACUUM")
+
+  # build the HTML footer
+  $out = $out + "Generated $_Today by FizzyBrowser $vers using GSAK $_Version<br /><br />" + $CR
+  $out = $out + "</body>" + $CR
+  $out = $out + "</html>" + $CR
+  #Display generated HTML in default browser
+  $status = PutFile("FizzyBrowser.htm",$out)
+  FILEOPEN File="FizzyBrowser.htm"
+ENDSUB
+
+BEGINSUB Name=BuildSqlTables
+  # build SQL tables for Found caches (cachesF) and Unfound caches (cachesU)
+
+  # open a fresh database (FizzyBrowser.db3) and ATTACH GSAK databases
+  $sqlfile = $_AppData + "\Macros\FizzyBrowser.db3"
+  IF FileExists($sqlfile)
+    FILEERASE File=$sqlfile OnError=prompt
+  ENDIF
+  $status = SQLite("create",$sqlfile)
+  $status = SQLite("open",$sqlfile)
+  $databasefolder = RegExReplace("\\[^\\]+$",$_CurrentDataPath,"")
+  $_sql = "ATTACH '$databasefolder\$co_DatabaseF\sqlite.db3' AS gsakdbF"
+  $status = SQLite("sql",$_sql)
+  $_sql = "ATTACH '$databasefolder\$co_DatabaseU\sqlite.db3' AS gsakdbU"
+  $status = SQLite("sql",$_sql)
+
+  # Clear all User Flags in the Found/Unfound Databases if selected
+  IF $cb_ClearFlagsF
+    $_sql = "UPDATE gsakdbF.Caches SET UserFlag=0"
+    $status = SQLite("sql",$_sql)
+  ENDIF
+  IF $cb_ClearFlagsU
+    $_sql = "UPDATE gsakdbU.Caches SET UserFlag=0"
+    $status = SQLite("sql",$_sql)
+  ENDIF
+
+  # build table of found logs by the specified cacher (logs)
+  SHOWSTATUS Msg="Building SQL logs table for finds..."
+  IF $rb_Name  # see if $ed_Cacher represent a name or id
+    $where = "lBy='$ed_Cacher'"
+  ELSE
+    $where = "lOwnerid=$ed_Cacher"
+  ENDIF
+  $where = $where + " AND (ltype='Found it' OR ltype='Attended' OR ltype='Webcam Photo Taken')"
+	$_sql = "CREATE TABLE logs AS SELECT lParent,lType,lBy,lOwnerid,lDate FROM gsakdbF.LogsAll WHERE $where"
+	$status = SQLite("sql",$_sql)
+  $status = SQLite("sql","CREATE INDEX codel ON logs (lParent)")
+
+  # build table based on Caches with logged date added (tempF)
+  SHOWSTATUS Msg="Building SQL tempF table for found caches..."
+  IF $rb_Name  # see if $ed_Cacher represent a name or id
+    $where = "OwnerName<>'$ed_Cacher'"
+  ELSE
+    $where = "OwnerId<>$ed_Cacher"
+  ENDIF
+  IF $state <> ""
+    $state2 = RegExSub("$state:(.+?);","AZ:Arizona;ID:Idaho;WA:Washington;",1,1)
+    $where = $where + " AND (State='$state' OR State='$state2')"
+  ENDIF
+  IF $pdate <> ""
+    $where = $where + " AND (PlacedDate<'$pdate'"
+    $where = $where + " OR ((CacheType='E' OR CacheType='C' OR CacheType='Z')"
+    $where = $where + " AND Difficulty<2.5 AND Terrain<2.5))"
+  ENDIF
+  $_sql = "CREATE TABLE tempF AS "
+  $_sql = $_sql + "SELECT Code,PlacedDate,Archived,TempDisabled,CacheType,Container,Difficulty,Terrain,lDate "
+  $_sql = $_sql + "FROM gsakdbF.Caches LEFT JOIN logs ON code=lParent WHERE $where"
+  $status = SQLite("sql",$_sql)
+
+  # build table for Found caches (cachesF)
+  SHOWSTATUS Msg="Building SQL cachesF table for found caches..."
+  $_sql = "CREATE TABLE cachesF AS "
+  $_sql = $_sql + "SELECT Code,PlacedDate,CacheType,Container,Difficulty,Terrain,lDate "
+  $_sql = $_sql + "FROM tempF WHERE lDate NOTNULL"
+  IF Not($cb_ArchivedF)
+    $_sql = $_sql + " AND Archived='0'"
+  ENDIF
+  IF Not($cb_DisabledF)
+    $_sql = $_sql + " AND TempDisabled='0'"
+  ENDIF
+  $status = SQLite("sql",$_sql)
+
+  # build table based on Caches with logged date added (tempU)
+  SHOWSTATUS Msg="Building SQL tempU table for unfound caches..."
+  $_sql = "CREATE TABLE tempU AS "
+  $_sql = $_sql + "SELECT Code,PlacedDate,Archived,TempDisabled,CacheType,Container,Difficulty,Terrain,lDate "
+  $_sql = $_sql + "FROM gsakdbU.Caches LEFT JOIN logs ON code=lParent WHERE $where"
+  $status = SQLite("sql",$_sql)
+
+  # build table for Unfound caches (cachesU)
+  SHOWSTATUS Msg="Building SQL cachesU table for found caches..."
+  $_sql = "CREATE TABLE cachesU AS "
+  $_sql = $_sql + "SELECT Code,PlacedDate,CacheType,Container,Difficulty,Terrain "
+  $_sql = $_sql + "FROM tempU WHERE lDate ISNULL"
+  IF Not($cb_ArchivedU)
+    $_sql = $_sql + " AND Archived='0'"
+  ENDIF
+  IF Not($cb_DisabledU)
+    $_sql = $_sql + " AND TempDisabled='0'"
+  ENDIF
+  $status = SQLite("sql",$_sql)
+
+  # clear out tables that are no longer needed
+  SHOWSTATUS Msg="Cleanup of SQL temporary tables..."
+  $status = SQLite("sql","DROP TABLE logs")
+  $status = SQLite("sql","DROP TABLE tempF")
+  $status = SQLite("sql","DROP TABLE tempU")
+ENDSUB
+
+BEGINSUB Name=BuildHeader
+  $out = $out + "<html>" + $CR
+  $out = $out + "<head><title>FizzyBrowser</title>" + $CR
+  $out = $out + "<style type='text/css'>" + $CR
+  $out = $out + "a { text-decoration:none; $stCellL }" + $CR
+  $out = $out + "</style>" + $CR
+  $out = $out + "</head>" + $CR
+  $out = $out + "<body>" + $CR
+  $out = $out + "<span style='font-family: Tahoma, Arial, sans-serif; font-size: 16px; font-weight: bold;'>" + $CR
+  $out = $out + "$co_Challenge</span><br />" + $CR
+  $out = $out + "Qualifications - Placed Date: "
+  IF $pdate <> ""
+    $out = $out + "$pdopr $pdate (except events with D/T<=2), "
+  ELSE
+    $out = $out + "any, "
+  ENDIF
+  $out = $out + "State: "
+  IF $state <> ""
+    $out = $out + "only $state, "
+  ELSE
+    $out = $out + "any, "
+  ENDIF
+  IF $rb_Name
+    $out = $out + "Cacher Name: " + $ed_Cacher
+  ELSE
+    $out = $out + "Cacher ID: " + $ed_Cacher
+  ENDIF
+  $out = $out + "<br />" + $CR
+  $out = $out + "Databases - "
+  $out = $out + "Found: $co_DatabaseF "
+  $out = $out + "(Archived " + BoolToStr($cb_ArchivedF,"in","ex") + "cluded, Disabled " + BoolToStr($cb_DisabledF,"in","ex") + "cluded), "
+  $out = $out + "Unfound: $co_DatabaseU "
+  $out = $out + "(Archived " + BoolToStr($cb_ArchivedU,"in","ex") + "cluded, Disabled " + BoolToStr($cb_DisabledU,"in","ex") + "cluded)"
+  $out = $out + "<br />" + $CR
+  $out = $out + "Clicking the number in a colored box will filter GSAK to show those candidates.  "
+  $out = $out + "Found candidates are Green, Unfound ones are Orange."
+  $out = $out + "<br /><br />" + $CR
+ENDSUB
+
+BEGINSUB Name=ProcessDT
+  $numF = 0                              # number of found Diff/Terr Combinations
+  $numU = 0                              # number of unfound Diff/Terr Combinations
+  $heightC = 22                          # height of Cell
+  $widthC = 55                           # width of Cell
+  $widthH = 85                           # width of Header
+  $widthT = $widthH + (10 * $widthC)     # width of Table
+  # Title row
+  $out = $out + "<table width='$widthT' style='text-align:center; text-decoration:none'>" + $CR
+  $out = $out + "<tr><td style='$stHeadT'></td><td style='$stHeadT' colspan='10'><b>Terrain</b></td></tr>" + $CR
+  $out = $out + "<tr><td style='$stHeadT' rowspan='10' width='$widthH'><b>Difficulty</b></td>" + $CR
+  $diff = 0.5
+  WHILE $diff <= 5
+    $terr = 0.5
+    WHILE $terr <= 5
+      BEGINCASE
+      CASE $diff < 1 AND $terr < 1  # blank header value cell
+        $out = $out + "    <td style='$stHeadV' width='$widthC'></td>" + $CR
+      CASE $diff < 1                # terrain header value cell
+        $text = NumToStr($terr)
+        $out = $out + "    <td style='$stHeadV' width='$widthC'><b>$text</b></td>" + $CR
+      CASE $terr < 1                # difficulty header value cell
+        $text = NumToStr($diff)
+        $out = $out + "<tr><td style='$stHeadV' width='$widthC'><b>$text</b></td>" + $CR
+      OTHERWISE  # one of the combination cells
+        $_sql  = "Difficulty=$diff AND Terrain=$terr"  # handle "," radix points
+        $where = $_sql
+        GOSUB Name=DoCell
+      ENDCASE
+      $terr = $terr + 0.5
+    ENDWHILE
+    $out = $out + "</tr>" + $CR
+    $diff = $diff + 0.5
+  ENDWHILE
+  $out = $out + "</table>" + $CR
+  $out = $out + "<br /><b>$numF</b> Diff/Terr Combinations found out of the <b>81</b> possible<br /><br />" + $CR
+ENDSUB
+
+BEGINSUB Name=ProcessTY
+  $types = RegExSub("([A-Z]+)(\(([A-Z]+)\))?", $sectVal, 1, 1)
+  $title = "Required Types"
+  GOSUB Name=ProcessTYsub
+  $types = RegExSub("([A-Z]+)(\(([A-Z]+)\))?", $sectVal, 1, 3)
+  IF $types <> ""
+    $title = "Additional Types"
+    GOSUB Name=ProcessTYsub
+  ENDIF
+ENDSUB
+
+BEGINSUB Name=ProcessTYsub
+  $numT = Len($types)                    # number of Types
+  $numF = 0                              # number of found Types
+  $numU = 0                              # number of unfound Types
+  $heightC = 22                          # height of Cell
+  $widthC = 80                           # width of Cell
+  # Types title row
+  $out = $out + "<table style='text-align:center; text-decoration:none'>" + $CR
+  $out = $out + "  <tr>" + $CR
+  $out = $out + "    <td style='$stHeadT' colspan='$numT'><b>$title</b></td>" + $CR
+  $out = $out + "  </tr>" + $CR
+  # Types icon row
+  $out = $out + "  <tr>" + $CR
+  $n = 1
+  WHILE $n <= $numT
+    $type = Substr($types,$n,1)
+    $out = $out + "    <td style='$stHeadV' width='$widthC'><img src='$images\cache" + $type + ".gif' /></td>" + $CR
+    $n = $n + 1
+  ENDWHILE
+  $out = $out + "  </tr>" + $CR
+  # Types caption row
+  $out = $out + "  <tr>" + $CR
+  $n = 1
+  WHILE $n <= $numT
+    $type = Substr($types,$n,1)
+    $capt = RegExSub("$type:(.+?);",$mapTY,1,1)
+    $out = $out + "    <td style='$stHeadV' width='$widthC'>$capt</td>" + $CR
+    $n = $n + 1
+  ENDWHILE
+  $out = $out + "  </tr>" + $CR
+  # Types tally row
+  $out = $out + "  <tr>" + $CR
+  $n = 1
+  WHILE $n <= $numT
+    $type = Substr($types,$n,1)
+    $where = "CacheType=$Q$type$Q"
+    GOSUB Name=DoCell
+    $n = $n + 1
+  ENDWHILE
+  $out = $out + "  </tr>" + $CR
+  $out = $out + "</table>" + $CR
+  $out = $out + "<br /><b>$numF</b> $title found out of the <b>$numT</b> possible<br /><br />" + $CR
+ENDSUB
+
+BEGINSUB Name=ProcessSZ
+  $sizes = RegExSub("([A-Z]+)", $sectVal, 1, 1)
+  $title = "Container Sizes"
+  $numS = Len($sizes)                    # number of Sizes
+  $numF = 0                              # number of found Sizes
+  $numU = 0                              # number of unfound Sizes
+  $heightC = 22                          # height of Cell
+  $widthC = 80                           # width of Cell
+  # Sizes title row
+  $out = $out + "<table style='text-align:center; text-decoration:none'>" + $CR
+  $out = $out + "  <tr>" + $CR
+  $out = $out + "    <td style='$stHeadT' colspan='$numS'><b>$title</b></td>" + $CR
+  $out = $out + "  </tr>" + $CR
+  # Sizes icon row
+  $out = $out + "  <tr>" + $CR
+  $n = 1
+  WHILE $n <= $numS
+    $size = Substr($sizes,$n,1)
+    $name = RegExSub("$size:(.+?);",$mapSZ,1,1)
+    $name = Replace(" ","",$name,true)
+    $out = $out + "    <td style='$stHeadV' width='$widthC'><img src='$images\con_" + $name + ".gif' /></td>" + $CR
+    $n = $n + 1
+  ENDWHILE
+  $out = $out + "  </tr>" + $CR
+  # Sizes caption row
+  $out = $out + "  <tr>" + $CR
+  $n = 1
+  WHILE $n <= $numS
+    $size = Substr($sizes,$n,1)
+    $capt = RegExSub("$size:(.+?);",$mapSZ,1,1)
+    $out = $out + "    <td style='$stHeadV' width='$widthC'>$capt</td>" + $CR
+    $n = $n + 1
+  ENDWHILE
+  $out = $out + "  </tr>" + $CR
+  # Sizes tally row
+  $out = $out + "  <tr>" + $CR
+  $n = 1
+  WHILE $n <= $numS
+    $size = Substr($sizes,$n,1)
+    $where = "SubStr(Container,1,1)=$Q$size$Q"
+    GOSUB Name=DoCell
+    $n = $n + 1
+  ENDWHILE
+  $out = $out + "  </tr>" + $CR
+  $out = $out + "</table>" + $CR
+  $out = $out + "<br /><b>$numF</b> $title found out of the <b>$numS</b> possible<br /><br />" + $CR
+ENDSUB
+
+BEGINSUB Name=ProcessPY
+  $v1 = RegExSub("([0-9]+)", $sectVal, 1, 1)
+  $v2 = RegExSub("([0-9]+)", $sectVal, 2, 1)
+  IF $v2 = ""
+    $v2 = Substr(DateToString($_Today),3,2)
+  ENDIF
+  $year1 = Val($v1) + 2000
+  $year2 = Val($v2) + 2000
+  $title = "Placed Years"
+  $numY = $year2 - $year1 + 1            # number of Years
+  $numF = 0                              # number of found Years
+  $numU = 0                              # number of unfound Years
+  $heightC = 22                          # height of Cell
+  $widthC = 55                           # width of Cell
+  # Years title row
+  $out = $out + "<table style='text-align:center; text-decoration:none'>" + $CR
+  $out = $out + "  <tr>" + $CR
+  $out = $out + "    <td style='$stHeadT' colspan='$numY'><b>$title</b></td>" + $CR
+  $out = $out + "  </tr>" + $CR
+  # Years label row
+  $out = $out + "  <tr>" + $CR
+  $y = $year1
+  WHILE $y <= $year2
+    $out = $out + "    <td style='$stHeadV' width='$widthC'><b>$y</b></td>" + $CR
+    $y = $y + 1
+  ENDWHILE
+  $out = $out + "  </tr>" + $CR
+  # Years tally row
+  $out = $out + "  <tr>" + $CR
+  $y = $year1
+  WHILE $y <= $year2
+    $where = "SubStr(PlacedDate,1,4)=$Q$y$Q"
+    GOSUB Name=DoCell
+    $y = $y + 1
+  ENDWHILE
+  $out = $out + "  </tr>" + $CR
+  $out = $out + "</table>" + $CR
+  $out = $out + "<br /><b>$numF</b> $title found out of the <b>$numY</b> possible<br /><br />" + $CR
+ENDSUB
+
+BEGINSUB Name=ProcessFM
+  $title = "Found Months"
+  $numF = 0                              # number of found Months
+  $heightC = 22                          # height of Cell
+  $widthC = 55                           # width of Cell
+  # Months title row
+  $out = $out + "<table style='text-align:center; text-decoration:none'>" + $CR
+  $out = $out + "  <tr>" + $CR
+  $out = $out + "    <td style='$stHeadT' colspan='12'><b>$title</b></td>" + $CR
+  $out = $out + "  </tr>" + $CR
+  # Months label row
+  $out = $out + "  <tr>" + $CR
+  $m = 1
+  WHILE $m <= 12
+    $month = Extract($mapFM,";",$m)
+    $out = $out + "    <td style='$stHeadV' width='$widthC'><b>$month</b></td>" + $CR
+    $m = $m + 1
+  ENDWHILE
+  $out = $out + "  </tr>" + $CR
+  # Months tally row
+  $out = $out + "  <tr>" + $CR
+  $m = 1
+  WHILE $m <= 12
+    $month = Right("0$m",2)
+    $where = "SubStr(lDate,6,2)=$Q$month$Q"
+    $_sql = "SELECT Count(DISTINCT Code) FROM cachesF WHERE " + $where
+    $num = SQLite("sql",$_sql)
+    IF $num <> "0"    # found caches for this month
+      $numF = $numF + 1
+      $uri = Replace("<where>",$where,$uriF,true)
+      $out = $out + "    <td style='$stCellF'><a href='$uri'>$num</a></td>" + $CR
+    ELSE
+      $out = $out + "    <td style='$stCellB' height='$heightC'></td>" + $CR
+    ENDIF
+    $m = $m + 1
+  ENDWHILE
+  $out = $out + "  </tr>" + $CR
+  $out = $out + "</table>" + $CR
+  $out = $out + "<br /><b>$numF</b> $title found out of the <b>12</b> possible<br /><br />" + $CR
+ENDSUB
+
+BEGINSUB Name=ProcessPM
+  $v1 = RegExSub("([0-9]+)", $sectVal, 1, 1)
+  $v2 = RegExSub("([0-9]+)", $sectVal, 2, 1)
+  IF $v2 = ""
+    $v2 = Substr(DateToString($_Today),3,4)
+  ENDIF
+  $month1 = Val(Substr($v1,3,2))
+  $month2 = Val(Substr($v2,3,2))
+  $year1 = Val(Substr($v1,1,2)) + 2000
+  $year2 = Val(Substr($v2,1,2)) + 2000
+  $years = $year2 - $year1 + 2           # number of Year rows + 1
+  $numF = 0                              # number of found Year/Month Combinations
+  $numU = 0                              # number of unfound Year/Month Combinations
+  $numB = 0                              # number of blank Year/Month Combinations
+  $heightC = 22                          # height of Cell
+  $widthC = 55                           # width of Cell
+  $widthH = 85                           # width of Header
+  $widthT = $widthH + (13 * $widthC)     # width of Table
+  # Title row
+  $out = $out + "<table width='$widthT' style='text-align:center; text-decoration:none'>" + $CR
+  $out = $out + "<tr><td style='$stHeadT'></td><td style='$stHeadT' colspan='13'><b>Placed Month</b></td></tr>" + $CR
+  $out = $out + "<tr><td style='$stHeadT' rowspan='$years' width='$widthH'><b>Year</b></td>" + $CR
+  $y = $year1 - 1
+  WHILE $y <= $year2
+    $m = 0
+    WHILE $m <= 12
+      BEGINCASE
+      CASE $y < $year1 AND $m < 1   # blank header value cell
+        $out = $out + "    <td style='$stHeadV' width='$widthC'></td>" + $CR
+      CASE $y < $year1              # month header value cell
+        $text = Extract($mapFM,";",$m)
+        $out = $out + "    <td style='$stHeadV' width='$widthC'><b>$text</b></td>" + $CR
+      CASE $m < 1                   # year header value cell
+        $text = NumToStr($y)
+        $out = $out + "<tr><td style='$stHeadV' width='$widthC'><b>$text</b></td>" + $CR
+      CASE $y < $year1 OR ($y = $year1 AND $m < $month1)  # lower date span cutoff
+        $out = $out + "    <td style='$stCellX' height='$heightC'></td>" + $CR
+      CASE $y > $year2 OR ($y = $year2 AND $m > $month2)  # upper date span cutoff
+        $out = $out + "    <td style='$stCellX' height='$heightC'></td>" + $CR
+      OTHERWISE                     # one of the valid combination cells
+        $month = Right("0$m",2)
+        $where = "SubStr(PlacedDate,1,7)=$Q$y-$month$Q"
+        GOSUB Name=DoCell
+      ENDCASE
+      $m = $m + 1
+    ENDWHILE
+    $out = $out + "</tr>" + $CR
+    $y = $y + 1
+  ENDWHILE
+  $n = $numF + $numU + $numB
+  $out = $out + "</table>" + $CR
+  $out = $out + "<br /><b>$numF</b> Year/Month Combinations found out of the <b>$n</b> possible<br /><br />" + $CR
+ENDSUB
+
+BEGINSUB Name=DoCell
+  $_sql = "SELECT Count(DISTINCT Code) FROM cachesF WHERE " + $where
+  $num = SQLite("sql",$_sql)
+  IF $num <> "0"    # found caches for this cell
+    $numF = $numF + 1
+    $uri = Replace("<where>",$where,$uriF,true)
+    $out = $out + "    <td style='$stCellF'><a href='$uri'>$num</a></td>" + $CR
+    IF $cb_FlagCandidatesF
+      $_sql = "UPDATE gsakdbF.Caches SET UserFlag=1 WHERE Code IN(SELECT DISTINCT Code FROM cachesF WHERE $where)"
+      $status = SQLite("sql",$_sql)
+    ENDIF
+  ELSE              # see if there are any unfound ones
+    $_sql = "SELECT Count(DISTINCT Code) FROM cachesU WHERE " + $where
+    $num = SQLite("sql",$_sql)
+    IF $num <> "0"  # unfound caches for this cell
+      $numU = $numU + 1
+      $uri = Replace("<where>",$where,$uriU,true)
+      $out = $out + "    <td style='$stCellU'><a href='$uri'>$num</a></td>" + $CR
+    ELSE
+      $out = $out + "    <td style='$stCellB' height='$heightC'></td>" + $CR
+    ENDIF
+    IF $cb_FlagCandidatesU
+      $_sql = "UPDATE gsakdbU.Caches SET UserFlag=1 WHERE Code IN(SELECT DISTINCT Code FROM CachesU WHERE $where)"
+      $status = SQLite("sql",$_sql)
+    ENDIF
+  ENDIF
+ENDSUB
+
+BEGINSUB Name=DeclareVariables
+  OPTION Explicit=Yes
+  DECLARE Var=$attrib Type=String
+  DECLARE Var=$attributes Type=String
+  DECLARE Var=$capt Type=String
+  DECLARE Var=$cb_ArchivedF Type=Boolean
+  DECLARE Var=$cb_DisabledF Type=Boolean
+  DECLARE Var=$cb_FlagCandidatesF Type=Boolean
+  DECLARE Var=$cb_ClearFlagsF Type=Boolean
+  DECLARE Var=$cb_ArchivedU Type=Boolean
+  DECLARE Var=$cb_DisabledU Type=Boolean
+  DECLARE Var=$cb_FlagCandidatesU Type=Boolean
+  DECLARE Var=$cb_ClearFlagsU Type=Boolean
+  DECLARE Var=$cb_Vars Type=String
+  DECLARE Var=$cfgVars Type=String
+  DECLARE Var=$challenges Type=String
+  DECLARE Var=$co_DatabaseF Type=String
+  DECLARE Var=$co_DatabaseU Type=String
+  DECLARE Var=$co_Vars Type=String
+  DECLARE Var=$codes Type=String
+  DECLARE Var=$CR Type=String
+  DECLARE Var=$databasefolder Type=String
+  DECLARE Var=$dbcurr Type=String
+  DECLARE Var=$dblist Type=String
+  DECLARE Var=$diff Type=Numeric
+  DECLARE Var=$ed_Cacher Type=String
+  DECLARE Var=$ed_Vars Type=String
+  DECLARE Var=$filterfile Type=String
+  DECLARE Var=$filtermacro Type=String
+  DECLARE Var=$flagHdr Type=Boolean
+  DECLARE Var=$form Type=String
+  DECLARE Var=$FormExit Type=String
+  DECLARE Var=$heightC Type=Numeric
+  DECLARE Var=$images Type=String
+  DECLARE Var=$m Type=Numeric
+  DECLARE Var=$mapFM Type=String
+  DECLARE Var=$mapSZ Type=String
+  DECLARE Var=$mapTY Type=String
+  DECLARE Var=$matchexact Type=String
+  DECLARE Var=$matchid Type=String
+  DECLARE Var=$matchtext Type=String
+  DECLARE Var=$mfilt Type=String
+  DECLARE Var=$month Type=String
+  DECLARE Var=$month1 Type=Numeric
+  DECLARE Var=$month2 Type=Numeric
+  DECLARE Var=$n Type=Numeric
+  DECLARE Var=$name Type=String
+  DECLARE Var=$num Type=String
+  DECLARE Var=$numB Type=Numeric
+  DECLARE Var=$numF Type=Numeric
+  DECLARE Var=$numU Type=Numeric
+  DECLARE Var=$numS Type=Numeric
+  DECLARE Var=$numT Type=Numeric
+  DECLARE Var=$numY Type=Numeric
+  DECLARE Var=$out Type=String
+  DECLARE Var=$pdate Type=String
+  DECLARE Var=$pdopr Type=String
+  DECLARE Var=$Q Type=String
+  DECLARE Var=$rb_Identifier Type=Boolean
+  DECLARE Var=$rb_Name Type=Boolean
+  DECLARE Var=$rb_Vars Type=String
+  DECLARE Var=$ret Type=String
+  DECLARE Var=$sect Type=String
+  DECLARE Var=$sectNum Type=Numeric
+  DECLARE Var=$sectOpr Type=String
+  DECLARE Var=$sectPat Type=String
+  DECLARE Var=$sectTyp Type=String
+  DECLARE Var=$sectVal Type=String
+  DECLARE Var=$select Type=String
+  DECLARE Var=$size Type=String
+  DECLARE Var=$sizes Type=String
+  DECLARE Var=$sqlfile Type=String
+  DECLARE Var=$state Type=String
+  DECLARE Var=$state2 Type=String
+  DECLARE Var=$status Type=String
+  DECLARE Var=$stCellB Type=String
+  DECLARE Var=$stCellF Type=String
+  DECLARE Var=$stCellL Type=String
+  DECLARE Var=$stCellU Type=String
+  DECLARE Var=$stCellX Type=String
+  DECLARE Var=$stHeadT Type=String
+  DECLARE Var=$stHeadV Type=String
+  DECLARE Var=$terr Type=Numeric
+  DECLARE Var=$text Type=String
+  DECLARE Var=$title Type=String
+  DECLARE Var=$type Type=String
+  DECLARE Var=$types Type=String
+  DECLARE Var=$uri Type=String
+  DECLARE Var=$uriF Type=String
+  DECLARE Var=$uriU Type=String
+  DECLARE Var=$v1 Type=String
+  DECLARE Var=$v2 Type=String
+  DECLARE Var=$vers Type=String
+  DECLARE Var=$where Type=String
+  DECLARE Var=$widthC Type=Numeric
+  DECLARE Var=$widthH Type=Numeric
+  DECLARE Var=$widthT Type=Numeric
+  DECLARE Var=$y Type=Numeric
+  DECLARE Var=$year1 Type=Numeric
+  DECLARE Var=$year2 Type=Numeric
+  DECLARE Var=$years Type=Numeric
+
+# variables for config file
+$ed_Vars = "ed_Cacher"
+$rb_Vars = "rb_Name,rb_Identifier"
+$co_Vars = "co_Challenge,co_DatabaseF,co_DatabaseU"
+$cb_Vars = "cb_ArchivedF,cb_DisabledF,cb_FlagCandidatesF,cb_ClearFlagsF,cb_ArchivedU,cb_DisabledU,cb_FlagCandidatesU,cb_ClearFlagsU"
+$cfgVars = $ed_Vars + "," + $rb_Vars + "," + $co_Vars + "," + $cb_Vars
+
+ENDSUB
+
+<Data> VarName=$challenges
+Choose a Challenge cache
+AL: GC1K275 - Well Rounded Cacher (Fizzy Challenge)
+AR: GC3QTAW - The Arkansas Fizzy Challenge
+AZ: GC1D712 - Arizona Well Rounded Cacher (Fizzy Challenge)
+CA: GC11E8N - Well Rounded Cacher (The Fizzy Challenge)
+CA: GC1GBC1 - The Jasmer Challenge (Northern California Edition)
+CO: GC1555F - Well Rounded Colorado Cacher (Fizzy Challenge)
+FL: GC19RG3 - Well Rounded Florida Cacher (Fizzy Challenge)
+GA: GCVAPY  - Georgia's Well Rounded Cacher
+IA: GC1ZFYN - Iowa Well Rounded Cacher (Fizzy Challenge)
+ID: GC1632Q - Idaho's Well Rounded Cacher (Fizzy Challenge)
+IL: GC100KG - Komplete Geocaching, Illinois Style!
+IN: GC12QFK - The Completed Matrix
+KY: GC15DY2 - Kentucky's Fizzy Challenge: THE 81
+MA: GC15E8N - Well Rounded NE Cacher (The Fizzy Challenge)
+MD: GC16QQZ - Well Rounded Maryland Cacher (The Fizzy Challenge)
+MI: GC1F92W - Well Rounded "Mitten" Cacher - MI Fizzy Challenge
+MN: GC17P8P - Challenge: Blackout
+MO: GC1T965 - Well Rounded MO Cacher (Fizzy Challenge)
+MS: GC24DA6 - Mississippi Well Rounded Cacher (Fizzy Challenge)
+NC: GC15NNY - Well Rounded Cacher Challenge (Fizzy Challenge)
+NY: GC1TMTQ - NY Fizzy Challenge For Well Rounded Cachers
+OH: GC1AHN3 - OhiO's Well Rounded Fizzy Challenge
+OR: GC18RVM - Oregon's "Well Rounded Cacher" aka Oregon's Fizzy
+PA: GC1A6YE - Area 81 - Code Name "Fizzy Challenge"
+SC: GC18YY0 - Well-Rounded SC Cacher (Fizzy Challenge)
+SD: GC1X61M - South Dakota's Well Rounded Cacher (Fizzy)
+TN: GC18KF1 - Well-Rounded Tennessee Cacher (Fizzy Challenge)
+TX: GC19XMT - Been There Found That - Texas 81 Challenge
+UT: GC161AX - The Utah Well Rounded Cacher
+VA: GC18AWG - Well Rounded Cacher Challenge
+WA: GC13P6B - Well Rounded Washington Cacher (Fizzy Challenge)
+WI: GC1GVN6 - The "Cheesy" Well Rounded Cacher
+WV: GC1XN92 - WV's "Well Rounded" Fizzy Challenge
+WY: GC1CM2T - Wyoming's Well Rounded Cacher
+NS: GC2BM13 - The Well Rounded Cacher - Nova Scotia
+ON: GC11PZW - Tequilla: 81 Proof
+QC: GC1Z47V - Le Fizzy Challenge du Québec
+<enddata>
+
+############################################################
+# Challenge cache attributes (all characters before position
+# 15 on each line are ignored and are only as a label). These
+# must match up with the list above.
+#
+# ST: State = AZ|AL|CA|CO|FL|...WA|WY|ON
+# PD: Placed Date = YYYY-MM-DD
+# DT: Difficulty/Terrain
+# TY: Cache Type = ABCEFGHILMORTUVWXYZ
+# SZ: Container Size = LRSMNOVU
+# PY: Placed Year = Y1-Y2 (omit Y2 for current year)
+# PM: Placed Months = Y1M1-Y2M2 (omit Y2M2 for current month)
+# FM: Found Month
+############################################################
+<Data> VarName=$attributes
+**: Default - DT,TY=TMUVBRWECG(ZXILAYO),SZ=MSRLOVNU,PY=00-,PM=0005-,FM
+AL: GC1K275 - DT,TY=TMUVBRWEC(ZXILA),SZ=MSRLN,PY=00-
+AR: GC3QTAW - PD<=2012-07-20,DT,TY=TMUVRBEC(WIZX),SZ=MSRLN,PY=00-12
+AZ: GC1D712 - PD<2008-06-27,ST=AZ,DT,TY=TMUVBREC(WI)
+CA: GC11E8N - PD<2007-04-06,DT,TY=TMUVBRECW
+CA: GC1GBC1 - PM=0005-
+CO: GC1555F - DT,TY=TMUVBRECW
+FL: GC19RG3 - PD<2008-02-29,DT,TY=TMUVBRWECG(ZXILA)
+GA: GCVAPY  - PD<2008-05-01,DT,TY=TMUVBRECW,SZ=MSRLN,PY=00-08
+IA: GC1ZFYN - PD<2010-01-01,DT,TY=TMUVBRWEC(ZXILA),SZ=MSRLN,PY=00-
+ID: GC1632Q - PD<2007-12-08,ST=ID,DT,TY=TMUVBRECW
+IL: GC100KG - PD<2010-07-01,DT,TY=TMUVBRECW,SZ=MSRLOVN,PY=00-06,FM
+IN: GC12QFK - PD<2012-05-07,DT,TY=TMUVBRECW
+KY: GC15DY2 - PD<2007-11-02,DT,TY=TMUVBRECW
+MA: GC15E8N - PD<2010-08-26,DT,TY=TMUVBRECW
+MD: GC16QQZ - PD<2009-07-04,DT,TY=TMUVBRECW
+MI: GC1F92W - DT,TY=TMUVBRECW
+MN: GC17P8P - DT
+MO: GC1T965 - DT,TY=TMUVABRLWECIZX(AZLXI),SZ=MSRLN,PY=00-
+MS: GC24DA6 - DT,TY=TMUBIEZCRVWF(HAXL),SZ=LRSMN,PY=00-
+NC: GC15NNY - PD<2007-09-06,DT,TY=TMUVBRECW
+NY: GC1TMTQ - PD<2009-06-14,DT,TY=TMUVBRECW(ZXILA)
+OH: GC1AHN3 - DT,TY=TMUVBRECW
+OR: GC18RVM - DT,TY=TMUVBRECW
+PA: GC1A6YE - PD<2008-03-26,DT,TY=TMUVBRECW(ZXILA)
+SC: GC18YY0 - PD<2008-05-31,DT,TY=TMUVBRECWI
+SD: GC1X61M - PD<2010-08-21,DT,TY=TMUVBRECW(ZXILA)
+TN: GC18KF1 - PD<2010-11-15,DT,TY=TMUVBRECW
+TX: GC19XMT - PD<2008-03-04,DT,TY=TMUVBRECW
+UT: GC161AX - PD<2009-10-25,DT,TY=TMUVBRECW
+VA: GC18AWG - PD<2008-01-01,DT,TY=TMUVBRECW(ZXL)
+WA: GC13P6B - PD<=2010-05-03,ST=WA,DT,TY=TMUVBRECWIA
+WI: GC1GVN6 - PD<2008-10-04,DT,TY=TMUVBRECW
+WV: GC1XN92 - PD<2009-10-03,DT,TY=TMUCBRE(ZXILAVW)
+WY: GC1CM2T - DT,TY=TMUVBRECW
+NS: GC2BM13 - PD<2010-08-01,DT,TY=TMUVBRECW
+ON: GC11PZW - PD<2008-04-08,DT,TY=TMUVBREC
+QC: GC1Z47V - PD<2011-09-25,DT,TY=TMUVBRECW
+<enddata>
+
+<Data> VarName=$filtermacro
+$sqlfile = $_AppData + "\Macros\FizzyBrowser.db3"
+$table = Extract($_MacroParms,"~",1)
+$where = Extract($_MacroParms,"~",2)
+BEGINCASE
+CASE $table = "CF"  # SQL where clause for cachesF table
+  $_sql = "SELECT DISTINCT Code FROM cachesF WHERE " + $where
+CASE $table = "CU"  # SQL where clause for cachesU table
+  $_sql = "SELECT DISTINCT Code FROM cachesU WHERE " + $where
+OTHERWISE
+  PAUSE Msg="Unrecognized parameter: $table"
+ENDCASE
+$status = SQLite("open",$sqlfile)
+$status = SQLite("sql",$_sql)
+$status = Replace($_NewLine,";",$status,true)
+MACROFLAG Type=clear range=all
+$ret = CodeMatch($status,";","M")
+MFILTER Expression=$d_MacroFlag
+<enddata>
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Thu 05-Aug-2010 16:12:00
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 560
+  Width = 500
+
+Name = gb_Cacher
+  Type = Groupbox
+  Caption = Cacher
+  Height = 80
+  Left = 25
+  Top = 120
+  Width = 440
+  Taborder = 1
+
+Name = gb_DatabaseF
+  Type = Groupbox
+  Caption = Found Database
+  Height = 110
+  Left = 25
+  Top = 220
+  Width = 440
+  Taborder = 2
+
+Name = gb_DatabaseU
+  Type = Groupbox
+  Caption = Unfound Database
+  Height = 110
+  Left = 25
+  Top = 350
+  Width = 440
+  Taborder = 3
+
+Name = la_Title
+  Type = Label
+  Color = 16711680
+  Font = Times New Roman
+  Height = 31
+  Left = 163
+  Size = 20
+  Style = bold
+  Top = 10
+  Width = 165
+  Caption = Fizzy Browser
+
+Name = co_Challenge
+  Type = Combobox
+  Height = 21
+  Left = 45
+  Top = 80
+  Width = 400
+  Taborder = 0
+
+Name = ed_Cacher
+  Type = Edit
+  Container = gb_Cacher
+  Height = 21
+  Left = 20
+  Top = 20
+  Width = 400
+  Taborder = 0
+
+Name = rb_Name
+  Type = Radiobutton
+  Container = gb_Cacher
+  Height = 17
+  Left = 130
+  Top = 55
+  Width = 15
+  Taborder = 1
+
+Name = rb_Identifier
+  Type = Radiobutton
+  Container = gb_Cacher
+  Height = 17
+  Left = 230
+  Top = 55
+  Width = 15
+  Taborder = 2
+
+Name = la_Name
+  Type = Label
+  Container = gb_Cacher
+  Height = 13
+  Left = 150
+  Top = 55
+  Width = 28
+  Caption = Name
+
+Name = la_Identifier
+  Type = Label
+  Container = gb_Cacher
+  Height = 13
+  Left = 250
+  Top = 55
+  Width = 40
+  Caption = Identifier
+
+Name = co_DatabaseF
+  Type = Combobox
+  Container = gb_DatabaseF
+  Height = 21
+  Left = 20
+  Top = 20
+  Width = 400
+  Taborder = 0
+
+Name = cb_ArchivedF
+  Type = Checkbox
+  Container = gb_DatabaseF
+  Height = 17
+  Left = 175
+  Top = 55
+  Width = 15
+  Taborder = 1
+
+Name = cb_DisabledF
+  Type = Checkbox
+  Container = gb_DatabaseF
+  Height = 17
+  Left = 325
+  Top = 55
+  Width = 15
+  Taborder = 2
+
+Name = la_ArchivedF
+  Type = Label
+  Container = gb_DatabaseF
+  Height = 13
+  Left = 75
+  Top = 55
+  Width = 80
+  Caption = Include Archived
+
+Name = la_DisabledF
+  Type = Label
+  Container = gb_DatabaseF
+  Height = 13
+  Left = 225
+  Top = 55
+  Width = 79
+  Caption = Include Disabled
+
+Name = co_DatabaseU
+  Type = Combobox
+  Container = gb_DatabaseU
+  Height = 21
+  Left = 20
+  Top = 20
+  Width = 400
+  Taborder = 0
+
+Name = cb_ArchivedU
+  Type = Checkbox
+  Container = gb_DatabaseU
+  Height = 17
+  Left = 175
+  Top = 55
+  Width = 15
+  Taborder = 1
+
+Name = cb_DisabledU
+  Type = Checkbox
+  Container = gb_DatabaseU
+  Height = 17
+  Left = 325
+  Top = 55
+  Width = 15
+  Taborder = 2
+
+Name = la_ArchivedU
+  Type = Label
+  Container = gb_DatabaseU
+  Height = 13
+  Left = 75
+  Top = 55
+  Width = 80
+  Caption = Include Archived
+
+Name = la_DisabledU
+  Type = Label
+  Container = gb_DatabaseU
+  Height = 13
+  Left = 225
+  Top = 55
+  Width = 79
+  Caption = Include Disabled
+
+Name = bu_OK
+  Type = Button
+  Height = 25
+  Left = 125
+  Top = 480
+  Width = 75
+  Taborder = 5
+  Caption = OK
+
+Name = bu_Cancel
+  Type = Button
+  Height = 25
+  Left = 275
+  Top = 480
+  Width = 75
+  Taborder = 4
+  Caption = Cancel
+
+Name = cb_FlagCandidatesU
+  Type = Checkbox
+  Container = gb_DatabaseU
+  Height = 17
+  Left = 175
+  Top = 80
+  Width = 15
+  Taborder = 3
+
+Name = la_FlagCandidatesU
+  Type = Label
+  Container = gb_DatabaseU
+  Height = 13
+  Left = 75
+  Top = 80
+  Width = 76
+  Caption = Flag Candidates
+
+Name = cb_ClearFlagsU
+  Type = Checkbox
+  Container = gb_DatabaseU
+  Height = 17
+  Left = 325
+  Top = 80
+  Width = 15
+  Taborder = 4
+
+Name = la_ClearFlagsU
+  Type = Label
+  Container = gb_DatabaseU
+  Height = 13
+  Left = 225
+  Top = 80
+  Width = 74
+  Caption = Clear Flags First
+
+Name = la_FlagCandidatesF
+  Type = Label
+  Container = gb_DatabaseF
+  Height = 13
+  Left = 75
+  Top = 80
+  Width = 76
+  Caption = Flag Candidates
+
+Name = la_ClearFlagsF
+  Type = Label
+  Container = gb_DatabaseF
+  Height = 13
+  Left = 225
+  Top = 80
+  Width = 74
+  Caption = Clear Flags First
+
+Name = cb_FlagCandidatesF
+  Type = Checkbox
+  Container = gb_DatabaseF
+  Height = 17
+  Left = 175
+  Top = 80
+  Width = 15
+  Taborder = 3
+
+Name = cb_ClearFlagsF
+  Type = Checkbox
+  Container = gb_DatabaseF
+  Height = 17
+  Left = 325
+  Top = 80
+  Width = 15
+  Taborder = 4
+
+Name = la_Author
+  Type = Label
+  Height = 13
+  Left = 205
+  Top = 45
+  Width = 81
+  Caption = by Cache U Nuts
+
+<enddata>
+
+
+
+
+

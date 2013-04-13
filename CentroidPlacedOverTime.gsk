@@ -1,0 +1,323 @@
+#*******************************************
+# MacVersion = 1.00
+# MacDescription = CentroidPlacedOverTime
+# MacAuthor = Difool
+# MacFileName = CentroidPlacedOverTime.gsk
+# MacUrl =
+#*******************************************
+#
+# Macro to show how the caches placed centroid has changed over time
+#
+# Thanks to Image Maker for the original CentroidTrack.gsk macro which this macro is based
+#
+# Thanks to lignumaqua for the original centroid.gsk macro which I based the calculations on
+#
+# The macro makes use of the Google Maps V3 Polyline and Marker functionality (for anyone who wants to know how this works)
+#
+#*******************************************
+#
+# Change log:
+#
+#*******************************************
+
+VERCHECK Version=7.2.0.126
+
+$pi = 3.14159265359
+# Parameters for WGS84 ellipsoid
+$axis = 6378137
+$ecc = 0.00669438038
+
+$x = 0
+$y = 0
+$z = 0
+
+$LastLat = "0.0"
+$LastLong = "0.0"
+
+$totalCount = 0
+$points = ""
+$markers = ""
+$nextDate = "0000-00-00"
+$freqInput = ""
+$MarkerInterval = 200
+
+# Generate list of caches placed dates
+
+$result = SQLite("sql","SELECT PlacedDate AS Placed FROM caches WHERE CacheType <> 'L' AND $_Where GROUP BY PlacedDate")
+
+IF $result=""
+   CANCEL Msg="There do not appear to be any caches in the given database. Please check."
+ENDIF
+
+$dateList = LIST("hiddenDates","create","$_newline")
+$dateList = LIST("hiddenDates","replace",$result)
+$dateCount = VAL(LIST("hiddenDates","count",""))
+
+$dateListCounter = 1
+
+$latLongList = LIST("latLong","create","$_newline")
+
+WHILE $dateListCounter <= $dateCount
+
+     
+   # Generate second list containing pairs of "Lat; Long" within given time frame
+
+   $dLCStr = NumToStr($dateListCounter)
+   $lastDate = $nextDate
+   $nextDate = LIST( "hiddenDates","item",$dLCStr )
+   $result = SQLite("sql","SELECT Latitude,Longitude FROM caches WHERE CacheType <> 'L' AND PlacedDate>'$lastDate' AND PlacedDate<='$nextDate' AND $_Where")
+
+   $latLongList = LIST("latLong","replace",$result)
+   $latLongCount = VAL(LIST("latLong","count",""))
+
+   $msg ="Day $dateListCounter/$dateCount: $nextDate: $latLongCount caches"
+   SHOWSTATUS Msg=$msg
+
+   $freqInput = $freqInput + NUMTOSTR($latLongCount) + ";"
+
+   GOSUB name=calculateCentroid
+
+   $LastLat = $Latitude
+   $LastLong = $Longitude
+
+   IF $MarkerInterval > 0 AND $dateListCounter > 1
+   
+      $MarkerIntervalCounter = NUMTOSTR(INT($dateListCounter/$MarkerInterval))
+      IF NUMTOSTR(FRAC($dateListCounter/$MarkerInterval)*$MarkerInterval) = "1" 
+         $nextMarker = REPLACE("#MARKER_COORDS#","$Latitude,$Longitude",$intervalMarkerText)
+         $nextMarker = REPLACE("#COUNTER#",$MarkerIntervalCounter ,$nextMarker)
+         $nextMarker = REPLACE("#MARKER_TITLE#","$nextDate",$nextMarker)
+         $markers = $markers + $nextMarker
+
+      ENDIF
+
+   ENDIF
+	  
+   IF $dateListCounter = 1
+      $point1 = "$Latitude,$Longitude"
+
+      $nextMarker = REPLACE("#MARKER_COORDS#","$Latitude,$Longitude",$startStopMarkerText)
+#       $nextMarker = REPLACE("#COUNTER#",$MarkerIntervalCounter ,$nextMarker)
+      $nextMarker = REGEXREPLACE("#STARTSTOP#",$nextMarker,"start")
+      $nextMarker = REPLACE("#MARKER_TITLE#","$nextDate",$nextMarker)
+      $markers = $markers + $nextMarker
+
+   ENDIF
+
+   IF $dateListCounter = $dateCount
+#       $point1 = "$Latitude,$Longitude"
+
+      $nextMarker = REPLACE("#MARKER_COORDS#","$Latitude,$Longitude",$startStopMarkerText)
+#       $nextMarker = REPLACE("#COUNTER#",$MarkerIntervalCounter ,$nextMarker)
+      $nextMarker = REGEXREPLACE("#STARTSTOP#",$nextMarker,"end")
+      $nextMarker = REPLACE("#MARKER_TITLE#",$nextDate,$nextMarker)
+      $markers = $markers + $nextMarker
+
+   ENDIF
+
+   $points = $points + "         new google.maps.LatLng($Latitude,$Longitude),"
+
+   $dateListCounter = $dateListCounter + 1
+
+ENDWHILE
+
+
+$html = REPLACE("#INIT_COORDS#",$point1,$html)
+
+$html = REPLACE("#COORD_LIST#",$points,$html)
+
+$html = REPLACE("#MARKERS#",$markers,$html)
+
+
+$htmlfile = $_install + "\macros\CentroidPlacedOverTime.html"
+$freqfile = $_install + "\macros\CentroidPlacedOverTimeF.html"
+
+$tmpS = PutFile($htmlfile,$html)
+IF Left($tmpS ,4) <> "*OK*"
+	CANCEL Msg="Sorry! For some reason I couldn't generate the outputfile"
+ENDIF
+
+WEB url="$htmlfile"
+
+$tmpS = PutFile($freqfile,$freqInput)
+
+
+
+##############################################################################################
+
+BEGINSUB name=calculateCentroid
+
+   $ThisRecord = 1
+   $count = val(list("latLong","count",""))
+   $totalCount = $totalCount + $count
+
+   WHILE $ThisRecord <= $count
+   
+      $tmpS = List("latLong","item","$ThisRecord")
+      $Latitude = Extract($tmpS,";",1)
+      $Longitude = Extract($tmpS,";",2)
+     
+      # Convert to Decimal degrees then to Radians
+      $LatitudeN = Val($Latitude) * $pi / 180
+      $LongitudeN = Val($Longitude) * $pi / 180
+     
+      # Calculate 3D cartesian coordinates and average them
+      $v = $axis / (Sqrt(1-($ecc * Sin($LatitudeN) * Sin($LatitudeN))))
+      $x = $x + $v * (Cos($LatitudeN) * Sin($LongitudeN))
+      $y = $y + $v * ( -1 * Cos($LatitudeN) * Cos($LongitudeN))
+      $z = $z + $v * (1 - $ecc) * Sin($LatitudeN)   
+     
+      $ThisRecord = $ThisRecord + 1
+
+   ENDWHILE
+
+   $AvgX = $x/$totalCount
+   $AvgY = $y/$totalCount
+   $AvgZ = $z/$totalCount
+   
+   # Project the average point back up to the surface of the WGS84 Ellipsoid
+   # Note this requires iteration
+      
+   # Longitude = ArcTan2(x, -y)
+   $AvgY = -$AvgY
+   
+   $longitudeN = ArcTan2($AvgX,$AvgY)
+      
+   # Latitude = ArcTan2(z, sqrt(x*x + y*y))
+   
+   $AvgY = Sqrt(Sqr($AvgX) + Sqr($AvgY))
+      
+   $latitudeN = ArcTan2($AvgZ,($AvgY * (1 - $ecc)))
+   $v = $axis / (Sqrt(1-($ecc * Sin($LatitudeN) * Sin($LatitudeN))))
+   $errvalue = 1
+   $tmpN = 0
+   
+   $tmpM = 0
+
+   WHILE $errvalue > 0.000001 AND $tmpM <5
+      $tmpM = $tmpM + 1
+      $AvgX = ($ecc * $v * Sin($LatitudeN))
+      $tmpN = ArcTan2($AvgZ + $AvgX, $AvgY)
+      $errvalue = Abs($tmpN - $LatitudeN)
+      $LatitudeN = $tmpN
+   ENDWHILE
+  
+   # Convert from radians to degrees and format as decimal minutes
+   
+   $latitudeN = 180 * $latitudeN / $pi
+   $longitudeN = 180 * $longitudeN / $pi
+   
+   $latitude = NumToStr($latitudeN)
+   $longitude = NumToStr($longitudeN)
+   
+   # Deal with commas as decimal separator
+   $latitude = Replace(",",".",$latitude,TRUE)
+   $longitude = Replace(",",".",$longitude,TRUE)
+   
+   $last_lat = $latitude
+   $last_lon = $longitude
+      
+   $tmpS = $Latitude + " " + $Longitude
+   $tmpS = GCalc($tmpS,"FormatDegrees")
+
+# Accurate enough to only take 3 decimal places => More coordinates can be fit into the max HTML address
+   $Latitude = Extract(Extract($tmpS,";",1),".",1) + "." + Left(Extract(Extract($tmpS,";",1),".",2),3)
+   $Longitude = Extract(Extract($tmpS,";",2),".",1) + "." + Left(Extract(Extract($tmpS,";",2),".",2),3)
+  
+ENDSUB
+
+
+##############################################################################################
+
+<data>  VarName=$html
+
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8"/>
+
+<script type="text/javascript" src="http://maps.google.com/maps/api/js?sensor=false"></script>
+
+<script type="text/javascript">
+   var map;
+   var marker;
+   function initialize()
+   {
+      var myLatlng = new google.maps.LatLng(#INIT_COORDS#);
+
+      var myOptions =
+      {
+         zoom: 10,
+         center: myLatlng,
+         mapTypeId: google.maps.MapTypeId.ROADMAP
+      }
+
+      map = new google.maps.Map(document.getElementById("map_canvas"), myOptions);
+
+      var Polyline_Coordinates = [
+	#COORD_LIST#
+      ];
+      var Polyline_Path = new google.maps.Polyline({
+         path: Polyline_Coordinates,
+         strokeColor: "#FF0000",
+         strokeOpacity: 1.0,
+         strokeWeight: 3
+      });
+      Polyline_Path.setMap(map);
+
+      #MARKERS#
+
+
+   }
+</script>
+
+</head>
+<title>Caches placed centroid over time</title>
+<body bgcolor="#FFFFFF" onload="initialize()">
+
+   <table align=center border=1 width=750 height=500>
+   <tr>
+   <td valign=top>
+   <noscript>
+   <b>JavaScript must be enabled in order for you to use Google Maps.</b> <br>
+   However, it seems JavaScript is either disabled or not supported by your browser. <br>
+   To view Google Maps, enable JavaScript by changing your browser options, and then try again.
+   </noscript>
+
+   <div id="map_canvas" style="width:750; height:750"></div>
+   </td>
+   </tr>
+   </table>
+
+</body>
+</html>
+
+<enddata>
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+<data>  VarName=$intervalMarkerText
+
+      marker = new google.maps.Marker({  
+         position: new google.maps.LatLng(#MARKER_COORDS#),  
+         map: map,  
+//          clickable: false,
+         icon: 'http://chart.googleapis.com/chart?chst=d_map_pin_letter&chld=#COUNTER#|6B94FF|000000',
+         title:"#MARKER_TITLE#"
+      });
+
+<enddata>
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+<data>  VarName=$startStopMarkerText
+
+      marker = new google.maps.Marker({  
+         position: new google.maps.LatLng(#MARKER_COORDS#),  
+         map: map,  
+//          clickable: false,
+         icon: 'http://www.google.com/mapfiles/dd-#STARTSTOP#.png',
+         title:"#MARKER_TITLE#"
+      });
+
+<enddata>
+

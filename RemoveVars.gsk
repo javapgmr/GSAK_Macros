@@ -1,0 +1,114 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Remove conflicting variable names from two macros
+# MacAuthor = clyde
+# MacFileName = RemoveVars.gsk
+# MacUrl =
+#*******************************************
+
+# declare variables
+GoSub Name=Declare
+
+# Get macro file names and list option passed as parmaeters
+
+$rmv_file1 = extract($_MacroParms,"~",1)
+$rmv_file2 = extract($_MacroParms,"~",2)
+$rmv_list = extract($_MacroParms,"~",3)
+
+
+# set full path to macro folder if not fully qualified
+
+If at(":",$rmv_file1) = 0
+  $rmv_file1 = "$_Install\macros\$rmv_file1"
+EndIf
+If at(":",$rmv_file2) = 0
+  $rmv_file2 = "$_Install\macros\$rmv_file2"
+EndIf
+
+# Error out if either of the macro files do not exist
+If not(FileExists($rmv_file1))
+  cancel msg="Fatal error, macro file does not exist: $rmv_file1"
+Endif
+If not(FileExists($rmv_file2))
+  cancel msg="Fatal error, macro file does not exist: $rmv_file2"
+Endif
+
+# create required SQL files 
+$rmv_status = sqlite("open",":memory:")
+$rmv_status = sqlite("sql",$rmv_sqlcreate)
+
+# Get variables in first macro 
+$rmv_data = GetFile($rmv_file1)
+GoSub Name=GetVars
+$rmv_status = sqlite("import",$rmv_var,"table=macro1")
+
+# Get variables in second macro 
+$rmv_data = GetFile($rmv_file2)
+GoSub Name=GetVars
+$rmv_status = sqlite("import",$rmv_var,"table=macro2")
+
+# Get vars that are common to both
+$rmv_data = sqlite("sql",$rmv_sqldupes)
+$rmv_data = "Variables" + $_NewLine + $rmv_data
+
+# If list option, then just list
+If upper($rmv_list) = "LIST"
+  $status = SqlToHtml($rmv_data,"duplicate variable list<br>$rmv_file1<br>$rmv_file2<br>","Y")
+  Return
+Endif
+
+# Remove duplicate vars
+$rmv_count = regexcount("\r\n",$rmv_data) + 1
+$rmv_x = 2 # start after headings
+While $rmv_x <= $rmv_count
+  $rmv_result = RemoveVar(alltrim(extract($rmv_data,$_Newline,$rmv_x)))
+  $rmv_x = $rmv_x + 1
+EndWhile
+
+
+Beginsub Name=Declare
+  Declare var=$rmv_file1 type=string
+  Declare var=$rmv_file2 type=string
+  Declare var=$rmv_list type=string
+  Declare var=$rmv_status type=string
+  Declare var=$rmv_x type=numeric
+  Declare var=$rmv_count type=numeric
+  Declare var=$rmv_result type=boolean
+  Declare var=$rmv_data type=string
+  Declare var=$rmv_var type=string
+  
+EndSub
+
+BeginSub Name=GetVars
+  $rmv_var = RegExData("(?m)^\s*?\$.*?=",$rmv_data,0)
+  $rmv_var = replace(chr(09),"",$rmv_var)
+  $rmv_var = replace("=","",$rmv_var) 
+  $rmv_var = replace($_NewLine,"",$rmv_var)
+  $rmv_var = replace("$",$_Newline,$rmv_var)
+  $rmv_var = alltrim($rmv_var)
+EndSub
+
+
+
+<data> varname=$rmv_sqlcreate
+  drop table if exists macro1;
+  drop table if exists macro2;
+  create table macro1 (code1 collate nocase);
+  create table macro2 (code2 collate nocase);
+<Enddata>
+
+<data> varname=$rmv_sqldupes
+  drop index if exists macro2i;
+  create index macro2i on macro2 (code2);
+  select distinct '$' || code1 from macro1,macro2 where code1 = code2 and not(code1 like 'd\_%' escape '\' or code1 like '\_%' escape '\') ; 
+<Enddata>
+
+
+
+
+
+
+
+
+
+

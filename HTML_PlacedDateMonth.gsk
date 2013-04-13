@@ -1,0 +1,262 @@
+#***************************************
+# HTMLName=Finds By Month
+# SplitScreen=Yes
+# Export=No
+# Offline=No
+# Condensed=No
+#***************************************
+
+#***************************************
+#   HTML Finds by Month TABLE Split Screen
+#   v1.0 12/20/08
+#   Lignumaqua
+#***************************************
+
+# MacVersion = 1.0
+# MacDescription = Show Finds By Placed Date by Month
+# MacAuthor = Lignumaqua
+# MacFileName = HTML_PlacedDateMonth.gsk
+
+VERCHECK Version=7.2.3.26 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+
+$SQLfile = ":memory:"
+
+$status = Sqlite("open",$sqlfile)
+
+#Cache Types
+$Status = DbToSQLite("caches","PlacedDate, code, FoundCount",$sqlfile)
+
+# Initialise Variables
+$month = 1
+$year = 2000
+$thisyear = Val(Left(DateToString($_Today),4))
+$flagF = false                             # true if any found cells exist
+$maxcellF = 0                              # maximum value of found cell
+$maxcellU = 0                              # maximum value of unfound cell
+$numcombF = 0                              # number of found Month/Day Combinations
+$numcombU = 0                              # number of unfound Month/Day Combinations
+$monthday = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec,;"
+$maxtablewidth = 700
+$CR = $_NewLine
+$out = ""
+
+$stTab2cHead   = "background: #C8C8DD;"                  # table headings
+$st2c1         = "background: #CCCCD4;"                  # table value headings
+$stmonthday    = "background: #BABADD;"                  # blank cell in chart
+$stmonthdayF   = "background: #00B000; color: #FFFFFF;"  # found cell in chart
+$stmonthdayFM  = "background: #00FF00; color: #000000;"  # found max cell in chart
+$stmonthdayU   = "background: #B00000; color: #FFFFFF;"  # unfound cell in chart
+$stmonthdayUM  = "background: #FF0000; color: #000000;"  # unfound max cell in chart
+$stskipday     = "background: #C0C080;"  								 # skip day cell in chart
+
+	WHILE $year <= $thisyear
+		SHOWSTATUS msg="Chart of year/month... $year" Width=350
+		WHILE $month <= 12
+
+			$_sql = "Select count(code) from caches WHERE CAST(strftime('%m',PlacedDate) AS INTEGER) =$month and CAST(strftime('%Y',PlacedDate) AS INTEGER) =$year and FoundCount > 0"
+  		$num = Val(Sqlite("sql",$_sql))
+
+  		IF $num = 0  # no found caches for this combination, see if there are any unfound ones
+      	$_sql = "Select count(code) from caches WHERE CAST(strftime('%m',PlacedDate) AS INTEGER) =$month and CAST(strftime('%Y',PlacedDate) AS INTEGER) =$year and FoundCount = 0"
+    		$num = -Val(Sqlite("sql",$_sql))  # use negative numbers for unfound
+  		ENDIF
+			$monthday = $monthday + "$num,"
+			BEGINCASE
+			CASE $num > 0  # found cell
+			  $flagF = true
+				$numcombF = $numcombF + 1
+  			IF $num > $maxcellF
+  				$maxcellF = $num
+  			ENDIF
+			CASE $num < 0  # unfound cell
+				$numcombU = $numcombU + 1
+  			IF -$num > $maxcellU
+  				$maxcellU = -$num
+  			ENDIF
+			ENDCASE			
+			$month = $month + 1
+		ENDWHILE
+		$monthday = $monthday + ";"
+		$year = $year + 1
+		$month  = 1
+	ENDWHILE
+
+	$out = $out + "<table width='$maxtablewidth' style='text-align: left;'>" + $CR
+
+	$cellwidth = Int($maxtablewidth/12.5)
+	$headerwidth = $maxtablewidth - (11 * $cellwidth)
+
+	# Go through the data, one record at a time
+	$indexd = 0
+	$indext = 0
+	$month = 1
+	$year = 2000
+	$yearcount = $thisyear - $year + 1
+	$yearcount2 = $thisyear - $year + 2
+
+	# Title row
+	$out = $out + "<tr><td style='$stTab2cHead'></td><td style='$stTab2cHead' colspan='13' align='center'><B>Month</B></td></tr>" + $CR
+	$out = $out + "<tr><td style='$stTab2cHead' rowspan='$yearcount2' width='$headerwidth' align='center'><B>Year</B></td>" + $CR
+
+	$out = $out + "<td style='$st2c1'></td>"
+	# Get one data line
+	$data = Extract($monthday, ";" , $indexd)
+	WHILE $indext < 12
+		$indext = $indext + 1
+		# Get one result
+		$text = Extract($data, ",", $indext)
+		$out = $out + "<td style='$st2c1' width='$cellwidth' align='center'><B>$text</B></td>" + $CR
+	ENDWHILE
+	# Row Total
+	$out = $out + "<td width='$cellwidth'></td>" + $CR
+	$out = $out + "</tr>" + $CR
+
+	$indext = 0
+	$indexd = 1
+
+	WHILE $indexd <= $yearcount
+		$indexd = $indexd + 1
+		# Get one data line
+		$data = Extract($monthday, ";" , $indexd)
+		$tindexd = replace(",",".",numtoStr($year),true)
+		$out = $out + "<tr><td style='$st2c1' width='$cellwidth'><b> $tindexd</b></td>" + $CR
+		$tmpN = 0
+		WHILE $indext < 12
+			$indext = $indext + 1
+			# Get one result
+			$text = Extract($data, ",", $indext)
+			$num = Val($text)
+			IF ($indexd = 2 AND $indext <5)
+				$Skipflag = TRUE
+			ELSE
+				$Skipflag = FALSE
+			ENDIF
+			BEGINCASE
+			CASE $flagF AND $num > 0
+			  $tmpN = $tmpN + $num
+			CASE Not($flagF) AND $num < 0
+			  $tmpN = $tmpN - $num
+			ENDCASE
+			GOSUB Name=OutputChartLine
+			$month = $month + 1
+		ENDWHILE
+		# Output Row Total
+		$num = $tmpN
+		$text = NumToStr($num)
+		$cellstyle = $stTab2cHead
+		$out = $out + "<td style='$cellstyle' width='$cellwidth' align='center'><i>$text</i></td>" + $CR
+		$indext = 0
+		$out = $out + "</tr>" + $CR
+		$year = $year + 1
+		$month  = 1
+	ENDWHILE
+
+	$out = $out + "<tr><td></td><td></td>" + $CR
+	$rating  = 1
+	# Column Totals
+	WHILE $rating <= 12
+  	IF $flagF
+		  $_sql = "Select count(strftime('%m',PlacedDate)) from caches WHERE CAST(strftime('%m',PlacedDate) AS INTEGER) =$rating and FoundCount > '0'"
+    ELSE
+		  $_sql = "Select count(strftime('%m',PlacedDate)) from caches WHERE CAST(strftime('%m',PlacedDate) AS INTEGER) =$rating and FoundCount = '0'"
+  	ENDIF
+  	$num = Val(Sqlite("sql",$_sql))
+  	$text = NumToStr($num)
+		$cellstyle = $stTab2cHead
+		$out = $out + "<td style='$cellstyle' width='$cellwidth' align='center'><i>$text</i></td>" + $CR
+		$rating = $rating + 1
+	ENDWHILE
+
+	$out = $out + "</table>" + $CR + "<br />"
+
+$possible = 12*($yearcount-1) + 8
+
+	# Placed Month found statistics
+	$out = $out + "<i>The $_CurrentDatabase database contains: "
+	IF $flagF
+	  $out = $out + "<b>$numcombF</b>" + " found cache Placed Months out of the" + " <b>$possible</b> possible<br />" + "</i>" + $CR  
+  ELSE
+	  $out = $out + "<b>$numcombU</b>" + " unfound cache Placed Months out of the" + " <b>$possible</b> possible<br />" + "</i>" + $CR
+	ENDIF
+
+	#Generate HTML to view in split screen
+	$_HTML = $out
+
+
+BEGINSUB Name=OutputChartLine
+  BEGINCASE
+  CASE $Skipflag
+  	$cellstyle = $stskipday
+  	$text = " "
+	CASE $num > 0  # number of found caches
+	  IF $num = $maxcellF
+		  $cellstyle = $stmonthdayFM
+	  ELSE
+		  $cellstyle = $stmonthdayF
+		ENDIF
+	CASE $num < 0  # number of unfound caches
+	  IF -$num = $maxcellU
+		  $cellstyle = $stmonthdayUM
+	  ELSE
+		  $cellstyle = $stmonthdayU
+		ENDIF
+		$text = Replace("-","",$text,true)
+	OTHERWISE      # no caches in database
+		$cellstyle = $stmonthday
+		$text = " "
+	ENDCASE
+	IF $indext = 1
+		$out = $out + "    <td style='$cellstyle' width='$cellwidth' align='center'>$text</td>" + $CR
+	ELSE
+		$out = $out + "    <td style='$cellstyle' align='center'>$text</td>" + $CR
+	ENDIF
+ENDSUB
+
+
+#*******************************************************
+#   Variable declarations for
+#   C:\Program Files\GSAK\Macros\HTML_PlacedDate.gsk
+#
+#   Generated 12/7/2008 10:07:25 PM on GSAKVariables.gsk Rev V0.20 B15
+#
+#*******************************************************
+
+
+OPTION Explicit=Yes
+
+Declare Var=$_HTML Type=String
+Declare Var=$cellstyle Type=String
+Declare Var=$cellwidth Type=Numeric
+Declare Var=$CR Type=String
+Declare Var=$data Type=String
+Declare Var=$year Type=Numeric
+Declare Var=$yearcount Type=Numeric
+Declare Var=$yearcount2 Type=Numeric
+Declare Var=$flagF Type=Boolean
+Declare Var=$headerwidth Type=Numeric
+Declare Var=$indexd Type=Numeric
+Declare Var=$indext Type=Numeric
+Declare Var=$maxcellF Type=Numeric
+Declare Var=$maxcellU Type=Numeric
+Declare Var=$maxtablewidth Type=Numeric
+Declare Var=$month Type=Numeric
+Declare Var=$monthday Type=String
+Declare Var=$num Type=Numeric
+Declare Var=$numcombF Type=Numeric
+Declare Var=$numcombU Type=Numeric
+DECLARE Var=$out Type=String
+Declare Var=$rating Type=Numeric
+Declare Var=$Skipflag Type=Boolean
+Declare Var=$SQLfile Type=String
+Declare Var=$st2c1 Type=String
+DECLARE Var=$status Type=String
+Declare Var=$stmonthday Type=String
+Declare Var=$stmonthdayF Type=String
+Declare Var=$stmonthdayFM Type=String
+Declare Var=$stmonthdayU Type=String
+Declare Var=$stmonthdayUM Type=String
+Declare Var=$stskipday Type=String
+Declare Var=$stTab2cHead Type=String
+Declare Var=$text Type=String
+Declare Var=$tindexd Type=String
+Declare Var=$tmpN Type=Numeric

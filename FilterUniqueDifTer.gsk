@@ -1,0 +1,24 @@
+#*******************************************
+# MacDescription = Filter
+# MacFileName = FilterUniqueDifTer.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.11
+# MacUrl=http://gsak.net/board/index.php?showtopic=19048&view=findpost&p=135847
+#*******************************************
+MACROFLAG Type=Clear Range=All
+
+$Dif=1
+$Ter=1
+
+WHILE $Ter<=5
+    $_sql="Update caches set macroflag=1 where $_Where and Difficulty=$Dif and Terrain=$Ter Order By distance Limit 1"
+    $Data=Sqlite("sql",$_sql)
+    $Dif=$Dif + 0.5
+    IF $Dif>5
+        $Dif=1
+        $Ter=$Ter + 0.5
+    ENDIF
+ENDWHILE
+
+MFILTER Expression=$d_MacroFlag
+SQLSORT ORderBy=Difficulty,Terrain

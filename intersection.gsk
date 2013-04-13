@@ -1,0 +1,115 @@
+#*******************************************
+# MacVersion = 1.1
+# MacDescription = Generate a database that is the intersection of all loaded GPX files
+# MacAuthor = clyde
+# MacFileName = Intersection.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=3742&view=findpost&p=32564
+#*******************************************
+#*******************************************
+# Generate a database that is the intersection of all loaded GPX files
+# That is, the final database will only contain waypoints that exist 
+# in all files loaded
+#*******************************************
+
+if $_CurrentDatabase = "Intersection"
+  cancel msg="Database: 'Intersection' must not be your starting database, Please select another"
+Endif
+# make sure the "Intersection" database is empty
+IF DatabaseExists("intersection")
+  DATABASE Name="Intersection" Action=delete
+ENDIF
+Database Name="Intersection" Action=Create
+
+While True
+  MacroSet Dialog=Open VarName=$FirstFile
+  Input msg="Select First GPX file to load" VarName=$GpxFile Browse=File
+  if FileExists($GpxFile)
+    Break
+  else
+    Pause msg="Sorry, can't find that file"
+  endif
+EndWhile 
+Load Settings=<macro> File=$GpxFile
+
+While True
+  Choose msg="Have you finished loading GPX files?" opt1=No opt2=Yes
+  If $result = 2
+    break
+  EndIf
+  While True
+    MacroSet Dialog=Open VarName=$FirstFile
+    Input msg="Select Next GPX file to load" VarName=$GpxFile Browse=File
+    if FileExists($GpxFile)
+      Break
+    else
+      Pause msg="Sorry, can't find that file"
+    endif
+  EndWhile
+  MacroSet Dialog=Open VarName=$NextFile
+  Load Settings=<macro> File=$GpxFile
+  Mfilter if=$d_UserFlag = false
+  MacroSet Dialog=Delete VarName=$Delete
+  Delete settings=<macro>
+  cancelfilter
+  UserFlag type=clear range=all
+EndWhile
+
+
+
+<data> VarName=$FirstFile
+[TfmGpxLoad]
+rbtAlways.Checked=True
+rbtNewer.Checked=False
+rbtLoadFile.Checked=True
+rbtLoadFolder.Checked=False
+cbxZap.Checked=True
+chkGpx.Checked=True
+chkLoc.Checked=False
+chkZip.Checked=False
+edtFolder.Text=c:\temp\pq
+rbtFoundAlways.Checked=True
+rbtFoundOnly.Checked=False
+chkSetUser.Checked=False
+chkUserOnly.Checked=False
+chkDelete.Checked=False
+chkClearUser.Checked=False
+rbtExists.Checked=False
+rbtFoundNever.Checked=False
+rbtAddOnly.Checked=False
+rbtExtraExclude.Checked=False
+rbtExtraParent.Checked=False
+rbtExtraChild.Checked=True
+<enddata>
+
+<data> VarName=$NextFile
+[TfmGpxLoad]
+rbtAlways.Checked=False
+rbtNewer.Checked=False
+rbtLoadFile.Checked=True
+rbtLoadFolder.Checked=False
+cbxZap.Checked=False
+chkGpx.Checked=True
+chkLoc.Checked=False
+chkZip.Checked=False
+edtFolder.Text=c:\temp\pq
+rbtFoundAlways.Checked=True
+rbtFoundOnly.Checked=False
+chkSetUser.Checked=True
+chkUserOnly.Checked=False
+chkDelete.Checked=False
+chkClearUser.Checked=False
+rbtExists.Checked=True
+rbtFoundNever.Checked=False
+rbtAddOnly.Checked=False
+rbtExtraExclude.Checked=False
+rbtExtraParent.Checked=False
+rbtExtraChild.Checked=True
+<enddata>
+
+<data> VarName=$Delete
+[TfmDelete]
+cbxStop.Checked=False
+rbtFilter.Checked=True
+rbtFlagged.Checked=False
+rbtOnly.Checked=False
+<enddata>

@@ -1,0 +1,286 @@
+#*******************************************
+# MacVersion = 1.2
+# MacDescription = SQL Test macro
+# MacAuthor = Clyde
+# MacFileName = SQLTest.gsk
+#*******************************************
+
+GoSub Name=Setup
+
+While ShowForm($form)
+
+  If $FrmBtnCode
+    GoSub Name=InsertCode
+  EndIf
+
+  If $FrmBtnRun
+    GoSub Name=RunSQL
+  EndIf
+
+  If $FrmBtnCancel
+    break
+  EndIf
+
+  If $FrmBtnReset
+    GoSub Name=Reset
+  EndIf
+
+EndWhile
+
+# commit and realease tables from memory
+  $status = sql("commit","") 
+  $status = sql("release table sqltest1","")
+  $status = sql("release table sqltest2","") 
+
+
+# create test files to play with
+BeginSub Name=Setup
+  $file = $_Install + "\macros\sqltest1.txt"
+  If not(FileExists($file))
+    $Status = PutFile($file,$TestData1)
+  EndIf
+  $file = $_Install + "\macros\sqltest2.txt"
+  If not(FileExists($file))
+    $Status = PutFile($file,$TestData2)
+  EndIf
+  $FrmMemSQL = "Select * from sqltest1"
+  $list = List("sql","create",$_NewLine)
+  GoSub Name=RunSql
+EndSub
+
+# Restore the test files back to their original values
+BeginSub Name=Reset
+  $status = sql("release table sqltest1","")
+  $status = sql("release table sqltest2","") 
+  $file = $_Install + "\macros\sqltest1.txt"
+  FileErase File=$file
+  $Status = PutFile($file,$TestData1)
+  $file = $_Install + "\macros\sqltest2.txt"
+  FileErase File=$file
+  $Status = PutFile($file,$TestData2)
+  $FrmMemSQL = "Select * from sqltest1"
+  GoSub Name=RunSql
+EndSub
+
+# Insert and run the various test SQL commands
+BeginSub Name=InsertCode
+
+  If $FrmCbxSQL = "Basic Select"
+    $sql = "Select * from sqltest1"
+  EndIf
+
+  If $FrmCbxSQL = "Order By"
+    $sql = "Select * from sqltest1 order by name"
+  EndIf
+
+  If $FrmCbxSQL = "Group By"
+    $sql = "Select Product,Sum(qty) as TotalQty  from sqltest1 " + $_NewLine
+    $sql = $sql + "GROUP by product" + $_NewLine
+    $sql = $sql + "ORDER by Product"
+  EndIf
+  
+  If $FrmCbxSQL = "Having"
+    $sql = "Select Product,Sum(qty) as TotalQty  from sqltest1 " + $_NewLine
+    $sql = $sql + "GROUP by product" + $_NewLine
+    $sql = $sql + "HAVING TotalQty > 5" + $_NewLine
+    $sql = $sql + "ORDER by Product"
+  EndIf
+
+  If $FrmCbxSQL = "Join 2 Tables"
+    $sql = "SELECT sqltest1.name as Name, sqltest1.product as Product, sqltest2.descr as Descr, sqltest1.qty as Qty" + $_NewLine
+    $sql = $sql + "FROM sqltest1,sqltest2" + $_NewLine
+    $sql = $sql + "WHERE sqltest1.product=sqltest2.product"
+  EndIf
+
+  If $FrmCbxSQL = "Insert Into"
+    $sql = "INSERT INTO sqltest1 VALUES ('NewGuy',4,4);" + $_NewLine
+    $sql = $sql + "Select * from sqltest1"
+  EndIf
+
+  If $FrmCbxSQL = "Delete"
+    $sql = "DELETE FROM sqltest1 WHERE name='NewGuy';" + $_NewLine
+    $sql = $sql + "Select * from sqltest1"
+  EndIf
+
+ If $FrmCbxSQL = "Update"
+    $sql = "UPDATE sqltest1 SET qty=20" + $_NewLine
+    $sql = $sql + "WHERE name='Clyde';" + $_NewLine
+    $sql = $sql + "Select * from sqltest1"
+  EndIf
+
+ If $FrmCbxSQL = "Calculated Fields"
+    $sql = "Select Upper(Name) as Name,Product,Qty, fix((qty * 2.5),2) as Value from sqltest1"
+  EndIf
+
+  If $FrmCbxSQL = "Alter table add column"
+    $sql = "ALTER TABLE sqltest1 ADD COLUMN email;" + $_NewLine
+    $sql = $sql + "Select * from sqltest1"
+  EndIf
+
+  If $FrmCbxSQL = "Alter table drop column"
+    $sql = "ALTER TABLE sqltest1 DROP COLUMN email;" + $_NewLine
+    $sql = $sql + "Select * from sqltest1"
+  EndIf
+
+ If $FrmCbxSQL = "Insert into select"
+    $sql = "INSERT INTO sqltest1 SELECT * FROM sqltest1;" + $_NewLine
+    $sql = $sql + "Select * from sqltest1"
+  EndIf
+
+ If $FrmCbxSQL = "Update with calculation"
+    $sql = "UPDATE sqltest1 SET qty=2*qty where name='Clyde';" + $_NewLine
+    $sql = $sql + "Select * from sqltest1"
+  EndIf
+
+  $FrmMemSQL = $sql
+  GoSub Name=RunSql
+EndSub
+
+# Run the current SQL command
+BeginSub Name=RunSql
+  $work = Sql($FrmMemSQL,"H")
+  If not(RegEx(";",$work))
+    $FrmMemResult = $work
+    ExitSub
+  EndIf
+  $list = list("sql","replace",$work)
+  $count = val(list("sql","count",""))
+  $x = 0
+  $work = ""
+  While $x < $count
+     $x = $x + 1
+     $item = list("sql","item","$x")
+     $y = 0
+     While $y < RegExCount(";",$item) + 1
+       $y = $y + 1
+       $work = $work + left(Extract($item, ";", $y) + "          ",10) # pad out to 10 characters with spaces
+     EndWhile
+     $work = $work + $_NewLine
+     if $x = 1 # add extra line break after headings
+       $work = $work + $_NewLine
+     EndIf
+  EndWhile
+  
+  $FrmMemResult = $work
+EndSub
+
+<Data> VarName=$samples
+Basic Select;Order By;Group By;Having;Join 2 Tables;Insert Into;Delete;Update;Calculated Fields;Alter table add column;Alter table drop column;Insert into select;Update with calculation
+<EndData>
+
+<Data> VarName=$TestData1
+Name;Product;Qty
+Clyde;1;5
+Mike;1;4
+Bob;2;7
+Peter;2;3
+Sam;2;4
+Samantha;3;1
+John;4;2
+<EndData>
+
+<Data> VarName=$TestData2
+Product;Descr
+1;Coins
+2;Bugs
+3;Cards
+4;Other
+<EndData>
+
+
+<Data> Varname=$form
+#********************************************************************
+# Form generated by GSAK form designer on Mon 21-May-2007 22:35:34
+#********************************************************************
+
+Name = Form1
+  type = form
+  height = 404
+  width = 457
+  caption = SQL Test Macro V1.2
+
+Name = FrmGrpSQL
+  type = GroupBox
+  left = 12
+  top = 224
+  height = 98
+  width = 421
+  Caption = SQL Code
+
+Name = FrmCbxSQL
+  type = ComboBox
+  left = 16
+  top = 17
+  height = 21
+  width = 312
+  Values = $samples
+  Display = 15
+ 
+
+Name = FrmBtnCode
+  type = Button
+  left = 350
+  top = 16
+  height = 25
+  width = 75
+  Caption = Run sample
+  
+
+Name = FrmMemSQL
+  type = Memo
+  left = 7
+  top = 15
+  height = 73
+  width = 403
+  container = FrmGrpSQL
+
+Name = FrmGrpResult
+  type = GroupBox
+  left = 13
+  top = 46
+  height = 178
+  width = 420
+  Caption = Results
+
+Name = FrmMemResult
+  type = Memo
+  left = 7
+  top = 22
+  height = 145
+  width = 405
+  Readonly = yes
+  Font = Courier
+  container = FrmGrpResult
+  scrollbars = vertical
+
+Name = FrmBtnCancel
+  type = Button
+  left = 269
+  top = 333
+  height = 25
+  width = 75
+  Caption = Cancel
+
+Name = FrmBtnRun
+  type = Button
+  left = 60
+  top = 332
+  height = 27
+  width = 75
+  caption = Run SQL
+
+Name = FrmBtnReset
+  type = Button
+  left = 165
+  top = 333
+  height = 27
+  width = 75
+  Caption = Reset files
+
+<EndData>
+
+
+
+
+
+

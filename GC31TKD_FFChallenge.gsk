@@ -1,0 +1,319 @@
+#*******************************************
+# MacVersion = 1.12
+# MacDescription = GC31TKD - Fanstasy Footbal Challenge
+# MacAuthor = Stephen
+# MacFileName = GC31TKD_FFChallenge.gsk
+# MacUrl =
+#*******************************************
+
+MACSETTINGS Type=R Filecheck=N
+
+$FormExit = form($form,"")
+  BeginCase
+    Case $FormExit = "DelayExit"
+      MsgOk msg="Macro will now Exit"
+      break
+    Case $FormExit = "SystemExit"
+      MsgOk msg="Macro will now Exit"
+      break
+    Case $FormExit = "CancelButton"
+      MsgOk msg="Macro will now Exit"
+      break
+    Case $FormExit = "OkButton"
+       MACSETTINGS Type=S Vars=ShowSummary,ShowDetail
+       GOSUB Name=Run
+  EndCase
+
+BeginSub Name=Run
+
+$CacheTypes = "A;B;I;L;M;R;T;U;V;W;H;!"
+$CacheNames = "ProjectApe;Letterbox;Wherigo;Locationless;Multi;Earth;Traditional;Unknown;Virtual;Webcam;LilyPad"
+$CacheIndex = 1
+$CacheTypeNow = Extract($CacheTypes,";",$CacheIndex)
+$CacheNameNow = Extract($CacheNames,";",$CacheIndex)
+
+UserFlag type=clear range=all
+MacroFlag type=clear range=all
+
+$_sql = "found and FavPoints > '19' and status <> 'X'"
+Mfilter where=$_sql
+If $_FilterCount > 0
+  UserFlag type=set range=filter
+  ShowStatus msg="Finding all Finds with more than 20 Favorite Points" width=350
+ENDIF
+
+$_sql = "IsOwner and FavPoints > '19' and status <> 'X'"
+Mfilter where=$_sql
+IF $_FilterCount > 0
+  If $_FilterCount > 5
+    GOTO Position=Top
+    UserFlag type=set range=5
+  ELSE
+    UserFlag type=set range=filter  
+  ENDIF
+  ShowStatus msg="Finding all Owned with more than 20 Favorite Points."
+ENDIF
+
+
+While $CacheTypeNow <> "!"
+ShowStatus msg="Checking for $CacheNameNow with more than 20 Favorite Points."
+  $_sql = "UserFlag and CacheType like '$CacheTypeNow'"
+  Mfilter where=$_sql
+  If $_FilterCount > 0
+  SQLSort OrderBy=FavPoints desc
+  GOTO Position=Top
+  MacroFlag type=set range=1
+  ENDIF
+  $CacheIndex = $CacheIndex + 1
+  $CacheTypeNow = Extract($CacheTypes,";",$CacheIndex)
+  $CacheNameNow = Extract($CacheNames,";",$CacheIndex)
+EndWhile
+
+$_sql = "UserFlag and CacheType like '$CacheTypeNow'"
+Mfilter where=$_sql
+If $_FilterCount > 0
+  SQLSort OrderBy=FavPoints desc
+  GOTO Position=Top
+  MacroFlag type=set range=1
+ENDIF
+
+$_sql = "MacroFlag"
+mfilter where=$_sql
+SQLSort OrderBy=FavPoints desc
+ShowStatus msg="Checking number of unique cache types."
+If $_FilterCount < 6
+  $Message1="You need at least 6 different Cache types.  You only have $_FilterCount."
+ELSE
+  $Message1="You have the 6 required Cache Types."
+ENDIF
+If $_FilterCount > 6
+  While $_FilterCount > 6
+    GOTO Position=Bottom
+    MacroFlag type=clear range=1
+    $_sql = "MacroFlag"
+    mfilter where=$_sql
+    SQLSort OrderBy=FavPoints desc
+  ENDWhile
+ENDIF
+
+$_sql = "MacroFlag"
+mfilter where=$_sql
+SQLSort OrderBy=FavPoints desc 
+$NumOfType = $_FilterCount
+$NumNeeded = 14
+
+$_sql = "UserFlag and not MacroFlag"
+mfilter where=$_sql
+ShowStatus msg="Checking additional caches."
+IF $_FilterCount < 14
+  $Message2 = "You need 14 additional Caches with more than 20 Favorite Points.  You only have $_FilterCount."
+  $NumNeeded = $_FilterCount
+ELSE
+  $Message2 = "You have the required additional 14 caches."
+ENDIF
+SQLSort OrderBy=FavPoints desc
+
+GOTO Position=Top
+MacroFlag type=set range=$NumNeeded
+ShowStatus msg="Adding up Total Favorite Points."
+
+$_sql = "MacroFlag"
+mfilter where=$_sql
+$TotalCaches = $_FilterCount
+$TotalFavPoints = 0
+GOTO Position=top
+$ThisPosition=1
+While $ThisPosition <= $TotalCaches
+  $TotalFavPoints = $TotalFavPoints + $d_FavPoints
+  #Pause msg=$ThisPosition $d_FavPoints $TotalFavPoints
+  $ThisPosition = $ThisPosition + 1
+  GOTO Position=next
+ENDWhile
+
+If $ShowSummary
+  MsgOk msg= $Message1 $_NewLine $_NewLine $Message2 $_NewLine$_NewLine You have $TotalFavPoints total favorite points.
+ENDIF
+
+
+#Delete Old Report File
+If FileExists ("$_Install\Macros\GC31TKD_FFChallenge.html")
+  FILEERASE File=$_Install\Macros\GC31TKD_FFChallenge.html
+EndIf
+
+#Write new file header
+$line="<table style='font-family: Verdana, Arial, sans-serif; font-size: 13px; text-align: left;'>"
+$Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+
+$line="<th style='background: #B4B4B4;' colspan='5'><a href=" + $_Quote + "http://coord.info/GC31TKD" + $_Quote + ">GC31TKD</a> Fantasy Football Challenge - Let the Games Begin! by GeoEskimo</th>"
+  $Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+
+$line="<tr>"
+$Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+
+$line="<th style='background: #CCCCCC; text-align: center;'>Number</th>"
+$Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+
+$line="<th style='background: #CCCCCC; text-align: center;'>Type</th>"
+$Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+
+$line="<th style='background: #CCCCCC;'>Cache Code</th>"
+$Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+
+$line="<th style='background: #CCCCCC;'>Cache Name</th>" 
+$Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)  
+
+$line="<th style='background: #CCCCCC;'>Fav Points</th>" 
+$Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)  
+
+$line="</tr>"
+$Data = AppendFile($_Install + "\Macros\\GC31TKD_FFChallenge.html",$line + $_NewLine)
+
+#Write Data
+GOTO Position=top
+$ThisPosition=1
+While $ThisPosition <= $TotalCaches
+  $line="<tr>"
+  $Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+
+  $line="<td style='background: #CCCCCC; text-align: center;'>$ThisPosition</td>"
+  $Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+
+  GOSUB Name=IconURL
+  $line="<td style='background: #CCCCCC; text-align: center;'>$CacheIconUrl</td>"
+  $Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+
+  $line="<td style='background: #CCCCCC;'><a href=" + $_Quote + "http://coord.info/" + $d_Code + $_Quote + ">$d_Code</a></td>"
+  $Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+
+  $line="<td style='background: #CCCCCC;'>$d_Name</td>"
+  $Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+
+  $line="<td style='background: #CCCCCC;'>$d_FavPoints</td>"
+  $Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+  
+  $line="</tr>"
+  $Data = AppendFile($_Install + "\Macros\\GC31TKD_FFChallenge.html",$line + $_NewLine)
+
+  $ThisPosition = $ThisPosition + 1
+  GOTO Position=next
+ENDWhile
+
+#WriteFooter
+$line="<tr>"
+  $Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+$line="<th style='background: #B4B4B4;' colspan='5'>$Message1</th>"
+$Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+$line="</tr>"
+$Data = AppendFile($_Install + "\Macros\\GC31TKD_FFChallenge.html",$line + $_NewLine)
+$line="<tr>"
+  $Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+$line="<th style='background: #B4B4B4;' colspan='5'>$Message2</th>"
+$Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+$line="</tr>"
+$Data = AppendFile($_Install + "\Macros\\GC31TKD_FFChallenge.html",$line + $_NewLine)
+$line="<tr>"
+  $Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+$line="<th style='background: #B4B4B4;' colspan='5'>You have $TotalFavPoints Total Fantasy Football Points.</th>"
+$Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+$line="</tr>"
+$Data = AppendFile($_Install + "\Macros\\GC31TKD_FFChallenge.html",$line + $_NewLine)
+
+$line="</table>"
+$Data = AppendFile($_Install + "\Macros\GC31TKD_FFChallenge.html",$line + $_NewLine)
+
+If $ShowDetail
+  FILEOPEN File=$_Install\Macros\GC31TKD_FFChallenge.html
+ENDIF
+
+ShowStatus msg="Cleaning Up."
+MacroFlag type=clear range=all
+UserFlag type=clear range=all
+Cancelfilter
+
+ENDSUB
+
+BeginSub Name=IconURL
+$IconIndex = 1
+$CacheIcons = "9;5;1858;12;3;137;2;8;4;11;3773"
+$IconFound = "False"
+While $IconIndex < 12
+  $CacheIconType = Extract($CacheTypes,";",$IconIndex)
+  $CacheIconGif = Extract($CacheIcons,";",$IconIndex)
+  If $d_CacheType = $CacheIconType
+     $CacheIconUrl = "<img src=" + $_Quote + "http://www.geocaching.com/images/wpttypes/sm/" + $CacheIconGif + ".gif" + $_Quote + ">"
+	 $IconFound = "True"
+  ENDIF
+#  Pause msg= $CacheIconType $CacheIconGif $d_CacheType $IconFound
+  $IconIndex = $IconIndex + 1
+EndWhile
+ 
+If $IconFound <> "True"
+  $CacheIconUrl = "http://www.geocaching.com/images/wpttypes/sm/1.gif"
+ENDIF
+
+EndSub
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sat 08-Oct-2011 19:06:22
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = GC31TKD - Fanstasy Footbal Challenge
+  Height = 266
+  Width = 434
+
+Name = ShowSummary
+  Type = Checkbox
+  Height = 20
+  Left = 88
+  Top = 56
+  Width = 209
+  Taborder = 10
+  Caption = Show Summary Pop-Up at completion
+
+Name = ShowDetail
+  Type = Checkbox
+  Height = 20
+  Left = 88
+  Top = 88
+  Width = 201
+  Taborder = 11
+  Caption = Open Detailed Report in Browser
+
+Name = Label1
+  Type = Label
+  Height = 17
+  Left = 8
+  Top = 128
+  Width = 387
+  Caption = This Macro will reset all User and Macro Flags for all Caches in current Database
+
+Name = OkButton
+  Type = Button
+  Height = 25
+  Left = 88
+  Top = 168
+  Width = 75
+  Taborder = 12
+  Caption = OK
+
+Name = CancelButton
+  Type = Button
+  Height = 25
+  Left = 194
+  Top = 168
+  Width = 75
+  Taborder = 13
+  Caption = Cancel
+
+Name = Label2
+  Type = Label
+  Height = 17
+  Left = 56
+  Top = 16
+  Width = 267
+  Caption = GC31TKD - Fanstasy Footbal Challenge by GeoEskimo
+
+<enddata>
+

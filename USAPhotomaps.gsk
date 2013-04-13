@@ -1,0 +1,111 @@
+#*******************************************#*******************************************##############################################################
+## GSAK Macro to dump User-Flagged records in current database
+## to GPX, then open GPX in USAPhotomaps.
+## (Note that you must have a filter called "user flag = set"
+##  for this to work - else you need to change the FILTER line
+##  below to match the name you have)
+##############################################################
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Display filterd caches in USAPhotomaps
+# MacAuthor = bromley
+# MacFileName = USAPhotomaps.gsk
+#*******************************************
+#*******************************************************
+#   Variable declarations for
+#   USAPhotomaps.gsk
+#
+#   Generated 06/12/2007 7:14:04 PM on GSAKVariables.gsk Rev V0.20 B8
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$DataPath Type=String
+Declare Var=$DefaultPath Type=String
+Declare Var=$Error Type=String
+Declare Var=$FullPath Type=String
+Declare Var=$GPXFile Type=String
+Declare Var=$macrohome Type=String
+Declare Var=$GPXOut Type=String
+
+
+DEBUG Status=Off
+
+$macrohome=""
+
+
+# Set Default Path to USAPM.  If it's not there, check to see
+# if we've previously saved it, and read it from there. If it's
+# not saved, ask the user where it is, test it, and save it if
+# the file exists.  If not, cancel because we're screwed
+IF FolderExists("C:\Program Files\USAPhotoMaps\")
+SET $DefaultPath="C:\Program Files\USAPhotoMaps\"
+ENDIF
+
+IF FolderExists("C:\Program Files (x86)\USAPhotoMaps\")
+SET $DefaultPath="C:\Program Files (x86)\USAPhotoMaps\"
+ENDIF
+
+
+
+IF .NOT. (FileExists($DefaultPath + "USAPhotoMaps.exe"))
+	SET $DataPath=$_Install + "\Macros\GPX-USAPM.dat"
+	IF (FileExists($DataPath))
+		SET $DefaultPath=GETFILE($DataPath)
+		IF Left($DefaultPath, 7) = "*Error*"
+			CANCEL Msg="$DefaultPath"
+		ENDIF
+	ENDIF
+	IF .NOT. (FileExists($DefaultPath + "USAPhotoMaps.exe"))
+		INPUT Msg="Enter the full path (drive + directory + trailing \) that contains USAPhotoMaps." Default="$DefaultPath" VarName=$UserPath
+		IF .NOT. (FileExists($UserPath + "USAPhotoMaps.exe"))
+			CANCEL Msg="USAPhotoMaps.exe still not found. Check the path and try again."
+		ENDIF
+		SET $DefaultPath=$UserPath
+		SET $Error=PUTFILE($DataPath, $DefaultPath)
+		IF Left($Error, 7) = "*Error*"
+			PAUSE Msg = "$Error"
+		ENDIF
+	ENDIF
+ENDIF
+SET $FullPath=$DefaultPath + "USAPhotoMaps.exe"
+
+# Filename to export
+SET $GPXFile=$DefaultPath + "FromGSAK.GPX"
+
+# Export to GPX
+MACROSET Dialog=GPX VarName=$GPXOut
+EXPORT Type=GPX File="$GPXFile" Settings=<macro>
+
+# Did the export go OK?
+IF .NOT. FileExists($GPXFile)
+    CANCEL Msg="Export failed. You probably need to set some default values in the File\Export\GPX/LOC File... dialog."
+ENDIF
+
+# Run USAPM with GPX file as argument
+RUNPGM Pgm="$FullPath" Parms="$GPXFile"
+
+
+
+<data> VarName=$GPXOut
+[TfmExportGpx]
+cbxLimit.Text=No Limit
+cbxUserNotes.Checked=False
+chkActual.Checked=False
+chkChild.Checked=True
+chkDefault.Checked=False
+chkExtra.Checked=False
+chkFlag.Checked=False
+chkMyLogs.Checked=True
+chkSymbol.Checked=True
+edtFormat.Text=%Name by %By (%Dif/%Ter)
+edtMax.Text=
+edtMaxGps.Text=14
+edtWaypoint.Text=%code
+rbtGpx.Checked=True
+rbtLoc.Checked=False
+edtProblem.Text=
+edtExtra.Text=
+<enddata>

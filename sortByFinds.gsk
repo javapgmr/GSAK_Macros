@@ -1,0 +1,34 @@
+# SortByFinds V1.0 by Cache U Nuts
+#
+# Sorts the current cache grid by the number of finds,
+# with the caches that have the most finds at the top.
+# The User Data field indicates the number of finds.
+# The User Flag indicates that there may be missing logs.
+
+$numcaches = 0    # Number of caches (returned to calling macro)
+GOTO Position=top
+WHILE not ($_eol)
+  $numcaches = $numcaches + 1
+  $status = "Now counting finds in cache number " + "$numcaches"
+  SHOWSTATUS msg="$status"
+  TABLE active=logs scope=parent
+  $d_UserFlag = True
+  $finds = 0
+  WHILE not($_eol)
+    IF $d_lType = "Found it"
+      $finds = $finds + 1
+    ENDIF
+    IF $d_lType = "Publish Listing"
+      $d_UserFlag = False
+    ENDIF
+    IF $d_lDate <= $d_PlacedDate
+      $d_UserFlag = False
+    ENDIF
+    GOTO Position=Next
+  ENDWHILE
+  TABLE active=caches
+  $d_UserData = str($finds,4,0)
+  GOTO position=Next
+ENDWHILE
+SORT by="UserData" sequence=D
+GOTO position=Top

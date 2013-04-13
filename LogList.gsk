@@ -1,0 +1,430 @@
+#*******************************************
+# MacDescription = List log date and logger
+# MacFileName = LogList.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.7
+# MacUrl=http://gsak.net/board/index.php?showtopic=6575&view=findpost&p=39260
+#*******************************************
+
+$Out=""
+$Radiobutton1=TRUE
+$Checkbox1=TRUE
+$SelectedRB=TRUE
+$Sdate="20000101"
+$LogCount=0
+$Date1 = StringToDate($Sdate)
+$Spaces="                           "
+
+IF Showform($form)
+    IF $Button1 
+        GOSUB Name=OneOrAll
+        IF $Checkbox3 
+            FILEOPEN File="$File"
+        ELSE
+            RUNPGM pgm=notepad parms="$File"
+        ENDIF 
+    ENDIF 
+    IF $Button2
+        GOSUB Name=OneOrAll
+        RUNPGM pgm=notepad parms=/p "$File"
+    ENDIF 
+ENDIF 
+
+BEGINSUB Name=OneOrAll
+    IF $SelectedRB
+        IF $IncludeDateCB AND $Radiobutton1
+            $Out=$Out + "All Logs as of " + DateFormat($_Today) + $_Newline + $_NewLine
+        ELSE
+            $Out=$Out + "Found Logs as of " + DateFormat($_Today) + $_Newline + $_NewLine
+        ENDIF
+        GOSUB Name=List
+    ELSE
+        IF $IncludeDateCB AND $Radiobutton1
+            $Out=$Out + "All Logs as of " + DateFormat($_Today) + $_Newline + $_NewLine
+        ELSE
+            $Out=$Out + "Found Logs as of " + DateFormat($_Today) + $_Newline + $_NewLine
+        ENDIF
+        GOTO Position=Top
+        WHILE NOT($_EOL)
+            GOSUB Name=List
+            GOTO Position=Next
+        ENDWHILE
+   ENDIF
+ENDSUB         
+
+BEGINSUB Name=List
+    $Out = $Out + Left($d_Code + $Spaces,Len($d_code) + 1) + Left($d_Name + $Spaces,Len($d_Name) + 1)
+    $Out=$Out + $_NewLine + $_NewLine
+    TABLE Active=logs Scope=Parent
+    GOTO Position=Bottom
+    GOTO Position=Previous
+    GOTO Position=Next
+    $LogCount=0
+    WHILE NOT($_EOL)
+        IF  $Checkbox2
+            BEGINCASE
+                CASE $d_lType="Archive"
+                    $LogType="Arcv"
+                CASE $d_lType="Archive (show)"
+                    $LogType="Arcv"
+                CASE $d_lType="Attended"
+                    $LogType="Atnd"
+                CASE $d_lType="Didn't find it"
+                    $LogType="DNF"
+                CASE $d_lType="Enable Listing"
+                    $LogType="Enbl"
+                CASE $d_lType="Found it"
+                    $LogType="Fnd"
+                CASE $d_lType="Needs Archived"
+                    $LogType="NdArcv"
+                CASE $d_lType="Needs Maintenance"
+                    $LogType="NdMain"
+                CASE $d_lType="Note"
+                    $LogType=$_Install + "\images\logNote.gif"
+                CASE $d_lType="Other"
+                    $LogType=$_Install + "\images\logNote.gif"
+                CASE $d_lType="Owner Maintenance"
+                    $LogType="OwnMain"
+                CASE $d_lType="Post Reviewer Note"
+                    $LogType="RvNote"
+                CASE $d_lType="Publish Listing"
+                    $LogType="Pub"
+                CASE $d_lType="Retract Listing"
+                    $LogType="Rtrct"
+                CASE $d_lType="Temporarily Disable Listing"
+                    $LogType="Dsbl"
+                CASE $d_lType="Unarchive"
+                    $LogType="UnArcv"
+                CASE $d_lType="Unknown"
+                    $LogType="Unkn"
+                CASE $d_lType="Update Coordinates"
+                    $LogType="UpCrd"
+                CASE $d_lType="Webcam Photo Taken"
+                    $LogType="PhotoTkn"
+                CASE $d_lType="Will Attend"
+                    $LogType="WlAtnd"
+                CASE $d_lType="Write note"
+                    $LogType="Note"
+            ENDCASE
+        ELSE
+            $LogType=$d_lType
+        ENDIF
+            
+        IF ($d_lDate >= $Date1) AND ($d_lDate <= $Date2)
+            $LogDate=DateFormat($d_lDate)
+            IF $Radiobutton1=TRUE 
+                $Out=$Out +  Left($LogDate + $Spaces,Len($LogDate) + 1) + $d_lBy
+                $LogCount=$LogCount + 1
+                IF $Checkbox1=TRUE
+                    $Out=$Out + ": " + $LogType + $_NewLine
+                ELSE
+                    $Out=$Out + $_NewLine
+                ENDIF 
+            ELSE
+                IF $d_lType="Found it" OR $d_lType="Attended" OR $d_lType="Webcam Photo Taken"
+                    $Out=$Out +  Left($LogDate + $Spaces,Len($LogDate) + 1) + $d_lBy
+                    $LogCount=$LogCount + 1
+                    IF $Checkbox1=TRUE
+                        $Out=$Out + ": " + $LogType + $_NewLine
+                    ELSE
+                        $Out=$Out + $_NewLine
+                    ENDIF 
+                ENDIF
+            ENDIF    
+        ENDIF 
+        GOTO Position=Previous
+    ENDWHILE
+    TABLE Active=caches
+    IF NOT($Checkbox3)
+        $File=$_Install + "\Macros\LogList.txt"
+    ELSE
+        $File=$_Install + "\Macros\LogList.rtf"
+    ENDIF
+    $Out=$Out + "Total Logs: " + NumToStr($LogCount) + $_NewLine  + $_NewLine 
+    $SavedFile=PUTFILE($File, $Out)
+    IF Left($File, 7) = "*Error*"
+        CANCEL Msg="Unable to write to $file!"
+    ENDIF
+ENDSUB
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sat 27-Sep-2008 17:22:56
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Generate Log History
+  Color = 14540253
+  Height = 444
+  Width = 429
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Log Dates
+  Color = 12632256
+  Height = 49
+  Left = 18
+  Top = 42
+  Width = 385
+  Taborder = 0
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = Log Type(s)
+  Color = 12632256
+  Height = 109
+  Left = 18
+  Top = 102
+  Width = 385
+  Taborder = 1
+
+Name = Groupbox3
+  Type = Groupbox
+  Caption = For:
+  Container = Groupbox2
+  Height = 50
+  Left = 6
+  Top = 48
+  Width = 373
+  Taborder = 2
+
+Name = Label1
+  Type = Label
+  Height = 20
+  Left = 87
+  Size = 12
+  Style = Bold
+  Top = 11
+  Width = 247
+  Caption = Select Logs to Display or Print:
+
+Name = Label2
+  Type = Label
+  Container = Groupbox1
+  Height = 16
+  Left = 12
+  Size = 10
+  Style = Bold
+  Top = 21
+  Width = 39
+  Caption = From:
+
+Name = Label3
+  Type = Label
+  Container = Groupbox1
+  Height = 16
+  Left = 215
+  Size = 10
+  Style = bold
+  Top = 21
+  Width = 23
+  Caption = To:
+
+Name = Date1
+  Type = Date
+  Container = Groupbox1
+  Height = 21
+  Left = 61
+  Top = 19
+  Width = 121
+  Taborder = 0
+
+Name = Date2
+  Type = Date
+  Container = Groupbox1
+  Height = 21
+  Left = 249
+  Top = 19
+  Width = 121
+  Taborder = 1
+
+Name = Label4
+  Type = Label
+  Container = Groupbox2
+  Height = 15
+  Left = 31
+  Size = 9
+  Style = Bold
+  Top = 21
+  Width = 51
+  Caption = All Logs
+
+Name = Label5
+  Type = Label
+  Container = Groupbox2
+  Height = 15
+  Left = 145
+  Size = 9
+  Style = Bold
+  Top = 21
+  Width = 107
+  Caption = Found Logs Only
+
+Name = Button1
+  Type = Button
+  Height = 25
+  Left = 89
+  Top = 370
+  Width = 75
+  Taborder = 2
+  Caption = Display Logs
+
+Name = Button2
+  Type = Button
+  Height = 25
+  Left = 257
+  Top = 370
+  Width = 75
+  Taborder = 3
+  Caption = Print Logs
+
+Name = Radiobutton1
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 17
+  Left = 12
+  Top = 21
+  Width = 15
+  Taborder = 0
+
+Name = Radiobutton2
+  Type = Radiobutton
+  Container = Groupbox2
+  Height = 17
+  Left = 126
+  Top = 21
+  Width = 15
+  Taborder = 1
+
+Name = Checkbox1
+  Type = Checkbox
+  Height = 17
+  Left = 42
+  Top = 220
+  Width = 15
+  Taborder = 4
+
+Name = Label6
+  Type = Label
+  Height = 16
+  Left = 62
+  Size = 10
+  Style = Bold
+  Top = 220
+  Width = 184
+  Caption = Include Log Type in Output
+
+Name = Checkbox2
+  Type = Checkbox
+  Height = 17
+  Left = 42
+  Top = 249
+  Width = 15
+  Taborder = 5
+
+Name = Label7
+  Type = Label
+  Height = 16
+  Left = 62
+  Size = 10
+  Style = bold
+  Top = 249
+  Width = 136
+  Caption = Abbreviate log type
+
+Name = Checkbox3
+  Type = Checkbox
+  Height = 17
+  Left = 42
+  Top = 277
+  Width = 15
+  Taborder = 6
+
+Name = Label8
+  Type = Label
+  Height = 16
+  Left = 61
+  Size = 10
+  Style = Bold
+  Top = 277
+  Width = 303
+  Caption = Open in a rich text editor instead of Notepad
+
+Name = SelectedRB
+  Type = Radiobutton
+  Container = Groupbox3
+  Height = 17
+  Left = 10
+  Top = 21
+  Width = 15
+  Taborder = 0
+
+Name = Label9
+  Type = Label
+  Container = Groupbox3
+  Height = 13
+  Left = 25
+  Style = bold
+  Top = 23
+  Width = 93
+  Caption = This Cache Only
+
+Name = AllRB
+  Type = Radiobutton
+  Container = Groupbox3
+  Height = 17
+  Left = 166
+  Top = 21
+  Width = 15
+  Taborder = 1
+
+Name = Label10
+  Type = Label
+  Container = Groupbox3
+  Height = 13
+  Left = 184
+  Style = bold
+  Top = 23
+  Width = 181
+  Caption = ALL Caches in the Current Filter
+
+Name = IncludeDateCB
+  Type = Checkbox
+  Height = 17
+  Left = 42
+  Top = 305
+  Width = 15
+  Taborder = 15
+
+Name = IncludeTotalCB
+  Type = Checkbox
+  Height = 17
+  Left = 43
+  Top = 333
+  Width = 15
+  Taborder = 16
+
+Name = Label11
+  Type = Label
+  Height = 16
+  Left = 63
+  Size = 10
+  Style = Bold
+  Top = 305
+  Width = 259
+  Caption = Include date of the report in the output
+
+Name = Label12
+  Type = Label
+  Height = 16
+  Left = 64
+  Size = 10
+  Style = Bold
+  Top = 333
+  Width = 296
+  Caption = Include total number of logs for each cache
+
+<enddata>
+
+

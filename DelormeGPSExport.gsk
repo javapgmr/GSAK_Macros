@@ -1,0 +1,1913 @@
+#*******************************************
+# MacFileName = DeLormeGPSExport.gsk
+# MacVersion = 1.1.0
+# MacDescription = Export to DeLorme GPX
+# MacAuthor = javapgmr
+# MacUrl = http://gsak.net/board/index.php?showtopic=12845
+# Version check
+#********************************************
+ VERCHECK Version=8.1.1.30
+ GOSUB Name=Declare
+ 
+ $DLGPXFileName=$_MacroParms
+ GOSUB Name=SaveGrid
+ 
+ $Results=ClearMacroFlags
+
+ GOSUB Name=RestoreGrid
+ SPEEDMODE Status=On
+ GOSUB Name=SetEnv
+ GOSUB NAME=AutoDetect
+ GOSUB NAME=F2ScreenCheck
+ MFILTER Expression=MACROFLAG
+ GOSUB Name=SetUpForm
+
+ IF IsEmpty($_MacroParms)
+   WHILE TRUE # Infinite loop to redisplay form as required
+     $FormExit = form($form1,"")
+     BEGINCASE 
+       CASE $FormExit = "DelayExit"
+         GOSUB Name=Process
+         BREAK 
+       CASE $FormExit = "PN40"
+         GOSUB Name=RestoreGrid
+         GOSUB Name=SaveParms
+         GOSUB Name=SetUpForm
+       CASE $FormExit = "PN60"
+         GOSUB Name=RestoreGrid
+         GOSUB Name=SaveParms
+         GOSUB Name=SetUpForm
+       CASE $FormExit = "ForceNative"
+        GOSUB NAME=AutoDetect
+        $BBabel=True
+       CASE $FormExit = "SystemExit"
+         BREAK 
+       CASE $FormExit = "btnCancel"
+         BREAK 
+       CASE $FormExit = "btnOK"
+         GOSUB Name=SaveParms
+         GOSUB Name=Process
+         BREAK 
+       OTHERWISE 
+         GOSUB Name=SetUpForm
+     ENDCASE 
+   ENDWHILE 
+ ELSE 
+   $RmvWaypoints=FALSE
+   GOSUB Name=RestoreGrid
+   GOSUB Name=Process
+ ENDIF 
+
+#######################################################################################
+# Setup Form and Display
+#######################################################################################
+ BEGINSUB Name=SetUpForm
+
+   GOSUB Name=SetCount3
+
+   IF $FW28
+     $form1 = editform($form1,"Native","visible","No")
+     $form1 = editform($form1,"HintsAtEnd","visible","No")
+     $form1 = editform($form1,"DLGPXFileName","visible","Yes")
+     $form1 = editform($form1,"GPXNameLabel","visible","Yes")
+   ELSE 
+     $form1 = editform($form1,"Native","visible","Yes")
+     $form1 = editform($form1,"HintsAtEnd","visible","Yes")
+     $form1 = editform($form1,"DLGpxFileName","visible","No")
+     $form1 = editform($form1,"GPXNameLabel","visible","No")
+   ENDIF 
+
+   IF $Logs
+     $form1 = editform($form1,"NumLogs","enabled","Yes")
+     $form1 = editform($form1,"LogLabel","enabled","Yes")
+   ELSE 
+     $form1 = editform($form1,"NumLogs","enabled","No")
+     $form1 = editform($form1,"LogLabel","enabled","No")
+   ENDIF 
+   $form1 = editform($form1,"CacheInfo","caption",$CacheDialog)
+   $form1 = editform($form1,"ChildWayPts","caption",$ChildDialog)
+
+   IF $ChildWayPts
+     $TotalCount = $ccCacheCount + $ccChildCount
+   ELSE 
+     $TotalCount = $ccCacheCount
+   ENDIF 
+
+   $TotalDialog = NumToStr($CacheCount) + " waypoints to be sent."
+   $form1 = editform($form1, "TotalDialog", "caption", $TotalDialog)
+
+   IF $TotalCount > $MAXCAP
+     $form1 = editform($form1,"btnOk","enabled","No")
+     $form1 = editform($form1, "TotalDialog", "color", "255")
+     $form1 = editform($form1, "Warn","Visible","Yes")
+   ELSE 
+     $form1 = editform($form1,"btnOk","enabled","Yes")
+     $form1 = editform($form1, "TotalDialog", "color", "0")
+     $form1 = editform($form1, "Warn","Visible","No")
+   ENDIF 
+ ENDSUB 
+
+#######################################################################################
+#Export to DeLorme GPX
+#######################################################################################
+ BEGINSUB Name=Process
+   $DeLormeGPXDef=Replace("{Child}",BoolToStr($ChildWayPts,"True","False"),$DeLormeGPXDef,TRUE)
+   $DeLormeGPXDef=Replace("{NumLogs}",$NumLogs,$DeLormeGPXDef,TRUE)
+   $DeLormeGPXDef=Replace("{FirstLogInfo}",$FirstLogInfo,$DeLormeGPXDef,TRUE)
+   $DeLormeGPXDef=Replace("{FirstLogInfo}",$FirstLogInfo,$DeLormeGPXDef,TRUE)
+   $DeLormeGPXDef=Replace("{MaxSize}",NumToStr($MaxSize),$DeLormeGPXDef,TRUE)
+
+   $DeLormeGPSExport=Replace("{Child}",BoolToStr($ChildWayPts,"True","False"),$DeLormeGPSExport,TRUE)
+   $DeLormeGPSExport=Replace("{NumLogs}",$NumLogs,$DeLormeGPSExport,TRUE)
+   $DeLormeGPSExport=Replace("{Clear}",BoolToStr($RmvWaypoints,"True","False"),$DeLormeGPSExport,TRUE)
+   $DeLormeGPSExport=Replace("{FirstLogInfo}",$FirstLogInfo,$DeLormeGPSExport,TRUE)
+   $DeLormeGPSExport=Replace("{MaxSize}",NumToStr($MaxSize),$DeLormeGPSExport,TRUE)
+   IF $PN40
+     $DeLormeGPSExport=Replace("{delormeType}","PN-40",$DeLormeGPSExport,TRUE)
+     $DeLormeGPXDef=Replace("{delormeType}","PN-40",$DeLormeGPXDef,TRUE)
+   ENDIF 
+   IF $PN60
+     $DeLormeGPSExport=Replace("{delormeType}","PN-60",$DeLormeGPSExport,TRUE)
+     $DeLormeGPXDef=Replace("{delormeType}","PN-60",$DeLormeGPXDef,TRUE)
+   ENDIF 
+
+
+   IF Not ($FW28)
+     IF $Native
+       GOSUB Name=Native
+     ELSE 
+       GOSUB Name=BatFile
+     ENDIF 
+   ELSE 
+     GOSUB Name=FirmWare28
+   ENDIF 
+ ENDSUB 
+
+
+#######################################################################################
+#Export Natively
+#######################################################################################
+ BEGINSUB Name=Native
+   SHOWSTATUS msg="Exporting to the DeLorme PN Series GPS" Width=350
+   MACROSET Dialog=GPS  VarName=$DelormeGPSExport
+#   $DebugInfo=$DelormeGPSExport
+#   GOSUB Name=Debug
+# Send to GPS receiver
+   EXPORT Type=GPS Settings=<macro>
+ ENDSUB 
+
+#######################################################################################
+#Export via BATFILE
+#######################################################################################
+ BEGINSUB Name=BatFile
+
+   $DeLormeParms1="delbin"
+   IF ($RmvWaypoints)
+     $DeLormeParms1=$DeLormeParms1 + ",nukewpt"
+   ENDIF 
+   IF ($RmvTracks)
+     $DeLormeParms1=$DeLormeParms1 + ",nuketrk"
+   ENDIF 
+   IF ($RmvRoutes)
+     $DeLormeParms1=$DeLormeParms1 + ",nukerte"
+   ENDIF 
+   IF ($HintsAtEnd)
+     $DeLormeParms1=$DeLormeParms1 + ",hint_at_end"
+   ENDIF 
+   IF $Logs
+     $DeLormeParms1=$DeLormeParms1 + ",logs=1"
+   ENDIF 
+
+   $DeLormeParms1 = $DelormeParms1 + ",gcsym=1"
+   $DeLormeParms = $Babel + "," + $DeLormeFilePathName + "," + Quote($DeLormeParms1)
+
+   IF NOT(FileExists($BatFile))
+     $FileResult = PutFile($BatFile, $DeLormeload)
+   ENDIF 
+
+
+   $Success = FALSE
+   SHOWSTATUS msg="Exporting DeLorme GPX file" Width=350
+   MACROSET Dialog=GPX  VarName=$DeLormeGPXDef
+   EXPORT Type=GPX Settings=<macro> File=$DeLormeFilePathName Max=$MaxSize
+# Continue to try to load File times
+   WHILE Not($Success) AND $Count < 20
+     RUNPGM Pgm=$BatFile  Parms=$DeLormeParms Wait=Yes
+     $Count = $Count + 1
+     $DeLormeResults = GetFile($ResultsLoc)
+     IF Left($DeLormeResults,3) = "bad"
+       PAUSE Msg="Export to DeLorme GPSr did not finish successfully. Click Continue to try again"
+       $Success=FALSE
+     ELSE 
+       $Success=TRUE
+       FILEERASE File=$DeLormeFilePathName
+     ENDIF 
+   ENDWHILE 
+   IF $Count>=20
+     PAUSE MSG="Macro exited without successful export to GPS."
+   ENDIF 
+ ENDSUB 
+
+#######################################################################################
+#Export via Firmware28
+#######################################################################################
+ BEGINSUB Name=FirmWare28
+   IF $RmvWaypoints
+     $TFileName = $DLGPXDir + "*.gpx"
+     FILEERASE File=$TFileName  OnError=Continue
+   ENDIF 
+   IF $RmvTracks
+     $TFileName=$DLTrackDir + "*.*"
+     FILEERASE File=$TFileName  OnError=Continue
+   ENDIF 
+   IF $RmvRoutes
+#          $TFileName=$DLRouteDir + "*.*"
+#          FILEERASE File=$TFileName  OnError=Continue
+   ENDIF 
+
+   $Success = FALSE
+   $DeLormeFilePathName=$DLGPXDir + $DLGPXFileName
+   SHOWSTATUS msg="Exporting DeLorme GPX file to Dir" Width=350
+   MACROSET Dialog=GPX  VarName=$DeLormeGPXDef
+   EXPORT Type=GPX Settings=<macro> File=$DeLormeFilePathName Max=$MaxSize
+ ENDSUB 
+
+#********************************************************************
+# AutoDetect Drive
+#********************************************************************
+ BEGINSUB Name=AutoDetect
+
+   $Model = "GPS"
+   $Make = "Garmin and DeLorme"
+   $DLTrackDir = ""
+   $DLRouteDir = ""
+   $DLGPXDir = ""
+# Searching for a Colorado or Oregon
+# Use the new GPSInfo("GarminPath") function which returns path to GarminDevice.xml
+
+   $result=GPSInfo("DelormeSdCard")
+
+# Search for a DeLorme
+   IF $result <> ""
+     $SDCard = $result
+     $Drive = Extract($result,":",1)
+     $Drive = $Drive + ":"
+     $Model = "PN-40_FW_2.8"
+     $SWversion = ""
+     $SWver = 0
+     $Make = "DeLorme"
+     $MSG="Found " + $Make + " " + $Model + " on Drive " + $Drive + ":\"
+     SHOWSTATUS msg=$MSG
+     DELAY MS=1000
+     $DLTrackDir=$Drive + "\routes\"
+     $DLRouteDir=$Drive + "\tracks\"
+     $DLGPXDir=  $Drive + "\waypoints\"
+   ELSE 
+# Nothing found
+     $Top3=""
+     $Left3=""
+
+     $Form3 = EditForm($Form3,"Form3","Top",$Top)
+     $Form3 = EditForm($Form3,"Form3","Left",$Left)
+
+     WHILE TRUE
+       $FormExit = form($Form3,"")
+       BEGINCASE 
+         CASE $FormExit = "SystemExit"
+           BREAK 
+         CASE $FormExit = "F3Drive"
+           $Top = $_FormTop
+           $Left = $_FormLeft
+           GOSUB Name=AssignDrive
+           IF FolderExists($DlGPXDir)
+             $FW28	= True
+             $Native = False
+             $BBabel=False
+             EXITSUB 
+           ELSE 
+             MSGOK MSG="Specified Folder does not exist.  Try again or cancel."
+           ENDIF 
+         CASE $FormExit = "F3Babel"           
+           $FW28	= FALSE
+           $Native = True
+           $BBabel=True
+           EXITSUB 
+         CASE $FormExit = "Cancel"
+           CANCEL Msg="Macro Canceled"
+       ENDCASE 
+     ENDWHILE 
+     RETURN 
+   ENDIF 
+   SHOWSTATUS msg="$status" Display=Off
+
+   $Result=GPSInfo("DelormeMode")
+   BEGINCASE 
+     CASE ($BBabel)
+       $FW28=FALSE
+     CASE $DRIVE <> ""
+       $FW28=TRUE
+     CASE $Result="Internal"
+       $FW28=FALSE
+     OTHERWISE 
+       $FW28=TRUE
+   ENDCASE 
+
+
+ ENDSUB 
+
+#######################################################################################
+# Assign Drives
+#######################################################################################
+ BEGINSUB Name=AssignDrive
+   $Drive = Extract($result,":",1)
+   $Drive = $F3Drive + ":"
+   $Model = "PN-40_FW_2.8"
+   $SWversion = ""
+   $SWver = 0
+   $Make = "DeLorme"
+   $DLTrackDir=$Drive + "\routes\"
+   $DLRouteDir=$Drive + "\tracks\"
+   $DLGPXDir=  $Drive + "\waypoints\"
+   $MSG="Found " + $Make + " " + $Model + " on Drive " + $F3Drive + ":\"
+   SHOWSTATUS msg=$MSG
+   DELAY MS=1000
+ ENDSUB 
+
+#######################################################################################
+# SetCap
+#######################################################################################
+ BEGINSUB Name=SetCap
+
+   BEGINCASE 
+     CASE $PN40
+       $MaxSize=1000
+       $MAXCAP=(1000 - $F2HeadRoom)
+     CASE $PN60
+       $MaxSize=1500
+       $MAXCAP=(1500 - $F2HeadRoom)
+     OTHERWISE 
+       $MaxSize=1000
+       $MAXCAP=(1000 - $F2HeadRoom)
+   ENDCASE 
+ ENDSUB 
+
+#######################################################################################
+# SetCount2
+#######################################################################################
+ BEGINSUB Name=SetCount3
+   $status=createTempTable
+   $status=resetGridIntoTempTable
+   SHOWSTATUS msg="Counting caches using pascal" Width=350
+   GOSUB Name=SetCAP
+
+   $status = countCaches($ChildWayPts, $MaxCap)
+
+   $strCount=Extract($status,";",1)
+   $strChildCount=Extract($status,";",2)
+   $CacheCount=Val(Extract($status,";",3))
+   $CacheDialog="$strCount caches to be exported to GPSr."
+   $ChildDialog="Include additional $strChildCount child waypoints"
+
+
+   SHOWSTATUS msg="Setting filter using cache count" Width=350
+   $results = clearMacroFlags
+   SQLSORT OrderBy="Distance, code"
+
+   GOSUB Name=FilterByTempTable
+
+   $status = setMacroFlag($CacheCount)
+   MFILTER Expression=MACROFLAG
+   SQLSORT OrderBy="Distance, code"
+
+   $status=deleteTempTable
+ ENDSUB 
+
+
+#######################################################################################
+# SaveParms
+#######################################################################################
+ BEGINSUB Name=SaveParms
+   MACSETTINGS Type=S Vars=ChildWayPts,Logs,RmvWaypoints,RmvTracks,RmvRoutes,NumLogs,Native,DLGPXFileName,F2ForceName,F2DefaultGPXName,F2Protect,F2HeadRoomw,FirstLogInfo,PN40,PN60,ForceNative
+ ENDSUB 
+
+#######################################################################################
+# F2ScreenCheck
+#######################################################################################
+ BEGINSUB Name=F2ScreenCheck
+   IF $_ShiftKey
+     WHILE TRUE
+       $FormExit = form($Form2,"")
+       BEGINCASE 
+         CASE $FormExit = "SystemExit"
+           CANCEL Msg="Macro Canceled"
+         CASE $FormExit = "F2Ok"
+           $Top2 = $_FormTop
+           $Left2 = $_FormLeft
+           BREAK 
+         CASE $FormExit = "Cancel"
+           CANCEL Msg="Macro Canceled"
+       ENDCASE 
+     ENDWHILE 
+   ENDIF 
+# if ForceName is on, force the Delorme GPX File name to a default name on startup.  This helps from
+# ending up creating a bunch of different gpx files because you can't type.
+   IF $F2ForceName
+     $DLGPXFileName = $F2DefaultGpxName
+   ENDIF 
+# if Protect is on, don't automatically remove existing waypoints.
+   IF $F2Protect
+     $RmvWaypoints=FALSE
+   ENDIF 
+   IF IsEmpty($F2Headroomw)
+     $F2HeadRoomw="25"
+   ENDIF 
+   $F2HeadRoom = Val($F2Headroomw)
+ ENDSUB 
+
+#######################################################################################
+# Declare                                                                             #
+#######################################################################################
+ BEGINSUB Name=SetEnv
+   $Comspec = GetEnvV("comspec")
+   $macrohome = Sysinfo("MacroPath")
+#RUNPGM pgm=$comspec parms=/C DEL "$PathBackfile" wait=yes
+   $status=createTempTable
+   $ToName="temp"
+   $basepath= $_AppData  +"\temp\"
+   $DeLormeFileName = $ToName + "_DeLorme.gpx"
+   $DeLormeFilePathName=$basepath + $DeLormeFileName
+   $Babel=$_ExePath +"\gpsbabel.exe"
+   $Count = 0
+   $NumLogs="10"
+   $BatFile = $macrohome + "\DeLormeLoad.cmd"
+   $ResultsLoc = "$_ExePath\DeLorme_results.txt"
+   $MaxSize=1000
+   $Top=""
+   $Left=""
+   $Top2=""
+   $Left2=""
+   MACSETTINGS Type=R FileCheck=N
+   $Form1 = EditForm($Form1,"Form1","Top",$Top)
+   $Form1 = EditForm($Form1,"Form1","Left",$Left)
+   $Form2 = EditForm($Form2,"Form2","Top",$Top2)
+   $Form2 = EditForm($Form2,"Form2","Left",$Left2)
+ ENDSUB 
+
+#######################################################################################
+# Declare                                                                             #
+#######################################################################################
+ BEGINSUB Name=Declare
+   OPTION Explicit=Yes
+   DECLARE Var=$Babel Type=String
+   DECLARE Var=$BBabel Type=Boolean
+   DECLARE Var=$BatFile Type=String
+   DECLARE Var=$CacheDialog Type=String
+   DECLARE Var=$ChildDialog Type=String
+   DECLARE Var=$ChildWayPts Type=Boolean
+   DECLARE Var=$Comspec  Type=String
+   DECLARE Var=$Count Type=Numeric
+   DECLARE Var=$DeLormeFileName Type=String
+   DECLARE Var=$DeLormeFilePathName Type=String
+   DECLARE Var=$DeLormeGPXDef Type=String
+   DECLARE Var=$DeLormeParms Type=String
+   DECLARE Var=$DeLormeParms1 Type=String
+   DECLARE Var=$DeLormeResults Type=String
+   DECLARE Var=$FW28        Type=Boolean
+   DECLARE Var=$FileResult Type=String
+   DECLARE Var=$FormExit Type=String
+   DECLARE Var=$Logs Type=Boolean
+   DECLARE Var=$NumLogs Type=String
+   DECLARE Var=$ResultsLoc Type=String
+   DECLARE Var=$Success Type=Boolean
+   DECLARE Var=$ThisChildCount  Type=Numeric
+   DECLARE Var=$ToName Type=String
+   DECLARE Var=$TotalCount  Type=Numeric
+   DECLARE Var=$TotalDialog Type=String
+   DECLARE Var=$basepath Type=String
+   DECLARE Var=$ccChildCount  Type=Numeric
+   DECLARE Var=$form Type=String
+   DECLARE Var=$macrohome Type=String
+   DECLARE VAR=$DLGPXFileName Type=String
+   DECLARE VAR=$F2Headroom		 Type=Numeric
+   DECLARE VAR=$F2Headroomw		Type=String
+   DECLARE Var=$CurFilter   Type=String
+   DECLARE Var=$CurrGrid     Type=String
+   DECLARE Var=$DLGPXDir   Type=String
+   DECLARE Var=$DLRouteDir Type=String
+   DECLARE Var=$DLTrackDir Type=String
+   DECLARE Var=$Drive Type=String
+   DECLARE Var=$F2DefaultGPXName Type=String
+   DECLARE Var=$F2ForceName      Type=Boolean
+   DECLARE Var=$F2Protect        Type=Boolean
+   DECLARE Var=$FilterActive Type=Boolean
+   DECLARE Var=$FirstLogInfo Type=String
+   DECLARE Var=$Left    Type=String
+   DECLARE Var=$Left2   Type=String
+   DECLARE Var=$Left3   Type=String
+   DECLARE Var=$MAXCAP       Type=Numeric
+   DECLARE Var=$MAXSize      Type=Numeric
+   DECLARE Var=$MSG          Type=String
+   DECLARE Var=$Make Type=String
+   DECLARE Var=$Model Type=String
+   DECLARE Var=$PN40         Type=Boolean
+   DECLARE Var=$PN60         Type=Boolean
+   DECLARE Var=$Results      Type=String
+   DECLARE Var=$SDCARD       Type=String
+   DECLARE Var=$SWver Type=Numeric
+   DECLARE Var=$SWversion Type=String
+   DECLARE Var=$Status  Type=String
+   DECLARE Var=$TFileName     Type=String
+   DECLARE Var=$Top     Type=String
+   DECLARE Var=$Top2    Type=String
+   DECLARE Var=$Top3    Type=String
+   DECLARE Var=$CacheCount Type=Numeric
+   DECLARE Var=$ccCacheCount Type=Numeric
+   DECLARE Var=$ccCount      Type=Numeric
+   DECLARE Var=$ccCounts     Type=String
+   DECLARE Var=$ccData       Type=String
+   DECLARE Var=$ccTotalCount Type=Numeric
+   DECLARE Var=$ccstatus     Type=String
+   DECLARE Var=$result Type=String
+   DECLARE Var=$strChildCount Type=String
+   DECLARE Var=$strCount Type=String
+ ENDSUB 
+
+#######################################################################################
+#######################################################################################
+#######################################################################################
+<data> VarName=$DeLormeload
+%1 -D0 -i gpx -f %2 -vs -o %3 -F usb:
+if errorlevel 1 echo finished bad
+if errorlevel 1 echo bad > DeLorme_results.txt
+if errorlevel 1 pause
+if errorlevel 1 goto end
+echo finish ok
+echo ok > DeLorme_results.txt
+:end
+<enddata>
+###############################################################################################
+###############################################################################################
+<data> VarName=$DeLormeGPSExport
+[TfmGps]
+chkChild.Checked={Child}
+chkClear.Checked={Clear}
+chkDebug.Checked=False
+chkDefault.Checked=False
+chkUpper.Checked=False
+edtFormat.Text=%name %children %c_name - %c_code: %c_comment (for Cache: %code)
+edtMaxGps.Text=31
+edtProblem.Text=
+edtWaypoint.Text=%code %children %name=28 %c_code1
+chkMacro.Checked=False
+edtMax.Text=1475
+chkOnlyChild.Checked=False
+rbtOnlyUnFlagged.Checked=False
+rbtOnlyFlagged.Checked=False
+rbtAllChildren.Checked=True
+chkDatabase.Checked=False
+cbxLogs.Text={numLogs}
+edtGpxName.Text=Geocaches.gpx
+rbtGeocaches.Checked=True
+rbtPOIs.Checked=False
+rbtWaypoints.Checked=False
+chkDelormeHintAtEnd.Checked=False
+edtExtra.Text={FirstLogInfo}
+chkClearGeocaches.Checked=False
+chkClearNotes.Checked=False
+chkClearWaypoints.Checked=False
+chkClearPictures.Checked=False
+chkGrabImages.Checked=False
+file1.Text=
+[TfmIcons]
+rbtBoth.Checked=False
+rbtStatus.Checked=False
+rbtType.Checked=True
+[TfmGpsSetup]
+cbxBrand.Text=Delorme
+cbxComPorts.Text=COM2
+cbxSpeed.Text=9600
+cbxSpeed.Enabled=True
+lblGarmin.Visible=False
+lblMagellan.Visible=False
+edtMax.Text=1000
+chkUSB.Checked=False
+cbxModel.Text={delormeType}
+[icons]All Waypoints=Yellow Dot
+Archived=Tombstone
+Benchmark+Archived=NGS Benchmark
+Benchmark+Found=NGS Benchmark
+Benchmark+Not Found=NGS Benchmark
+Benchmark+Placed=NGS Benchmark
+Benchmark=NGS Benchmark
+CITO+Archived=Cache In Trash Out Event
+CITO+Found=Cache In Trash Out Event
+CITO+Not Found=Cache In Trash Out Event
+CITO+Placed=Cache In Trash Out Event
+CITO=Cache In Trash Out Event
+Earth+Archived=EarthCache
+Earth+Found=EarthCache
+Earth+Not Found=EarthCache
+Earth+Placed=EarthCache
+Earth=EarthCache
+End Point=Exit
+Event+Archived=Event Cache
+Event+Found=Event Cache
+Event+Not Found=Event Cache
+Event+Placed=Event Cache
+Event=Event Cache
+Final Location=Final Location
+Found=Geocache Found
+Has Corrected Coordinates=Police
+Has Travel Bug=Exclamation
+Letterbox+Archived=Letterbox Hybrid
+Letterbox+Found=Letterbox Hybrid
+Letterbox+Not Found=Letterbox Hybrid
+Letterbox+Placed=Letterbox Hybrid
+Letterbox=Letterbox Hybrid
+Locationless+Archived=Mountain
+Locationless+Found=Mountain
+Locationless+Not Found=Mountain
+Locationless+Placed=Mountain
+Locationless=Mountain
+Maze Exhibit+Archived=Flower Garden
+Maze Exhibit+Found=Flower Garden
+Maze Exhibit+Not Found=Flower Garden
+Maze Exhibit+Placed=Flower Garden
+Maze Exhibit=Flower Garden
+Mega Event+Archived=Mega-Event Cache
+Mega Event+Found=Mega-Event Cache
+Mega Event+Not Found=Mega-Event Cache
+Mega Event+Placed=Mega-Event Cache
+Mega Event=Mega-Event Cache
+Micro Cache=Small Blue Dot
+Multi+Archived=Multi-Cache
+Multi+Found=Multi-Cache
+Multi+Not Found=Multi-Cache
+Multi+Placed=Multi-Cache
+Multi=Multi-Cache
+Mystery+Archived=Unknown Cache
+Mystery+Found=Unknown Cache
+Mystery+Not Found=Unknown Cache
+Mystery+Placed=Unknown Cache
+Mystery=Unknown Cache
+Not Found=Geocache
+Other+Archived=Yellow Dot
+Other+Found=Yellow Dot
+Other+Not Found=Yellow Dot
+Other+Placed=Yellow Dot
+Other=Yellow Dot
+Parking Area=Parking Area
+Placed=House
+Project APE+Archived=Animal Tracks
+Project APE+Found=Animal Tracks
+Project APE+Not Found=Animal Tracks
+Project APE+Placed=Animal Tracks
+Project APE=Animal Tracks
+Question to Answer=Question to Answer
+Reference Point=Building
+Stages of a Multicache=Multi-Cache
+Temporarily unavailable=Tombstone
+Traditional Micro Cache=Small Dark Red Dot
+Traditional+Archived=Traditional Cache
+Traditional+Found=Traditional Cache
+Traditional+Not Found=Traditional Cache
+Traditional+Placed=Traditional Cache
+Traditional=Traditional Cache
+Trailhead=Information
+Virtual+Archived=Virtual Cache
+Virtual+Found=Virtual Cache
+Virtual+Not Found=Virtual Cache
+Virtual+Placed=Virtual Cache
+Virtual=Virtual Cache
+Waymark+Archived=WayMark
+Waymark+Found=WayMark
+Waymark+Not Found=WayMark
+Waymark+Placed=WayMark
+Waymark=WayMark
+Web Cam+Archived=Webcam Cache
+Web Cam+Found=Webcam Cache
+Web Cam+Not Found=Webcam Cache
+Web Cam+Placed=Webcam Cache
+Web Cam=Webcam Cache
+Wherigo+Archived=Whereigo Cache
+Wherigo+Found=Whereigo Cache
+Wherigo+Not Found=Whereigo Cache
+Wherigo+Placed=Whereigo Cache
+Wherigo=Whereigo Cache
+
+[sicons]All Waypoints=Yellow Dot
+Archived=Tombstone
+Benchmark+Archived=NGS Benchmark
+Benchmark+Found=NGS Benchmark
+Benchmark+Not Found=NGS Benchmark
+Benchmark+Placed=NGS Benchmark
+Benchmark=NGS Benchmark
+CITO+Archived=Cache In Trash Out Event
+CITO+Found=Cache In Trash Out Event
+CITO+Not Found=Cache In Trash Out Event
+CITO+Placed=Cache In Trash Out Event
+CITO=Cache In Trash Out Event
+Earth+Archived=EarthCache
+Earth+Found=EarthCache
+Earth+Not Found=EarthCache
+Earth+Placed=EarthCache
+Earth=EarthCache
+End Point=Exit
+Event+Archived=Event Cache
+Event+Found=Event Cache
+Event+Not Found=Event Cache
+Event+Placed=Event Cache
+Event=Event Cache
+Final Location=Final Location
+Found=Geocache Found
+Has Corrected Coordinates=Police
+Has Travel Bug=Exclamation
+Letterbox+Archived=Letterbox Hybrid
+Letterbox+Found=Letterbox Hybrid
+Letterbox+Not Found=Letterbox Hybrid
+Letterbox+Placed=Letterbox Hybrid
+Letterbox=Letterbox Hybrid
+Locationless+Archived=Mountain
+Locationless+Found=Mountain
+Locationless+Not Found=Mountain
+Locationless+Placed=Mountain
+Locationless=Mountain
+Maze Exhibit+Archived=Flower Garden
+Maze Exhibit+Found=Flower Garden
+Maze Exhibit+Not Found=Flower Garden
+Maze Exhibit+Placed=Flower Garden
+Maze Exhibit=Flower Garden
+Mega Event+Archived=Mega-Event Cache
+Mega Event+Found=Mega-Event Cache
+Mega Event+Not Found=Mega-Event Cache
+Mega Event+Placed=Mega-Event Cache
+Mega Event=Mega-Event Cache
+Micro Cache=Small Blue Dot
+Multi+Archived=Multi-Cache
+Multi+Found=Multi-Cache
+Multi+Not Found=Multi-Cache
+Multi+Placed=Multi-Cache
+Multi=Multi-Cache
+Mystery+Archived=Unknown Cache
+Mystery+Found=Unknown Cache
+Mystery+Not Found=Unknown Cache
+Mystery+Placed=Unknown Cache
+Mystery=Unknown Cache
+Not Found=Geocache
+Other+Archived=Yellow Dot
+Other+Found=Yellow Dot
+Other+Not Found=Yellow Dot
+Other+Placed=Yellow Dot
+Other=Yellow Dot
+Parking Area=Parking Area
+Placed=House
+Project APE+Archived=Animal Tracks
+Project APE+Found=Animal Tracks
+Project APE+Not Found=Animal Tracks
+Project APE+Placed=Animal Tracks
+Project APE=Animal Tracks
+Question to Answer=Question to Answer
+Reference Point=Building
+Stages of a Multicache=Multi-Cache
+Temporarily unavailable=Tombstone
+Traditional Micro Cache=Small Dark Red Dot
+Traditional+Archived=Traditional Cache
+Traditional+Found=Traditional Cache
+Traditional+Not Found=Traditional Cache
+Traditional+Placed=Traditional Cache
+Traditional=Traditional Cache
+Trailhead=Information
+Virtual+Archived=Virtual Cache
+Virtual+Found=Virtual Cache
+Virtual+Not Found=Virtual Cache
+Virtual+Placed=Virtual Cache
+Virtual=Virtual Cache
+Waymark+Archived=WayMark
+Waymark+Found=WayMark
+Waymark+Not Found=WayMark
+Waymark+Placed=WayMark
+Waymark=WayMark
+Web Cam+Archived=Webcam Cache
+Web Cam+Found=Webcam Cache
+Web Cam+Not Found=Webcam Cache
+Web Cam+Placed=Webcam Cache
+Web Cam=Webcam Cache
+Wherigo+Archived=Whereigo Cache
+Wherigo+Found=Whereigo Cache
+Wherigo+Not Found=Whereigo Cache
+Wherigo+Placed=Whereigo Cache
+Wherigo=Whereigo Cache
+
+
+[sicons]
+
+<enddata>
+
+
+<data> VarName=$DeLormeGPXDef
+[TfmExportGpx]
+cbxLimit.Text={numLogs}
+cbxUserNotes.Checked=False
+chkActual.Checked=False
+chkDefault.Checked=False
+chkExtra.Checked=False
+chkMyLogs.Checked=True
+chkSymbol.Checked=False
+edtFormat.Text=%name %children %c_name - %c_code: %c_comment (for Cache: %code)
+edtMax.Text=
+edtMaxGps.Text=31
+edtWaypoint.Text=%code %children %name=28 %c_code1
+rbtGpx.Checked=True
+rbtLoc.Checked=False
+edtProblem.Text=
+edtExtra.Text={FirstLogInfo}
+chkChild.Checked={Child}
+chkOnlyChild.Checked=False
+rbtAllChildren.Checked=True
+rbtOnlyFlagged.Checked=False
+rbtOnlyUnFlagged.Checked=False
+chkApplyName.Checked=False
+chkForce.Checked=True
+cbxVersion.Text=Ver 1.1
+chkLogAlternate.Checked=True
+[TfmExportGpx.cbxRecent.Items]
+Count=0
+<enddata>
+
+<data> VarName=$DeLormeGPSExport
+[TfmGps]
+chkChild.Checked={Child}
+chkClear.Checked={Clear}
+chkDebug.Checked=False
+chkDefault.Checked=False
+chkUpper.Checked=False
+edtFormat.Text=%name %children %c_name - %c_code: %c_comment (for Cache: %code)
+edtMaxGps.Text=31
+edtProblem.Text=
+edtWaypoint.Text=%code %children %name=28 %c_code1
+chkMacro.Checked=False
+File1.Filename=javapgmrGarmin60SCxSymbolGenMacro.gsk
+edtMax.Text=
+chkOnlyChild.Checked=False
+rbtOnlyUnFlagged.Checked=False
+rbtOnlyFlagged.Checked=False
+rbtAllChildren.Checked=True
+chkDatabase.Checked=False
+cbxLogs.Text={numLogs}
+edtGpxName.Text=Geocaches.gpx
+rbtGeocaches.Checked=True
+rbtPOIs.Checked=False
+rbtWaypoints.Checked=False
+chkDelormeHintAtEnd.Checked=False
+edtExtra.Text={FirstLogInfo}
+[TfmIcons]
+rbtBoth.Checked=False
+rbtStatus.Checked=False
+rbtType.Checked=True
+[TfmGpsSetup]
+cbxBrand.Text=Delorme
+cbxComPorts.Text=COM2
+cbxSpeed.Text=9600
+cbxSpeed.Enabled=True
+lblGarmin.Visible=False
+lblMagellan.Visible=False
+edtMax.Text={MaxSize}
+chkUSB.Checked=False
+cbxModel.Text={delormeType}
+[icons]All Waypoints=Yellow Dot
+Archived=Tombstone
+Benchmark+Archived=NGS Benchmark
+Benchmark+Found=NGS Benchmark
+Benchmark+Not Found=NGS Benchmark
+Benchmark+Placed=NGS Benchmark
+Benchmark=NGS Benchmark
+CITO+Archived=Cache In Trash Out Event
+CITO+Found=Cache In Trash Out Event
+CITO+Not Found=Cache In Trash Out Event
+CITO+Placed=Cache In Trash Out Event
+CITO=Cache In Trash Out Event
+Earth+Archived=EarthCache
+Earth+Found=EarthCache
+Earth+Not Found=EarthCache
+Earth+Placed=EarthCache
+Earth=EarthCache
+End Point=Exit
+Event+Archived=Event Cache
+Event+Found=Event Cache
+Event+Not Found=Event Cache
+Event+Placed=Event Cache
+Event=Event Cache
+Final Location=Final Location
+Found=Geocache Found
+Has Corrected Coordinates=Police
+Has Travel Bug=Exclamation
+Letterbox+Archived=Letterbox Hybrid
+Letterbox+Found=Letterbox Hybrid
+Letterbox+Not Found=Letterbox Hybrid
+Letterbox+Placed=Letterbox Hybrid
+Letterbox=Letterbox Hybrid
+Locationless+Archived=Mountain
+Locationless+Found=Mountain
+Locationless+Not Found=Mountain
+Locationless+Placed=Mountain
+Locationless=Mountain
+Maze Exhibit+Archived=Flower Garden
+Maze Exhibit+Found=Flower Garden
+Maze Exhibit+Not Found=Flower Garden
+Maze Exhibit+Placed=Flower Garden
+Maze Exhibit=Flower Garden
+Mega Event+Archived=Mega-Event Cache
+Mega Event+Found=Mega-Event Cache
+Mega Event+Not Found=Mega-Event Cache
+Mega Event+Placed=Mega-Event Cache
+Mega Event=Mega-Event Cache
+Micro Cache=Small Blue Dot
+Multi+Archived=Multi-Cache
+Multi+Found=Multi-Cache
+Multi+Not Found=Multi-Cache
+Multi+Placed=Multi-Cache
+Multi=Multi-Cache
+Mystery+Archived=Unknown Cache
+Mystery+Found=Unknown Cache
+Mystery+Not Found=Unknown Cache
+Mystery+Placed=Unknown Cache
+Mystery=Unknown Cache
+Not Found=Geocache
+Other+Archived=Yellow Dot
+Other+Found=Yellow Dot
+Other+Not Found=Yellow Dot
+Other+Placed=Yellow Dot
+Other=Yellow Dot
+Parking Area=Parking Area
+Placed=House
+Project APE+Archived=Animal Tracks
+Project APE+Found=Animal Tracks
+Project APE+Not Found=Animal Tracks
+Project APE+Placed=Animal Tracks
+Project APE=Animal Tracks
+Question to Answer=Question to Answer
+Reference Point=Building
+Stages of a Multicache=Multi-Cache
+Temporarily unavailable=Tombstone
+Traditional Micro Cache=Small Dark Red Dot
+Traditional+Archived=Traditional Cache
+Traditional+Found=Traditional Cache
+Traditional+Not Found=Traditional Cache
+Traditional+Placed=Traditional Cache
+Traditional=Traditional Cache
+Trailhead=Information
+Virtual+Archived=Virtual Cache
+Virtual+Found=Virtual Cache
+Virtual+Not Found=Virtual Cache
+Virtual+Placed=Virtual Cache
+Virtual=Virtual Cache
+Waymark+Archived=WayMark
+Waymark+Found=WayMark
+Waymark+Not Found=WayMark
+Waymark+Placed=WayMark
+Waymark=WayMark
+Web Cam+Archived=Webcam Cache
+Web Cam+Found=Webcam Cache
+Web Cam+Not Found=Webcam Cache
+Web Cam+Placed=Webcam Cache
+Web Cam=Webcam Cache
+Wherigo+Archived=Whereigo Cache
+Wherigo+Found=Whereigo Cache
+Wherigo+Not Found=Whereigo Cache
+Wherigo+Placed=Whereigo Cache
+Wherigo=Whereigo Cache
+
+
+[sicons]All Waypoints=Yellow Dot
+Archived=Tombstone
+Benchmark+Archived=NGS Benchmark
+Benchmark+Found=NGS Benchmark
+Benchmark+Not Found=NGS Benchmark
+Benchmark+Placed=NGS Benchmark
+Benchmark=NGS Benchmark
+CITO+Archived=Cache In Trash Out Event
+CITO+Found=Cache In Trash Out Event
+CITO+Not Found=Cache In Trash Out Event
+CITO+Placed=Cache In Trash Out Event
+CITO=Cache In Trash Out Event
+Earth+Archived=EarthCache
+Earth+Found=EarthCache
+Earth+Not Found=EarthCache
+Earth+Placed=EarthCache
+Earth=EarthCache
+End Point=Exit
+Event+Archived=Event Cache
+Event+Found=Event Cache
+Event+Not Found=Event Cache
+Event+Placed=Event Cache
+Event=Event Cache
+Final Location=Final Location
+Found=Geocache Found
+Has Corrected Coordinates=Police
+Has Travel Bug=Exclamation
+Letterbox+Archived=Letterbox Hybrid
+Letterbox+Found=Letterbox Hybrid
+Letterbox+Not Found=Letterbox Hybrid
+Letterbox+Placed=Letterbox Hybrid
+Letterbox=Letterbox Hybrid
+Locationless+Archived=Mountain
+Locationless+Found=Mountain
+Locationless+Not Found=Mountain
+Locationless+Placed=Mountain
+Locationless=Mountain
+Maze Exhibit+Archived=Flower Garden
+Maze Exhibit+Found=Flower Garden
+Maze Exhibit+Not Found=Flower Garden
+Maze Exhibit+Placed=Flower Garden
+Maze Exhibit=Flower Garden
+Mega Event+Archived=Mega-Event Cache
+Mega Event+Found=Mega-Event Cache
+Mega Event+Not Found=Mega-Event Cache
+Mega Event+Placed=Mega-Event Cache
+Mega Event=Mega-Event Cache
+Micro Cache=Small Blue Dot
+Multi+Archived=Multi-Cache
+Multi+Found=Multi-Cache
+Multi+Not Found=Multi-Cache
+Multi+Placed=Multi-Cache
+Multi=Multi-Cache
+Mystery+Archived=Unknown Cache
+Mystery+Found=Unknown Cache
+Mystery+Not Found=Unknown Cache
+Mystery+Placed=Unknown Cache
+Mystery=Unknown Cache
+Not Found=Geocache
+Other+Archived=Yellow Dot
+Other+Found=Yellow Dot
+Other+Not Found=Yellow Dot
+Other+Placed=Yellow Dot
+Other=Yellow Dot
+Parking Area=Parking Area
+Placed=House
+Project APE+Archived=Animal Tracks
+Project APE+Found=Animal Tracks
+Project APE+Not Found=Animal Tracks
+Project APE+Placed=Animal Tracks
+Project APE=Animal Tracks
+Question to Answer=Question to Answer
+Reference Point=Building
+Stages of a Multicache=Multi-Cache
+Temporarily unavailable=Tombstone
+Traditional Micro Cache=Small Dark Red Dot
+Traditional+Archived=Traditional Cache
+Traditional+Found=Traditional Cache
+Traditional+Not Found=Traditional Cache
+Traditional+Placed=Traditional Cache
+Traditional=Traditional Cache
+Trailhead=Information
+Virtual+Archived=Virtual Cache
+Virtual+Found=Virtual Cache
+Virtual+Not Found=Virtual Cache
+Virtual+Placed=Virtual Cache
+Virtual=Virtual Cache
+Waymark+Archived=WayMark
+Waymark+Found=WayMark
+Waymark+Not Found=WayMark
+Waymark+Placed=WayMark
+Waymark=WayMark
+Web Cam+Archived=Webcam Cache
+Web Cam+Found=Webcam Cache
+Web Cam+Not Found=Webcam Cache
+Web Cam+Placed=Webcam Cache
+Web Cam=Webcam Cache
+Wherigo+Archived=Whereigo Cache
+Wherigo+Found=Whereigo Cache
+Wherigo+Not Found=Whereigo Cache
+Wherigo+Placed=Whereigo Cache
+Wherigo=Whereigo Cache
+
+[sicons]Traditional=Traditional Cache
+Multi=Multi-Cache
+Letterbox=Letterbox Hybrid
+CITO=Cache In Trash Out Event
+Event=Event Cache
+Locationless=Mountain
+Virtual=Virtual Cache
+Web Cam=Webcam Cache
+Mystery=Unknown Cache
+Benchmark=NGS Benchmark
+Other=Yellow Dot
+Earth=EarthCache
+Project APE=Animal Tracks
+Mega Event=Mega-Event Cache
+Maze Exhibit=Flower Garden
+Wherigo=Whereigo Cache
+Waymark=WayMark
+Final Location=Final Location
+Parking Area=Parking Area
+Question to Answer=Question to Answer
+Stages of a Multicache=Multi-Cache
+Trailhead=Information
+Reference Point=Building
+End Point=Exit
+Micro Cache=Small Blue Dot
+Has Travel Bug=Exclamation
+All Waypoints=Yellow Dot
+Has Corrected Coordinates=Police
+Traditional Micro Cache=Small Dark Red Dot
+Temporarily unavailable=Tombstone
+Found=Geocache Found
+Traditional+Found=Traditional Cache
+Multi+Found=Multi-Cache
+Letterbox+Found=Letterbox Hybrid
+CITO+Found=Cache In Trash Out Event
+Event+Found=Event Cache
+Locationless+Found=Mountain
+Virtual+Found=Virtual Cache
+Web Cam+Found=Webcam Cache
+Mystery+Found=Unknown Cache
+Benchmark+Found=NGS Benchmark
+Other+Found=Yellow Dot
+Earth+Found=EarthCache
+Project APE+Found=Animal Tracks
+Mega Event+Found=Mega-Event Cache
+Maze Exhibit+Found=Flower Garden
+Wherigo+Found=Whereigo Cache
+Waymark+Found=WayMark
+Not Found=Geocache
+Traditional+Not Found=Traditional Cache
+Multi+Not Found=Multi-Cache
+Letterbox+Not Found=Letterbox Hybrid
+CITO+Not Found=Cache In Trash Out Event
+Event+Not Found=Event Cache
+Locationless+Not Found=Mountain
+Virtual+Not Found=Virtual Cache
+Web Cam+Not Found=Webcam Cache
+Mystery+Not Found=Unknown Cache
+Benchmark+Not Found=NGS Benchmark
+Other+Not Found=Yellow Dot
+Earth+Not Found=EarthCache
+Project APE+Not Found=Animal Tracks
+Mega Event+Not Found=Mega-Event Cache
+Maze Exhibit+Not Found=Flower Garden
+Wherigo+Not Found=Whereigo Cache
+Waymark+Not Found=WayMark
+Placed=House
+Traditional+Placed=Traditional Cache
+Multi+Placed=Multi-Cache
+Letterbox+Placed=Letterbox Hybrid
+CITO+Placed=Cache In Trash Out Event
+Event+Placed=Event Cache
+Locationless+Placed=Mountain
+Virtual+Placed=Virtual Cache
+Web Cam+Placed=Webcam Cache
+Mystery+Placed=Unknown Cache
+Benchmark+Placed=NGS Benchmark
+Other+Placed=Yellow Dot
+Earth+Placed=EarthCache
+Project APE+Placed=Animal Tracks
+Mega Event+Placed=Mega-Event Cache
+Maze Exhibit+Placed=Flower Garden
+Wherigo+Placed=Whereigo Cache
+Waymark+Placed=WayMark
+Archived=Tombstone
+Traditional+Archived=Traditional Cache
+Multi+Archived=Multi-Cache
+Letterbox+Archived=Letterbox Hybrid
+CITO+Archived=Cache In Trash Out Event
+Event+Archived=Event Cache
+Locationless+Archived=Mountain
+Virtual+Archived=Virtual Cache
+Web Cam+Archived=Webcam Cache
+Mystery+Archived=Unknown Cache
+Benchmark+Archived=NGS Benchmark
+Other+Archived=Yellow Dot
+Earth+Archived=EarthCache
+Project APE+Archived=Animal Tracks
+Mega Event+Archived=Mega-Event Cache
+Maze Exhibit+Archived=Flower Garden
+Wherigo+Archived=Whereigo Cache
+Waymark+Archived=WayMark
+
+
+
+
+[sicons]Traditional=Traditional Cache
+Multi=Multi-Cache
+Letterbox=Letterbox Hybrid
+CITO=Cache In Trash Out Event
+Event=Event Cache
+Locationless=Mountain
+Virtual=Virtual Cache
+Web Cam=Webcam Cache
+Mystery=Unknown Cache
+Benchmark=NGS Benchmark
+Other=Yellow Dot
+Earth=EarthCache
+Project APE=Animal Tracks
+Mega Event=Mega-Event Cache
+Maze Exhibit=Flower Garden
+Wherigo=Whereigo Cache
+Waymark=WayMark
+Final Location=Final Location
+Parking Area=Parking Area
+Question to Answer=Question to Answer
+Stages of a Multicache=Multi-Cache
+Trailhead=Information
+Reference Point=Building
+End Point=Exit
+Micro Cache=Small Blue Dot
+Has Travel Bug=Exclamation
+All Waypoints=Yellow Dot
+Has Corrected Coordinates=Police
+Traditional Micro Cache=Small Dark Red Dot
+Temporarily unavailable=Tombstone
+Found=Geocache Found
+Traditional+Found=Traditional Cache
+Multi+Found=Multi-Cache
+Letterbox+Found=Letterbox Hybrid
+CITO+Found=Cache In Trash Out Event
+Event+Found=Event Cache
+Locationless+Found=Mountain
+Virtual+Found=Virtual Cache
+Web Cam+Found=Webcam Cache
+Mystery+Found=Unknown Cache
+Benchmark+Found=NGS Benchmark
+Other+Found=Yellow Dot
+Earth+Found=EarthCache
+Project APE+Found=Animal Tracks
+Mega Event+Found=Mega-Event Cache
+Maze Exhibit+Found=Flower Garden
+Wherigo+Found=Whereigo Cache
+Waymark+Found=WayMark
+Not Found=Geocache
+Traditional+Not Found=Traditional Cache
+Multi+Not Found=Multi-Cache
+Letterbox+Not Found=Letterbox Hybrid
+CITO+Not Found=Cache In Trash Out Event
+Event+Not Found=Event Cache
+Locationless+Not Found=Mountain
+Virtual+Not Found=Virtual Cache
+Web Cam+Not Found=Webcam Cache
+Mystery+Not Found=Unknown Cache
+Benchmark+Not Found=NGS Benchmark
+Other+Not Found=Yellow Dot
+Earth+Not Found=EarthCache
+Project APE+Not Found=Animal Tracks
+Mega Event+Not Found=Mega-Event Cache
+Maze Exhibit+Not Found=Flower Garden
+Wherigo+Not Found=Whereigo Cache
+Waymark+Not Found=WayMark
+Placed=House
+Traditional+Placed=Traditional Cache
+Multi+Placed=Multi-Cache
+Letterbox+Placed=Letterbox Hybrid
+CITO+Placed=Cache In Trash Out Event
+Event+Placed=Event Cache
+Locationless+Placed=Mountain
+Virtual+Placed=Virtual Cache
+Web Cam+Placed=Webcam Cache
+Mystery+Placed=Unknown Cache
+Benchmark+Placed=NGS Benchmark
+Other+Placed=Yellow Dot
+Earth+Placed=EarthCache
+Project APE+Placed=Animal Tracks
+Mega Event+Placed=Mega-Event Cache
+Maze Exhibit+Placed=Flower Garden
+Wherigo+Placed=Whereigo Cache
+Waymark+Placed=WayMark
+Archived=Tombstone
+Traditional+Archived=Traditional Cache
+Multi+Archived=Multi-Cache
+Letterbox+Archived=Letterbox Hybrid
+CITO+Archived=Cache In Trash Out Event
+Event+Archived=Event Cache
+Locationless+Archived=Mountain
+Virtual+Archived=Virtual Cache
+Web Cam+Archived=Webcam Cache
+Mystery+Archived=Unknown Cache
+Benchmark+Archived=NGS Benchmark
+Other+Archived=Yellow Dot
+Earth+Archived=EarthCache
+Project APE+Archived=Animal Tracks
+Mega Event+Archived=Mega-Event Cache
+Maze Exhibit+Archived=Flower Garden
+Wherigo+Archived=Whereigo Cache
+Waymark+Archived=WayMark
+
+
+
+[sicons]Traditional=Traditional Cache
+Multi=Multi-Cache
+Letterbox=Letterbox Hybrid
+CITO=Cache In Trash Out Event
+Event=Event Cache
+Locationless=Mountain
+Virtual=Virtual Cache
+Web Cam=Webcam Cache
+Mystery=Unknown Cache
+Benchmark=NGS Benchmark
+Other=Yellow Dot
+Earth=EarthCache
+Project APE=Animal Tracks
+Mega Event=Mega-Event Cache
+Maze Exhibit=Flower Garden
+Wherigo=Whereigo Cache
+Waymark=WayMark
+Final Location=Final Location
+Parking Area=Parking Area
+Question to Answer=Question to Answer
+Stages of a Multicache=Multi-Cache
+Trailhead=Information
+Reference Point=Building
+End Point=Exit
+Micro Cache=Small Blue Dot
+Has Travel Bug=Exclamation
+All Waypoints=Yellow Dot
+Has Corrected Coordinates=Police
+Traditional Micro Cache=Small Dark Red Dot
+Temporarily unavailable=Tombstone
+Found=Geocache Found
+Traditional+Found=Traditional Cache
+Multi+Found=Multi-Cache
+Letterbox+Found=Letterbox Hybrid
+CITO+Found=Cache In Trash Out Event
+Event+Found=Event Cache
+Locationless+Found=Mountain
+Virtual+Found=Virtual Cache
+Web Cam+Found=Webcam Cache
+Mystery+Found=Unknown Cache
+Benchmark+Found=NGS Benchmark
+Other+Found=Yellow Dot
+Earth+Found=EarthCache
+Project APE+Found=Animal Tracks
+Mega Event+Found=Mega-Event Cache
+Maze Exhibit+Found=Flower Garden
+Wherigo+Found=Whereigo Cache
+Waymark+Found=WayMark
+Not Found=Geocache
+Traditional+Not Found=Traditional Cache
+Multi+Not Found=Multi-Cache
+Letterbox+Not Found=Letterbox Hybrid
+CITO+Not Found=Cache In Trash Out Event
+Event+Not Found=Event Cache
+Locationless+Not Found=Mountain
+Virtual+Not Found=Virtual Cache
+Web Cam+Not Found=Webcam Cache
+Mystery+Not Found=Unknown Cache
+Benchmark+Not Found=NGS Benchmark
+Other+Not Found=Yellow Dot
+Earth+Not Found=EarthCache
+Project APE+Not Found=Animal Tracks
+Mega Event+Not Found=Mega-Event Cache
+Maze Exhibit+Not Found=Flower Garden
+Wherigo+Not Found=Whereigo Cache
+Waymark+Not Found=WayMark
+Placed=House
+Traditional+Placed=Traditional Cache
+Multi+Placed=Multi-Cache
+Letterbox+Placed=Letterbox Hybrid
+CITO+Placed=Cache In Trash Out Event
+Event+Placed=Event Cache
+Locationless+Placed=Mountain
+Virtual+Placed=Virtual Cache
+Web Cam+Placed=Webcam Cache
+Mystery+Placed=Unknown Cache
+Benchmark+Placed=NGS Benchmark
+Other+Placed=Yellow Dot
+Earth+Placed=EarthCache
+Project APE+Placed=Animal Tracks
+Mega Event+Placed=Mega-Event Cache
+Maze Exhibit+Placed=Flower Garden
+Wherigo+Placed=Whereigo Cache
+Waymark+Placed=WayMark
+Archived=Tombstone
+Traditional+Archived=Traditional Cache
+Multi+Archived=Multi-Cache
+Letterbox+Archived=Letterbox Hybrid
+CITO+Archived=Cache In Trash Out Event
+Event+Archived=Event Cache
+Locationless+Archived=Mountain
+Virtual+Archived=Virtual Cache
+Web Cam+Archived=Webcam Cache
+Mystery+Archived=Unknown Cache
+Benchmark+Archived=NGS Benchmark
+Other+Archived=Yellow Dot
+Earth+Archived=EarthCache
+Project APE+Archived=Animal Tracks
+Mega Event+Archived=Mega-Event Cache
+Maze Exhibit+Archived=Flower Garden
+Wherigo+Archived=Whereigo Cache
+Waymark+Archived=WayMark
+
+
+[sicons]
+
+
+<enddata>
+
+
+
+
+###############################################################################################
+################################################################################################
+
+<Data> VarName=$form1
+#********************************************************************
+# Form generated by GSAK form designer on Sun 06-May-2012 19:48:17
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = DeLormGPSExport
+  Height = 348
+  Width = 269
+
+Name = Groupbox1
+  Type = Groupbox
+  Height = 32
+  Left = 19
+  Top = 204
+  Width = 162
+  Taborder = 11
+
+Name = Title
+  Type = Label
+  Height = 25
+  Left = 5
+  Size = 16
+  Style = bold
+  Top = 3
+  Width = 231
+  Caption = DeLorme GPS Export
+
+Name = ChildWayPts
+  Type = Checkbox
+  Exitonchange = Yes
+  Height = 18
+  Left = 19
+  Top = 48
+  Width = 222
+  Taborder = 0
+  Caption = infor
+
+Name = Logs
+  Type = Checkbox
+  Exitonchange = Yes
+  Height = 17
+  Left = 19
+  Top = 90
+  Width = 221
+  Taborder = 1
+  Caption = Include logs
+
+Name = RmvWaypoints
+  Type = Checkbox
+  Height = 19
+  Left = 19
+  Top = 108
+  Width = 221
+  Taborder = 2
+  Caption = Remove existing waypoints before load
+
+Name = RmvRoutes
+  Type = Checkbox
+  Height = 19
+  Left = 19
+  Top = 127
+  Width = 221
+  Taborder = 3
+  Caption = Remove existing Routes before load
+
+Name = RmvTracks
+  Type = Checkbox
+  Height = 19
+  Left = 19
+  Top = 146
+  Width = 221
+  Taborder = 4
+  Caption = Remove existing Tracks before load
+
+Name = btnOK
+  Type = Button
+  Enter = Yes
+  Height = 28
+  Left = 21
+  Top = 259
+  Width = 75
+  Taborder = 5
+  Caption = OK
+
+Name = btnCancel
+  Type = Button
+  Escape = Yes
+  Height = 28
+  Left = 145
+  Top = 259
+  Width = 75
+  Taborder = 6
+  Caption = Cancel
+
+Name = NumLogs
+  Type = Edit
+  Height = 21
+  Left = 112
+  Top = 90
+  Width = 41
+  Taborder = 7
+
+Name = LogLabel
+  Type = Label
+  Height = 13
+  Left = 139
+  Top = 91
+  Width = 67
+  Caption = Logs to export
+
+Name = HintsAtEnd
+  Type = Checkbox
+  Height = 18
+  Left = 19
+  Top = 165
+  Width = 221
+  Taborder = 8
+  Caption = Put Hints at End of Logs
+
+Name = CacheInfo
+  Type = Label
+  Height = 16
+  Left = 16
+  Top = 30
+  Width = 57
+  Caption = CacheInfo
+
+Name = Label2
+  Type = Label
+  Height = 16
+  Left = 32
+  Top = 71
+  Width = 51
+  Caption = in export.
+
+Name = TotalDialog
+  Type = Label
+  Color = 0
+  Height = 16
+  Left = 88
+  Top = 71
+  Width = 34
+
+Name = Warn
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 3
+  Style = bold
+  Top = 239
+  Width = 243
+  Caption = Cannot export more than 1000 waypoints.
+
+Name = Native
+  Type = Checkbox
+  Height = 19
+  Left = 19
+  Top = 184
+  Width = 221
+  Taborder = 9
+  Caption = Native Mode
+
+Name = DLGPXFileName
+  Type = Edit
+  Height = 21
+  Left = 104
+  Top = 164
+  Width = 132
+  Taborder = 10
+
+Name = GPXNameLabel
+  Type = Label
+  Height = 13
+  Left = 19
+  Top = 167
+  Width = 75
+  Caption = GPX File Name:
+
+Name = PN40
+  Type = Radiobutton
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 19
+  Left = 7
+  Top = 9
+  Width = 56
+  Taborder = 0
+  Caption = PN40
+
+Name = PN60
+  Type = Radiobutton
+  Container = Groupbox1
+  Exitonchange = Yes
+  Height = 19
+  Left = 86
+  Top = 9
+  Width = 56
+  Taborder = 1
+  Caption = PN60
+
+Name = ForceNative
+  Type = Checkbox
+  Captionposition = Left
+  Exitonchange = Yes
+  Height = 18
+  Left = 84
+  Top = 294
+  Width = 83
+  Taborder = 22
+  Caption = Force Native:
+
+<enddata>
+
+
+<Data> VarName=$form2
+Name = Form2
+  Type = Form
+  Caption = DeLormGPSExport
+  Height = 253
+  Width = 253
+
+Name = Label1
+  Type = Label
+  Height = 29
+  Left = 40
+  Size = 18
+  Top = 6
+  Width = 164
+  Caption = Global Settings
+
+Name = F2ForceName
+  Type = Checkbox
+  Captionposition = Left
+  Height = 17
+  Left = 12
+  Top = 48
+  Width = 115
+  Taborder = 8
+  Caption = Force Gpx Name
+
+Name = F2DefaultGPXName
+  Type = Edit
+  Height = 21
+  Left = 114
+  Top = 92
+  Width = 104
+  Taborder = 9
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 12
+  Top = 96
+  Width = 93
+  Caption = Default GPX Name:
+
+Name = F2Ok
+  Type = Button
+  Height = 24
+  Left = 80
+  Top = 171
+  Width = 75
+  Taborder = 10
+  Caption = Ok
+
+Name = F2Protect
+  Type = Checkbox
+  Captionposition = Left
+  Height = 17
+  Left = 12
+  Top = 72
+  Width = 115
+  Taborder = 11
+  Caption = Protect Waypoints:
+
+Name = Label3
+  Type = Label
+  Height = 13
+  Left = 12
+  Top = 119
+  Width = 72
+  Caption = Info on first log:
+
+Name = FirstLogInfo
+  Type = Edit
+  Height = 21
+  Left = 114
+  Top = 117
+  Width = 104
+  Taborder = 12
+
+Name = F2HeadRoomw
+  Type = Edit
+  Height = 21
+  Left = 114
+  Top = 141
+  Width = 104
+  Taborder = 13
+
+Name = Label4
+  Type = Label
+  Height = 13
+  Left = 12
+  Top = 145
+  Width = 49
+  Caption = Headroom
+
+<enddata>
+
+
+<Data> VarName=$form3
+#********************************************************************
+# Form generated by GSAK form designer on Tue 19-Apr-2011 18:11:12
+#********************************************************************
+
+Name = Form3
+  Type = Form
+  Height = 146
+  Top = 464
+  Width = 159
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 10
+  Size = 10
+  Style = bold
+  Top = 4
+  Width = 133
+  Caption = DelormeGPXExport
+
+Name = F3Drive
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 12
+  Top = 73
+  Values = C;D;E;F;G;H;I;J;K;L;M;N;O;P;Q;R;S;T;U;V;W;X;Y;Z;
+  Width = 33
+  Taborder = 8
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 13
+  Top = 53
+  Width = 134
+  Caption = Select SD Card Drive Letter:
+
+Name = Label3
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 11
+  Style = bold
+  Top = 32
+  Width = 126
+  Caption = Delorme not detected.
+
+Name = F3Babel
+  Type = Button
+  Height = 25
+  Left = 60
+  Top = 71
+  Width = 75
+  Taborder = 9
+  Caption = Babel
+
+<enddata>
+
+
+############################################################################################
+############################################################################################
+<data> varname=$pascal
+ Function countCaches(childPts : boolean; numWPN : extended) :string;
+ var
+   totalCount, count : integer;
+   data, sqlstr, results : string;
+   cacheCount; ccCacheCount: integer;
+
+ begin
+    count := sqlite('sql', 'select Count(*) from gccodes');
+    TotalCount := 0;
+    CacheCount := 0;    
+    ccCacheCount := 0;    
+    _sqleol := 0;
+    results := sqlite('sql','select gccode from gccodes order by gcdistance,gccode ','sqlget=yes');
+    while not _sqleol do
+    begin
+      count := 0;
+        if (childPts) then begin        
+          data := sqlget('gccode');
+          sqlstr := 'select Count(waypoints.cparent) from waypoints where waypoints.cparent = ''' + data + '''';
+          count := sqlite('sql', sqlstr);
+        end;      
+        if (count + totalCount) < numwpn then begin
+           totalCount := totalCount + count + 1;
+           ccCacheCount := ccCacheCount + count;
+        end else
+           begin
+           break;
+        end;
+        inc(cacheCount);
+        sqlnext;
+       end;  
+    sqlgetclose;
+    result := inttostr(CacheCount) + ';' + inttostr(ccCacheCount) + ';' + inttostr(totalCount) ;
+end;
+
+Function createTempTable : string;
+var  
+ status, _sql : string;
+ begin
+  _sql := 'drop table if exists gccodes';
+  status := sqlite('sql',_sql);
+  _sql := 'create table gsak_mem.gccodes (gccode,gcdistance)';
+  status := sqlite('sql',_sql);
+ end; 
+
+Function resetTempTable : string;
+ var 
+ status, _sql  : string;
+
+ begin
+ _sql :='delete from gccodes';
+ status := sqlite('sql', _sql ); 
+ _sql:='insert into gccodes (gccode, gcdistance) select code, distance from Caches where RowId in (Select * from GridTemp)';
+ status := sqlite('sql', _sql);
+end;
+
+Function deleteTempTable : string;
+var 
+ status, _sql  : string;
+
+ begin
+ _sql := 'DROP TABLE IF EXISTS gccodes';
+ status := Sqlite('sql',_sql);
+end;
+
+Function resetGridIntoTempTable : string;
+var 
+ status, _sql  : string;
+
+ begin
+_sql := 'delete from gccodes';
+status := sqlite('sql', _sql );
+_sql:='insert into gccodes (gccode, gcdistance) select code, distance from Caches where RowId in (Select * from GridTemp)';
+status := sqlite('sql', _sql);
+end; 
+
+Function removeGridFromTT : string;
+var 
+ status, _sql  : string;
+
+ begin
+_sql:='delete from gccodes where gccode in (select code from Caches where RowId in (Select * from GridTemp))';
+status := sqlite('sql', _sql );
+end;
+
+Function clearMacroFlags : string;
+var _sql, status : string;
+
+begin
+_sql:='update caches set macroflag = 0 where macroflag = 1';
+status := sqlite('sql', _sql );
+result := 'OK';
+end;
+
+Function getRecordCount: extended;
+ Var
+ _sql  : string;
+ count : numeric;
+ begin
+_sql:='select Count(*) from gccodes';
+count := sqlite('sql', _sql );
+result := count;
+end;
+
+Function runsql(_sql : string) : string;
+ Var
+ status : string;
+ count : numeric;
+ begin
+ status  := sqlite('sql', _sql );
+ result := status;
+end;
+
+Function setMacroFlag(number: extended) : string;
+Var 
+ status, _sql : string;
+
+ Begin
+   _sql := 'update caches set macroflag = 0 where macroflag = 1';
+   status := sqlite('sql', _sql );
+   _sql := 'update caches set macroflag = 1 where code in (select gccode from gccodes order by gcdistance, gccode limit ' + inttostr(number) + ')';
+   status := sqlite('sql', _sql );
+   result := 'OK'; 
+ end;
+
+
+<enddata>
+ INCLUDE File="common.include"

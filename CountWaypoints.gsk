@@ -1,0 +1,41 @@
+#*******************************************
+# MacDescription = Count Wapoints
+# MacFileName = CountWaypoints.gsk
+# MacAuthor = Kai Team
+# MacVersion=2.0
+# MacUrl=http://gsak.net/board/index.php?showtopic=12183&view=findpost&p=80286
+#*******************************************
+$DBs=SysInfo("databases")
+$NumDBs=RegExCount(";",$DBs) + 1
+$twcount=0
+$tccount=0
+$tlcount=0
+
+$status = sqlite("sql","drop table if exists dbcount")
+$status = sqlite("sql","create temp table dbcount (Database, Waypoints, Children, Logs)")
+
+
+$x=1
+WHILE $x<=$NumDBs
+ $Database=Extract($DBs,";",$x)
+ SHOWSTATUS Msg=Counting $Database Title=DbCount
+ $status = sqlite("sql","attach '$_dbPath\$database\sqlite.db3' as countdb")
+ $wcount = sqlite("sql","select count(*) from countdb.caches","")
+ $twcount=$twcount + Val($wcount)
+ $ccount = sqlite("sql","select count(*) from countdb.waypoints","")
+ $tccount=$tccount + Val($ccount)
+ $lcount = sqlite("sql","select count(*) from countdb.logs","")
+ $tlcount=$tlcount + Val($lcount)
+ $status = sqlite("sql","detach countdb")
+ $status = sqlite("sql","insert into dbcount values('$database',$wcount,$ccount,$lcount)")
+ $x = $x + 1
+EndWhile
+
+$status=sqlite("sql","insert into dbcount values('<b>Total:</b>',$twcount,$tccount,$tlcount)")
+
+$html = sqlite("sql","select * from dbcount","Headings=Yes")
+$status = SqlToHtml($html,"Database counts","Y")
+$status = sqlite("sql","drop table dbcount")
+
+
+

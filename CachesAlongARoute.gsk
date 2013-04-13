@@ -1,0 +1,642 @@
+################################################################################
+# MacVersion = 2.0.0.1
+# MacDescription = Filter your database for Caches along a Route
+# MacAuthor =  javapgmr and gkrone
+# MacFileName = CachesAlongARoute.gsk
+# MacURL = http://gsak.net/board/index.php?showtopic=5984&view=getlastpost
+################################################################################
+#
+#
+#	CachesAlongARoute.gsk change history
+#
+#-----------------------------------------------------------------------------#
+#
+# 07/2009 - Initial version 2.0
+#	Macro adopted.  Previous version 1.0
+# 
+#-----------------------------------------------------------------------------#
+
+#-----------------------------------------------------------------------------#
+# Select caches along a route
+#-----------------------------------------------------------------------------#
+
+#-----------------------------------------------------------------------------#
+# This is the major version data that the Macro was developed under.
+# Please let me know if it runs under previous versions of GSAK and I
+# will update the version numbers.  E-Mail me through my profile on
+# GSAK.net or geocaching.org.
+#-----------------------------------------------------------------------------#
+verCheck Version=7.1.1.00 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+
+
+#*******************************************************
+#   Variable declarations for
+#   J:\gsak\Macros\CachesAlongARoute.gsk
+#
+#   Generated 7/14/2009 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$bDebugExe Type=Boolean
+Declare Var=$cboWaypoints Type=String
+Declare Var=$cbFilterList Type=String
+Declare Var=$DynamicFilter Type=String
+Declare Var=$Filter Type=String
+Declare Var=$frmMain Type=String
+Declare Var=$GetGoogleRoute Type=String
+Declare Var=$intLoop Type=Numeric
+Declare Var=$intResult Type=String
+Declare Var=$OldFilter Type=String
+Declare Var=$rbtWaypoint Type=Boolean
+Declare Var=$regex Type=String
+Declare Var=$result Type=Boolean
+Declare Var=$strArguments Type=String
+Declare Var=$strCurrentCode Type=String
+Declare Var=$strEnd Type=String
+Declare Var=$strEXEFile Type=String
+Declare Var=$strExeFilename Type=String
+Declare Var=$strFile Type=String
+Declare Var=$strFileExtension Type=String
+Declare Var=$strFilePath Type=String
+Declare Var=$strFilter Type=String
+Declare Var=$strFilterList Type=String
+Declare Var=$strHTMLFile Type=String
+Declare Var=$strHTMLFilePath Type=String
+Declare Var=$strKML Type=String
+Declare Var=$strKMLPath Type=String
+Declare Var=$strRoutePath Type=String
+Declare Var=$strLat Type=String
+Declare Var=$strLine Type=String
+Declare Var=$strLon Type=String
+Declare Var=$strPathFileList Type=String
+Declare Var=$strSelected Type=String
+Declare Var=$strStart Type=String
+Declare Var=$strWaypoints Type=String
+Declare Var=$txtDistance Type=String
+Declare Var=$CurrentFilter Type=String
+
+#
+# Set up Variables
+#
+$bDebugExe = False
+$rbtWaypoint = True
+$txtDistance = ".5"
+$strHTMLFilePath = $_AppData + "\html"
+$strHTMLFile= $strHTMLFilePath + "\Directions.kml"
+$strExeFilename= "GetGoogleRoute.exe"
+$strRoutePath=$_AppData + "\macros\routefiles"
+#
+# Fill Cache combo Box
+#
+GoSub Name=GetComboBox
+$cboWaypoints = $strSelected
+
+
+# Get list of all saved filters
+$strFilterList = SysInfo("Filters")
+
+#
+# Fill Route Combo Box
+$strPathFileList = Dir($strRoutePath + "\*.gpx", "F")
+$strPathFileList = $strPathFileList + Dir($strRoutePath + "\*.kml", "F")
+
+If $strPathFileList = ""
+	$frmMain = EditForm($frmMain,"rbRouteFile","Enabled","No")
+EndIf
+
+
+#
+# Display and process form
+#
+If ShowForm($frmMain) 
+        If $btnOK              
+                # Continue
+                If $rbtWayPoint
+                        $result = Seek(AllTrim(Extract($cboWaypoints, "-", 1))) 
+                        $strEnd = "&daddr=" + allTrim($d_Latitude) + "," + allTrim($d_Longitude)
+                        Table Active=Waypoints Scope=Parent
+                        While Not($_EOL)
+                                If $d_cType="Parking Area"
+                                        $strEnd = "&daddr=" + allTrim($d_cLat) + "," + allTrim($d_cLon)
+                                EndIf
+                                Goto Position=Next
+                        EndWhile
+                        Table Active=Caches
+                EndIf
+                
+                If $rbtCoordinates
+                        $strEnd = "&daddr=" + Replace(" ", "+", allTrim($txtLat), True) + "," + Replace(" ", "+", allTrim($txtLon), True)
+                EndIf
+                
+                If $rbtAddress
+                        $strEnd = "&daddr=" + Replace(" ", "+", allTrim($txtAddress), True) 
+                EndIf
+        Else
+                Cancel  Msg="Macro Cancelled"
+        EndIf
+EndIf
+
+
+If $rbRouteFile
+	Gosub name=ProcessRouteFile
+else
+
+	$strStart = "&saddr=" + REPLACE(",",".",allTrim(Sysinfo("gsakini;LastCenter;Lat"))) + "," + REPLACE(",",".",allTrim(Sysinfo("gsakini;LastCenter;Lon")))
+	
+	$strKMLPath = "http://maps.google.com/maps?f=d&hl=en$strStart$strEnd&output=kml"
+
+	#
+	# Extract the executable file if it doesn't exist
+	#
+	If NOT(FileExists($strHTMLFilePath + "\GetGoogleRoute.exe"))
+		$intResult = PutFile($strHTMLFilePath + "\" + $strExeFileName, MimeDecode($GetGoogleRoute))
+	EndIf
+
+	#
+	# Delete any old Direction files
+	#
+	If FileExists($strHTMLFile)
+		FileErase File=$strHTMLFile OnError=Continue
+	EndIf
+
+
+	# Use external EXE file to get the KML file
+	ShowStatus msg="Getting online KML file, please wait..." Width=350
+	$strEXEFile = Quote($strHTMLFilePath + "\GetGoogleRoute.exe")
+	$strArguments = Quote($strKMLPath) + " " + Quote($strHTMLFile)
+
+	If $bDebugExe
+		$strArguments = $strArguments + " " + "Debug"
+	EndIf
+
+	RunPgm pgm=$strEXEFile parms=$strArguments wait=yes
+
+	$strFile=$strHTMLFile
+	Gosub Name=ProcessKMLFile
+EndIf
+
+#
+# Apply variables to the filter
+#
+ShowStatus msg="Applying filter, please wait..." Width=350
+If $rbCombineFilters
+#	Debug status="on"
+	Filter Name=$cbFilterList
+	$CurrentFilter=SaveFilter()
+
+	# Set the route information for the filter
+	$DynamicFilter = Replace("DynamicArcFilter", "$strFilter", $Filter, True) 
+
+	# Set the distance from the route to search
+	$DynamicFilter = Replace("DynamicDistance", "$txtDistance", $DynamicFilter, True) 
+	MacroSet Dialog=Filter VarName=$DynamicFilter
+
+	# Join the dynamic filter with the selected filter
+	Filter Name=<macro> join="and"
+
+Else
+	$DynamicFilter = Replace("DynamicArcFilter", "$strFilter", $OldFilter, True) 
+	$DynamicFilter = Replace("DynamicDistance", "$txtDistance", $DynamicFilter, True) 
+
+	MacroSet Dialog=Filter VarName=$DynamicFilter
+	Filter Name=<macro>
+EndIf
+
+ShowStatus Msg="Done" Display=off
+
+#
+# Process a pre-existing route file 
+#
+BeginSub Name=ProcessRouteFile
+
+	$strFile= $strRoutePath + "\" + $cboPathFile
+	$strFileExtension = Right($strFile, 3)
+
+	If Lower($strFileExtension) = "gpx"
+		GoSub name=ProcessGPXFile1.1
+	Else 
+		If Lower($strFileExtension) = "kml"
+			GoSub name=ProcessKMLFile
+		Else
+			MsgOK Caption="Error" Msg="Unknown file type " + $strFileExtension + ".  Macro will end."
+			Cancel
+		EndIf
+	EndIf
+EndSub
+
+#
+# Create list of caches 
+#
+BeginSub Name=GetComboBox
+
+        ShowStatus msg="Building Waypoint List, please wait..." Width=350
+        $strWaypoints = ""
+        $strCurrentCode = $d_Code
+        
+        Goto Position=Top
+        While Not($_EOL)
+                $strWaypoints = $strWaypoints + $d_Code + " - " + $d_Name + ";"
+                If $strCurrentCode = $d_Code
+                        $strSelected = $d_Code + " - " + $d_Name
+                EndIf
+                Goto Position=Next
+        EndWhile
+        $result = Seek($strCurrentCode) 
+        
+EndSub
+
+#
+# Create Filter route from .GPX file
+#
+BeginSub name=ProcessGPXFile1.1
+
+	ShowStatus msg="Parsing the GPX File, please wait..." Width=350
+	# Get the file
+	$strKML = GetFile($strFile)
+	If Len($strKML) > 0
+	
+		#Strip out the extra crap
+		$strKML = Extract($strKML, "<rte>", 2)
+		$strKML = Extract($strKML, "</rtecoordinates>", 1)
+	
+		$strKML = RegExReplace("/><rtept", $strKML, "/>$_NewLine<rtept" )
+	
+		$intLoop = RegExCount("rtept", $strKML ) + 1
+	
+		$regex="([-]?\d*\.\d*)"
+		$intLoop = 1
+		$strFilter = ""
+
+		While $intLoop <= RegExCount("rtept", $strKML) + 1
+			ShowStatus Msg="Processing Line #" $intLoop
+			$strLine=RegExData("(<rtept.*/rtept>)", $strKml, $intLoop)
+		 $strLat = RegExSub($regex, $strLine, 1, 1)
+	        	$strLon = RegExSub($regex, $strLine, 2, 1)
+		        If $strLat <> "" and $strLon <> ""
+		             $strFilter = $strFilter + "~" + $strLat + "," + $strLon
+	        	EndIf
+		        $intLoop = $intLoop + 1
+		ENDWHILE
+
+	Else
+		MsgOk Caption="Error" Msg=$StrKml + " has no data.  Macro will abort."
+		Cancel
+	EndIf
+EndSub
+
+#
+# Create Filter route from .KML file
+BeginSub name=ProcessKMLFile
+	ShowStatus msg="Parsing the KML File, please wait..." Width=350
+	# Get the file
+	$strKML = GetFile($strFile)
+
+	If Len($strKML) > 0
+
+		#Strip out the extra crap
+		$strKML = Extract($strKML, "<LineString>", 2)
+		$strKML = Extract($strKML, "<coordinates>", 2)
+		$strKML = Extract($strKML, "</coordinates>", 1)
+
+		$intLoop = 1
+		$strFilter = ""
+
+		While $intLoop <= RegExCount(" ", $strKML) + 1
+        		$strLat = AllTrim(Extract(Extract($strKML, " ", $intLoop) , ",", 2))
+	        	$strLon = AllTrim(Extract(Extract($strKML, " ", $intLoop) , ",", 1))
+		        If $strLat <> "" and $strLon <> ""
+		                $strFilter = $strFilter + "~" + $strLat + "," + $strLon
+	        	EndIf
+	        	$intLoop = $intLoop + 1
+		EndWhile
+	Else
+		MsgOk Caption="Error" Msg=$StrKml + " has no data.  Macro will abort."
+		Cancel
+	EndIf
+EndSub
+
+
+<Data> VarName=$frmMain
+#********************************************************************
+# Form generated by GSAK form designer on Tue 14-Jul-2009 10:25:55
+#********************************************************************
+
+Name = frmMain
+  Type = Form
+  Caption = Caches Along A Route Options
+  Height = 279
+  Width = 482
+
+Name = Grp19
+  Type = Groupbox
+  Caption = Destination Selection
+  Height = 161
+  Left = 19
+  Top = 80
+  Width = 358
+  Taborder = 3
+
+Name = Lbl18
+  Type = Label
+  Height = 13
+  Left = 8
+  Top = 16
+  Width = 222
+  Caption = Find Waypoints that are this far from your route:
+
+Name = btnOK
+  Type = Button
+  Enter = yes
+  Height = 25
+  Left = 388
+  Top = 12
+  Width = 75
+  Taborder = 0
+  Caption = OK
+
+Name = btnCancel
+  Type = Button
+  Escape = no
+  Height = 25
+  Left = 390
+  Top = 58
+  Width = 75
+  Taborder = 1
+  Caption = Cancel
+
+Name = txtDistance
+  Type = Edit
+  Height = 21
+  Left = 233
+  Top = 13
+  Width = 121
+  Taborder = 2
+
+Name = rbtWaypoint
+  Type = Radiobutton
+  Container = Grp19
+  Height = 17
+  Left = 6
+  Top = 24
+  Width = 83
+  Taborder = 0
+  Caption = A Waypoint:
+
+Name = rbtCoordinates
+  Type = Radiobutton
+  Container = Grp19
+  Height = 17
+  Left = 6
+  Top = 54
+  Width = 107
+  Taborder = 1
+  Caption = A Coordinate Pair:
+
+Name = rbtAddress
+  Type = Radiobutton
+  Container = Grp19
+  Height = 17
+  Left = 6
+  Top = 104
+  Width = 75
+  Taborder = 2
+  Caption = An Address
+
+Name = cboWaypoints
+  Type = Combobox
+  Container = Grp19
+  Height = 21
+  Left = 94
+  Top = 22
+  Values = $strWaypoints
+  Width = 247
+  Taborder = 3
+
+Name = txtLat
+  Type = Edit
+  Container = Grp19
+  Height = 21
+  Left = 119
+  Top = 52
+  Width = 147
+  Taborder = 4
+
+Name = txtAddress
+  Type = Edit
+  Container = Grp19
+  Height = 21
+  Left = 96
+  Top = 101
+  Width = 249
+  Taborder = 5
+
+Name = Lbl30
+  Type = Label
+  Container = Grp19
+  Height = 13
+  Left = 271
+  Top = 55
+  Width = 38
+  Caption = Latitude
+
+Name = Lbl31
+  Type = Label
+  Container = Grp19
+  Height = 13
+  Left = 271
+  Top = 79
+  Width = 47
+  Caption = Longitude
+
+Name = txtLon
+  Type = Edit
+  Container = Grp19
+  Height = 21
+  Left = 119
+  Top = 75
+  Width = 148
+  Taborder = 6
+
+Name = cboPathFile
+  Type = Combobox
+  Container = Grp19
+  Height = 21
+  Left = 96
+  Top = 128
+  Values = $strPathFileList
+  Width = 249
+  Taborder = 7
+
+Name = rbRouteFile
+  Type = Radiobutton
+  Container = Grp19
+  Enabled = Yes
+  Height = 17
+  Left = 6
+  Top = 130
+  Width = 73
+  Taborder = 8
+  Caption = Route File
+
+Name = rbCombineFilters
+  Type = CheckBox
+  Height = 17
+  Left = 8
+  Top = 48
+  Width = 113
+  Taborder = 4
+  Caption = Combine with Filter:
+
+Name = cbFilterList
+  Type = Combobox
+  Height = 21
+  Left = 128
+  Top = 40
+  Values = $strFilterList
+  Width = 225
+  Taborder = 5
+
+<enddata>
+
+
+
+
+<data> VarName=$Filter
+edtArcDistance=DynamicDistance
+ArcFilter=DynamicArcFilter
+rbtArc=True
+<enddata>
+
+<data> VarName=$OldFilter
+edtArcDistance=DynamicDistance
+chkArcExclude=False
+chkFound=False
+chkAvailable=True
+chkArchivedOnly=False
+chkTempUnavailable=False
+rbtArc=True
+rbtPoly=False
+rbtPoint=False
+rbtReplace=True
+rbtAppend=False
+
+ArcFilter=DynamicArcFilter
+<enddata>
+
+
+<data> VarName=$GetGoogleRoute
+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
+RwDBAPYCTACpAAsDVADJAB4DWgDJANcCPgDBAPYCXwDZADkDdQAJAEEDPgDBAPYCegDBAEoDgQDhAFkD
+iADpAFkDiADxAK8DkwABAXEADQABAcoDogARAHcADQDhAOYDqAAuADsA4gAuABMAuQAuABsAzQAuACMA
+zQAuACsA0wAuADMAuQAuAFsAAwEuAEMAzQAuAFMAzQAuAHMAOgEuAIMATAEuAGsALQEuAHsAQwFEAAsA
+HgBlAI0ArgAEgAAAAQAAAAAAAAAAAAAAAAAvAAAAAgAAAAAAAAAAAAAAAQA+AAAAAAACAAAAAAAAAAAA
+AAABAEcAAAAAAAMABQAAAAAAAAAAAAEAYwMAAAAARQCeAAAAADxNb2R1bGU+AEdldEdvb2dsZVJvdXRl
+LmV4ZQBUcmFjZQBHV0suVHJhY2luZwBHZXRHb29nbGVSb3V0ZQBtc2NvcmxpYgBTeXN0ZW0AT2JqZWN0
+AElEaXNwb3NhYmxlAGZpbGVuYW1lAG1ldGhvZAAuY3RvcgBEaXNwb3NlAFdyaXRlSW5mbwBNYWluAG1l
+c3NhZ2UAYXJncwBQYXJhbUFycmF5QXR0cmlidXRlAFN5c3RlbS5SZWZsZWN0aW9uAEFzc2VtYmx5VGl0
+bGVBdHRyaWJ1dGUAQXNzZW1ibHlEZXNjcmlwdGlvbkF0dHJpYnV0ZQBBc3NlbWJseUNvbmZpZ3VyYXRp
+b25BdHRyaWJ1dGUAQXNzZW1ibHlDb21wYW55QXR0cmlidXRlAEFzc2VtYmx5UHJvZHVjdEF0dHJpYnV0
+ZQBBc3NlbWJseUNvcHlyaWdodEF0dHJpYnV0ZQBBc3NlbWJseVRyYWRlbWFya0F0dHJpYnV0ZQBBc3Nl
+bWJseUN1bHR1cmVBdHRyaWJ1dGUAU3lzdGVtLlJ1bnRpbWUuSW50ZXJvcFNlcnZpY2VzAENvbVZpc2li
+bGVBdHRyaWJ1dGUAR3VpZEF0dHJpYnV0ZQBBc3NlbWJseVZlcnNpb25BdHRyaWJ1dGUAQXNzZW1ibHlG
+aWxlVmVyc2lvbkF0dHJpYnV0ZQBTeXN0ZW0uRGlhZ25vc3RpY3MARGVidWdnYWJsZUF0dHJpYnV0ZQBE
+ZWJ1Z2dpbmdNb2RlcwBTeXN0ZW0uUnVudGltZS5Db21waWxlclNlcnZpY2VzAENvbXBpbGF0aW9uUmVs
+YXhhdGlvbnNBdHRyaWJ1dGUAUnVudGltZUNvbXBhdGliaWxpdHlBdHRyaWJ1dGUAU3RhY2tGcmFtZQBH
+ZXRGaWxlTmFtZQBNZXRob2RCYXNlAEdldE1ldGhvZABNZW1iZXJJbmZvAGdldF9OYW1lAFN5c3RlbS5J
+TwBQYXRoAFN0cmluZwBDb25jYXQAUGFyYW1ldGVySW5mbwBHZXRQYXJhbWV0ZXJzAFR5cGUAZ2V0X1Bh
+cmFtZXRlclR5cGUARGF0ZVRpbWUAZ2V0X05vdwBUb1N0cmluZwBGb3JtYXQAQ29uc29sZQBXcml0ZUxp
+bmUAU3lzdGVtLkNvcmUAU3lzdGVtLkxpbnEARW51bWVyYWJsZQBTeXN0ZW0uQ29sbGVjdGlvbnMuR2Vu
+ZXJpYwBJRW51bWVyYWJsZWAxAENvdW50AFN5c3RlbS5OZXQAV2ViQ2xpZW50AERvd25sb2FkRmlsZQBD
+b25zb2xlS2V5SW5mbwBSZWFkS2V5AAAAABNFAG4AdABlAHIAaQBuAGcAIAAACSAAaQBuACAAAB8gACAA
+IAAgAFAAYQByAGEAbQBlAHQAZQByAHMAOgAAFSAAIAAgACAAIAAgACAAIAAgACAAAAMgAAARTABlAGEA
+dgBpAG4AZwAgAAAnRwBlAHQARwBvAG8AZwBsAGUAUgBvAHUAdABlACAAVgAyAC4AMAAAJwkAQQByAGcA
+IAAxACAALQAgAEcAbwBvAGcAbABlACAAVQBSAEkAAUcJAEEAcgBnACAAMgAgAC0AIABPAHUAdABwAHUA
+dAAgAGYAaQBsAGUAIAB3AGkAdABoACAAZgB1AGwAbAAgAHAAYQB0AGgAAUMJAEEAcgBnACAAMwAgAC0A
+IABEAGUAYgB1AGcAIABmAGwAYQBnACwAIABOAG8AdAAgAFIAZQBxAHUAaQByAGUAZAABHUQAaQByAGUA
+YwB0AGkAbwBuAHMALgBrAG0AbAAAO3IAZQB0AHIAZQBpAHYAaQBuAGcAIABkAGEAdABhACAAZgByAG8A
+bQAgAFUAUgBJADoAIAB7ADAAfQAAOVAAcgBlAHMAcwAgAGEAbgB5ACAAawBlAHkAIAB0AG8AIABjAG8A
+bgB0AGkAbgB1AGUALgAuAC4AAADAcJcyrYl5TZBQwOHwiSHJAAi3elxWGTTgiQIGDgMgAAEGIAIBDh0c
+BQABCB0OBAEAAAAEIAEBDgQgAQECBSABARFFBCABAQgFIAIBCAIDIAAOBCAAElUEAAEODgcABA4ODg4O
+BSAAHRJlBCAAEmkFAAEOHRwPBwYSUR0SZRJlHRJlCB0cBAAAEW0GAAMODg4OBgACDg4dHAQAAQEOBQcC
+DhFtChABAQgVEn0BHgADCgEOBSACAQ4OBQAAEYCFCgcEDhIIEoCBHRwTAQAOR2V0R29vZ2xlUm91dGUA
+AAUBAAAAAA4BAAlXYWxncmVlbnMAACABABtDb3B5cmlnaHQgwqkgV2FsZ3JlZW5zIDIwMDkAACkBACRk
+Y2Y2N2I5NS1hOTQ5LTQzNTUtYmJhNy1mNDVkYTIyMjhhNWEAAAwBAAcxLjAuMC4wAAAIAQACAAAAAAAI
+AQAIAAAAAAAeAQABAFQCFldyYXBOb25FeGNlcHRpb25UaHJvd3MBAAAAAABp31xKAAAAAAIAAABbAAAA
+gC0AAIAPAABSU0RTVKTEEewW5k+ZkQ2Pgvr+fQcAAABKOlxDI1xHZXRHb29nbGVSb3V0ZVxHZXRHb29n
+bGVSb3V0ZVxvYmpcUmVsZWFzZVxHZXRHb29nbGVSb3V0ZS5wZGIAAAQuAAAAAAAAAAAAAB4uAAAAIAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAQLgAAAAAAAAAAAAAAAF9Db3JFeGVNYWluAG1zY29yZWUuZGxsAAAA
+AAD/JQAgQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAACABAAAAAgAACAGAAAADgAAIAAAAAAAAAAAAAAAAAAAAEAAQAAAFAAAIAAAAAAAAAAAAAAAAAAAAEA
+AQAAAGgAAIAAAAAAAAAAAAAAAAAAAAEAAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAJAAAACgQAAA
+KAMAAAAAAAAAAAAAyEMAAOoBAAAAAAAAAAAAACgDNAAAAFYAUwBfAFYARQBSAFMASQBPAE4AXwBJAE4A
+RgBPAAAAAAC9BO/+AAABAAAAAQAAAAAAAAABAAAAAAA/AAAAAAAAAAQAAAABAAAAAAAAAAAAAAAAAAAA
+RAAAAAEAVgBhAHIARgBpAGwAZQBJAG4AZgBvAAAAAAAkAAQAAABUAHIAYQBuAHMAbABhAHQAaQBvAG4A
+AAAAAAAAsASIAgAAAQBTAHQAcgBpAG4AZwBGAGkAbABlAEkAbgBmAG8AAABkAgAAAQAwADAAMAAwADAA
+NABiADAAAAA0AAoAAQBDAG8AbQBwAGEAbgB5AE4AYQBtAGUAAAAAAFcAYQBsAGcAcgBlAGUAbgBzAAAA
+SAAPAAEARgBpAGwAZQBEAGUAcwBjAHIAaQBwAHQAaQBvAG4AAAAAAEcAZQB0AEcAbwBvAGcAbABlAFIA
+bwB1AHQAZQAAAAAAMAAIAAEARgBpAGwAZQBWAGUAcgBzAGkAbwBuAAAAAAAxAC4AMAAuADAALgAwAAAA
+SAATAAEASQBuAHQAZQByAG4AYQBsAE4AYQBtAGUAAABHAGUAdABHAG8AbwBnAGwAZQBSAG8AdQB0AGUA
+LgBlAHgAZQAAAAAAXAAbAAEATABlAGcAYQBsAEMAbwBwAHkAcgBpAGcAaAB0AAAAQwBvAHAAeQByAGkA
+ZwBoAHQAIACpACAAVwBhAGwAZwByAGUAZQBuAHMAIAAyADAAMAA5AAAAAABQABMAAQBPAHIAaQBnAGkA
+bgBhAGwARgBpAGwAZQBuAGEAbQBlAAAARwBlAHQARwBvAG8AZwBsAGUAUgBvAHUAdABlAC4AZQB4AGUA
+AAAAAEAADwABAFAAcgBvAGQAdQBjAHQATgBhAG0AZQAAAAAARwBlAHQARwBvAG8AZwBsAGUAUgBvAHUA
+dABlAAAAAAA0AAgAAQBQAHIAbwBkAHUAYwB0AFYAZQByAHMAaQBvAG4AAAAxAC4AMAAuADAALgAwAAAA
+OAAIAAEAQQBzAHMAZQBtAGIAbAB5ACAAVgBlAHIAcwBpAG8AbgAAADEALgAwAC4AMAAuADAAAADvu788
+P3htbCB2ZXJzaW9uPSIxLjAiIGVuY29kaW5nPSJVVEYtOCIgc3RhbmRhbG9uZT0ieWVzIj8+DQo8YXNz
+ZW1ibHkgeG1sbnM9InVybjpzY2hlbWFzLW1pY3Jvc29mdC1jb206YXNtLnYxIiBtYW5pZmVzdFZlcnNp
+b249IjEuMCI+DQogIDxhc3NlbWJseUlkZW50aXR5IHZlcnNpb249IjEuMC4wLjAiIG5hbWU9Ik15QXBw
+bGljYXRpb24uYXBwIi8+DQogIDx0cnVzdEluZm8geG1sbnM9InVybjpzY2hlbWFzLW1pY3Jvc29mdC1j
+b206YXNtLnYyIj4NCiAgICA8c2VjdXJpdHk+DQogICAgICA8cmVxdWVzdGVkUHJpdmlsZWdlcyB4bWxu
+cz0idXJuOnNjaGVtYXMtbWljcm9zb2Z0LWNvbTphc20udjMiPg0KICAgICAgICA8cmVxdWVzdGVkRXhl
+Y3V0aW9uTGV2ZWwgbGV2ZWw9ImFzSW52b2tlciIgdWlBY2Nlc3M9ImZhbHNlIi8+DQogICAgICA8L3Jl
+cXVlc3RlZFByaXZpbGVnZXM+DQogICAgPC9zZWN1cml0eT4NCiAgPC90cnVzdEluZm8+DQo8L2Fzc2Vt
+Ymx5Pg0KAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAwAAAAwPgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+<enddata>

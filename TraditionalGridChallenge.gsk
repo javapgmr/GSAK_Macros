@@ -1,0 +1,376 @@
+# ****************************************************************************************************
+# ****************************************************************************************************
+# The Traditional Grid Challenge written by cookshome					                             
+#                                                                                                    
+# MacVersion = 1.0.1
+# MacDescription = Query your found database to determine if you qualify for the Traditional Grid Challenge (GC33GVM)
+# MacAuthor = Cookshome
+# MacFileName = TraditionalGridChallenge.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=21055
+#
+#
+# Version Information
+# 1.0.0		Initial Macro
+# 1.0.1 	Resolve issues with deprecated command SQLiteCaches
+#
+# ****************************************************************************************************
+# ****************************************************************************************************
+
+
+VerCheck Version=8.0.0.133 (please update GSAK to the latest version to run this macro)
+
+
+# *******************************
+# * Variable Declarations - Start
+# *******************************
+	Option Explicit=Yes
+
+	Declare Var=$resultbase							Type=String
+	Declare Var=$result								Type=String
+	Declare Var=$diff								Type=Numeric
+	Declare Var=$terr								Type=Numeric
+	Declare Var=$whereFilter						Type=String
+	Declare Var=$html								Type=String
+	Declare Var=$htmlFile							Type=String
+	Declare Var=$code								Type=String
+	Declare Var=$foundByMeDate						Type=String
+	Declare Var=$rowData							Type=String
+	Declare Var=$rowNumber							Type=Numeric
+	Declare Var=$difficultyString					Type=String
+	Declare Var=$terrainString						Type=String
+	Declare Var=$previousDifficultyString			Type=String
+	
+
+# *******************************
+# * Variable Declarations - End
+# *******************************
+
+
+
+
+
+# *******************************
+# * Main Section - Start
+# *******************************
+	GoSub name=SetupDatabase
+	
+	# Put up a message so the user knows it is doing something
+	SHOWSTATUS msg="Creating tables... 25%" Width=350
+
+	GoSub name=CheckForFoundCaches
+
+	GoSub name=CreateNewTables
+
+	GoSub name=Initialize
+
+	# Put up a message so the user knows it is doing something
+	SHOWSTATUS msg="Checking Traditional Grid.... 50%" Width=350
+	
+	GoSub name=GetDiffTerr
+
+	#Put up a message so the user knows it is doing something
+	SHOWSTATUS msg="Finishing up..... 95%" Width=350
+
+	GoSub name=DisplayResults
+	
+	GoSub name=CleanupDatabase
+	
+	#Put up a message so the user knows it is doing something
+	SHOWSTATUS msg="Completed..... 100%" Width=350
+	
+# *******************************
+# * Main Section - End
+# *******************************
+
+
+
+
+
+# *******************************
+# * Subroutines - Start
+# *******************************
+BEGINSUB name=SetupDatabase
+	# This is the name of the new database that will store our data
+	$resultbase = "$_install\macros\TraditionalGrid.db3"
+
+	# Create the new database
+	If not(FileExists($resultbase))
+  	   $result = sqlite("create",$resultbase)
+	EndIf
+
+
+	# Open the new database 
+	$result = Sqlite("open",$resultbase)
+
+
+	$result = sqlite("sql","DROP TABLE IF EXISTS FoundCaches")
+	
+	$result = sqlite("sql","DROP TABLE IF EXISTS FizzyDT")
+	
+	$result = sqlite("sql","DROP TABLE IF EXISTS DiffTerr")
+
+
+	# Open the main GSAK database, but attach it as 'gsakdb' to prevent any possible corruption of the main database
+	$result = SQLite("sql","ATTACH '$_CurrentDataPath\sqlite.db3' AS gsakdb")
+ENDSUB
+
+BEGINSUB name=CheckForFoundCaches
+	# Before we go any further, make sure there are FOUND logs in this database. If not, then abort
+	$_sql = "SELECT count(*) from gsakdb.CachesAll Where Found = 1"
+	$result  = Sqlite("sql",$_sql)
+		
+	if $result = "0"
+		$result = sqlite("close",$resultbase)
+		FILEERASE File=$resultbase OnError=Continue
+		MSGOK msg="Are you sure you have 'FOUND' logs in this database? $_CrLf $_CrLf I can't seem to find any. $_CrLf $_CrLf Macro is aborting..."
+		CANCEL
+	ENDIF
+ENDSUB
+
+BEGINSUB name=CreateNewTables
+	# Create a new table called 'FoundCaches' in the TraditionalGrid.db3 database that holds found cache information
+	# The FoundCaches table will only include Traditional Cache Types
+	
+	Transaction Action=Begin
+	
+	$_sql =         "CREATE TABLE FoundCaches AS "
+	$_sql = $_sql + "SELECT Code,Name,Difficulty,Terrain,Container,CacheType,PlacedDate,FoundByMeDate "
+	$_sql = $_sql + "FROM gsakdb.CachesAll "
+	$_sql = $_sql + "WHERE  Found = 1 "
+	$_sql = $_sql + "AND CacheType = 'T' "
+	$result = Sqlite("sql",$_sql)
+	
+	
+	# We are through with the GSAK database, so close our attached gsakdb
+	$result = SQLite("sql","DETACH gsakdb")
+
+
+	# Create a new table called 'FizzyDT' in the TraditionalGrid.db3 database that holds found cache information for each Difficulty\Terrain
+	$_sql =         "CREATE TABLE IF NOT EXISTS FizzyDT "
+	$_sql = $_sql +      "(Code TEXT PRIMARY KEY ASC NOT NULL, "
+	$_sql = $_sql +      "Name TEXT NOT NULL, "
+	$_sql = $_sql +      "CacheType TEXT NOT NULL, "
+	$_sql = $_sql +      "Difficulty REAL NOT NULL, "
+	$_sql = $_sql +      "Terrain REAL NOT NULL, "
+	$_sql = $_sql +      "Container TEXT NOT NULL, "
+	$_sql = $_sql +      "PlacedDate TEXT NOT NULL, "
+	$_sql = $_sql +      "FoundByMeDate TEXT NOT NULL); "
+	$result = Sqlite("sql",$_sql)
+
+	# Create a new table called 'DiffTerr' in the TraditionalGrid.db3 database that holds every combination of Difficulty and Terrain
+	$_sql =         "CREATE TABLE IF NOT EXISTS DiffTerr "
+	$_sql = $_sql +      "(Difficulty Numeric NOT NULL, "
+	$_sql = $_sql +      "Terrain Numeric NOT NULL, "
+	$_sql = $_sql +      "PRIMARY KEY(Difficulty, Terrain)); "
+	$result = Sqlite("sql",$_sql)
+	
+	$result = SQLite("sql","CREATE INDEX codec ON FoundCaches(code)")
+	
+	Transaction Action=End
+ENDSUB
+
+BEGINSUB name=Initialize
+	GoSub name=LoadDiffTerrTable
+ENDSUB
+
+BEGINSUB Name=LoadDiffTerrTable
+  $diff = 1
+
+  WHILE $diff <= 5
+    $terr = 1
+    WHILE $terr <= 5
+        GOSUB Name=InsertDiffTerrTable
+      $terr = $terr + 0.5
+    ENDWHILE
+    $diff = $diff + 0.5
+  ENDWHILE
+ENDSUB
+
+BEGINSUB Name=InsertDiffTerrTable
+  	$_sql =         "INSERT INTO DiffTerr "
+  	$_sql = $_sql +      "(Difficulty, Terrain) "
+  	$_sql = $_sql + "VALUES "  	
+  	$_sql = $_sql + "($diff, $terr) "
+	$result = Sqlite("sql",$_sql)
+ENDSUB
+
+BEGINSUB Name=GetDiffTerr
+  $diff = 1
+
+  WHILE $diff <= 5
+    $terr = 1
+    WHILE $terr <= 5
+    	$whereFilter = " Difficulty = $diff AND Terrain = $terr "
+        GOSUB Name=ExecuteDTQuery
+      $terr = $terr + 0.5
+    ENDWHILE
+    $diff = $diff + 0.5
+  ENDWHILE
+ENDSUB
+
+BEGINSUB Name=ExecuteDTQuery
+  	$_sql =         "INSERT INTO FizzyDT "
+  	$_sql = $_sql + "(Code,Name,CacheType,Difficulty,Terrain,Container,PlacedDate,FoundByMeDate) "
+  	$_sql = $_sql + "SELECT Code,Name,CacheType,Difficulty,Terrain,Container,PlacedDate,FoundByMeDate "
+  	$_sql = $_sql + "FROM FoundCaches "
+  	$_sql = $_sql + "WHERE " + $whereFilter
+  	$_sql = $_sql + " Limit 1 "
+	$result = Sqlite("sql",$_sql)
+ENDSUB
+
+BEGINSUB name=DisplayResults
+  	$_sql =         "SELECT dt.Difficulty, dt.Terrain, fdt.Code, fdt.FoundByMedate  "
+  	$_sql = $_sql + "FROM diffterr dt "
+  	$_sql = $_sql + "LEFT JOIN fizzydt fdt "
+  	$_sql = $_sql + "ON dt.Difficulty = fdt.Difficulty "
+  	$_sql = $_sql + "AND dt.Terrain = fdt.Terrain "
+  	$_sql = $_sql + "ORDER BY dt.Difficulty, dt.Terrain "
+	$result = Sqlite("sql",$_sql)
+
+
+	# Display the Results in a Browser
+	$html = $htmlHeader
+
+
+	# Get 1st Row
+	$rowData = Extract($result, $_CrLf, 1)
+	$rowNumber = 1
+	$previousDifficultyString = "0"
+	While $rowData <> ""
+		#Display the Rows for each Difficulty
+		# There are 4 fields in each row within the SQL Result		
+
+		$difficultyString = Extract($rowData, ";",1)
+		$terrainString = Extract($rowData, ";",2)
+		$code = Extract($rowData, ";",3)
+		$foundByMeDate = Extract($rowData, ";",4)
+
+
+		If $difficultyString <> $previousDifficultyString
+			$html = $html + "<tr>"
+			$html = $html + "<td class='tableheading2'><b>$difficultyString</b></td>"
+			
+			$previousDifficultyString = $difficultyString
+		EndIf	
+
+		$html = $html + "<td class='datarow'>"
+
+		If $code = ""
+			$code = "&nbsp;"		
+		EndIf
+		
+		$html = $html + $code + "</br>" + $foundByMeDate
+		$html = $html + "</td>"
+
+		If $terrainString = "5"
+			$html = $html + "</tr>"
+		EndIf
+		
+		$rowNumber = $rowNumber + 1		
+				
+		# Get Next Row
+		$rowData = Extract($result, $_CrLf,$rowNumber)
+	EndWhile
+
+
+
+	$html = $html + $htmlFooter
+	
+	$htmlFile = $_AppData + "\Macros\TraditionalGridChallenge.html"
+	$result = PutFile("$htmlFile", "$html")
+	Web url="$htmlFile"	
+ENDSUB
+
+BEGINSUB name=CleanupDatabase
+	# This closes the database we created.
+	$result = sqlite("close",$resultbase)
+ENDSUB
+
+# *******************************
+# * Subroutines - End
+# *******************************
+
+
+
+# *******************************
+# * Data Section - Start
+# *******************************
+
+<data> varname=$htmlHeader
+<html>
+	<head>
+		<title>Traditional Grid Challenge Results</title>
+	<style type='text/css'>
+	.heading
+	{
+	width:1000px;
+	background: #176199;
+	color: #FFFFFF;
+	font: 16px;
+	font-weight: bold;
+	line-height: 16px;
+	border: 1px solid #000000;
+	text-align: center;
+	}
+
+	.tableheading
+	{
+	background: #176199;
+	color: #FFFFFF;
+	font: 15px;
+	text-align: center;
+	width='90'
+	}
+
+	.tableheading2
+	{
+	background: #176199;
+	color: #FFFFFF;
+	font: 15px;
+	text-align: center;
+	width='25'
+	}
+
+	.datarow {
+	background: #D9D9D9;
+	color: #000000;
+	font: 16px;
+	text-align='center'
+	}
+	</style>
+
+	</head>
+	<body>
+		<div class='heading'>Traditional Grid Challenge Results (Cache Code & Found By Me Date)</div>
+		<br />
+
+		<table width='1000px'>
+			<tr>
+				<th class='tableheading'></th>
+				<th style='background: #176199; color: #FFFFFF;' colspan='10' align='center'><b>Terrain</b></th>
+			</tr>
+			<tr>
+				<th style='background: #176199; color: #FFFFFF;' rowspan='10' width='90' align='center'><b>Difficulty</b></th>
+				<td  class='tableheading2'></td>
+				<th class='tableheading' align='center'><b>1</b></th>
+				<th class='tableheading' align='center'><b>1.5</b></th>
+				<th class='tableheading' align='center'><b>2</b></th>
+				<th class='tableheading' align='center'><b>2.5</b></th>
+				<th class='tableheading' align='center'><b>3</b></th>
+				<th class='tableheading' align='center'><b>3.5</b></th>
+				<th class='tableheading' align='center'><b>4</b></th>
+				<th class='tableheading' align='center'><b>4.5</b></th>
+				<th class='tableheading' align='center'><b>5</b></th>
+			</tr>
+<enddata>
+
+<data> varname=$htmlFooter
+		</table>
+		<br />
+	</body>
+</html>
+<enddata>
+ 
+# *******************************
+# * Data Section - End
+# *******************************

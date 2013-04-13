@@ -1,0 +1,548 @@
+#*******************************************
+# MacDescription = Tag or color a cache using custom tags
+# MacFileName = TagACache.gsk
+# MacAuthor = Kai Team
+# MacVersion=3.1
+# MacUrl=http://gsak.net/board/index.php?showtopic=8772&view=findpost&p=55432 
+#*******************************************
+
+#Color Definitions (user can edit the color NUMBERS here, using GSAK's Macro>Color picker, if desired:
+$Red=10461183
+$Orange=11060735
+$Yellow=8454143
+$Green=13434828
+$Blue=16777088
+$Violet=16752591
+
+####### Do not change anything below this line ######################
+##if adding additional fields via $Combobox2, add CASE statements to accomodate
+
+#Accomodate earlier versions of GSAK
+NoError DbVar=$d_User3;$d_User4
+IF $_Version<"7.5"
+    $Form=Editform($Form,"Combobox2","Values","User Data;User Data 2") 
+ENDIF
+
+PREPROCESS
+$File=$_Install + "\macros\TagACache.dat"
+$TagValues=""
+
+GOSUB Name=SavedSettings
+
+IF NOT(FileExists($File)) OR $_ShiftKey
+    GOSUB Name=Form
+ELSE
+    IF NOT($_CtrlKey)
+        GOSUB Name=Tag&Color
+    ENDIF
+ENDIF
+
+IF $_CtrlKey  #code to clear the selected tag
+    GOSUB Name=Clear
+ENDIF
+
+BEGINSUB Name=Clear
+    BEGINCASE
+    CASE $Combobox2="User Data" 
+        $d_UserData=Replace($Combobox1,"",$d_UserData,TRUE)
+        SETCOLOR Color=Clear Row=Current
+        CANCEL 
+    CASE $Combobox2="User Data 2"
+        SETCOLOR Color=Clear Row=Current
+        $d_User2=Replace($Combobox1,"",$d_User2,TRUE)
+        CANCEL
+    
+    CASE $Combobox2="User Data 3"
+        SETCOLOR Color=Clear Row=Current
+        $d_User3=Replace($Combobox1,"",$d_User3,TRUE)
+        CANCEL    
+
+    CASE $Combobox2="User Data 4"
+        SETCOLOR Color=Clear Row=Current
+        $d_User4=Replace($Combobox1,"",$d_User4,TRUE)
+        CANCEL    
+    
+    CASE $Combobox2="User Note"
+        $d_UserNote=Replace($Combobox1,"",$d_UserNote,TRUE)
+        IF Extract($d_UserNote,"$~",1)="" AND Extract($d_UserNote,"$~",2)=""
+            $d_UserNote=""
+        ENDIF
+        SETCOLOR Color=Clear Row=Current
+        CANCEL
+    ENDCASE
+ENDSUB    
+
+BEGINSUB Name=Form
+    WHILE TRUE
+        $FormExit = form($Form,"")
+        BEGINCASE 
+            Case $FormExit = "SystemExit"
+            CANCEL Msg="Macro Cancelled"
+    
+            Case $FormExit = "Button1"
+            GOSUB Name=Tag&Color
+            GOSUB Name=AddTag
+            GOSUB Name=Save
+            BREAK 
+    
+            Case $FormExit = "Button2"
+            GOSUB Name=FilterTagged
+            GOSUB Name=AddTag
+            GOSUB Name=Save
+            BREAK
+            
+            Case $FormExit = "Button3"
+            GOSUB Name=Clear
+            GOSUB Name=AddTag
+            GOSUB Name=Save
+            BREAK
+            
+            Case $FormExit = "Button4"
+            GOSUB Name=DelTag
+            BREAK
+        ENDCASE 
+    ENDWHILE
+ENDSUB
+
+BEGINSUB Name=Tag&Color
+    
+    #Add Tag
+    BEGINCASE
+    CASE $Combobox2="User Data"
+        IF At($Combobox1,$d_UserData)=0
+            $d_UserData=$Combobox1
+        ENDIF
+    
+    CASE $Combobox2="User Data 2"
+        IF At($Combobox1,$d_User2)=0
+            $d_User2=$Combobox1
+        ENDIF
+     
+    CASE $Combobox2="User Data 3"
+        IF At($Combobox1,$d_User3)=0
+            $d_User3=$Combobox1
+        ENDIF  
+
+    CASE $Combobox2="User Data 4"
+        IF At($Combobox1,$d_User4)=0
+            $d_User4=$Combobox1
+        ENDIF   
+    
+    CASE $Combobox2="User Note"
+        IF At($Combobox1,$d_UserNote)=0
+            $Note=Extract($d_UserNote,"$~",1)
+            $Log=Extract($d_UserNote,"$~",2)
+            IF $Note=""
+                $d_UserNote=$Note + $Combobox1 + "$~" + $Log
+            ELSE
+                $d_UserNote=$Note + $_NewLine + $Combobox1 + "$~" + $Log
+            ENDIF
+        ENDIF
+    ENDCASE
+  
+    #Aassign color
+    BEGINCASE
+    CASE $Combobox3="Red"
+        $Color=$Red
+    CASE $Combobox3="Orange"
+        $Color=$Orange
+    CASE $Combobox3="Yellow"
+        $Color=$Yellow
+    CASE $Combobox3="Green"
+        $Color=$Green
+    CASE $Combobox3="Blue"
+        $Color=$Blue
+    CASE $Combobox3="Violet"
+        $Color=$Violet
+    ENDCASE
+    
+    #Assign column
+    BEGINCASE
+    CASE $Radiobutton4=TRUE OR $Combobox2="User Note"
+        $Column="name"
+    CASE $Combobox2="User Data"
+        $Column="userdata"
+    CASE $Combobox2="User Data 2"
+        $Column="user2"
+    CASE $Combobox2="User Data 3"
+        $Column="user3"
+    CASE $Combobox2="User Data 4"
+        $Column="user4"   
+    ENDCASE  
+    
+    #Colorize row or column
+    BEGINCASE
+    CASE $Radiobutton1
+        SETCOLOR Color=$Color Row=Current 
+    CASE $Radiobutton2 OR $Radiobutton4
+        SETCOLOR Color=$Color Row=Current Column=$Column
+    ENDCASE
+ENDSUB
+
+BEGINSUB Name=FilterTagged
+    BEGINCASE
+    CASE $Combobox2="User Data"
+        MFILTER Expression=At($d_UserData,$Combobox1)>0
+    CASE $Combobox2="User Data 2"
+        MFILTER Expression=At($d_User2,$Combobox1)>0
+    CASE $Combobox2="User Data 3"
+        MFILTER Expression=At($d_User3,$Combobox1)>0    
+    CASE $Combobox2="User Data 4"
+        MFILTER Expression=At($d_User4,$Combobox1)>0    
+    CASE $Combobox2="User Note"
+        $Filter=$Filter + "edtFull=" + $Combobox1 + $_NewLine        
+        MACROSET Dialog=Filter VarName=$Filter
+        FILTER Name="<Macro>"
+    ENDCASE 
+ENDSUB
+
+BEGINSUB Name=DelTag
+    $Deltag=$Combobox1 + ";"
+    $TagValues=Replace($DelTag,"",$TagValues,TRUE)
+    GOSUB Name=Save
+    GOSUB Name=Form
+ENDSUB  
+
+BEGINSUB Name=SavedSettings
+    IF FileExists($File)
+        $Data = GetFile($File)
+        IF Left($Data,7) = "*Error*"
+            Pause Msg="$Data"
+            Cancel
+        ENDIF
+        $NoOfTags=RegExCount(";",$Data)-7
+        $Pass=1
+        WHILE $Pass<=$NoOfTags
+            $Pos=$Pass + 7
+            IF $TagValues=""
+                $TagValues = Extract($Data,";",$Pos) + ";"
+            ELSE
+            $TagValues = $TagValues + Extract($Data,";",$Pos) + ";"
+        ENDIF
+            $Pass=$Pass + 1
+        ENDWHILE
+        $Combobox1=Extract($Data,";",1)
+        $Combobox2=Extract($Data,";",2)
+        $Radiobutton1=StrToBool(Extract($Data,";",3))
+        $Radiobutton2=StrToBool(Extract($Data,";",4))
+        $Radiobutton3=StrToBool(Extract($Data,";",5))
+        $Combobox3=Extract($Data,";",6)
+        $Radiobutton4=StrToBool(Extract($Data,";",7))
+    ELSE
+        $TagValues="FindStatsExclude;Solved~;Special~;"
+        $Combobox1="UserTag~*"
+        $Combobox2="User Note"
+        $Radiobutton1=TRUE
+        $Combobox3="Yellow"
+        GOSUB Name=Form
+        GOSUB Name=AddTag
+        GOSUB Name=Save
+    ENDIF
+ENDSUB
+
+BEGINSUB Name=AddTag
+    IF At($Combobox1,$TagValues)=0
+        $TagValues=$TagValues + $Combobox1 + ";"
+    ENDIF
+ENDSUB
+   
+BEGINSUB Name=Save
+    $Data=$Combobox1 + ";" + $Combobox2 + ";" + BoolToStr($Radiobutton1,"T","F") + ";"
+    $Data=$Data + BoolToStr($Radiobutton2,"T","F") + ";" + BoolToStr($Radiobutton3,"T","F") + ";"
+    $Data=$Data + $Combobox3 + ";" + BoolToStr($Radiobutton4,"T","F") + ";" + $TagValues
+    $Data = PutFile($File,$Data)
+    IF Left($Data,7) = "*Error*"
+        PAUSE Msg="$Data"
+        CANCEL 
+    ENDIF
+ENDSUB
+    
+<data> VarName=$Filter
+edtDesc=
+cbxDesc=0
+cbxFilter=0
+edtDistance=
+cbxDistance=0
+edtDistance2=
+edtPlacedBy=
+cbxDifficulty=0
+cbxTerrain=0
+cbxDif=8
+cbxTer=8
+cbxPlacedBy=0
+cbxDif2=8
+cbxTer2=8
+edtUserData=
+cbxUserData=0
+chkReverse=False
+edtTbugName=
+cbxTbugName=0
+cbxSource=0
+edtSource=
+cbxUser2=0
+EdtUser2=
+cbxOwnerName=0
+edtOwnerName=
+cbxSymbol=0
+edtSymbol=
+chkFound=True
+chkNotFound=True
+chkExclude=True
+chkAvailable=True
+chkArchivedOnly=True
+chkTempUnavailable=True
+chkUserFlag1=True
+chkUserFlag2=True
+chkBugNo=True
+cbxBugs=True
+chkNoteNo=True
+chkNoteYes=True
+chkFullHighlight=True
+chkRegEx=False
+chkFullNotes=True
+chkFullLogs=False
+chkFullDes=False
+RbtFullAll=False
+rbtFullSelect=True
+chkFtfNo=True
+chkFtfyes=True
+
+<enddata>
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sun 20-Jul-2008 10:19:00
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Tag a Cache Version 3.0
+  Height = 415
+  Width = 436
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Color the tagged cache?
+  Height = 109
+  Left = 18
+  Top = 84
+  Width = 391
+  Taborder = 2
+
+Name = Combobox1
+  Type = Combobox
+  Directinput = Yes
+  Height = 21
+  Left = 182
+  Top = 8
+  Values = $TagValues
+  Width = 145
+  Taborder = 0
+
+Name = Label1
+  Type = Label
+  Height = 13
+  Left = 27
+  Top = 12
+  Width = 133
+  Caption = Select or type the tag to use
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 30
+  Top = 49
+  Width = 150
+  Caption = Place the tag in this GSAK field:
+
+Name = Combobox2
+  Type = Combobox
+  Directinput = No
+  Height = 21
+  Left = 183
+  Top = 44
+  Values = User Data;User Data 2;User Data 3;User Data 4;User Note
+  Width = 145
+  Taborder = 1
+
+Name = Radiobutton1
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 108
+  Top = 17
+  Width = 15
+  Taborder = 0
+
+Name = Label3
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 126
+  Top = 19
+  Width = 79
+  Caption = Color Entire Row
+
+Name = Radiobutton2
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 227
+  Top = 16
+  Width = 15
+  Taborder = 1
+
+Name = Label4
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 244
+  Top = 18
+  Width = 110
+  Caption = Color  the selected field
+
+Name = Radiobutton3
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 12
+  Top = 17
+  Width = 15
+  Taborder = 2
+
+Name = Label5
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 29
+  Top = 19
+  Width = 59
+  Caption = Do not Color
+
+Name = Button1
+  Type = Button
+  Height = 31
+  Left = 23
+  Top = 215
+  Width = 115
+  Taborder = 3
+  Caption = Tag This Cache
+
+Name = Button2
+  Type = Button
+  Height = 31
+  Left = 293
+  Top = 215
+  Width = 115
+  Taborder = 4
+  Caption = Filter Tagged Caches
+
+Name = Label6
+  Type = Label
+  Height = 13
+  Left = 26
+  Top = 283
+  Width = 348
+  Caption = To display this dialog and change Settings or filter for tagged caches, hold
+
+Name = Label7
+  Type = Label
+  Height = 13
+  Left = 27
+  Top = 298
+  Width = 250
+  Caption = down the SHIFT key while clicking the macro button.
+
+Name = Label8
+  Type = Label
+  Height = 13
+  Left = 26
+  Top = 340
+  Width = 375
+  Caption = To Clear a tag (and color) from a cache, hold down the CTRL key while clicking
+
+Name = Label9
+  Type = Label
+  Height = 13
+  Left = 27
+  Top = 356
+  Width = 83
+  Caption = the macro button.
+
+Name = Label10
+  Type = Label
+  Color = 16711680
+  Font = Arial Black
+  Height = 15
+  Left = 27
+  Top = 266
+  Width = 136
+  Caption = SHIFT Click = Settings
+
+Name = Label11
+  Type = Label
+  Color = 16711680
+  Font = Arial Black
+  Height = 15
+  Left = 27
+  Top = 322
+  Width = 115
+  Caption = CTRL Click = Clear
+
+Name = Label12
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 28
+  Top = 79
+  Width = 109
+  Caption = Select the color to use:
+
+Name = Combobox3
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 151
+  Top = 75
+  Values = Red;Orange;Yellow;Green;Blue;Violet
+  Width = 145
+  Taborder = 3
+
+Name = Button3
+  Type = Button
+  Height = 31
+  Left = 158
+  Top = 215
+  Width = 115
+  Taborder = 5
+  Caption = Clear Tag From Cache
+
+Name = Radiobutton4
+  Type = Radiobutton
+  Container = Groupbox1
+  Height = 17
+  Left = 12
+  Top = 43
+  Width = 15
+  Taborder = 4
+
+Name = Label13
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 28
+  Top = 45
+  Width = 332
+  Caption = Always Color the Waypoint Name (regardless of which field is selected)
+
+Name = Button4
+  Type = Button
+  Height = 21
+  Left = 339
+  Top = 8
+  Width = 75
+  Taborder = 6
+  Caption = Delete this tag
+
+<enddata>
+

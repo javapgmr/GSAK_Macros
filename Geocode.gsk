@@ -1,0 +1,1017 @@
+#******************************************************************************
+# MacVersion = 1.6
+# MacDescription = Convert an address or landmark to coordinates, or coordinates to an address.
+# MacAuthor = DocDiTTo
+# MacFileName = Geocode.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=19447
+#******************************************************************************
+
+# This macro will use the Google Maps Geocoding API to obtain the coordinates for a given address, 
+# zipcode, landmark, town, etc.  It will also convert coordinates into a nearby street address or address range.
+
+# The input formats allowed are fairly generous, as the Google Geocoder is relatively forgiving. For best results,
+# enter street addresses separated by commas, like:  123 Main Street, Harrisburg, PA, 17101
+
+# If Google couldn't understand your query you'll be told so.  If your query was accepted, one or more results will
+# be displayed in a list and may be viewed in Google Maps or in Google Earth (if you have it installed).
+
+
+# The results will be returned in the the order of "most likely" to "least probable" according to Google.  In order
+# to "bias" results towards a particular country, set the Region Bias on the settings screen.  This will force the results
+# in that country to appear first on the list.  This helps to differentiate between Toledo, Ohio and Toledo, Spain, for example.
+
+# You may also set the default Map Zoom level that the Google Map will initially be shown at.  Level 15 is the default, but you
+# can change this from the Settings form.  Numbers range from 0 (the entire world) to 21, which is a pretty tight zoom in.
+# The zoom level and region bias are saved so you don't need to change them every time you run the macro.
+
+# This macro has been tested with GSAK version 7.7.3.53 and GSAK Version 8 Beta build 112+.
+
+# Revision History
+#
+# Version 1.0  - Initial Public Release
+#
+# Version 1.1 
+#  - Results are now saved to an array for easier access, rather than processed one by one.
+#  - Added results drop-down so any result returned can be mapped or added to GSAK database
+#  - Added settings form to help remove clutter on the main form
+#  - Added ability to change the GSAK active database on the fly
+#  - Fixed small issue with 2nd and 3rd address identifiers possibly carrying over to other results
+#  - Fixed crash when attempting to add a duplicate waypoint to the database.
+#  - Forms now save their screen position
+
+# Version 1.3
+#  - Fixed issue with counties and municipalities not displaying properly
+#  - Added grid refresh after adding a waypoint to the database
+#  - Added more mapping options
+#  - Waypoint Add info is now updated with "Format Coordinates" to reflect the
+#    coordinate information.  The Google map shows the location as well.
+
+# Version 1.4
+#  - Fixed issue with $address not being initialized and causing an error
+#  - Fixed issue with incorrect map being shown when more than one result is returned
+#  - Added explicit variable declarations
+
+# Version 1.5
+#  - Added "Color Satellite (via GMAP4)" to the mapping options
+#  - Fixed: when a result location name contained an apostrophe, google map would not display
+#  - Fixed a variable declaration bug introduced in v1.4  ($updated)
+
+# Version 1.6
+#  - Eliminated use of deprecated "SET" command
+
+
+VERCHECK version=7.7.3.53 (Please update and patch to the most recent version of GSAK)
+
+GOSUB Name=DeclareVariables
+
+$FormCaption = "GSAK Geocoder "+ AllTrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath") + "\" + SysInfo("Macrofile")),1,1))
+$form = editform($form,"form1","Caption",$formcaption)
+
+# Set up defaults & load settings
+$ValidAddress = FALSE
+$GeoCodeLat = "38.00"   # somewhere in the Atlantic Ocean
+$GeoCodeLon = "-68.85"  # where the secret treasure lies
+$cmbMapZoom = "15"      # default map zoom level
+$cmbRegion = "None"     # default region bias
+$municipality = ""      # just initializing some variables...
+$county = ""
+$resultslist = ""
+$MemoAddress = ""
+$address = ""
+
+$maxresults = 20  # we're enforcing a limit on the max number of results.
+Array(1,0) = numtostr($maxresults)   #Array to hold address results
+Array(2,0) = numtostr($maxresults)   #Array to hold latitude,longitude pairs in degrees decimal format
+Array(3,0) = numtostr($maxresults)   #Array to hold secondary address info (typically county)
+Array(4,0) = numtostr($maxresults)   #Array to hold terciary address info (township, town, borough, etc)
+
+
+# Gather List of User's Databases and update the settings DB combo box
+$DBlist=SysInfo("Databases")
+$frmSettings = EditForm($frmSettings, "cmbDatabase", "Values", $DBlist)
+$cmbDatabase = $_CurrentDatabase
+
+
+MacSettings Type=R FileCheck=N
+$GoogleBaseUrl = "http://maps.googleapis.com/maps/api/geocode/xml?address="
+$GmapBaseUrl = "http://www.mappingsupport.com/p/gmap4.php?ll="
+$xmlfile = $_AppData + "\macros\webresult.xml"
+
+ WHILE True # Infinite loop to redisplay form as required
+  $FormExit = form($form,"")
+  GOSUB Name=SaveMainFormPosition
+  BEGINCASE
+    CASE $FormExit = "DelayExit"
+      break
+    CASE $FormExit = "SystemExit"
+      break
+    CASE $FormExit = "btnCancel"
+     break
+    CASE $FormExit = "btnGeocode"
+      	GOSUB Name=DoGeocode
+         GOSUB Name=ParseGeocodeResults
+			$resnum = 1
+			GOSUB Name=SaveSettings
+			GOSUB Name=AddWaypointInfo
+   		GOSUB Name=UpdateMap
+	 CASE $FormExit = "btnGoogleEarth"
+			GOSUB Name=LaunchGoogleEarth
+	 CASE $FormExit = "btnFormat"
+	 	   #GOSUB Name=ReadXMLFile
+			GOSUB Name=FormatCoords
+    CASE $FormExit = "btnAddToDB"
+    	GOSUB Name=AddNewWaypoint 
+    CASE $FormExit = "btnCopy"
+    	CLIP Data=$MemoResult
+    CASE $FormExit = "cmbResults"
+    	   #$resnum = val(regexdata("^\d*",$cmbResults,1)) # grab the result number so we can reference the array
+    	   $resnum = val($cmbResults)  #because of the way VAL works, it will only return the number we actually want
+    	   $GeoCodeLat = extract(Array(2,$resnum),",",1)
+    	   $GeoCodeLon = extract(Array(2,$resnum),",",2)
+    	   $address=Array(1,$resnum)
+    	   GOSUB Name=UpdateMap
+    	   GOSUB Name=AddWaypointInfo
+    CASE $Formexit="btnBrowser"  # For viewing location in a browser with alternate maps
+      BEGINCASE
+         CASE $cmbMaps = "Google Maps"
+            $mapurl=$htmlfilename
+         CASE $cmbMaps = "Open Street Maps"
+            $mapurl = "http://www.openstreetmap.org/?mlat=" + $GeoCodeLat+"&mlon="+$GeoCodeLon+"&zoom="+$cmbMapZoom
+         CASE $cmbMaps = "Terrain (via GMAP4)"
+            $mapurl = $GmapBaseUrl + $GeoCodeLat+","+$GeoCodeLon+"&t=t1&z="+$cmbMapZoom+"&symbol=pgs"
+         CASE $cmbMaps = "MyTopo (via GMAP4)"
+            $mapurl = $GmapBaseUrl + $GeoCodeLat+","+$GeoCodeLon+"&t=t2&z="+$cmbMapZoom+"&symbol=pgs" 
+         CASE $cmbMaps = "HiRes Topo (via GMAP4)"
+            $mapurl = $GmapBaseUrl + $GeoCodeLat+","+$GeoCodeLon+"&t=t4&z="+$cmbMapZoom+"&symbol=pgs" 
+         CASE $cmbMaps = "Color Satellite (via GMAP4)"
+            $mapurl = $GmapBaseUrl + $GeoCodeLat+","+$GeoCodeLon+"&t=s&z="+$cmbMapZoom+"&symbol=pgs"
+      ENDCASE  
+      RUNPGM pgm="$mapurl" Wait=No Hide=No 
+    CASE $Formexit="btnSettings"
+    	$tempMapZoom = $cmbMapZoom
+    	$tempRegion = $cmbRegion
+    	 WHILE True
+    	    $FormExit = form($frmSettings,"")
+    	      BEGINCASE
+    				CASE $FormExit = "DelayExit"
+      				break
+    				CASE $FormExit = "SystemExit"
+    					$cmbMapZoom = $tempMapZoom
+    					$cmbRegion = $tempRegion
+      				break
+    				CASE $FormExit = "btnCancel"
+    					$cmbMapZoom = $tempMapZoom
+    					$cmbRegion = $tempRegion
+     					break
+     				CASE $FormExit = "btnOk"
+     					GOSUB Name=SaveSettings
+     					break
+     				CASE $FormExit = "cmbDatabase"
+     					IF $cmbDatabase <> $_CurrentDatabase  #don't change if database is the same
+     					  DATABASE Name=$cmbDatabase Action=Select StopStartUpMacro=Y	
+     					ENDIF
+     			ENDCASE		
+    	 ENDWHILE
+    	 GOSUB Name=SaveSettingsFormPosition
+  ENDCASE
+ENDWHILE
+ 
+BEGINSUB Name=SaveSettings
+	MacSettings Type=S Vars=MemoAddress,cmbRegion,cmbMapZoom
+ENDSUB
+
+BEGINSUB Name=SaveMainFormPosition
+   $Form = EditForm($Form,"Form1","Top",$_FormTop) 
+   $Form = EditForm($Form,"Form1","Left",$_FormLeft)
+ENDSUB
+
+BEGINSUB Name=SaveSettingsFormPosition
+   $frmSettings = EditForm($frmSettings,"frmSettings","Top",$_FormTop) 
+   $frmSettings = EditForm($frmSettings,"frmSettings","Left",$_FormLeft)
+ENDSUB
+
+  
+BEGINSUB Name=DoGeocode  # Validates input, calls geocoding web site,obtains coordinates
+	IF len(trim($MemoAddress)) < 5
+		msgok msg=The address box cannot be blank.  Please enter a valid address.
+	  EXITSUB
+	ENDIF
+	# Build the URL
+	$UrlText = Replace(" ","+", $MemoAddress,true)
+	$UrlText = Replace(",","%2C", $UrlText,true)
+	$UrlText = Replace($_CrLf,"+", $UrlText,true)
+	$UrlText = Replace("&","%26", $UrlText,true)
+	$UrlText = RegexReplace("\++", $UrlText,"+")
+	$UrlText = $GoogleBaseUrl+$UrlText+"&sensor=false"  # sensor parameter is required for google to work
+          # Add region bias if user chooses to do so
+			 # Country codes from: http://en.wikipedia.org/wiki/List_of_Internet_top-level_domains
+ 			 # Not all have been added, so you may need to add yours by edtiting the cmbRegion combo box
+          # on our form.  Make sure the actual region code (from link above) is in parenthesis or it
+          # won't be used.  More info:  http://code.google.com/apis/maps/documentation/geocoding/#RegionCodes
+			 $regioncode = regexdata("(?<=\()[a-z]*",$cmbRegion,1) #pull the region code out of the combo box
+ 			 IF not(isempty($regioncode)) # if it's valid we add it to the request
+ 				$UrlText = $UrlText + "&region="+$regioncode
+ 			 ENDIF
+			$webpage = GetUrl($UrlText,"Checking... ") # Get the web page
+			$webpage = regexreplace("\n",$webpage,$_crlf) #convert to "dos" format so we can read line by line
+         #GOSUB Name=DoSQL  # This will ONLY work with GSAK 8 or up.
+ENDSUB
+
+#BEGINSUB Name=DoSQL
+#   			$Data = PutFile($xmlfile,$webpage) #save XML to Disk.  # Just some test code that only works in GSAK 8...
+#			IF Left($Data,7) = "*Error*"
+#  		   		Pause Msg="$Data"
+#  		   		Cancel
+#			ENDIF
+#			XmlToSqlite File=$xmlfile  #create sql database from the XML
+#			$_sql = "select count(*)from xmldata where key ="+sqlquote("/GeocodeResponse/result")
+#			$result = sqlite("sql",$_sql)  #contains the string value of the number of results
+#			msgok msg=$result
+#ENDSUB
+
+# This routine parses the web results from Google.  We get them as an XML file to make parsing easier, but
+# there's still a lot of looping through data to extract all the info.
+BEGINSUB Name=ParseGeocodeResults
+	# Regex to return an entire Result section:  (?sm)<result[^>]*>(.*?)</result>
+	# Regex to return status tag: <status[^>]*>(.*?)</status>
+	$formatted_address="<formatted_address[^>]*>(.*?)</formatted_address>"
+   IF regexcount("(?s)<status[^>]*>(.*?)</status>",$webpage) > 0
+   	#Now we grab the status line and strip the HTML tags leaving only the result
+   	$status = RegExReplace("</?[a-z][a-z0-9]*[^<>]*>|<!--.*?-->",RegexData("<status[^>]*>(.*?)</status>",$webpage,1),"")
+   	$resultcount = RegexCount("(?sm)<result[^>]*>(.*?)</result>",$webpage)
+   	IF $resultcount > $maxresults  #We're going to enforce a limit on results.
+   		$resultcount = $maxresults
+   	ENDIF
+   	$MemoResult = "Server returned status " + $status + "; "+numtostr($resultcount) + " result(s) found for your query."+$_crlf
+   	IF $status <> "OK"  #now we have a problem
+   		$ValidAddress = FALSE
+   		$MemoResult = $MemoResult + $_crlf + "No results were returned for your query, because "
+   		IF $status = "ZERO_RESULTS" 
+   			$MemoResult = $MemoResult + "the server couldn't figure out what you were asking for.  Reformat your query and try again. Hint: Exclude business names or phone numbers and separate address elements with commas."
+   		ENDIF		
+   		IF $status = "OVER_QUERY_LIMIT" 
+   			$MemoResult = $MemoResult + "you've made too many requests today and you can't make any more."
+   	   ENDIF	
+   	   IF $status = "REQUEST_DENIED" 
+   			$MemoResult = $MemoResult + "the format of the server request was probably invalid.  This macro probably needs to be updated."
+   	   ENDIF	
+   	   IF $status = "INVALID_REQUEST" 
+   			$MemoResult = $MemoResult + "a critical part of your query was probably missing.   Please check your query for completeness."
+   	   ENDIF	
+   	ENDIF
+   	GOSUB Name=DisableButtons
+   ELSE
+   	msgok msg=No status line found. This should never happen.  Check regex in subroutine ParseGeocodeResults.
+   ENDIF
+   IF $resultcount > 0  # Now we've got some valid results we need to process
+   	$rcounter = 0
+   	$address = ""
+   	$ValidAddress = TRUE
+   	$resultslist = ""
+   	GOSUB Name=EnableButtons
+   	WHILE $rcounter < $resultcount 
+   		$rcounter = $rcounter + 1
+   		$result = regexdata("(?sm)<result[^>]*>(.*?)</result>",$webpage,$rcounter)
+   		$address = RegExReplace("</?[a-z][a-z0-9]*[^<>]*>|<!--.*?-->",RegexData("<formatted_address[^>]*>(.*?)</formatted_address>",$result,1),"")
+         $location = regexdata("(?sm)<location[^>]*>(.*?)</location>",$result,1) # get the location info from this result
+   		$GeoCodeLat = RegExReplace("</?[a-z][a-z0-9]*[^<>]*>|<!--.*?-->",RegexData("<lat[^>]*>(.*?)</lat>",$location,1),"")
+   		$GeoCodeLon = RegExReplace("</?[a-z][a-z0-9]*[^<>]*>|<!--.*?-->",RegexData("<lng[^>]*>(.*?)</lng>",$location,1),"")
+   		$addrcount = RegexCount("(?sm)<address_component[^>]*>(.*?)</address_component>",$result)
+   		IF $addrcount > 0
+   		  $acounter = 0	
+   		  $county = ""
+   		  $municipality = ""
+   		  WHILE $acounter < $addrcount 
+   		  	 $acounter = $acounter + 1
+   		  	 $addrcomp = regexdata("(?sm)<address_component[^>]*>(.*?)</address_component>",$result,$acounter) #get the entire address component
+   		  	 #$MemoResult = $MemoResult + $_crlf + $addrcomp + $_crlf  #for debugging only
+   		  	 # Extract county info
+   		  	 IF RegExCount("(?s)administrative_area_level_2",$addrcomp) > 0
+   		  	 	$county = RegExReplace("</?[a-z][a-z0-9]*[^<>]*>|<!--.*?-->",RegexData("<long_name[^>]*>(.*?)</long_name>",$addrcomp,1),"")
+   		  	 ENDIF 
+   		  	 #extract Municipality info
+   		  	 IF RegExCount("(?s)administrative_area_level_3",$addrcomp) > 0
+   		  	 	$municipality = RegExReplace("</?[a-z][a-z0-9]*[^<>]*>|<!--.*?-->",RegexData("<long_name[^>]*>(.*?)</long_name>",$addrcomp,1),"")
+   		  	 ENDIF
+#   		  	 $address = RegExReplace("</?[a-z][a-z0-9]*[^<>]*>|<!--.*?-->",RegexData("<formatted_address[^>]*>(.*?)</formatted_address>",$addrcomp,1),"")
+   		 ENDWHILE
+   		ENDIF
+   		#msgok msg=$address
+   		#$address = Replace("&amp;","&",$address)  # fix ampersand tags
+         $MemoResult = $MemoResult + $_crlf + numtostr($rcounter) + ")  "+Replace("&amp;","&",$address) + $_crlf 
+         IF not(isempty($municipality))
+           $MemoResult = $MemoResult + "Municipality: "+ $municipality +"  "
+         ENDIF 
+         IF not(isempty($county)) 
+           $MemoResult = $MemoResult + "County: "+ $county+$_crlf
+         ENDIF
+	  		Array(1,$rcounter) = $address
+	  		Array(2,$rcounter) = $GeoCodeLat+","+$GeoCodeLon
+	  		Array(3,$rcounter) = $county
+	  		Array(4,$rcounter) = $municipality
+	  		
+	  		$MemoResult = $MemoResult + "Degrees:  "+$GeoCodeLat+"  "+$GeoCodeLon + $_crlf 
+	  		$MemoResult = $MemoResult + "Minutes:  "+" "+GCalc($GeoCodeLat+";"+$GeoCodeLon,"FormatMinutes")+ $_crlf 
+	  		$MemoResult = $MemoResult + "Seconds:  "+" "+GCalc($GeoCodeLat+";"+$GeoCodeLon,"FormatSeconds")+ $_crlf 
+	  		$MemoResult = $MemoResult + "UTM:  "+" "+GCalc($GeoCodeLat+";"+$GeoCodeLon,"FormatUTM")+ $_crlf 
+	  		$resultslist = $resultslist+numtostr($rcounter)+")  "+regexreplace(";",$address,"*semi*")+";"
+
+   	ENDWHILE
+   ENDIF
+   IF not(isempty($resultslist))  # update combo box with results if we have any
+     $form = editform($form,"cmbResults","Values",$resultslist)
+     # Set the Latitude and longitude to the first result (bugfix in v1.4)
+     $GeoCodeLat = extract(Array(2,1),",",1)
+     $GeoCodeLon = extract(Array(2,1),",",2)
+     $address=Array(1,1)     
+   ENDIF
+ENDSUB
+
+BEGINSUB Name=FormatCoords  #displays coords if they were entered in an acceptable format
+	$ValidAddress = FALSE
+	$address = ""
+	$GeoCodeLat = extract(GCalc($MemoAddress,"FormatDegrees"),";",1)
+	IF AT("*Error*",$GeoCodeLat) > 0
+		GOSUB Name=DisableButtons
+		$MemoResult = "Invalid coordinates entered; cannot format them"
+		$form = editform($form,"wb1","Url","")	
+   ELSE
+	   $ValidAddress = TRUE
+	   GOSUB Name=EnableButtons
+	   $GeoCodeLon = extract(GCalc($MemoAddress,"FormatDegrees"),";",2)
+		$MemoResult = "Degrees:  "+Replace(";"," ",GCalc($MemoAddress,"FormatDegrees")) + $_crlf
+	  	$MemoResult = $MemoResult + "Minutes:  "+" "+Replace(";"," ",GCalc($MemoAddress,"FormatMinutes"))+ $_crlf 
+	  	$MemoResult = $MemoResult + "Seconds:  "+" "+Replace(";"," ",GCalc($MemoAddress,"FormatSeconds"))+ $_crlf 
+	  	$MemoResult = $MemoResult + "UTM:  "+" "+Replace(";"," ",GCalc($MemoAddress,"FormatUTM"))+ $_crlf
+	  	GOSUB Name=UpdateMap
+	  	#Update the waypoint add fields here
+	  	$memoCoords = Replace(";"," ",GCalc($MemoAddress,"FormatMinutes"))
+	  	$edtURL = ""
+	  	$edtCode = regexreplace("\.",$geocodelat+$geocodelon,"")
+	  	$edtName = "Coordinates "+$memoCoords 
+   ENDIF
+ENDSUB
+
+BEGINSUB Name=EnableButtons  #Called when a format or geocode sucessfully returned coords
+		$Form = EditForm($Form, "btnAddToDB","Enabled","Yes")
+	  	$Form = EditForm($Form, "btnGoogleEarth","Enabled","Yes")
+	  	$Form = EditForm($Form, "btnCopy","Enabled","Yes")
+	  	$Form = EditForm($Form, "btnBrowser","Enabled","Yes")
+
+ENDSUB
+
+BEGINSUB Name=DisableButtons #Called when a format or geocode attempt failed and coords are invalid
+		$Form = EditForm($Form, "btnAddToDB","Enabled","No")
+	  	$Form = EditForm($Form, "btnGoogleEarth","Enabled","No")
+	  	$Form = EditForm($Form, "btnCopy","Enabled","No")
+	  	$Form = EditForm($Form, "btnBrowser","Enabled","No")
+
+ENDSUB
+
+BEGINSUB Name=LaunchGoogleEarth  #Assumes KML files are associated with Google Earth.
+	IF $ValidAddress = TRUE
+ 			$kmlfile = $_Install + "\geocode.kml"
+ 			$kmldata = "<?xml version="+quote("1.0")+" encoding="+quote("UTF-8")+"?>" +$_crlf
+ 			$kmldata = $kmldata + "<kml xmlns="+quote("http://www.opengis.net/kml/2.2")+">"+$_crlf
+ 			$kmldata = $kmldata + "  <Placemark>" +$_crlf
+ 			$kmldata = $kmldata + "    <name>"+$GeoCodeLat+" "+$GeoCodeLon+"</name>"+$_crlf
+ 			$kmldata = $kmldata + "    <description>"+$GeoCodeLat+","+$GeoCodeLon+"</description>"+$_crlf
+ 			$kmldata = $kmldata + "      <Point>"+$_crlf
+ 			$kmldata = $kmldata + "      <coordinates>"+$GeoCodeLon+","+$GeoCodeLat+",0</coordinates>"+$_crlf
+ 			$kmldata = $kmldata + "      </Point>"+$_crlf
+ 			$kmldata = $kmldata + "  </Placemark>" +$_crlf
+ 			$kmldata = $kmldata + "</kml>"	
+ 			$Data = PutFile($kmlfile,$kmldata)
+ 			IF Left($Data,7) = "*Error*"
+  	 		Pause Msg="$Data"
+  	 		Cancel
+ 			ENDIF
+			FILEOPEN File=$kmlfile wait=no
+	ELSE
+		Msgok Msg="Please perform a valid geocode or coordinate format first"
+	ENDIF
+ENDSUB
+
+BEGINSUB Name=UpdateMap
+	$myHTML = regexReplace("@@LATLON@@",$GoogleMapTemplate,$GeoCodeLat + ","+$GeoCodeLon)
+	$myHTML = regexReplace("@@MAPZOOM@@",$myHTML,$cmbMapZoom)
+	#$myHTML = regexReplace("@@ADDRESS@@",$myHTML,$address) 
+	$myHTML = regexReplace("@@ADDRESS@@",$myHTML,replace("'","’",$address)) #No single quotes allowed!
+	#$myHTML = regexReplace("@@ADDRESS@@",$myHTML,httpencode($address))
+	$htmlfilename = $_AppData + "\macros\geocoder.html"
+	$Data = PutFile($htmlfilename,$myHTML)
+   IF Left($Data,7) = "*Error*"
+    Pause Msg="$Data"
+    Cancel
+   ENDIF
+   $form = editform($form,"wb1","Url",$htmlfilename)
+ENDSUB
+	
+
+# Adds the coordinates from the last valid Geocode/Format to the current database.
+# Waypoint code and name are populated with default values but can be edited by user.
+# Waypoint code must be unique so a timestamp is added (hr/min/sec) to help prevent problems.
+BEGINSUB Name=AddNewWaypoint
+	IF $edtName = "" 
+		msgok msg="New waypoint name cannot be blank."
+		EXITSUB
+	ENDIF
+	IF trim($edtCode) = "" 
+	 $edtCode = SmartName($edtName,8)
+	ENDIF
+  MFILTER where=code=$edtCode  #set a filter for the waypoint code we're trying to add
+  IF $_filtercount = 0  #only create it if it doesn't exist
+	  cancelfilter
+	  SPEEDMODE Status=Off
+	  AddNew
+	  $d_Code = $edtCode
+		$d_Name = $edtName
+		$d_CacheType = "O"
+		$d_Latitude = $GeoCodeLat
+		$d_Longitude = $GeoCodeLon
+		$d_Container="Unknown"
+		$d_ShortDescription = $MemoAddress
+		$d_PlacedBy = $FormCaption
+		$d_URL = $edtURL
+		$updated = GetCountry("CB")
+		$updated = GetState("SB")
+		$updated = GetCounty("YB")
+		SPEEDMODE Status=On
+  ELSE
+      cancelfilter
+  		msgok msg=Sorry, waypoint code $edtCode already exists in the database.
+  ENDIF
+ENDSUB
+
+# This routine generates the data that will be used if we decide to add the current
+# location to the database.  This doesn't actually add the waypoint, it just sets up
+# the info.  Be sure to set $resnum to whichever location you want to appear in these
+#boxes.
+BEGINSUB Name=AddWaypointInfo
+  
+  #$newcode = regexdata("(?m)^.*$",$memoAddress,1) #get the first address line
+  #$newcode = Extract($newcode,",",1) # get everything before the first comma
+  # Arrays - 1=address, 2=lat/lon, 3=County, 4 = municipality
+  #$memoresult = $memoresult+Array(1,$rcounter)+";"+Array(2,$rcounter)+";"+Array(3,$rcounter)+";"+Array(4,$rcounter)+ $_crlf 
+  
+  $newcode = Extract(Array(1,$resnum),",",1) # get everything before the first comma
+  $newcode = regexreplace("\s",$newcode,"") # remove all spaces
+  $newcode=left($newcode,9)+ regexreplace(":",time,"") # add time stamp
+  $edtcode = $newcode
+  $edtName = Array(1,$resnum)
+  
+  #Construct a Google Maps URL to populate url field
+      $mapurl = "http://maps.googleapis.com/maps/api/staticmap?center="
+      $mapurl=$mapurl+$GeoCodeLat+","+$GeoCodeLon
+		$mapurl=$mapurl+"&zoom="+$cmbMapZoom
+ 		$mapurl=$mapurl+"&markers=color:blue%7C"+$GeoCodeLat+","+$GeoCodeLon
+ 		$mapurl=$mapurl+"&size=512x512"
+		$mapurl=$mapurl+"&maptype=roadmap&sensor=false"
+  $edtURL = $mapurl
+  #$memoCoords = $GeoCodeLat+","+$GeoCodeLon
+  $memoCoords = Array(2,$resnum)
+ENDSUB
+
+
+
+#*******************************************************
+#   Variable declarations for Geocode.gsk
+#
+#   Generated 6/21/2012 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+BEGINSUB Name=DeclareVariables
+
+Option Explicit=Yes
+
+Declare Var=$acounter Type=Numeric
+Declare Var=$addrcomp Type=String
+Declare Var=$addrcount Type=Numeric
+Declare Var=$address Type=String
+Declare Var=$BingMapTemplate Type=String
+Declare Var=$cmbDatabase Type=String
+Declare Var=$cmbMapZoom Type=String
+Declare Var=$cmbRegion Type=String
+Declare Var=$county Type=String
+Declare Var=$Data Type=String
+Declare Var=$DBlist Type=String
+Declare Var=$edtCode Type=String
+Declare Var=$edtName Type=String
+Declare Var=$edtURL Type=String
+Declare Var=$form Type=String
+Declare Var=$formatted_address Type=String
+Declare Var=$FormCaption Type=String
+Declare Var=$FormExit Type=String
+Declare Var=$frmSettings Type=String
+Declare Var=$GeoCodeLat Type=String
+Declare Var=$GeoCodeLon Type=String
+Declare Var=$GmapBaseUrl Type=String
+Declare Var=$GoogleBaseUrl Type=String
+Declare Var=$GoogleMapTemplate Type=String
+Declare Var=$htmlfilename Type=String
+Declare Var=$kmldata Type=String
+Declare Var=$kmlfile Type=String
+Declare Var=$location Type=String
+Declare Var=$mapurl Type=String
+Declare Var=$maxresults Type=Numeric
+Declare Var=$MemoAddress Type=String
+Declare Var=$memoCoords Type=String
+Declare Var=$MemoResult Type=String
+Declare Var=$municipality Type=String
+Declare Var=$myHTML Type=String
+Declare Var=$newcode Type=String
+Declare Var=$rcounter Type=Numeric
+Declare Var=$regioncode Type=String
+Declare Var=$resnum Type=Numeric
+Declare Var=$result Type=String
+Declare Var=$resultcount Type=Numeric
+Declare Var=$resultslist Type=String
+Declare Var=$status Type=String
+Declare Var=$tempMapZoom Type=String
+Declare Var=$tempRegion Type=String
+Declare Var=$updated Type=Numeric
+Declare Var=$UrlText Type=String
+Declare Var=$ValidAddress Type=Boolean
+Declare Var=$webpage Type=String
+Declare Var=$xmlfile Type=String
+ENDSUB
+
+# The template below will be updated and written to an HTML file so it can be loaded
+# in our browser. The @@LATLON@@ will be replaced with the coordinates from our
+# geocode request.   Code shamelessly borrowed from the Spatial Unlimited blog at 
+# http://shreerangpatwardhan.blogspot.com
+
+<Data> VarName=$GoogleMapTemplate
+<html><head><title>
+Google Maps API v3 - Waypoint with Marker
+</title>
+<script type="text/javascript" src="http://maps.google.com/maps/api/js?sensor=false">
+</script>
+<script type="text/javascript">
+function initialize()
+{var myLatLng = new google.maps.LatLng(@@LATLON@@);
+ var map = new google.maps.Map(document.getElementById("map"),
+ { zoom: @@MAPZOOM@@,
+   center: myLatLng,
+   mapTypeId: google.maps.MapTypeId.ROADMAP
+ });
+
+ var marker = new google.maps.Marker(
+ {position: myLatLng,
+   map: map,
+   title: '@@ADDRESS@@'
+ });}
+</script>
+</heaad>
+<body onload="initialize()" onunload="GUnload()">
+<div id="map" style="height: 100%; width: 100%">
+</div></body></html>
+<enddata>
+
+<Data> VarName=$BingMapTemplate
+<html><title>
+ BING Maps URL - Waypoint with Marker
+</title>
+<SCRIPT LANGUAGE="javascript">
+<!--
+window.open ('http://www.bing.com/maps/default.aspx?cp=@@LATLON@@&alt=20&sty=b')
+-->
+</SCRIPT>
+</html>
+<enddata>
+
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Wed 21-Dec-2011 11:17:24
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Geocoder
+  Height = 574
+  Width = 777
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Add Location to Database
+  Height = 155
+  Left = 16
+  Top = 374
+  Visible = Yes
+  Width = 313
+  Taborder = 5
+
+Name = MemoAddress
+  Type = Memo
+  Height = 57
+  Left = 16
+  Top = 48
+  Width = 313
+  Taborder = 0
+
+Name = Label1
+  Type = Label
+  Height = 13
+  Left = 16
+  Top = 8
+  Width = 538
+  Caption = Enter address or coordinates to be geocoded in the box below.  Do not include business name or phone number.
+
+Name = btnGeocode
+  Type = Button
+  Height = 25
+  Left = 48
+  Top = 108
+  Width = 113
+  Taborder = 1
+  Caption = Geocode
+
+Name = MemoResult
+  Type = Memo
+  Height = 153
+  Left = 16
+  Readonly = Yes
+  Scrollbars = Vertical
+  Top = 160
+  Width = 313
+  Taborder = 2
+
+Name = Label4
+  Type = Label
+  Height = 13
+  Left = 16
+  Top = 144
+  Width = 43
+  Caption = Results
+
+Name = btnGoogleEarth
+  Type = Button
+  Enabled = No
+  Height = 25
+  Left = 221
+  Top = 343
+  Width = 97
+  Taborder = 3
+  Caption = Google Earth
+
+Name = btnFormat
+  Type = Button
+  Height = 25
+  Left = 176
+  Top = 108
+  Width = 113
+  Taborder = 4
+  Caption = Format Coordinates
+
+Name = Label5
+  Type = Label
+  Height = 13
+  Left = 16
+  Top = 24
+  Width = 334
+  Caption = Results are returned in order of relevance according to Google Maps.
+
+Name = edtCode
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 96
+  Top = 22
+  Width = 105
+  Taborder = 1
+
+Name = Label6
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 8
+  Top = 26
+  Width = 81
+  Caption = Waypoint Code
+
+Name = btnAddToDB
+  Type = Button
+  Container = Groupbox1
+  Enabled = No
+  Height = 25
+  Left = 98
+  Top = 124
+  Width = 105
+  Taborder = 0
+  Caption = Add to Database
+
+Name = Label7
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 8
+  Top = 51
+  Width = 84
+  Caption = Waypoint Name
+
+Name = edtName
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 96
+  Top = 48
+  Width = 201
+  Taborder = 2
+
+Name = wb1
+  Type = Browser
+  Height = 457
+  Left = 344
+  Top = 72
+  Width = 408
+  Taborder = 8
+
+Name = btnCopy
+  Type = Button
+  Enabled = No
+  Height = 21
+  Left = 280
+  Top = 139
+  Visible = No
+  Width = 49
+  Taborder = 9
+  Caption = Copy
+
+Name = btnBrowser
+  Type = Button
+  Enabled = No
+  Height = 25
+  Left = 220
+  Top = 318
+  Width = 97
+  Taborder = 10
+  Caption = View in Browser
+
+Name = Label2
+  Type = Label
+  Container = Groupbox1
+  Height = 17
+  Left = 8
+  Top = 76
+  Width = 78
+  Caption = Waypoint URL
+
+Name = edtURL
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 96
+  Top = 74
+  Width = 201
+  Taborder = 3
+
+Name = btnSettings
+  Type = Button
+  Height = 25
+  Left = 672
+  Top = 12
+  Width = 75
+  Taborder = 11
+  Caption = Settings
+
+Name = cmbResults
+  Type = Combobox
+  Exitonchange = Yes
+  Height = 21
+  Left = 344
+  Top = 48
+  Width = 409
+  Taborder = 12
+
+Name = Label3
+  Type = Label
+  Container = Groupbox1
+  Height = 17
+  Left = 8
+  Top = 103
+  Width = 64
+  Caption = Coordinates
+
+Name = memoCoords
+  Type = Memo
+  Container = Groupbox1
+  Height = 21
+  Left = 96
+  Readonly = No
+  Top = 99
+  Width = 201
+  Taborder = 4
+
+Name = cmbMaps
+  Type = Combobox
+  Exitonchange = No
+  Height = 21
+  Left = 16
+  Top = 320
+  Values = Google Maps;Open Street Maps;Terrain (via GMAP4);MyTopo (via GMAP4);HiRes Topo (via GMAP4);Color Satellite (via GMAP4)
+  Width = 201
+  Taborder = 21
+
+<enddata>
+
+
+<Data> VarName=$frmSettings
+#********************************************************************
+# Form generated by GSAK form designer on Tue 20-Dec-2011 12:04:19
+#********************************************************************
+
+Name = frmSettings
+  Type = Form
+  Height = 322
+  Width = 497
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Google Geocoding Options
+  Height = 105
+  Left = 24
+  Top = 16
+  Width = 441
+  Taborder = 3
+
+Name = Groupbox2
+  Type = Groupbox
+  Caption = GSAK Options
+  Height = 105
+  Left = 24
+  Top = 128
+  Width = 441
+  Taborder = 4
+
+Name = btnOk
+  Type = Button
+  Height = 25
+  Left = 160
+  Top = 248
+  Width = 75
+  Taborder = 2
+  Caption = Save
+
+Name = cmbRegion
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 122
+  Top = 26
+  Values = None;Australia (au);Canada (ca);France (fr);Germany (de);India (in);Iraq (iq);Ireland (ie);Italy (it);Japan (jp);Mexico (mx);Netherlands (nl);New Zealand (nz);Puerto Rico (pr);Russia (ru);Spain (es);Sweden (se);Switzerland (ch);United Kingdom (uk);United States (us);
+  Width = 153
+  Taborder = 0
+
+Name = Label1
+  Type = Label
+  Container = Groupbox1
+  Height = 17
+  Left = 50
+  Top = 28
+  Width = 65
+  Caption = Region Bias
+
+Name = Label3
+  Type = Label
+  Container = Groupbox1
+  Height = 17
+  Left = 24
+  Top = 58
+  Width = 88
+  Caption = Map Zoom Level
+
+Name = cmbMapZoom
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 122
+  Top = 56
+  Values = 1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;18;19;20;21
+  Width = 153
+  Taborder = 1
+
+Name = Label4
+  Type = Label
+  Container = Groupbox1
+  Height = 17
+  Left = 288
+  Top = 58
+  Width = 131
+  Caption = (Higher = zoomed in more)
+
+Name = cmbDatabase
+  Type = Combobox
+  Container = Groupbox2
+  Exitonchange = Yes
+  Height = 21
+  Left = 138
+  Top = 34
+  Width = 287
+  Taborder = 0
+
+Name = Label2
+  Type = Label
+  Container = Groupbox2
+  Height = 17
+  Left = 10
+  Top = 36
+  Width = 124
+  Caption = Change active database
+
+Name = btnCancel
+  Type = Button
+  Height = 25
+  Left = 248
+  Top = 248
+  Width = 75
+  Taborder = 5
+  Caption = Cancel
+
+<enddata>
+
+
+# This was the original mapping routine I used.  It brings up a static Google map
+# that can't be zoomed or scrolled.  This is super easy to implement because it just
+# formats a URL and loads it in a web browser.  I wanted more functionality
+# so this just didn't make the cut.
+
+#BEGINSUB Name=UpdateMapStatic # Map the location with static Google Map
+#	   BEGINCASE  # First set the type of map we want
+#	     CASE $cmbMaptype = "Roadmap"
+#	     		$maptype = "roadmap"
+#	     CASE $cmbMaptype  = "Satellite"
+#	     		$maptype = "satellite"
+#	     CASE $cmbMaptype = "Hybrid"
+#	     		$maptype = "hybrid"
+#	     CASE $cmbMaptype  = "Terrain"
+#	     		$maptype = "terrain"
+#	   ENDCASE
+#	   
+#	   BEGINCASE  # Now set the zoom level
+#	     CASE $cmbZoom = "Maximum"
+#	     		$zoom = "19"
+#	     CASE $cmbZoom = "Higher"
+#	     		$zoom = "17"
+#	     CASE $cmbZoom = "Standard"
+#	     		$zoom = "15"		
+#	     CASE $cmbZoom = "Lower"
+#	     		$zoom = "12"
+#	     CASE $cmbZoom = "Minimum"
+#	     		$zoom = "8"
+#	   ENDCASE
+#	   # Construct the request URL & update the browser
+#		$mapurl = "http://maps.googleapis.com/maps/api/staticmap?center="
+#		$mapurl=$mapurl+$GeoCodeLat+","+$GeoCodeLon+"&size=400x400"
+#		$mapurl=$mapurl+"&zoom="+$zoom
+#		$mapurl=$mapurl+"&markers=color:blue%7C"+$GeoCodeLat+","+$GeoCodeLon
+#		$mapurl=$mapurl+"&maptype="+$maptype
+#		$mapurl=$mapurl+"&sensor=false"
+#		$form = editform($form,"wb1","Url",$mapurl)	
+#ENDSUB
+
+# The template below may be updated and written to an HTML file so it can be loaded
+# in our browser. The @@GEOCODEQUERY@@ should be replaced with the coordinates from our
+# geocode request.  We could also toss an address in there.  Code shamelessly borrowed from
+# the Spatial Unlimited blog at http://shreerangpatwardhan.blogspot.com
+# NOTE - this code is currently not used, just included for reference
+
+#<Data> VarName=$GoogleGeocodeTemplate
+#<html>
+#<head>
+#<title>Google Maps API v3 Example: Geocoding</title>
+#<script type="text/javascript" src="http://maps.google.com/maps/api/js?sensor=false"></script>
+#<script type="text/javascript">
+#var geocoder;
+#var map;
+#var query = "@@GEOCODEQUERY@@";
+#function initialize()
+#{   geocoder = new google.maps.Geocoder();
+#    map = new google.maps.Map(document.getElementById("map_canvas"),
+#    {zoom: 8,
+#      mapTypeId: google.maps.MapTypeId.ROADMAP
+#    });
+#    codeAddress();}
+#function codeAddress(){
+# var address = query;
+# geocoder.geocode( { 'address': address}, function(results, status)
+# { if (status == google.maps.GeocoderStatus.OK)
+#   { map.setCenter(results[0].geometry.location);
+#   var marker = new google.maps.Marker(
+#   {
+#    map: map,
+#    position: results[0].geometry.location
+#   });
+#   } else {
+# alert("Geocode was not successful for the following reason: " + status);
+# } });}
+#</script>
+#</head>
+#<body onload="initialize()">
+#<div id="map_canvas" style="height: 100%; width: 100%"></div>
+#</body>
+#</html>
+#<enddata>
+
+

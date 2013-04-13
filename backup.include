@@ -1,0 +1,70 @@
+
+Option Explicit=Yes
+
+Declare Var=$BkpDir Type=String
+Declare Var=$BkpF Type=String
+Declare Var=$Command Type=String
+Declare Var=$Comspec Type=String
+Declare Var=$Extn Type=String
+Declare Var=$Fname Type=String
+Declare Var=$Now Type=String
+Declare Var=$NumBkps Type=Numeric
+Declare Var=$OldVer Type=Numeric
+Declare Var=$Parms Type=String
+Declare Var=$ThatBkp Type=String
+Declare Var=$ThisBkp Type=String
+Declare Var=$Time Type=String
+Declare Var=$Today Type=String
+Declare Var=$Ver Type=Numeric
+
+
+###################################################################################
+  BEGINSUB Name=MacroBackup
+      $NumBkps = 5
+      $BkpDir  = Sysinfo("gsakini;TfmConfig;edtBackupFolder.Text")
+      $BkpF    = "MacroBackup"
+      $Extn    = ".Zip"
+      $Comspec = GetEnvV("comspec")
+      $ThisBkp="$BkpDir$BkpF$NumBkps$Extn"
+      IF FileExists($ThisBkp)
+          FILEERASE File=$ThisBkp
+      ENDIF 
+      SHOWSTATUS Msg="Renaming old Backups..." Top=0
+      $Ver=$NumBkps
+      WHILE $Ver> 1
+          $Ver=$Ver-1
+          $ThisBkp="$BkpDir$BkpF$Ver$Extn"
+          IF FileExists($ThisBkp)
+              $OldVer=$Ver+1
+              $ThatBkp  ="$BkpF$OldVer$Extn"
+              $Parms="/c Ren $_Quote$ThisBkp$_Quote $ThatBkp"
+              $Command="$ComSpec Parms=$Parms"
+              RUNPGM Pgm=$Command Wait=yes Hide=Yes
+          ENDIF 
+      ENDWHILE 
+      SHOWSTATUS Msg="Creating Backup..."
+      $ThisBkp="$BkpDir$BkpF"+"1"+"$Extn"
+      BACKUP File=$ThisBkp Database=All Settings=Yes
+  ENDSUB 
+###################################################################################
+  BEGINSUB Name=DateTimeBackup
+      $BkpDir  = Sysinfo("gsakini;TfmConfig;edtDataStore.Text")
+      $Today=DateToString($_Today)
+      $Time=Time()
+      $Now = Replace(":","",$Time,True)
+      $Fname="MacroBackup "+$Today+" "+$Now+".Zip"
+      $ThisBkp="$BkpDir$Fname"
+      BACKUP File=$ThisBkp Database=All Settings=Yes
+  ENDSUB 
+###################################################################################
+
+#*******************************************************
+#   Variable declarations for
+#   backup.include
+#
+#   Generated 12/20/2007 9:51:56 PM on GSAKVariables.gsk Rev V0.20 B11
+#
+#*******************************************************
+
+
+

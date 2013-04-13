@@ -1,0 +1,126 @@
+#***************************************
+# HTMLName=Logs
+# SplitScreen=Yes
+# Export=No
+# Offline=No
+#***************************************
+
+#***************************************
+#   Logs Split Screen
+#   v1.4 modified  7/1/07
+#   v1.5 modified  5/22/10
+#   v1.6 modified  8/7/12
+#   Mike Wood (Lignumaqua)
+#***************************************
+
+# MacVersion = 1.6
+# MacDescription = Logs Split Screen macro
+# MacAuthor = Lignumaqua
+# MacFileName = HTML_Logs.gsk
+
+VerCheck version=7.1.0.63 (This macro needs the latest V7.1 build - see http://gsak.net/board/index.php?showtopic=3552)
+
+GOSUB name=Delarations
+$id = 0
+TABLE Active=Logs Scope=Parent
+WHILE NOT($_EOL)
+	IF IsOwner()
+		$id = $d_lOwnerId
+		GOTO position=bottom
+	ENDIF
+	GOTO position=next
+ENDWHILE
+
+$html = $Header
+
+$Logs = CustomFormat("Logs")
+$Logout = ""
+$count = 2
+WHILE Extract($logs,"<p><a",$count) <> ""
+	$Temp = Extract($logs,"<p><a",$count)
+	$Jscript = "<a Font='bold' href=" + Quote("javascript:;") + " onmousedown= " + Quote("toggleDiv('$count');") +">"
+	$Logout = $Logout + $Jscript
+	$Temp1 = Extract($Temp,"</b>",1)
+	$Temp2 = Right($Temp,Len($Temp)-Len($Temp1)-4)
+	IF At(NumToStr($id),$Temp1) <>0 AND $id <> 0
+		$Temp1 = Replace("<b>","<b><font color='Green'>",$Temp1,TRUE)
+	ENDIF
+	$Temp2 = Right($Temp2,Len($Temp2)-Len(Extract($Temp2,"<br>",1))-4)
+	$Temp2 = "<font color='Black'>" + $Temp2
+	$Logout = $Logout + "+ &nbsp;</a> <a" + $Temp1 + "</a></b>"
+	$Logout = $Logout + "<div id='$count' style='display:none'>" + $Temp2 + "</div>"
+	$Logout = $Logout + "<br>"
+	IF At(NumToStr($id),$Temp1) <>0  AND $id <> 0
+		$Logout = $Logout + "<hr width='25%' align=left>"
+	ENDIF
+	$count = $count +1
+ENDWHILE
+
+	$html = $html + $Logout
+
+$html = $html + $footer
+
+$_HTML = $html
+ 
+
+<data> VarName=$header
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+
+<script language="javascript">
+  function toggleDiv(divid){
+    if(document.getElementById(divid).style.display == 'none'){
+      document.getElementById(divid).style.display = 'block';
+    }else{
+      document.getElementById(divid).style.display = 'none';
+    }
+  }
+</script>
+
+<style type='text/css'>
+.FullText { font-weight: bold; color: #F00; background-color: #FF0 } 
+.gsak { font-family: Arial, Times, serif }
+A:link {text-decoration: none; font-weight:bold}
+A:visited {text-decoration: none; font-weight:bold}
+A:active {text-decoration: none;  font-weight:bold}
+A:hover {color: red;}
+</Style>
+
+</head>
+<body text="#000000">
+<table align=center bgcolor="white" border=0 width=95% summary="GSAK"><tr><td>
+
+<enddata>
+
+<data> VarName=$footer
+</td></tr></table>
+</body></html>
+<enddata>
+
+BEGINSUB name=Delarations
+#*******************************************************
+#   Variable declarations for
+#   C:\Program Files\GSAK\Macros\HTML_Logs.gsk
+#
+#   Generated 6/11/2007 9:27:39 AM on GSAKVariables.gsk Rev V0.20 B8
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$_HTML Type=String
+Declare Var=$count Type=Numeric
+Declare Var=$footer Type=String
+Declare Var=$header Type=String
+Declare Var=$html Type=String
+Declare Var=$id Type=Numeric
+Declare Var=$Jscript Type=String
+Declare Var=$Logout Type=String
+Declare Var=$Logs Type=String
+Declare Var=$Temp Type=String
+Declare Var=$Temp1 Type=String
+Declare Var=$Temp2 Type=String
+
+ENDSUB

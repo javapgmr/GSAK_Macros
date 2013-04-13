@@ -1,0 +1,264 @@
+#***************************************
+# HTMLName=Database Diff/Terr
+# SplitScreen=Yes
+# Export=No
+# Offline=No
+# Condensed=No
+#***************************************
+
+#***************************************
+#   Diff/Terr table Split Screen
+#   v1.2 08/05/08 - Converted to SQLite
+#   v1.1 07/21/08 - Found/Unfound highlighting
+#   v1.0 02/01/08
+#   Lignumaqua / Cache U Nuts
+#***************************************
+
+# MacVersion = 1.2
+# MacDescription = Show Diff/Terr Array Split Screen macro
+# MacAuthor = Lignumaqua / Cache U Nuts
+# MacFileName = HTML_DiffTerr.gsk
+
+VERCHECK Version=7.2.3.26 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+
+GOSUB name=DeclareVariables
+
+$SQLfile = ":memory:"
+
+$status = Sqlite("open",$sqlfile)
+
+#Cache Types
+$Status = DbToSQLite("caches","Difficulty,Terrain,FoundCount",$sqlfile)
+
+# Initialise Variables
+$terrain = 1
+$difficulty = 1
+$flagF = false                             # true if any found cells exist
+$maxcellF = 0                              # maximum value of found cell
+$maxcellU = 0                              # maximum value of unfound cell
+$numcombF = 0                              # number of found Diff/Terr Combinations
+$numcombU = 0                              # number of unfound Diff/Terr Combinations
+$numhardF = 0                              # number of found hard (D >= 3 or T >= 3) caches
+$numhardU = 0                              # number of unfound hard (D >= 3 or T >= 3) caches
+$diffterr = "1,1.5,2,2.5,3,3.5,4,4.5,5,;"
+$maxtablewidth = 700
+$CR = $_NewLine
+$out = ""
+
+$stTab2cHead   = "background: #C8C8DD;"                  # table headings
+$st2c1         = "background: #CCCCD4;"                  # table value headings
+$stDiffTerr    = "background: #BABADD;"                  # blank cell in chart
+$stDiffTerrF   = "background: #00B000; color: #FFFFFF;"  # found cell in chart
+$stDiffTerrFM  = "background: #00FF00; color: #000000;"  # found max cell in chart
+$stDiffTerrU   = "background: #B00000; color: #FFFFFF;"  # unfound cell in chart
+$stDiffTerrUM  = "background: #FF0000; color: #000000;"  # unfound max cell in chart
+
+	WHILE $difficulty <= 5
+		SHOWSTATUS msg="Chart of difficulty/terrain... $difficulty" Width=350
+		WHILE $terrain <= 5
+
+			$_sql = "Select count(Difficulty) from caches WHERE Difficulty=$difficulty and Terrain=$terrain and FoundCount > 0"
+  		$num = Val(Sqlite("sql",$_sql))
+
+  		IF $num = 0  # no found caches for this combination, see if there are any unfound ones
+      	$_sql = "Select count(Difficulty) from caches WHERE Difficulty=$difficulty and Terrain=$terrain and FoundCount = 0"
+    		$num = -Val(Sqlite("sql",$_sql))  # use negative numbers for unfound
+  		ENDIF
+			$diffterr = $diffterr + "$num,"
+			BEGINCASE
+			CASE $num > 0  # found cell
+			  $flagF = true
+				$numcombF = $numcombF + 1
+  			IF $difficulty >= 3 OR $terrain >= 3
+  				$numhardF = $numhardF + $num
+  			ENDIF
+  			IF $num > $maxcellF
+  				$maxcellF = $num
+  			ENDIF
+			CASE $num < 0  # unfound cell
+				$numcombU = $numcombU + 1
+  			IF $difficulty >= 3 OR $terrain >= 3
+  				$numhardU = $numhardU - $num
+  			ENDIF
+  			IF -$num > $maxcellU
+  				$maxcellU = -$num
+  			ENDIF
+			ENDCASE
+			$terrain = $terrain + 0.5
+		ENDWHILE
+		$diffterr = $diffterr + ";"
+		$difficulty = $difficulty + 0.5
+		$terrain  = 1
+	ENDWHILE
+
+	$out = $out + "<table width='$maxtablewidth' style='text-align: left;'>" + $CR
+
+	$cellwidth = Int($maxtablewidth/12.5)
+	$headerwidth = $maxtablewidth - (11 * $cellwidth)
+
+	# Go through the data, one record at a time
+	$indexd = 0
+	$indext = 0
+	$terrain  = 1
+	$difficulty = 1
+
+	# Title row
+	$out = $out + "<tr><td style='$stTab2cHead'></td><td style='$stTab2cHead' colspan='10' align='center'><B>Terrain</B></td></tr>" + $CR
+	$out = $out + "<tr><td style='$stTab2cHead' rowspan='10' width='$headerwidth' align='center'><B>Difficulty</B></td>" + $CR
+
+	$out = $out + "<td style='$st2c1'></td>"
+	# Get one data line
+	$data = Extract($diffterr, ";" , $indexd)
+	WHILE $indext < 9
+		$indext = $indext + 1
+		# Get one result
+		$text = Extract($data, ",", $indext)
+		$out = $out + "<td style='$st2c1' width='$cellwidth' align='center'><B>$text</B></td>" + $CR
+	ENDWHILE
+	# Row Total
+	$out = $out + "<td width='$cellwidth'></td>" + $CR
+	$out = $out + "</tr>" + $CR
+
+	$indext = 0
+	$indexd = 1
+
+	WHILE $indexd < 10
+		$indexd = $indexd + 1
+		# Get one data line
+		$data = Extract($diffterr, ";" , $indexd)
+		$tindexd = replace(",",".",numtoStr($difficulty),true)
+		$out = $out + "<tr><td style='$st2c1' width='$cellwidth'><b> $tindexd</b></td>" + $CR
+		$tmpN = 0
+		WHILE $indext < 9
+			$indext = $indext + 1
+			# Get one result
+			$text = Extract($data, ",", $indext)
+			$num = Val($text)
+			BEGINCASE
+			CASE $flagF AND $num > 0
+			  $tmpN = $tmpN + $num
+			CASE Not($flagF) AND $num < 0
+			  $tmpN = $tmpN - $num
+			ENDCASE
+			GOSUB Name=OutputChartLine
+			$terrain = $terrain + 0.5
+		ENDWHILE
+		# Output Row Total
+		$num = $tmpN
+		$text = NumToStr($num)
+		$cellstyle = $stTab2cHead
+		$out = $out + "<td style='$cellstyle' width='$cellwidth' align='center'><i>$text</i></td>" + $CR
+		$indext = 0
+		$out = $out + "</tr>" + $CR
+		$difficulty = $difficulty + 0.5
+		$terrain  = 1
+	ENDWHILE
+
+	$out = $out + "<tr><td></td><td></td>" + $CR
+	$rating  = 1
+	# Column Totals
+	WHILE $rating <= 5
+  	IF $flagF
+		  $_sql = "Select count(Terrain) from caches WHERE Terrain='$rating' and FoundCount > '0'"
+    ELSE
+		  $_sql = "Select count(Terrain) from caches WHERE Terrain='$rating' and FoundCount = '0'"
+  	ENDIF
+  	$num = Val(Sqlite("sql",$_sql))
+  	$text = NumToStr($num)
+		$cellstyle = $stTab2cHead
+		$out = $out + "<td style='$cellstyle' width='$cellwidth' align='center'><i>$text</i></td>" + $CR
+		$rating = $rating + 0.5
+	ENDWHILE
+
+	$out = $out + "</table>" + $CR + "<br />"
+
+	# Diff/Terr found statistics
+	$out = $out + "<i>The $_CurrentDatabase database contains:<br />"
+	IF $flagF
+	  $out = $out + "<b>$numcombF</b>" + " found Diff/Terr combinations out of the" + " <b>81</b> possible<br />"
+	  $out = $out + "<b>$numhardF</b> found caches are rated with Diff or Terr of 3 or greater" + "</i>" + $CR
+  ELSE
+	  $out = $out + "<b>$numcombU</b>" + " unfound Diff/Terr combinations out of the" + " <b>81</b> possible<br />"
+	  $out = $out + "<b>$numhardU</b> unfound caches are rated with Diff or Terr of 3 or greater" + "</i>" + $CR
+	ENDIF
+
+	#Generate HTML to view in split screen
+	$_HTML = $out
+
+
+BEGINSUB Name=OutputChartLine
+  BEGINCASE
+	CASE $num > 0  # number of found caches
+	  IF $num = $maxcellF
+		  $cellstyle = $stDiffTerrFM
+	  ELSE
+		  $cellstyle = $stDiffTerrF
+		ENDIF
+	CASE $num < 0  # number of unfound caches
+	  IF -$num = $maxcellU
+		  $cellstyle = $stDiffTerrUM
+	  ELSE
+		  $cellstyle = $stDiffTerrU
+		ENDIF
+		$text = Replace("-","",$text,true)
+	OTHERWISE      # no caches in database
+		$cellstyle = $stDiffTerr
+		$text = " "
+	ENDCASE
+	IF $indext = 1
+		$out = $out + "    <td style='$cellstyle' width='$cellwidth' align='center'>$text</td>" + $CR
+	ELSE
+		$out = $out + "    <td style='$cellstyle' align='center'>$text</td>" + $CR
+	ENDIF
+ENDSUB
+
+
+BEGINSUB name=DeclareVariables
+#*******************************************************
+#   Variable declarations for
+#   HTML_DiffTerr.gsk
+#
+#   Generated 2/1/2008 10:14:31 PM on GSAKVariables.gsk Rev V0.20 B14
+#
+#*******************************************************
+
+Option Explicit=Yes
+
+Declare Var=$_HTML Type=String
+Declare Var=$cellstyle Type=String
+Declare Var=$cellwidth Type=Numeric
+Declare Var=$CR Type=String
+Declare Var=$data Type=String
+Declare Var=$difficulty Type=Numeric
+Declare Var=$diffterr Type=String
+Declare Var=$flagF Type=Boolean
+Declare Var=$headerwidth Type=Numeric
+Declare Var=$indexd Type=Numeric
+Declare Var=$indext Type=Numeric
+Declare Var=$maxcellF Type=Numeric
+Declare Var=$maxcellU Type=Numeric
+Declare Var=$maxtablewidth Type=Numeric
+Declare Var=$num Type=Numeric
+Declare Var=$numcombF Type=Numeric
+Declare Var=$numcombU Type=Numeric
+Declare Var=$numhardF Type=Numeric
+Declare Var=$numhardU Type=Numeric
+Declare Var=$out Type=String
+Declare Var=$rating Type=Numeric
+Declare Var=$sql Type=String
+Declare Var=$SQLfile Type=String
+Declare Var=$st2c1 Type=String
+Declare Var=$Status Type=String
+Declare Var=$stDiffTerr Type=String
+Declare Var=$stDiffTerrF Type=String
+Declare Var=$stDiffTerrFM Type=String
+Declare Var=$stDiffTerrU Type=String
+Declare Var=$stDiffTerrUM Type=String
+Declare Var=$stTab2cHead Type=String
+Declare Var=$terrain Type=Numeric
+Declare Var=$text Type=String
+Declare Var=$tindexd Type=String
+Declare Var=$tmpN Type=Numeric
+
+ENDSUB
+

@@ -1,0 +1,88 @@
+############################################
+# MacVersion = 1.00
+# MacDescription =  Renames Downloaded PQ's to proper name and moves correctly
+# MacFileName = RenameDownloadedFiles.gsk
+# MacAuthor = javapgmr
+############################################
+
+# Pocket Queries
+#*******************************************************
+#   Variable declarations for
+#   renameDownloadedFiles.gsk
+#
+#   Generated 06/28/2010 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$Count Type=Numeric
+Declare Var=$FFile Type=String
+Declare Var=$FromFile Type=String
+Declare Var=$LCount Type=Numeric
+Declare Var=$p_FoundFiles Type=String
+Declare Var=$strPathFileList Type=String
+Declare Var=$StrRoutePath Type=String
+Declare Var=$StrToRoutePath Type=String
+Declare Var=$TFile Type=String
+Declare Var=$ToFile Type=String
+
+
+
+$p_FoundFiles="0"
+
+
+$StrRoutePath = "C:\data\staging"
+$StrToRoutePath="C:\data\GsakWork"
+$strPathFileList = Dir($strRoutePath + "\*_*.zip", "F")
+DEBUG Status=OFF
+$Count = RegExCount("\n",$StrPathFileList)
+$LCount=1
+WHILE $LCount <= $Count
+  $FFile= Extract($StrPathFileList,$_NewLine,$LCount)
+  $FromFile = SlashAdd($StrRoutePath)+$FFile 
+  $ToFile = SlashAdd($StrToRoutePath) + $FFile
+  FILECOPY From=$FromFile To=$ToFile OnError=Prompt
+  FILEERASE File=$FromFile OnError=Prompt
+  
+  $LCount=$LCount+1
+  $p_FoundFiles="1"
+ENDWHILE
+
+$StrRoutePath = "C:\data\staging"
+$StrToRoutePath="C:\data\GsakWork"
+$strPathFileList = Dir($strRoutePath + "\*-*.zip", "F")
+DEBUG Status=OFF
+$Count = RegExCount("\n",$StrPathFileList)
+$LCount=1
+WHILE $LCount <= $Count
+  $FFile= Extract($StrPathFileList,$_NewLine,$LCount)
+  $FromFile = SlashAdd($StrRoutePath)+$FFile 
+  $ToFile = SlashAdd($StrToRoutePath) + $FFile
+  FILECOPY From=$FromFile To=$ToFile OnError=Prompt
+  FILEERASE File=$FromFile OnError=Prompt
+  
+  $LCount=$LCount+1
+  $p_FoundFiles="1"
+ENDWHILE
+
+
+$StrRoutePath = "C:\data\dropbox\pqs"
+$StrToRoutePath="C:\data\GsakWork"
+$strPathFileList = Dir($strRoutePath + "\*_*.zip", "F")
+DEBUG Status=Off
+$Count = RegExCount("\n",$StrPathFileList)
+
+$LCount=1
+WHILE $LCount <= $Count
+  $FFile= Extract($StrPathFileList,$_NewLine,$LCount)
+  $FromFile = SlashAdd($StrRoutePath)+$FFile
+ 
+  $ToFile = SlashAdd($StrToRoutePath) + $FFile
+  FILECOPY From=$FromFile To=$ToFile OnError=Prompt
+  FILEERASE File=$FromFile OnError=Prompt
+  
+  $LCount=$LCount+1
+  $p_FoundFiles="1"
+ENDWHILE

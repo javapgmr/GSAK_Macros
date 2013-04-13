@@ -1,0 +1,1064 @@
+# MacDescription = Google Maps with Elevation profile
+# MacFileName =HTML_Google Map Elevation.gsk
+# MacAuthor = Lignumaqua
+# MacVersion=1.0
+# MacUrl = http://gsak.net/board/index.php?showtopic=15008
+
+#***************************************
+# HTMLName=Map Elevation
+# SplitScreen=Yes
+# Export=No
+# Offline=No
+#***************************************
+
+#===========================================================================#
+#   GMaps Split Screen Elevation
+#   Mike Wood (Lignumaqua)
+#
+#===========================================================================#
+#   GMaps Split Screen Nearest Change History
+#
+#   v0.1  (4/4/10) 	 First trial release
+#   v0.2  (4/4/10) 	 Added MyTopo maps, auto scale chart width,
+#										 Click to add multiple markers
+#   v0.3  (4/4/10) 	 Added 'Clear Markers' button
+#   v0.4  (4/8/10)   Avoid grabbed images issue.
+#   v0.5  (4/11/10)  Maptype cookie
+#   v0.6  (8/7/12)   Remove deprecated HTML()
+#   v0.7  (8/8/12)   Fix MyTopo maps
+#   v0.8  (8/8/12)   Fix cookies
+#   v0.9  (12/22/12) Added x axis labels for distance
+#   v1.0  (2/6/13)   Changed to new version of API
+#
+#===========================================================================#
+#   This GSAK macro creates a split screen format
+#   to show the current cache and an elevation profile
+#   The profile line will be drawn to a Trailhead or Parking waypoint if there is one
+#   Otherwise the macro will draw to a point at a distance selected by the user.
+#   Correctly deals with metric and imperial units.
+#
+#		Hold the 'Alt' key down when selecting a cache to access the configuration menu
+#
+
+VERCHECK Version=7.6.0.0 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+PREPROCESS Alt=$Edit
+GOSUB Name=DeclareVariables
+SPEEDMODE status=on
+
+$points = "20"
+$showchild = "T"
+
+
+#Check if we're using Miles or Kilometres
+IF SysInfo("Distance") = "K"
+	$conversion = 1.6093
+	$distunits = "m"
+	$calcunits = "T"
+	$radius = "500"
+ELSE
+	$conversion = 1
+	$distunits = "ft"
+	$calcunits = "F"
+	$radius = "1500"
+ENDIF
+
+$datafilepath = Sysinfo("MacroPath")
+$DataFile = $datafilepath + "\HTMLMapElevationData.dat"
+
+IF (FileExists($DataFile))
+	$variables = GetFile($DataFile)
+	$showchild = Extract($variables,";",1)
+	$radius = Extract($variables,";",2)
+	$points = Extract($variables,";",3)
+ENDIF
+
+$childbox = StrToBool($showchild)
+
+$oldchildbox = $childbox
+$oldradius = $radius
+$oldpoints = $points
+
+
+IF $Edit
+	WHILE TRUE
+  			
+		$result = Form($form,"")
+		# Reset the screen position of the menu form to where the user left it
+  	$Form = EditForm($Form,"Form1","Top",$_FormTop)
+  	$Form = EditForm($Form,"Form1","Left",$_FormLeft)
+  	  	
+  	BEGINCASE #Buttons
+  		CASE $Cancel
+  			$childbox = $oldchildbox
+				$radius = $oldradius
+				$points = $oldpoints
+    		BREAK
+			CASE $OK
+				$showchild = BoolToStr($childbox,"T","F")
+				$radius = NumToStr(Abs(Val($radius)))
+				$points = NumToStr(Abs(Val($points)))
+				$variables = "$showchild;$radius;$points"
+				$result = PutFile($datafile, $variables)
+				IF Left($result, 7) = "*Error*"
+					# If theres any error abort the macro
+					CANCEL Msg="Unable to write to $datafile!"
+				ENDIF
+				BREAK
+	    OTHERWISE 
+  			BREAK
+  	ENDCASE	
+  	
+	ENDWHILE # Form Loop
+ENDIF
+
+IF Val($points) < 2
+	$points = "2"
+ENDIF
+
+$radiusnumber = Abs(Val($radius))
+$pointssnumber = Abs(Val($points))
+
+
+#---initialize---#
+
+#Output flag macro
+
+IF NOT(FileExists($_Install + "\Macros\splittoggleflag.gsk"))
+	$split_result = PutFile($_Install + "\Macros\splittoggleflag.gsk",$splittoggle)
+ENDIF
+
+$split_savedcode = $d_Code
+$p_savedcode = $d_Code
+
+$split_html = ""
+
+	
+
+	#-----remove bad characters-----#
+
+	#$split_code = HTML("Clean",$d_Code)
+	$split_code = CustomFormat("Clean",$d_Code)
+	$split_code = Replace($_Quote,"&#034",$split_code,true)
+	$split_code = Replace("'","&#039",$split_code,true)
+	#$split_cacheName = HTML("Clean",$d_Name)
+	$split_cacheName = CustomFormat("Clean",$d_name)
+	$split_cacheName_Jscript = replace($_Quote,"\" + $_Quote,$split_cacheName,true)
+	$split_cacheName_Jscript = EntityDecode($split_cacheName_Jscript)
+	$split_cacheName = Replace($_Quote,"&#034",$split_cacheName,true)
+	$split_cacheName = Replace("'","&#039",$split_cacheName,true)
+	#$split_ownerName = HTML("Clean",$d_OwnerName)
+	$split_ownerName = CustomFormat("Clean",$d_OwnerName)
+	$split_ownerName = Replace($_Quote,"&#034",$split_ownerName,true)
+	$split_ownerName = Replace("'","&#039",$split_ownerName,true)
+
+	#-----apply the correct difficulty & terrain graphics-----#
+
+	$split_s_diff = str($d_Difficulty,3,1)
+	$split_s_diff = Replace(",",".",$split_s_diff,true)      # Some computers use [,] decimal separator vs [.]
+	$split_s_diff = Replace(".0","",$split_s_diff,true)
+	$split_s_diff = Replace(".5","_5",$split_s_diff,true)
+	$split_dif = "http://www.geocaching.com/images/stars/stars" + $split_s_diff + ".gif"
+
+	$split_s_terr = str($d_Terrain,3,1)
+	$split_s_terr = Replace(",",".",$split_s_terr,true)      # Some computers use [,] decimal separator vs [.]
+	$split_s_terr = Replace(".0","",$split_s_terr,true)
+	$split_s_terr = Replace(".5","_5",$split_s_terr,true)
+	$split_ter = "http://www.geocaching.com/images/stars/stars" + $split_s_terr + ".gif"
+
+	#-----apply the correct cache type icon & graphic-----#
+
+	$split_types = "TMUBVERWLCGZAIXY"
+	$split_images = "tr,mu,un,le,vi,ev,ea,we,lo,ci,be,me,ap,wh,ex,wm"
+	$split_typenums = "2,3,8,5,4,6,137,11,12,13,27,453,9,1858,1304,9999"
+
+	$split_index = At($d_CacheType,$split_types)
+	$split_indexlarge = $split_index
+	$split_Icon  = Extract($split_images, "," , $split_index)
+
+	IF $d_Found
+		$split_Icon = "found"
+		$split_index = Len($split_types) + 1
+	ENDIF
+
+	BEGINCASE
+	CASE $split_index = 0
+		$split_Pic = "http://labs.google.com/ridefinder/images/mm_20_gray.png"
+	CASE $split_index = 16
+		$split_Pic = "http://gsak.net/google/cacheicons/wm32.gif"
+	OTHERWISE
+		$split_Pic = "http://www.geocaching.com/images/WptTypes/" + extract($split_typenums, "," , $split_indexlarge) + ".gif"
+	ENDCASE
+
+	# "T"     Traditional, 2
+	# "M"     Multi, 3
+	# "U"     Puzzle, 8
+	# "B"     LetterBox, 5
+	# "V"     Virtual, 4
+	# "E"     Event, 6
+	# "R"     Earth, 137
+	# "W"     Webcam, 11
+	# "L"     Locationless, 12
+	# "C"     CITO, 13
+	# "G"     Benchmark, 27
+	# "Z"			Mega Event, 453
+	# "A"			Project Ape, 9
+	# "I"			Wherigo, 1858
+	# "X"			Exhibit, 1304
+	# "Y"			Waymark
+
+	#-----build the cache info marker-----#
+
+	$split_html=$split_html + "//---------------------------------------------------------------//" + $_NewLine
+	
+	$infomsg= "<div style= 'width:200px;overflow:auto;' >"
+	
+	$infomsg=$infomsg + "<font size = 2 face ='Verdana'><small><center><b>" + "<a href=" + "\" + $_Quote + "gsak://%FF/open/" +  HttpEncode($d_Url) + "\" + $_Quote + ">" + $split_code + "</a><BR>"
+	$infomsg=$infomsg + $split_cacheName + "</b><BR>"
+	$infomsg=$infomsg + "<i>by:  " + $split_ownerName + "</i><BR>"
+	IF $d_HasTravelBug
+		$split_bug = "http://www.geocaching.com/images/WptTypes/21.gif"
+		$infomsg=$infomsg + "<img src='" + $split_pic + "'>" +"<img src='" + $split_bug + "'>" + "<BR>"
+	ELSE
+		$infomsg=$infomsg + "<img src='" + $split_pic + "'>"  + "<BR>"
+	ENDIF
+	$infomsg=$infomsg + "Difficulty:  " + "<img src='" + $split_dif + "'>" + "<BR>"
+	$infomsg=$infomsg + "Terrain:  " + "<img src='" + $split_ter + "'>" + "<BR>"
+	$infomsg=$infomsg + "Size:  " + $d_Container + "<BR><BR>"
+	IF $d_Found
+		$infomsg=$infomsg + "<i>You have found this cache!</i><BR><BR>"
+	ENDIF
+
+	$split_CacheHere = GCalc(($d_Latitude + " " + $d_Longitude),"FormatMinutes")
+	$split_CacheHere = Replace(";"," ",$split_CacheHere,true)
+	$infomsg=$infomsg + "<b>" + $split_CacheHere + "</b><BR>"
+
+	IF $d_HasCorrected
+		$split_CacheHere = GCalc(($d_LatOriginal + " " + $d_LonOriginal),"FormatMinutes")
+		$split_CacheHere = Replace(";"," ",$split_CacheHere,true)
+		$infomsg=$infomsg + "<small>(Was: " + $split_CacheHere + ")</small><BR>"
+	ENDIF
+
+	$split_href = "<a href=" + "\" + $_Quote + "gsak://%FF/Macro/splittoggleflag.gsk/" +  HttpEncode($d_Code) + "/" + HttpEncode($_CurrentDatabase) + "\" + $_Quote + ">Toggle User Flag</a>"
+	$infomsg=$infomsg + "<BR>"+ $split_href
+
+#	$split_href = "<a href=" + "\" + $_Quote + "gsak://%FF/search/" +  HttpEncode($d_Code) + "/" + HttpEncode($_CurrentDatabase) + "\" + $_Quote + ">Center Here</a>"
+#	$infomsg=$infomsg + $split_href + "<BR><BR>"
+
+	$infomsg=$infomsg + "</center></small></font></div>"
+
+	$split_html=$split_html  + $_NewLine
+	
+	#----Show Corrected Original position----#
+
+$correctedtext = ""
+
+IF $d_HasCorrected AND $childbox
+
+$correctedtext = "//---------------------------------------------------------------//" + $_NewLine
+$correctedtext=$correctedtext + "latlng = new google.maps.LatLng(" + $d_LatOriginal + "," + $d_LonOriginal + ");" + $_NewLine
+$correctedtext=$correctedtext + "markercorrected = new google.maps.Marker({" + $_NewLine
+$correctedtext=$correctedtext + "position: latlng," + $_NewLine
+$correctedtext=$correctedtext + "map: map," + $_NewLine
+$correctedtext=$correctedtext + "icon: correctedicon," + $_NewLine
+$correctedtext=$correctedtext + "title: 'Original Position'," + $_NewLine
+$correctedtext=$correctedtext + "draggable: false" + $_NewLine
+$correctedtext=$correctedtext + "});" + $_NewLine
+$correctedtext=$correctedtext + "bounds.extend(latlng);" + $_NewLine
+
+ENDIF
+
+	#----Show Child Markers----#
+	#----use a single marker image (waypoint) to avoid slowing things down too much---#
+	$childtext = ""
+	$lat2 = ""
+	$lon2 = ""
+
+	IF	$childbox
+		TABLE Active=Waypoints Scope=Parent
+		GOTO Position=Top
+		$Count = 0
+
+		WHILE Not($_EOL)
+			$Count = $Count + 1
+			$Markername = "Child_$Count"
+			
+			#$split_childName = HTML("Clean",$d_cName)
+			$split_childName = CustomFormat("Clean",$d_cName)
+		
+			$split_childName = replace($_Quote,"'",$split_childName,true)
+			
+			$childtext=$childtext + "//---------------------------------------------------------------//" + $_NewLine
+			$childtext=$childtext + "latlng = new google.maps.LatLng(" + $d_cLat + "," + $d_cLon + ");" + $_NewLine
+			$childtext=$childtext + "$markername = new google.maps.Marker({" + $_NewLine
+			$childtext=$childtext + "position: latlng," + $_NewLine
+			$childtext=$childtext + "map: map," + $_NewLine
+			$childtext=$childtext + "icon: childicon," + $_NewLine
+			$childtext=$childtext + "shadow: shadow," + $_NewLine
+			$childtext=$childtext + "title: " + quote($split_childName) + "," + $_NewLine
+			$childtext=$childtext + "draggable: false" + $_NewLine
+			$childtext=$childtext + "});" + $_NewLine
+			$childtext=$childtext + "bounds.extend(latlng);" + $_NewLine
+			
+			IF $d_cType = "Trailhead" OR $d_cType = "Parking Area"
+				$lat2 = $d_cLat
+				$lon2 = $d_cLon
+			ENDIF
+			
+			GOTO Position=Next
+		ENDWHILE
+		TABLE active=caches
+	ENDIF
+
+IF $lat2 = ""
+	$data = $d_Latitude + " " + $d_Longitude + ";90;$radius;$calcunits"
+	$data = GCalc($data,"Project")
+	$lat2 = Extract($data,";",1)
+	$lon2 = Extract($data,";",2)
+ENDIF
+	
+
+$split_tmpB = Seek($split_SavedCode)
+
+#----finish the $html string--------------#
+
+   $split_html = $split_header + $split_html
+   $split_html = $split_html + "//---------------------------------------------------------------//" + $_NewLine
+   $split_html = $split_html + "</script>" + $_NewLine
+   $split_html = $split_html + "</body></html>"
+
+
+$hash = GetUrl("http://gsak.net/stats/maps/MyTopoTileService.php")
+
+#----Search and replace variables in the final $html string----------#
+      
+   $split_html = Replace("!!lat!!",$d_Latitude,$split_html,true)
+   $split_html = Replace("!!lon!!",$d_Longitude,$split_html,true)
+   $split_html = Replace("!!lat2!!",$lat2,$split_html,true)
+   $split_html = Replace("!!lon2!!",$lon2,$split_html,true)
+   $split_html = Replace("!!distunits!!",$distunits,$split_html)
+   $split_html = Replace("!!infomsg!!",$infomsg,$split_html)
+   $split_html = Replace("!!correctedtext!!",$correctedtext,$split_html)
+   $split_html = Replace("!!childtext!!",$childtext,$split_html)
+   $split_html = Replace("!!icon!!",$split_icon,$split_html)
+   $split_html = Replace("!!points!!",$points,$split_html)
+   $split_html = Replace("!!cache!!",$split_cacheName_Jscript,$split_html)
+   $split_html = Replace("!!HashGoesHere!!",$hash,$split_html)
+   
+   
+      
+#-----Create the HTML File----------
+
+$_HTML = $split_html
+
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#  HTML Header Data
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+<data> VarName=$split_header
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+"http://www.w3.org/TR/html4/loose.dtd">
+<HTML xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml">
+<head>
+<!-- saved from url=(0014)about:internet -->
+<title>GSAK Google Map</title>
+
+<!-----external references----->
+
+<script type="text/javascript" src="http://www.google.com/jsapi"></script>
+<script type="text/javascript" src="http://maps.google.com/maps/api/js?libraries=geometry&sensor=false"></script>
+
+<script type="text/javascript">
+
+	function writecookie(cookiename,k) { document.cookie=cookiename+'='+k+'; expires=Fri, 31 Dec 2020 00:00:00 UTC' };
+
+	function clearcookie(cookiename,k) { document.cookie=cookiename+'='+k+'; expires=Fri, 31 Dec 2000 00:00:00 UTC' };
+
+	function readCookie(cookieName){
+		var searchName = cookieName + "="
+		var cookies = document.cookie
+		var start = cookies.indexOf(cookieName)
+		if (start == -1){ // cookie not found
+			return "-1"
+		}
+		start += searchName.length //start of the cookie data
+		var end = cookies.indexOf(";", start)
+		if (end == -1){
+			end = cookies.length
+		}
+		return cookies.substring(start, end)
+	}
+
+</script>
+
+<style type="text/css">
+
+	html, body {
+	height: 100%;
+	overflow: hidden;
+	font-family: Verdana;
+	font-size: 8pt;
+}
+
+body {
+background-color: white;
+margin: 0;
+}
+</style>
+
+</head>
+
+<body>
+
+<div id="map_canvas" style="float:left;width:70%; height:100%"></div>
+
+<div id="chart_title" style="font-size: 10pt; text-align: center; float:right; width:30%"><br><br><b>Elevation Profile</b><br></div>
+<div id="chart_header" style="text-align: center; float:right; width:30%; display:none"><br><br>Click the map to add a marker<br><br></div>
+<div id="chart_div" style="text-align: center; float:right; width:30%"></div>
+<div id="chart_footer" style="text-align: center; float:right; width:30%">
+Hover mouse over bars to show location on map<br>
+<br><img src="http://gsak.info/stats2/elevation/flagpolehtml.png" alt="Draggable marker" title="Draggable marker" width="16" height="24" /> Flag path markers are draggable<br>
+<br>Click map to add new draggable markers<br>to the end of the path<br><br>
+<INPUT type="button" value="Clear Markers" onClick="reset()" style="font-size: 8pt; height: 18px;">
+</div>
+
+
+
+
+<script>
+	var map = null;
+	var chart = null;
+
+	var elevationService = null;
+
+	var mousemarker = null;
+	var markers = [];
+	var polyline = null;
+	var elevations = null;
+
+	var SAMPLES = !!points!!;
+	var distunits = '!!distunits!!';
+	var distconv = 1;
+
+	if (distunits == 'ft') {
+		distconv = 3.2808;
+	}
+
+
+
+	//-----icon references----->
+	var !!icon!!_icon = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/!!icon!!1.png",
+	new google.maps.Size(27,34),
+	new google.maps.Point(0,0),
+	new google.maps.Point(4,34));
+
+	var shadow = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/shadow1.png",
+	new google.maps.Size(45,34),
+	new google.maps.Point(0,0),
+	new google.maps.Point(4,34));
+
+	var found_icon = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/found.png",
+	new google.maps.Size(20,34),
+	new google.maps.Point(0,0),
+	new google.maps.Point(9,34));
+
+	var childicon = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/waypoint1.png",
+	new google.maps.Size(27,34),
+	new google.maps.Point(0,0),
+	new google.maps.Point(4,34));
+
+	var correctedicon = new google.maps.MarkerImage("http://gsak.net/google/cacheicons/traffic_cone.png",
+	new google.maps.Size(16,16),
+	new google.maps.Point(0,0),
+	new google.maps.Point(8,16));
+
+var pathicon = new google.maps.MarkerImage("http://gsak.info/stats2/elevation/flagpole.png",
+	new google.maps.Size(16,24),
+	new google.maps.Point(0,0),
+	new google.maps.Point(14,24));
+
+var pathshadow = new google.maps.MarkerImage("http://gsak.info/stats2/elevation/flagshadow.png",
+	new google.maps.Size(28,24),
+	new google.maps.Point(0,0),
+	new google.maps.Point(14,24));
+	
+	// Load the Visualization API and the column chart package.
+	google.load("visualization", "1", {packages: ["corechart"]});
+
+	// Set a callback to run when the Google Visualization API is loaded.
+	google.setOnLoadCallback(initialize);
+
+
+	function initialize() {
+
+		/**
+		* maps
+		*/
+		var options = {
+			scrollwheel: false,
+			scaleControl: true,
+			mapTypeControlOptions: {style: google.maps.MapTypeControlStyle.DROPDOWN_MENU}
+		};
+		map = new google.maps.Map(document.getElementById("map_canvas"), options);
+		map.setCenter(new google.maps.LatLng(!!lat!!, !!lon!!));
+		map.setZoom(12);
+		
+		
+		map.setMapTypeId(google.maps.MapTypeId.ROADMAP);
+		
+		
+		//----read cookie and override maptype accordingly---
+		var typecookie = readCookie("maptypeelev3");
+		//alert (typecookie);
+		if (typecookie == "-1") {typecookie = "roadmap"};
+		map.setMapTypeId(typecookie);
+		
+		// Add listener to see if map type changes and store in cookie
+  	google.maps.event.addListener(map, "maptypeid_changed", function() {
+  		k = map.getMapTypeId();
+			writecookie('maptypeelev3',k);
+		// Update the custom MyTopo copyright if needed
+			if(!(typeof hash=="undefined" || hash == "")) {
+				updateCopyright();
+			}
+    }); 
+
+		chart = new google.visualization.ColumnChart(document.getElementById('chart_div'));
+
+		elevationService = new google.maps.ElevationService();
+
+		google.maps.event.addListener(map, 'click', function(event) {
+			addMarker(event.latLng, true);
+		});
+
+
+		google.visualization.events.addListener(chart, 'onmouseover', function(e) {
+			if (mousemarker == null) {
+				mousemarker = new google.maps.Marker({
+					position: elevations[e.row].location,
+					map: map,
+					icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
+				});
+			} else {
+				mousemarker.setPosition(elevations[e.row].location);
+			}
+		});
+		
+		 google.visualization.events.addListener(chart, 'onmouseout', function() {
+				clearMouseMarker();
+      });
+
+		// add OSM to mapTypes
+
+		var openStreet = new google.maps.ImageMapType({
+			getTileUrl: function(ll, z) {
+				var X = ll.x % (1 << z);  // wrap
+				return "http://tile.openstreetmap.org/" + z + "/" + X + "/" + ll.y + ".png";
+			},
+			tileSize: new google.maps.Size(256, 256),
+			isPng: true,
+			maxZoom: 18,
+			name: "OSM",
+			alt: "Open Streetmap tiles"
+		});
+
+		map.mapTypes.set('osm', openStreet);
+
+// Add MyTopo to mapTypes
+	//hash = '63aeebc1b09f824313e4135865db20c3';
+	hash = '!!HashGoesHere!!';
+	if(!(typeof hash=="undefined" || hash == "")) {
+	var myTopo = new google.maps.ImageMapType({
+		getTileUrl: function(ll, z) {
+			var X = ll.x % (1 << z);  // wrap
+						
+			return "http://tileserver.mytopo.com/SecureTile/TileHandler.ashx?mapType=Topo&partnerID=12355&hash=" + hash + "&x=" + X + "&y=" + ll.y + "&z=" + z;
+		},
+		tileSize: new google.maps.Size(256, 256),
+		isPng: true,
+		maxZoom: 16,
+		name: "MyTopo",
+		alt: "MyTopo tiles"
+	});
+map.mapTypes.set('mytopo', myTopo);
+
+	copyrightDiv = document.createElement('div');
+	copyrightDiv.id = 'mytopo-copyright-control';
+	copyrightDiv.style.fontSize = '11px';
+	copyrightDiv.style.fontFamily = 'Arial, sans-serif';
+	copyrightDiv.style.margin = '0 2px 2px 0';
+	copyrightDiv.style.whiteSpace = 'nowrap';
+	copyrightDiv.style.color = '#FF4500';
+	copyrightDiv.style.textAlign = 'center';
+	copyrightDiv.index = 0;
+	copyrightDiv.innerHTML = getBannerHtml();
+
+	map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(copyrightDiv);
+	updateCopyright();
+
+}
+
+
+ function printMap() {
+   var lat = map.getCenter().lat();
+   var lng = map.getCenter().lng();
+   var printurl = 'http://www.mytopo.com/searchgeo.cfm?lat=' + lat + '&lon=' + lng + '&partnerid=12355';
+   window.open(printurl);
+   return false;
+ }
+
+
+function getBannerHtml() {
+		var scriptBaseUrl = 'http://www.mytopo.com/TileService';
+		return "<a href='#printMap' onclick='printMap();' ><img src='" + scriptBaseUrl + "/Images/button_print.png' alt='Print MyTopo Map' border='0' /></a>" +
+		"<br/><a href='http://get.it/trimbleoutdoors/8pAD' target='_blank'><img src='" + scriptBaseUrl + "/Images/button_get.png' id='Get MyTopo App' border='0' /></a>" +
+		"<br/><a href='http://www.mytopo.com/' target='_blank'><img src='" + scriptBaseUrl + "/Images/SmallMyTopoLogo.png' alt='MyTopo Logo' border='0'/></a><br/>" +
+		"<a href='http://mytopo.com/about/terms.cfm' target='_blank'><b>(Terms of Use)</b></a>";
+
+	}
+
+function updateCopyright() {
+	copyrightDiv.style.display = (map.getMapTypeId() == 'mytopo') ? "inline" : "none";
+}
+
+
+		map.setOptions({
+			mapTypeControlOptions: {
+				mapTypeIds: [
+				google.maps.MapTypeId.ROADMAP,
+				google.maps.MapTypeId.TERRAIN,
+				google.maps.MapTypeId.SATELLITE,
+				google.maps.MapTypeId.HYBRID,
+				'osm',
+				'mytopo'
+				],
+				style: google.maps.MapTypeControlStyle.DROPDOWN_MENU
+			}
+		});
+
+		var bounds = new google.maps.LatLngBounds();
+		
+
+		// Add a marker at cache position
+		var latlng = new google.maps.LatLng(!!lat!!, !!lon!!);
+		marker1 = new google.maps.Marker({
+			position: latlng,
+			map: map,
+			icon: !!icon!!_icon,
+			shadow: shadow,
+			title: "!!Cache!!",
+			draggable: false
+		});
+
+		bounds.extend(latlng);
+		markers.push(marker1);
+
+		var infomsg = "!!infomsg!!";
+
+		var infowindow = new google.maps.InfoWindow({
+			content: infomsg
+		});
+
+		google.maps.event.addListener(marker1, 'click', function() {
+			infowindow.open(map,marker1);
+		});
+
+
+		// Add a marker at another position
+		latlng = new google.maps.LatLng(!!lat2!!, !!lon2!!);
+		marker2 = new google.maps.Marker({
+			position: latlng,
+			map: map,
+			title: 'Draggable 1',
+			//icon: 'http://maps.google.com/mapfiles/ms/icons/green-dot.png',
+			icon: pathicon,
+			shadow: pathshadow,
+			draggable: true,
+			zIndex: 1000
+		});
+
+		bounds.extend(latlng);
+		markers.push(marker2);
+
+		// Add corrected if appropriate
+		!!correctedtext!!
+
+		// Add child points
+		!!childtext!!
+
+		map.fitBounds(bounds);
+
+		google.maps.event.addListener(marker2, 'dragend', function(e) {
+			updateElevation();
+		});
+
+		// Update the elevation chart
+		updateElevation();
+
+	}
+
+	// Trigger the elevation query for point to point
+
+	function updateElevation() {
+		if (markers.length > 1) {
+			var latlngs = [];
+			for (var i in markers) {
+				latlngs.push(markers[i].getPosition());
+			}
+			elevationService.getElevationAlongPath({
+				path: latlngs,
+				samples: SAMPLES
+			}, plotElevation);
+		}
+	}
+
+
+	// Add a marker and trigger a recalc
+	function addMarker(latlng, doQuery) {
+		if (markers.length < 20) {
+
+			var marker = new google.maps.Marker({
+				position: latlng,
+				//icon: 'http://maps.google.com/mapfiles/ms/icons/green-dot.png',
+				icon: pathicon,
+				shadow: pathshadow,
+				map: map,
+				title: 'Draggable ' + markers.length,
+				draggable: true
+			});
+
+			google.maps.event.addListener(marker, 'dragend', function(e) {
+				updateElevation();
+			});
+
+			markers.push(marker);
+
+			if (doQuery) {
+				updateElevation();
+			}
+		} else {
+			alert("No more than 20 points can be added");
+		}
+	}
+
+
+	function plotElevation(results) {
+		elevations = results;
+
+		var path = [];
+		for (var i = 0; i < results.length; i++) {
+			path.push(elevations[i].location);
+		}
+
+		if (polyline) {
+			polyline.setMap(null);
+		}
+
+		polyline = new google.maps.Polyline({
+			path: path,
+			strokeColor: "#6060FF",
+		map: map});
+
+		pathLength = google.maps.geometry.spherical.computeLength(path);
+		
+		var data = new google.visualization.DataTable();
+		data.addColumn('string', 'Sample');
+		data.addColumn('number', 'Elevation');
+		for (var i = 0; i < results.length; i++) {
+		
+		if (distunits == 'ft') {
+			if (Math.round(distconv*pathLength) > 10000) {
+				pathDistance = (Math.round(distconv*pathLength*(i+1)/results.length/528)/10).toString();
+				labelDistance = 'miles';
+			} else {
+				pathDistance = (Math.round(distconv*pathLength*(i+1)/results.length)).toString();
+				labelDistance = 'ft';
+			}
+		} else {
+			if (Math.round(distconv*pathLength) > 5000) {
+				pathDistance = (Math.round(distconv*pathLength*(i+1)/results.length/100)/10).toString();
+				labelDistance = 'km';
+			} else {
+				pathDistance = (Math.round(distconv*pathLength*(i+1)/results.length)).toString();
+				labelDistance = 'm';
+			}
+		}
+		
+		data.addRow([pathDistance, distconv*elevations[i].elevation]);
+		}
+
+		var cdiv = document.getElementById('chart_div');
+		var c_width = parseInt(cdiv.offsetWidth);
+		c_width = c_width * .9;
+				
+		document.getElementById('chart_header').style.display = 'none';
+		document.getElementById('chart_footer').style.display = 'block';
+		document.getElementById('chart_div').style.display = 'block';
+		chart.draw(data, {
+			//width: 300,
+			width: c_width,
+			height: 200,
+			legend: {position: 'none'},
+			vAxis: {title: 'Elevation (' + distunits + ')'},
+			hAxis: {title: 'Distance (' + labelDistance + ')'},
+			fontName : "'Arial'"
+		});
+		
+
+		
+		
+	}
+
+	
+	// Remove the green rollover marker when the mouse leaves the chart
+	function clearMouseMarker() {
+		if (mousemarker != null) {
+			mousemarker.setMap(null);
+			mousemarker = null;
+		}
+	}
+
+
+	// Clear all overlays, reset the array of points, and hide the chart
+	function reset() {
+		if (polyline) {
+			polyline.setMap(null);
+		}
+
+		for (var i in markers) {
+			markers[i].setMap(null);
+		}
+
+		markers = [];
+
+		document.getElementById('chart_div').style.display = 'none';
+		document.getElementById('chart_header').style.display = 'block';
+		document.getElementById('chart_footer').style.display = 'none';
+		
+		// Add a marker at cache position
+		var latlng = new google.maps.LatLng(!!lat!!, !!lon!!);
+		marker1 = new google.maps.Marker({
+			position: latlng,
+			map: map,
+			icon: !!icon!!_icon,
+			shadow: shadow,
+			title: "!!Cache!!",
+			draggable: false
+		});
+		markers.push(marker1);
+	}
+
+<enddata>
+
+<data> VarName=$splittoggle
+USERFLAG type=swap range=1
+$split_tmpB = Seek($p_savedcode)
+<enddata>
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Sat 03-Apr-2010 23:10:37
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Google Maps - Elevation
+  Height = 300
+  Width = 269
+
+Name = Groupbox1
+  Type = Groupbox
+  Height = 41
+  Left = 11
+  Top = 80
+  Width = 231
+  Taborder = 2
+
+Name = Groupbox3
+  Type = Groupbox
+  Height = 41
+  Left = 11
+  Top = 170
+  Width = 231
+  Taborder = 3
+
+Name = GroupBox2
+  Type = Groupbox
+  Height = 41
+  Left = 11
+  Top = 125
+  Width = 231
+  Taborder = 4
+
+Name = Label1
+  Type = Label
+  Color = 16711680
+  Height = 24
+  Left = 23
+  Size = 14
+  Top = 10
+  Width = 206
+  Caption = Google Maps - Elevation
+
+Name = Label2
+  Type = Label
+  Height = 16
+  Left = 60
+  Size = 10
+  Top = 50
+  Width = 132
+  Caption = Please select options:
+
+Name = Label4
+  Type = Label
+  Container = Groupbox1
+  Height = 16
+  Left = 37
+  Size = 10
+  Top = 15
+  Width = 136
+  Caption = Show Child Waypoints:
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 23
+  Top = 230
+  Width = 75
+  Taborder = 0
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 163
+  Top = 230
+  Width = 75
+  Taborder = 1
+  Caption = Cancel
+
+Name = Childbox
+  Type = Checkbox
+  Container = Groupbox1
+  Exitonchange = yes
+  Height = 17
+  Left = 186
+  Top = 15
+  Width = 15
+  Taborder = 0
+
+Name = Label5
+  Type = Label
+  Container = Groupbox3
+  Height = 16
+  Left = 34
+  Size = 10
+  Top = 14
+  Width = 108
+  Caption = Default line length:
+
+Name = radius
+  Type = Edit
+  Container = Groupbox3
+  Height = 21
+  Left = 180
+  Top = 13
+  Width = 31
+  Taborder = 0
+
+Name = Label3
+  Type = Label
+  Container = GroupBox2
+  Height = 16
+  Left = 36
+  Size = 10
+  Top = 14
+  Width = 104
+  Caption = Number of points:
+
+Name = points
+  Type = Edit
+  Container = GroupBox2
+  Height = 21
+  Left = 180
+  Top = 13
+  Width = 31
+  Taborder = 0
+
+<enddata>
+
+
+
+
+
+
+BEGINSUB Name=DeclareVariables
+#*******************************************************
+#   Variable declarations for
+#   C:\Users\Mike\AppData\Roaming\gsak\Macros\HTML_Google Map Elevation.gsk
+#
+#   Generated 4/4/2010 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$_HTML Type=String
+Declare Var=$calcunits Type=String
+Declare Var=$childbox Type=Boolean
+Declare Var=$childtext Type=String
+Declare Var=$conversion Type=Numeric
+Declare Var=$correctedtext Type=String
+Declare Var=$Count Type=Numeric
+Declare Var=$data Type=String
+Declare Var=$DataFile Type=String
+Declare Var=$datafilepath Type=String
+Declare Var=$distunits Type=String
+Declare Var=$Form Type=String
+Declare Var=$hash Type=String
+Declare Var=$infomsg Type=String
+Declare Var=$lat2 Type=String
+Declare Var=$lon2 Type=String
+Declare Var=$Markername Type=String
+Declare Var=$oldchildbox Type=Boolean
+Declare Var=$oldpoints Type=String
+Declare Var=$oldradius Type=String
+Declare Var=$p_savedcode Type=String
+Declare Var=$points Type=String
+Declare Var=$pointssnumber Type=Numeric
+Declare Var=$radius Type=String
+Declare Var=$radiusnumber Type=Numeric
+Declare Var=$result Type=String
+Declare Var=$showchild Type=String
+Declare Var=$split_bug Type=String
+Declare Var=$split_CacheHere Type=String
+Declare Var=$split_cacheName Type=String
+Declare Var=$split_cacheName_Jscript Type=String
+Declare Var=$split_childName Type=String
+Declare Var=$split_code Type=String
+Declare Var=$split_dif Type=String
+Declare Var=$split_header Type=String
+Declare Var=$split_href Type=String
+Declare Var=$split_html Type=String
+Declare Var=$split_Icon Type=String
+Declare Var=$split_images Type=String
+Declare Var=$split_index Type=Numeric
+Declare Var=$split_indexlarge Type=Numeric
+Declare Var=$split_ownerName Type=String
+Declare Var=$split_Pic Type=String
+Declare Var=$split_result Type=String
+Declare Var=$split_s_diff Type=String
+Declare Var=$split_s_terr Type=String
+Declare Var=$split_savedcode Type=String
+Declare Var=$split_ter Type=String
+Declare Var=$split_tmpB Type=Boolean
+Declare Var=$split_typenums Type=String
+Declare Var=$split_types Type=String
+Declare Var=$splittoggle Type=String
+Declare Var=$variables Type=String
+
+
+ENDSUB 
+
+

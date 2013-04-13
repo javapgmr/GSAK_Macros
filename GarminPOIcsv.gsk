@@ -1,0 +1,223 @@
+# GarminPOIcsv.txt - macro to
+# export all selected caches to Garmin POI file in CSV format
+# Author: Heiner Lieth Dec 6, 2006; runs on GSAK 7.0
+#
+# Started with a macro written by Clyde England, modified for my needs
+#
+# Features:
+# - skips archived caches - to prevent skip set $ExcludeArchived to false
+# - allows skipping other stuff by changing code in exclusion code in loop
+# - adds ":" in front of name for caches I have found
+# if child waypoints are loaded as POIs this is indicated with a "!" in first space
+
+# I wrote this code for the following reasons: 
+# Version Aug2006
+#  CSV files include only the characters that need to go
+#  into the GPSr as POIs, not tons of other data and tags as in gpx files. 
+#  Loading with POI Loader is 20 times faster for same number of caches.
+#  GPSr can hold my 13000 POIs without a problem; that's why speed is important
+#  This file combines all POIs into one file because separating into several 
+#  databases as Clyde's does makes it slower to use in the GPSr. 
+# version 23 July 2006 also does:
+# - made it easy to exclude Found caches my modifying just one of first few 
+#   lines in the initialization subroutine
+# version Aug 2006
+# - if hint is longer than 88 characters, split up over two POIs
+# - improved error handling - error summary at end if verbose
+# version Dec 6, 2006
+#   replaced the line $wptnameText = " %name %drop2"
+#   with this $wptnameText = " "+$d_name+" %drop2"
+#   to appease GSAK version 7.0.0
+# future version will include a rewrite of this code, but for now this fixes 
+# macro crashing if cachenames contained double-quotes 
+#
+#********************************************************Main Program:*******
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Garmin Export of POI's
+# MacAuthor = javapgmr
+# MacFileName = GarminPOIcsv.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=2559&view=getlastpost
+#*******************************************
+# This macro can either be run directly or "Included" in other macro code.
+# When including, there should be a CANCEL command prior to the included
+# code and then call the two subroutines below as needed just like this:
+
+  GOSUB Name=InitPOIcsvSub
+
+# if using in another macro then you might change some of the initialized settings
+# before running the main subroutine. For example, if you don't want the 
+# progress meter, then set $Verbose=false
+
+  GOSUB Name=POIcsvSub
+
+#*********************************************************Subroutines:********
+
+BEGINSUB Name=InitPOIcsvSub
+  # Initialization modify the next few lines as needed for user preference
+  $IncludeChild   = true
+  $ExcludeFound   = False
+  $ExcludeArchived= true
+
+  # and file locations
+  $POIFolder = "C:\apps\gsakout\POI\"
+  $POIFileName="AllGeocaches.csv"
+  $Verbose=true
+
+  #Keep track of problems that were encountered
+  $ErrorLog = " Errors occured during processing:"+ $_NewLine
+  $ErrorCount = 0
+
+  # set $QuoteChar variable to contain double quote character
+  $QuoteChar=chr(34)
+
+  # if you don't want to remove existing POI files first, then comment out
+  # next 4 lines
+  $EraseFiles = $POIfolder + "*.*"
+  If FileExists($EraseFiles)
+    FileErase File=$EraseFiles
+  EndIf 
+  # to instead erase just csv files use: $EraseFiles = $POIfolder + "*.csv"
+
+
+#  This is where you would insert a filter to select something other 
+#  than what is currently in the display grid 
+#  mfilter If= .NOT. $d_Found
+#  Note that you can also skip records by modifying 
+#  the "If $ExcludeArchived" code below.
+ENDSUB
+
+BEGINSUB Name=POIcsvSub
+  $ThisRecord = 0
+  Goto Position=Top
+  $OFcount="/" + "$_Count"
+  $DontSkip = true
+  While .not. $_eol
+   $ThisRecord = $ThisRecord + 1
+   if $ExcludeArchived
+     $DontSkip = .not. $d_Archived
+   endif
+   if $ExcludeFound
+     # if found caches are to be excluded, then 
+     if $d_Found
+        $DontSkip = false
+     endif 
+   endif
+   if $DontSkip
+    # The following set up the "POI Name"
+    # The leading indicator character is in front of the 
+    # waypoint name code so I can quickly see whether the POI has been found
+    #(if these are included)
+    If $d_found
+      $wptNameStatus=":"
+     else
+      $wptNameStatus=""
+    endif
+    # The POI name is composed below with $wptNameStatus+$wptNameCode+$wptnameText or 
+    # some variation of that. 
+    $wptNameCode = "%smart:%dif%typ1%ter%con1"
+#    $wptnameText = " %name %drop2"
+# replace double quotes in names with single quotes 
+    $wptnameText = " "+Replace($QuoteChar,"'",$d_name, true)+" %drop2"
+
+  # This section creates the comment text of the POI
+  # Many times the hint is too long and that is handeled below by splitting in two 
+  # To try to get as much useful stuff into the comment, strip out as
+  # many useless characters as possible: formatting codes, double spaces, line-feeds, etc
+    $Comment=$d_hints
+    # clean up $Comment:
+    # remove returns, html, etc
+    $Comment=Replace($_NewLine," ",$Comment, true)
+    if AT("<",$Comment)>0
+     # remove common html tags
+     $Comment=Replace("<br>"," ",$Comment, true)
+     $Comment=Replace("<p>","",$Comment, true)
+    endif
+  # Note that double quote character MUST be removed to prevent csv file problems
+    if AT($QuoteChar,$Comment)>0
+     #replace double quotes with single quotes 
+     $Comment=Replace($QuoteChar,"'",$Comment, true)
+    endif
+    if AT("  ",$Comment)>0
+     # convert 3, and then 2, sequential spaces into one
+     # note: this if/endif could be removed to enhance speed
+     $Comment=Replace("   "," ",$Comment, true)
+     $Comment=AllTrim(Replace("  "," ",$Comment, true))
+    endif
+    # now assemble the csv data for this cache and deal with cases where 4th field (comment)
+    # is too long. Note that anything after character 170 will be lost due to truncation in GPSr
+    $CommentLength=Len($Comment)
+    $wptname=$wptNameStatus+$wptNameCode+ $wptnameText
+    if $commentLength < 88
+      # comment field is not too long to fit on Garmin Map60CSx (limit is 88 characters)
+      $out = $d_longitude + "," + $d_latitude + "," + quote($wptname) + "," + quote($comment) + $_NewLine
+     else
+      # determine where to split the comment where longer than 88 characters
+      $Icharpos=85
+      While ($Icharpos>60) .and. .not. (substr($comment,$Icharpos,1) = " ")
+        $Icharpos=$Icharpos-1
+      endwhile
+      if $Icharpos=60
+       # assuming that no spaces where found between 60th and 87th characters of hint
+       # split at character 85 so that we can append "..."
+       $Icharpos=85 
+      endif
+     # note that the "..." characters reduce the total number of available characters
+     #  from 176 (=88+88) to 170 (which should be plenty in most cases)
+     $PartComment = Substr($comment,1, $Icharpos)+"..."
+     $out = $d_longitude + "," + $d_latitude + "," + quote($wptname) + "," + quote($PartComment) + $_NewLine
+     $PartComment = "..." + Substr($comment,$Icharpos, 88)
+     $wptname=$wptNameStatus + $wptNameCode+ " - Hint Part 2"
+     $out = $out + $d_longitude + "," + $d_latitude + "," + quote($wptname) + "," + quote($PartComment) + $_NewLine
+     if Len($PartComment)>88
+      $ErrorLog = $ErrorLog + $wptNameCode +" - Hint is too long: length="+NumToStr(len($comment)) + $_NewLine
+      $ErrorCount =  $ErrorCount + 1
+     endif
+    endif
+  # Are we sending Additional waypoints? then create these csv lines now
+    if $IncludeChild
+      gosub Name=ChildWpt
+    endif
+  # place result into output file
+    $ErrorMsg = AppendFile($POIFolder + $POIFileName, $out) 
+    If $Verbose
+      $message="$ThisRecord" + $OFcount
+      ShowStatus msg="$message"
+     if len($ErrorMsg)>5
+      $ErrorLog = $ErrorLog + $ErrorMsg + $_NewLine
+      $ErrorCount =  $ErrorCount +1
+     endif
+    endif
+   endif
+   Goto Position=Next
+  EndWhile
+ Goto Position=Top
+ If $Verbose
+  #display summary information
+  $Message=$Message + " <= was the final record processed." + $_NewLine
+  $Message=$Message + "$ErrorCount" +$ErrorLog
+  Pause Msg=$Message
+ endif
+# end of POI code in GarminPOIcsv.txt
+ENDSUB
+
+BeginSub name=ChildWpt
+# This subroutine process the Additional (Children) waypoints:
+# Too bad we can't test whether these exist before calling this routine.
+# Switch to Additional Waypoint table
+  Table Active=Waypoints scope=Parent
+  If $_count > 0
+    While not($_eol)
+     $wptname= "!"+$wptNameCode+"-"+$d_cPrefix+" "+$d_cType
+     if AT($QuoteChar,$d_cComment)>0
+      #replace double quotes with single quotes to prevent csv file problems
+      $Comment=Replace($QuoteChar,"'",$d_cComment, true)
+     else
+      $Comment=$d_cComment
+     endif
+     $out = $out+ $d_cLon + "," + $d_cLat + "," + quote($wptname) + "," + quote($Comment)+ $_NewLine 
+     Goto Position=Next
+    EndWhile
+  EndIf
+  Table Active=Caches
+EndSub

@@ -1,0 +1,500 @@
+#*******************************************
+# MacVersion = 8.2
+# MacDescription = Get PQ's from server, process and export
+# MacAuthor = Ian-and-Penny
+# MacFileName = APIGetPQs.gsk
+# MacUrl =http://gsak.net/board/index.php?showtopic=24527&view=findpost&p=183706
+#*******************************************
+# Changes
+# 1 to 7 Experimental Personal Versions
+# 8.0 Updated for GSAK V8.0.1.0
+# 8.1 Added macro load routines
+# Replaced  deprocated "Expression" with "Where"
+# 8.2 Export to OziExplorer & Added option to run  an exit macro.
+
+# Initialise variables
+#****************
+$Top1=SysInfo("gsakini;TfmOffline;FormTop")
+$Left = SysInfo("gsakini;TfmOffline;FormLeft")
+$Width = SysInfo("gsakini;TfmOffline;FormWidth")
+$dblist = SysInfo("databases")
+$SettingsFile=Extract(SysInfo("MacroPath") + "\" + MacHeader("MacFileName"),".",1) + ".xml"
+$Path = $_AppData+"\PQDownloads"
+$Current = $_CurrentDatabase
+$Files = $Path+"\*.zip"
+$Archive="7"
+$Ozi_Export=False
+$Ozi_Path=""
+$Exit_Macro=False
+$Run_Macro=""
+$Counter=0
+VERCHECK Version=8.2.1.11 (Note: this macro requires at least GSAK V8.2)
+Debug status=off
+
+# Input/Recall User Data
+#******************
+MACSETTINGS Type=R FileCheck=N
+IF Not(FileExists($SettingsFile)) OR $_ShiftKey=TRUE
+    WHILE TRUE
+        $FormExit = form($Form,"")
+        BEGINCASE
+            CASE $FormExit = "SystemExit"
+            RETURN
+            CASE $FormExit = "Save"
+			MACSETTINGS Type=S Vars=Archive,Found_DB,Placed_DB,Ozi_Export,Ozi_Path,Exit_Macro,Run_Macro
+			BREAK
+            CASE $FormExit = "Cancel"
+            RETURN
+        ENDCASE
+    ENDWHILE
+ENDIF
+
+# Initialise stuff from settings file
+#*************************************
+$Databases=$Current+";"+$Found_DB+";"+$Placed_DB
+$PQLoad=replace("*PATH*",$Path,$PQLoad)
+$Load=replace("*PATH*",$Path,$Load)
+$ArchiveNum=val($Archive)
+
+IF Not(FolderExists($Ozi_Path)) and $Ozi_Export=True  
+	MsgOK Msg= "Ozi Waypoint folder not found"
+	Return
+EndIf
+
+If $Current=$Found_DB or $Current=$Placed_DB
+	MsgOK msg=This macro will not work if started from the $Found_DB or $Placed_DB Database.
+	Return
+endif
+
+# Do It
+#*****
+Speedmode Status=on
+While $Counter <3
+	$Counter=$Counter+1
+	$DB_Temp=Extract($Databases,";",$Counter)
+	Database Name=$DB_Temp StopStartupMacro=Y
+	GoSub name=GC_Get_PQs
+	GoSub name=Status_Check
+	If $Ozi_Export=True
+		GoSub name=Export_to_Ozi
+	EndIf
+EndWhile
+	Database Name=$Current StopStartupMacro=Y
+	GoSub name=Cleanup
+If $Exit_Macro=True	
+	Macro File=$Run_Macro
+EndIf
+
+# Get PQs and load them into the current database
+#******************************************
+BeginSub name=GC_Get_PQs
+	SHOWSTATUS Msg="Getting PQ's" Left=$left Top=$Top1 Width=$Width Title="Database = $_CurrentDatabase"
+	BeginCase
+		Case not($_CurrentDatabase = $Found_DB or $_CurrentDatabase = $Placed_DB)
+			$PQLoad1=replace("*REGEX_EXPRESSION*","^((?!Found|Placed).)*$",$PQLoad)
+		Case $_CurrentDatabase = $Placed_DB
+			$PQLoad1=replace("*REGEX_EXPRESSION*",$Placed_DB,$PQLoad)
+		Case $_CurrentDatabase = $Found_DB
+			$PQLoad1=replace("*REGEX_EXPRESSION*",$Found_DB,$PQLoad)
+	EndCase
+	MacroSet Dialog=PqLoad VarName=$PQLoad1
+	GcGetPQ Settings=<macro>
+	SHOWSTATUS Msg="Loading PQ's" Left=$left Top=$Top1 Width=$Width Title="Database = $_CurrentDatabase"
+	MacroSet Dialog=Load Varname=$Load
+	Load settings=<macro>
+EndSub
+
+# Filter to show caches that may be archived & check status
+#*********************************************************************
+BeginSub Name=Status_Check
+	MFilter Where=LastGPXDate < date('now','localtime','-$ArchiveNum days') AND NOT (Lock OR Status ="X")
+	speedmode status=refresh
+	IF $_FilterCount > 0
+		SHOWSTATUS Msg="Checking Cache Status" Left=$left Top=$Top1 Width=$Width Title="Database = $_CurrentDatabase"
+		GcStatusCheck Scope=Filter ShowSummary=n
+	ENDIF
+ENDSUB
+
+#**********************************************************
+Beginsub Name=Export_to_Ozi
+	$OziExplorer=replace("*PATH*",$Ozi_Path,$OziExplorer)
+	BeginCase
+	Case not($_CurrentDatabase = "Found" or $_CurrentDatabase = "Placed")
+		MFilter where= (not Found) AND Status='A' AND Not(CacheType='U' and HasCorrected=0) or Code IN(Select aCode from Attributes Where aID=47 AND aInc=1)
+		speedmode status=refresh
+		SHOWSTATUS Msg=Exporting Available $_CurrentDatabase caches to Ozi? Left=$left Top=$Top1 Width=$Width Title="Database = $_CurrentDatabase"
+		$OziExplorer1=replace("*FILE*",$_CurrentDatabase,$OziExplorer)
+#		$OziExplorer1=replace("cbxAutoOzi.Checked=False","cbxAutoOzi.Checked=True",$OziExplorer1)
+		MACROSET Dialog=OziExplorer Varname=$OziExplorer1
+		EXPORT Type=Ozi Settings=<Macro>
+	Case ($_CurrentDatabase = "Placed")
+		MFilter Where=Status ="A"
+		speedmode status=refresh
+		SHOWSTATUS Msg=Exporting $_CurrentDatabase caches to Ozi? Left=$left Top=$Top1 Width=$Width Title="Database = $_CurrentDatabase"
+		$OziExplorer1=replace("*FILE*",$_CurrentDatabase,$OziExplorer)
+		MACROSET Dialog=OziExplorer Varname=$OziExplorer1
+		EXPORT Type=Ozi Settings=<Macro>
+	Case ($_CurrentDatabase = "Found")
+		MFilter Where=Found AND Status='A'
+		speedmode status=refresh
+		SHOWSTATUS Msg=Exporting $_CurrentDatabase caches to Ozi? Left=$left Top=$Top1 Width=$Width Title="Database = $_CurrentDatabase"
+		$OziExplorer1=replace("*FILE*",$_CurrentDatabase,$OziExplorer)
+		$OziExplorer1=replace("rbtCacheType.Checked=True","rbtCacheType.Checked=False",$OziExplorer1)
+		$OziExplorer1=replace("rbtStatus.Checked=False","rbtStatus.Checked=True",$OziExplorer1)
+		MACROSET Dialog=OziExplorer Varname=$OziExplorer1
+		EXPORT Type=Ozi Settings=<Macro>
+	EndCase
+ENDSUB
+
+# Clean up database & delete archived caches
+#****************************************************
+Beginsub Name=Cleanup
+	MFilter Where=Status ="X"
+	speedmode status=refresh
+	IF $_FilterCount > 0
+		SHOWSTATUS Msg="Delete Archived Caches?" Left=$left Top=$Top1 Width=$Width Title="Database = $_CurrentDatabase" display=off
+		If YesNo("Delete $_FilterCount Archived Caches?","Warning")
+			Macroset Dialog=Delete Varname=$Delete		
+			DELETE settings=<Macro>
+		EndIf
+	ENDIF 
+	MFilter Where=LastGPXDate < date('now','localtime','-$ArchiveNum days') and not HasCorrected 
+	speedmode status=refresh
+	IF $_FilterCount > 0
+		If YesNo("These caches have not been updated in the last $Archive days $_NewLine Delete these $_FilterCount Caches?","Warning")
+			Macroset Dialog=Delete Varname=$Delete		
+			DELETE settings=<Macro>
+		EndIf
+	CancelFilter
+	EndIf
+ENDSUB
+
+# <data> statements
+#***************
+<data> VarName=$PqLoad
+[TfmgcGetPq]
+grpLoad.CheckBoxAction=caDisable
+grpLoad.CheckBoxAllowGrayed=False
+grpLoad.CheckBoxChecked=True
+grpLoad.CheckBoxHint=
+grpLoad.CheckBoxPosition=cpLeft
+grpLoad.CheckBoxState=cbChecked
+grpLoad.CheckBoxThemed=False
+grpLoad.CheckBoxVisible=True
+cbxLoadSettings.Text=PQDownload
+edtFolder.Text=*PATH*
+cbxMatch.Text=RegEx
+cbxSettings.Text=... Last active
+edtMatch.Text=*REGEX_EXPRESSION*
+chkIgnore.Checked=True
+grpMatch.CheckBoxAction=caDisable
+grpMatch.CheckBoxAllowGrayed=False
+grpMatch.CheckBoxChecked=True
+grpMatch.CheckBoxHint=
+grpMatch.CheckBoxPosition=cpLeft
+grpMatch.CheckBoxState=cbChecked
+grpMatch.CheckBoxThemed=True
+grpMatch.CheckBoxVisible=True
+chkDownload.Checked=True
+<enddata>
+
+<data> VarName=$Load
+[TfmGpxLoad]
+chkGpx.Checked=True
+chkLoc.Checked=False
+chkZip.Checked=True
+cbxZap.Checked=False
+chkClearUser.Checked=False
+chkDefault.Checked=False
+chkDelete.Checked=True
+chkSetUser.Checked=False
+chkUserOnly.Checked=False
+rbtAddOnly.Checked=False
+rbtAlways.Checked=True
+rbtExists.Checked=False
+rbtExtraChild.Checked=True
+rbtExtraExclude.Checked=False
+rbtExtraParent.Checked=False
+rbtFoundAlways.Checked=True
+rbtFoundNever.Checked=False
+rbtFoundOnly.Checked=False
+rbtNewer.Checked=False
+rbtLoadFile.Checked=False
+rbtLoadFolder.Checked=True
+edtFoundSymbol.Text=Geocache Found
+chkUpdateSymbol.Checked=True
+cbxDataBases.Text=Unfound
+edtCounty.Text=
+cbxFileType.Text=GPX/LOC (including inside zip)
+edtState.Text=
+chkKeepFocus.Checked=False
+chkDecodeEntity.Checked=True
+chkSummary.Checked=False
+edtFolder.Text=*PATH*
+fnmFrom.Text=C:\Users\Ian\Documents\Geocaching\PQDownloads\Vic_Caches_1001.zip
+[General]
+cbxlock.Text=
+chkSaveFile.Checked=False
+chkSaveDatabase.Checked=False
+<enddata>
+
+<data> VarName=$replace
+[TfmReplace]
+cbxFields.Text=Available Status
+cbxWith.Text=Archived
+<enddata>
+
+<data> VarName=$OziExplorer
+[TfmMain]
+fnmTo.Text=*PATH*\*FILE*.wpt
+chkAdd.Checked=False
+chkChild.Checked=False
+chkDefault.Checked=False
+chkMacro.Checked=False
+chkNoMsg.Checked=True
+chkOziNames.Checked=False
+edtFormat.Text=%Name by %By (%Dif/%Ter) %Children %c_Prefix
+edtMax.Text=
+edtMaxGps.Text=15
+edtOziNames.Text=D:\Maps\~Ozie Data\Names Databases
+edtProblem.Text=
+edtWaypoint.Text=%Typ1%con1%Correct=*  %smart
+File1.Filename=
+rbtCacheType.Checked=True
+rbtOffline.Checked=True
+rbtOnline.Checked=False
+rbtPrompt.Checked=False
+rbtStatus.Checked=False
+cbxDformat.Text=Name with Symbol
+cbxAutoOzi.Checked=False
+chkOnlyChild.Checked=False
+rbtOnlyFlagged.Checked=False
+rbtOnlyUnFlagged.Checked=False
+rbtAllChildren.Checked=True
+[TfmMain.strWdata.Strings]
+Count=44
+Item0=cFound=Yellow
+Item1=cNot Found=Aqua
+Item2=cPlaced=Lime
+Item3=cArchived=Pink
+Item4=sFound=118
+Item5=sNot Found=1
+Item6=sPlaced=21
+Item7=sArchived=9
+Item8=cTraditional=Lime
+Item9=sTraditional=117
+Item10=cMulti=Orange
+Item11=sMulti=117
+Item12=cLetterBox=Green
+Item13=sLetterBox=3
+Item14=cCITO=Black
+Item15=sCITO=4
+Item16=cEvent=Off Yellow
+Item17=sEvent=117
+Item18=cLocationless=White
+Item19=sLocationless=6
+Item20=cVirtual=Yellow
+Item21=sVirtual=7
+Item22=cWeb Cam=Aqua
+Item23=sWeb Cam=8
+Item24=cMystery=Blue
+Item25=sMystery=117
+Item26=cBenchmark=Silver
+Item27=sBenchmark=10
+Item28=cOther=Aqua
+Item29=sOther=11
+Item30=cEarth=Olive
+Item31=sEarth=12
+Item32=cFinal Location=Maroon
+Item33=sFinal Location=14
+Item34=cParking Area=Orange
+Item35=sParking Area=15
+Item36=cQuestion to Answer=Pink
+Item37=sQuestion to Answer=16
+Item38=cStages of a Multicache=Bronze
+Item39=sStages of a Multicache=17
+Item40=cTrailhead=Steel
+Item41=sTrailhead=18
+Item42=cMega Event=Off Yellow
+Item43=sMega Event=117
+<enddata>
+
+<data> VarName=$Delete
+[TfmDelete]
+cbxStop.Checked=False
+rbtFilter.Checked=True
+rbtFlagged.Checked=False
+rbtOnly.Checked=False
+rbtAll.Checked=False
+chkKeepLock.Checked=False
+<enddata>
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Mon 04-Mar-2013 20:50:42
+#********************************************************************
+Name = Form1
+  Type = Form
+  Height = 347
+  Width = 569
+
+Name = Archive
+  Type = Edit
+  Height = 21
+  Left = 160
+  Top = 8
+  Width = 25
+  Taborder = 1
+
+Name = Label9
+  Type = Label
+  Height = 13
+  Left = 39
+  Top = 12
+  Width = 122
+  Caption = Delete if not updated for
+
+Name = Save
+  Type = Button
+  Height = 57
+  Left = 120
+  Top = 244
+  Width = 145
+  Taborder = 5
+  Caption = Save
+
+Name = Cancel
+  Type = Button
+  Height = 57
+  Left = 290
+  Top = 246
+  Width = 145
+  Taborder = 6
+  Caption = Cancel
+
+Name = Label11
+  Type = Label
+  Color = 255
+  Height = 20
+  Left = 114
+  Size = 13
+  Top = 198
+  Width = 348
+  Caption = To return to this screen, hold down the SHIFT
+
+Name = Label12
+  Type = Label
+  Color = 255
+  Height = 20
+  Left = 117
+  Size = 13
+  Top = 214
+  Width = 222
+  Caption = key when starting the macro.
+
+Name = Found_DB
+  Type = Combobox
+  Height = 21
+  Left = 151
+  Top = 39
+  Values = $dblist
+  Width = 169
+  Taborder = 2
+
+Name = Label13
+  Type = Label
+  Height = 13
+  Left = 39
+  Top = 43
+  Width = 87
+  Caption = Found Database
+
+Name = Label14
+  Type = Label
+  Height = 13
+  Left = 40
+  Top = 74
+  Width = 90
+  Caption = Placed Database
+
+Name = Placed_DB
+  Type = Combobox
+  Height = 21
+  Left = 151
+  Top = 70
+  Values = $dblist
+  Width = 169
+  Taborder = 3
+
+Name = Ozi_Export
+  Type = Checkbox
+  Fontcolor = 0
+  Height = 18
+  Left = 151
+  Top = 99
+  Width = 98
+  Taborder = 4
+  Caption = Select if Yes
+
+Name = Label16
+  Type = Label
+  Height = 13
+  Left = 38
+  Top = 102
+  Width = 115
+  Caption = Export Ozi Waypoints?
+
+Name = Ozi_Path
+  Type = Folder
+  Height = 21
+  Left = 370
+  Top = 98
+  Width = 169
+  Taborder = 14
+
+Name = Label17
+  Type = Label
+  Height = 13
+  Left = 259
+  Top = 102
+  Width = 92
+  Caption = Oziexplorer Folder
+
+Name = Label1
+  Type = Label
+  Height = 17
+  Left = 39
+  Top = 127
+  Width = 87
+  Caption = Run Exit Macro?
+
+Name = Exit_Macro
+  Type = Checkbox
+  Height = 20
+  Left = 151
+  Top = 125
+  Width = 98
+  Taborder = 17
+  Caption = Select if Yes
+
+Name = Run_Macro
+  Type = File
+  Height = 21
+  Left = 256
+  Top = 125
+  Width = 281
+  Taborder = 18
+
+Name = Label2
+  Type = Label
+  Height = 17
+  Left = 192
+  Top = 10
+  Width = 30
+  Caption = days
+
+
+<enddata>
+
+
+

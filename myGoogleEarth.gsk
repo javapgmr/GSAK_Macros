@@ -1,0 +1,1650 @@
+#================================================================================================#
+# MacVersion = 2.2.2
+# MacDescription = my Google Earth Export
+# MacAuthor = Hulmgulm
+# MacFileName = myGoogleEarth.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=5790&view=getlastpost
+#================================================================================================#
+# MY GOOGLE EARTH EXPORT                                                                         #
+#================================================================================================#
+# This macro exports caches to a Google Earth (*.KML) file.                                      #
+# Icons to be used by Google Earth are located on an internet server.                            #
+# The Google Earth file contains a subcategory for each cache type (traditional,                 #
+# multi,...) which allows to view/hide specific cache types in Google Earth.                     #
+# In Google Earth, you can double click the cache name to visit the cachepage at                 #
+# geoaching.com.                                                                                 #
+#                                                                                                #
+# This macro is based on the work of Bert Geenen and markp99                                     #
+#================================================================================================#
+# History of changes:                                                                            #
+#================================================================================================#
+# 03/01/13 - v2.2.2                                                                              #
+#	 Fixed: Links from child waypoints to geocaching.com							             #
+#================================================================================================#
+# 22/07/12 - v2.2.1                                                                              #
+#	 Changed: removed deprecated macro functions	 											 #
+#================================================================================================#
+# 08/04/12 - v2.2.0                                                                              #
+#	 Changed: This macro will now use the Cache URL to link to this cache. Should work now with	 #
+#             opencaching.com, waymarking.com etc. too.											 #
+#================================================================================================#
+# 17/02/12 - v2.1.1                                                                              #
+#	 Fixed: Added edit box to make a user configurable cache marker name (Thanks to Kiwi Moose)	 #
+#================================================================================================#
+# 08/01/12 - v2.1.0                                                                              #
+#	 New: Added edit box to make a user configurable cache marker name (Thanks to Kiwi Moose)	 #
+#    Fixed: Display of images by moving them from the macro to an online server 				 #
+#	 Fixed: No save and restore in case of a joined filter										 #
+#    Removed: Migration of old configuration files												 #
+#================================================================================================#
+# 08/09/09 - v2.0.1                                                                              #
+#    Fixed: Error in migration code.                                                             #
+#================================================================================================#
+# 08/09/09 - v2.0                                                                                #
+#    New: Press CTRL while starting macro to force the display of the configuration dialog when  #
+#         in silent mode.                                                                        #
+#    New: The destination directory for the KML file is configurable.                            #
+#    Changed: New GSAK configuration style. Old configuration will get migrated.                 #
+#    Changed: Image files are now attached as a single ZIP file to this macro.                   #
+#    Changed: Macro will never do a CANCEL only RETURNs. Therefore it easier to call this macro  #
+#         from another one.                                                                      #
+#    Fixed: Progress counter.                                                                    #
+#================================================================================================#
+# 25/08/09 - v1.11.0																			 #
+#    Fixed: Test if $my_img_location exists 													 #
+#================================================================================================#
+# 18/06/09 - v1.10.0																			 #
+#    New: Added date of find to found caches.													 #
+#    New: Added Waymarks as "cache" type                                                         #
+#================================================================================================#
+# 30/04/08 - v1.9.0:                                                                             #
+#    New: Added WhereIGo Caches.                                                                 #
+#    Changed: Popup description has a fixed with to prevent display errors with GE 4.3           #
+#================================================================================================#
+# 28/11/07 - v1.8.0:                                                                             #
+#    Fixed: The option to put placed caches into their own category                    	         #
+#    New: If timeline is on, it can be choosen between the placed or the found timeline.         #
+#         If a cache is not found, no time is set for it.                                        #
+#================================================================================================#
+# 01/11/07 - v1.7.0:                                                                             #
+#    Fixed: Names of image files to prevent errors when running on Linux                    	 #
+#    New: The default path to the images in KML file can be overwritten by setting the variable  #
+#         $my_img_location in the configuration file                                             #
+#    New: Added the option to put placed caches into their own category like it is already       #
+#         possible with found caches                                                             #
+#================================================================================================#
+# 21/10/07 - v1.6.1:                                                                             #
+#    Fixed: Correct handling of space and special characters in database name                    #
+#================================================================================================#
+# 04/10/07 - v1.6.0:                                                                             #
+#    New: export the placed date as timeline child waypoints                                     #
+#    New: %DATABASE% in the export title will be replaced by the database name                   #
+#    Changed: KML files will now get generated in the myGoogleEarth_Library folder               #
+#    Changed: KML file will use the export title as file name                                    #
+#================================================================================================#
+# 31/08/07 - v1.5.0:                                                                             #
+#    New: added the ability to display child waypoints                                           #
+#================================================================================================#
+# 01/08/07 - v1.1.0:                                                                             #
+#    Fixed: broken letterbox marker                                                              #
+#    Fixed: broken container size icon, if size was "not choosen"                                #
+#    Changed: cache description in list view                                                     #
+#    New: added the ability to choose between original and corrected coordinates (if available)  #
+#================================================================================================#
+# 26/07/07 - v1.0.1                                                                              #
+#    Fixed: creation of library directory                                                        #
+#================================================================================================#
+# 25/07/07 - v1.0                                                                                #
+#    initial Version                                                                             #
+#================================================================================================#
+
+#DEBUG status="on" height=800
+PREPROCESS Ctrl=$forceShowConfig
+
+VERCHECK Version=7.5.0.000 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+GOSUB Name=DECLAREVariables
+
+$myVersion = MacHeader("MacVersion") 
+
+$currentsort = $_OrderBy
+	
+IF SysInfo("JoinFilter") = "N"
+	$currentfilter = SaveFilter()
+ELSE
+	$currentfilter = "NA"
+ENDIF
+
+GOSUB Name=ReadConfigFile
+
+IF NOT( $runSilently )
+    GOSUB Name=DisplayForm
+
+    # We only get here if "run" button got pressed
+    GOSUB Name=ReadFormVars
+    GOSUB Name=SaveConfigData
+ENDIF
+
+# RUN the processes
+GOSUB Name=ProcessCollection
+GOSUB Name=LaunchGoogleEarth
+
+RETURN
+######### THE END #########
+
+#############################################################
+# S U B R O U T I N E S
+#############################################################
+
+#############################################################
+
+#-----Read and process the configuration-----#
+BEGINSUB Name=ReadConfigFile
+
+    #-----SET default values if missing from config file-----#
+
+    # This macro can run without any user interaction. No dialogue boxes are displayed,
+    # and your export file will open in Google Earth.
+    # Specify if you want user interaction (TRUE) or not (FALSE)
+    $config_user_interaction = TRUE
+
+    $config_wp_ident = 4
+    # 1 = no name, only an icon
+    # 2 = GCxxxx
+    # 3 = xxxx, 'GC' dropped
+    # 4 = Waypoint Name
+    # 5 = Smart Name
+
+    $config_found_caches = TRUE
+    # FALSE = Do NOT put found caches in a separate category
+    # TRUE  = Use a separate category for your found caches.
+    #         This enables to toggle your found caches in Google Earth.
+
+    $config_placed_caches = TRUE
+    # FALSE = Do NOT put placed caches in a separate category
+    # TRUE  = Use a separate category for your placed caches.
+    #         This enables to toggle your placed caches in Google Earth.
+
+    $config_unavail_caches = TRUE
+    # FALSE = Do not export unavailable caches
+    # TRUE  = Export unavailable caches and use a special icon to display them
+
+    $config_use_corrected = FALSE
+    # FALSE = Use original coordinates for export
+    # TRUE  = Use corrected coordinates (if available)
+
+    $config_show_children = FALSE
+    # FALSE = Hide child waypoints
+    # TRUE  = show child waypoints (if available)
+
+    $config_show_timeline = 0
+    # 0 = Do not show timeline
+    # 1 = show placed timeline
+    # 2 = show found timeline
+
+    # Path to folder where Google Earth export file should be created.
+    # Default: do not specify (use an empty string: "") to use the
+    # installation directory of GSAK.
+    $config_kml_folder = $_AppData + "\Macros"
+
+    # Name of the Google Earth file to be generated.
+    # The file is created in the folder that is specified in $config_kml_folder.
+    $config_kml_filename = "myGoogleEarth.kml"
+
+    # Icon size (use 1 for 100%, 0.5 for 50% etc.)
+    # If you want to increase or decrease the size of the icons used,
+    # then change accordingly
+    # ATTENTION: make sure to include a leading zero, so use 0.75 instead of .75
+    $config_icon_size = 1
+
+    # Size of the cachename displayed on the map (use 1 for 100%, 0.8 for 80% etc.)
+    # ATTENTION: sizes smaller than 0.7 (70%) makes the labels completely disappear
+    # ATTENTION: make sure to include a leading zero, so use 0.75 instead of .75
+    $config_label_size = 1
+
+    # Title of the export
+    $config_title = "GSAK Google Earth KML Export"
+
+    #-----Load Configuration from Config File-----#
+    $configFile = $_AppData + "\Macros\myGoogleEarth.xml"
+    IF FileExists ( $configFile )
+	    # If the file exists read the saved values and assign them to variables
+	    MACSETTINGS Type=R File=$configFile
+    ENDIF
+
+    #-----Process loaded Configuration-----#
+
+    $runSilently = $config_user_interaction
+
+    IF $config_version <> $myVersion
+        #-----NEW version-----#
+        $runSilently = FALSE
+    ENDIF
+
+    IF $forceShowConfig
+        $runSilently = FALSE
+    ENDIF
+
+    IF NOT( FolderExists( $config_kml_folder ) )
+        $config_kml_folder = $_AppData + "\Macros"
+    ENDIF
+
+ENDSUB #ReadConfigFile
+
+#############################################################
+
+#-----Display the configuration form-----#
+BEGINSUB Name=DisplayForm
+
+    #-----Polulate form-----#
+    $chkSilent = $config_user_interaction
+
+    $UserOptions = editform( $UserOptions,"lblVersion","Caption","myGoogleEarth " +  $myVersion )
+
+    $edTitle = $config_title
+    $edKMLfolder = $config_kml_folder
+    $edCustom = $config_custom
+
+    $optMrkNo = FALSE
+    $optMrkGC = FALSE
+    $optMrkNoGC = FALSE
+    $optMrkWpt = FALSE
+    $optMrkSmart = FALSE
+    IF $config_wp_ident = 1
+        $optMrkNo = TRUE
+    ENDIF
+    IF $config_wp_ident = 2
+        $optMrkGC = TRUE
+    ENDIF
+    IF $config_wp_ident = 3
+        $optMrkNoGC = TRUE
+    ENDIF
+    IF $config_wp_ident = 4
+        $optMrkWpt = TRUE
+    ENDIF
+    IF $config_wp_ident = 5
+        $optMrkSmart = TRUE
+    ENDIF
+    IF $config_wp_ident = 6
+        $optMrkCustom = TRUE
+    ENDIF
+    
+    $optGrpFound = $config_found_caches
+    $optGrpPlaced = $config_placed_caches
+
+    IF $config_unavail_caches
+        $optUnavailOn = TRUE
+        $optUnavailOff = FALSE
+    ELSE
+        $optUnavailOff = TRUE
+        $optUnavailOn = FALSE
+    ENDIF
+
+    IF $config_use_corrected
+        $optCorrCorr = TRUE
+        $optCorrOrig = FALSE
+    ELSE
+        $optCorrOrig = TRUE
+        $optCorrCorr = FALSE
+    ENDIF
+
+    IF $config_show_children
+        $optChildVisible = TRUE
+        $optChildHide = FALSE
+    ELSE
+        $optChildVisible = FALSE
+        $optChildHide = TRUE
+    ENDIF
+
+    IF $config_show_timeline = 0
+        $optTimePlaced = FALSE
+        $optTimeNone = TRUE
+        $optTimeFound = FALSE
+    ENDIF
+    IF $config_show_timeline = 1
+        $optTimePlaced = TRUE
+        $optTimeNone = FALSE
+        $optTimeFound = FALSE
+    ENDIF
+    IF $config_show_timeline = 2
+        $optTimePlaced = FALSE
+        $optTimeNone = FALSE
+        $optTimeFound = TRUE
+    ENDIF
+
+    #-----Show Form-----#
+
+    $FormExit = Form( $UserOptions, "" )
+
+    BEGINCASE
+        CASE $FormExit = "SystemExit"
+            RETURN msg ="Macro cancelled"
+            BREAK
+        CASE $FormExit = "btnCancel"
+            RETURN msg ="Macro cancelled"
+            BREAK
+    ENDCASE
+
+ENDSUB # DisplayForm
+
+#############################################################
+
+#-----SAVE the config info from the form-----#
+BEGINSUB Name=SaveConfigData
+
+    $config_version = $myVersion
+
+    MACSETTINGS Type=S Vars=config_version,config_user_interaction,config_title,config_kml_folder,config_wp_ident,config_found_caches,config_placed_caches,config_unavail_caches,config_use_corrected,config_show_children,config_show_timeline,config_icon_size,config_label_size,config_custom File=$configFile
+
+ENDSUB  #SaveConfigData
+
+#############################################################
+
+#-----READ the variables from the form-----#
+
+BEGINSUB Name=ReadFormVars
+
+    $config_user_interaction = $chkSilent
+    $config_title = $edTitle
+    $config_kml_folder = $edKMLfolder
+    $config_custom = $edCustom
+
+    IF $optMrkNo
+        $config_wp_ident = 1
+    ENDIF
+    IF $optMrkGC
+        $config_wp_ident = 2
+    ENDIF
+    IF $optMrkNoGC
+        $config_wp_ident = 3
+    ENDIF
+    IF $optMrkWpt
+        $config_wp_ident = 4
+    ENDIF
+    IF $optMrkSmart
+        $config_wp_ident = 5
+    ENDIF
+    IF $optMrkCustom
+        $config_wp_ident = 6
+    ENDIF
+
+    $config_found_caches = $optGrpFound
+
+    $config_placed_caches = $optGrpPlaced
+
+    $config_unavail_caches = $optUnavailOn
+
+    $config_use_corrected = $optCorrCorr
+
+    $config_show_children = $optChildVisible
+
+    IF $optTimePlaced
+        $config_show_timeline = 1
+    ENDIF
+    IF $optTimeNone
+        $config_show_timeline = 0
+    ENDIF
+    IF $optTimeFound
+        $config_show_timeline = 2
+    ENDIF
+
+    IF NOT( FolderExists( $config_kml_folder ) )
+        $config_kml_folder = $_AppData + "\Macros"
+    ENDIF
+
+ENDSUB #ReadFormVars
+
+#############################################################
+
+BEGINSUB Name=ProcessCollection
+    # regexp used to determine valid characters in cacheName
+    # if you choose to have the cache name cleaned by GSAK, only those valid characters will remain
+    #  \w   any alphanumeric character, including _
+    #  \s   any space
+    #  \x21-\x25, \x27-\x2E any character between chr(33) and chr(46) (numbers, round brackets, calculation symbols (except / ),...)
+    #      \x26 is excluded from the valid characters, it's the & symbol
+    #  \xBA-\xFF  any character between chr(186) and chr(255) (accented and special chars)
+
+    $validchars = "[°€{}\w\s\x21-\x25\x27-\x2E\xBA-\xFF]*"
+
+    # sort db in order to create proper subcategories within export file
+    # if found caches need to be stored in a separate subcategory, then sort
+    #   on found status / cachetype, otherwise, sort on cachetype
+    # -----------------------------------------------------------------------
+
+    IF $config_found_caches
+        SQLSORT OrderBy="found,cachetype,code"
+    ELSE
+        SQLSORT OrderBy="cachetype,code"
+    ENDIF
+
+    GOTO position=top
+
+    #-----DATABASE-----#
+    $database = CustomFormat("Clean",$_CurrentDatabase)
+
+    # write head of output file
+    # -------------------------
+
+    $config_title_html = replace("[DATABASE]", $database, $config_title, TRUE)
+    $header = replace("[TITLE]", $config_title_html, $header, TRUE)
+    $config_kml_filename = replace("[DATABASE]", $_CurrentDatabase, $config_title, TRUE) + ".kml"
+
+    $header = replace("[ICONPATH]", "http://hulmgulm.de/gc/myGoogleEarth/", $header, TRUE)
+    $header = replace("[ICONSIZE]", numtostr($config_icon_size), $header, TRUE)
+    IF $config_wp_ident = 1
+        $config_label_size = 0
+    ENDIF
+    $header = replace("[LABELSIZE]", numtostr($config_label_size), $header, TRUE)
+    $header = replace("[DATABASE]", $database, $header, TRUE)
+
+    $res = PutFile($config_kml_folder + "\" + $config_kml_filename,$header)
+    $previousCacheType = "@"
+
+    $totalRecordCount   = $_Count
+    $currentRecordCount = 1
+
+    IF $config_placed_caches
+		# Export placed caches first
+        $loopType = "placed"
+        GOSUB Name=WaypointLoop
+		# Now export other caches
+        GOTO position="top"
+        $loopType = "not placed"
+        GOSUB Name=WaypointLoop
+    ELSE
+		# Export all caches
+        $loopType = "all"
+        GOSUB Name=WaypointLoop
+    ENDIF
+
+
+    SHOWSTATUS msg="Finished processing $totalRecordCount records."
+
+    # write the tail of the file
+    # --------------------------
+    $res = AppendFile($config_kml_folder + "\" + $config_kml_filename,$footer)
+
+ENDSUB #ProcessCollection
+
+#############################################################
+
+BEGINSUB Name=WaypointLoop
+    # loop through selected caches
+    # ----------------------------
+
+    WHILE NOT( $_EOL )
+
+        $doExport = TRUE
+
+        # export only if cache is available, otherwise export only if user
+        # wants that unavailable caches are exported
+
+        IF ($d_Archived or $d_TempDisabled) AND ($config_unavail_caches = FALSE)
+            $doExport = FALSE
+        ENDIF
+
+        IF $loopType = "placed" AND (IsOwner()=FALSE)
+            $doExport = FALSE
+        ENDIF
+
+        IF $loopType = "not placed" AND IsOwner()
+            $doExport = FALSE
+        ENDIF
+
+        IF $doExport
+
+        	$currentRecordCount = $currentRecordCount + 1
+	        $msg = "Processing record $currentRecordCount of $totalRecordCount ..."
+    	    SHOWSTATUS msg="$msg"
+
+            # determine cache type and prepare folder name and icon number
+            # ------------------------------------------------------------
+
+            $cacheType     = $d_CacheType
+            $cacheTypeKeys = "BCEGLMORTUVWIY"
+            $cacheTypeDecs = "Unknown Cache Type;Letterbox;Cache in Trash Out;Event;Benchmark;Locationless;Multi;Other;Earth;Traditional;Unknown;Virtual;Webcam;WhereIGo;Waymark"
+            #IN case gc.com introduces new cache type: AT results is 0 -> add 1 to result and extract "Unknown cache type"
+            $int = at($cacheType, $cacheTypeKeys) + 1
+            $currentCacheType = Extract($cacheTypeDecs, ";", $int)
+            $cacheTypeOrig = $currentCacheType
+            #KEEP the original cache type (it can be changed into Found) to display in cache description tooltip
+
+            $cacheTypeIcon = $d_CacheType
+
+            #IF it is a FOUND cache, modify subcategory
+            #ACCORDING to the choosen processing options
+            # --------------------------------------------------
+            IF $d_Found
+                #CHANGE subcategory if applicable
+                IF $config_found_caches
+                    $currentCacheType = "Found Caches"
+                ENDIF
+                #CHANGE icon to reflect found Cache
+                $cacheTypeIcon = $cacheTypeIcon + "F"
+            ELSE
+                #CHANGE icon to reflect a NOT found Cache
+                $cacheTypeIcon = $cacheTypeIcon + "N"
+            ENDIF
+
+            #IF it is a PLACED cache, modify subcategory
+            #ACCORDING to the choosen processing options
+            # --------------------------------------------------
+            IF IsOwner() AND $config_placed_caches
+                $currentCacheType = "Placed Caches"
+            ENDIF
+
+            # change icon to reflect Available or Unavailable cache
+            IF $d_Archived OR $d_TempDisabled
+                $cacheTypeIcon = $cacheTypeIcon + "U"
+            ELSE
+                $cacheTypeIcon = $cacheTypeIcon + "A"
+            ENDIF
+
+            # is this the first cache of a new type (traditional, multi,...)
+            # then create new folder within KML document
+            # --------------------------------------------------------------
+
+            IF ($previousCacheType <> $currentCacheType)
+                # close previous folder (unless this is the first folder in the output file)
+                IF $previousCacheType <> "@"
+                    $res = AppendFile($config_kml_folder + "\" + $config_kml_filename,$endOfFolder)
+                ENDIF
+                # create the new folder
+                $Folder = replace("[FOLDER]",$currentCacheType,"<Folder><name>[FOLDER]</name>",TRUE)
+                $res = AppendFile($config_kml_folder + "\" + $config_kml_filename,$Folder)
+            ENDIF
+
+            $previousCacheType = $currentCacheType
+
+            # determine cache identification to be displayed
+            # ----------------------------------------------
+            $ident = $d_SmartName
+            IF $config_wp_ident = 2
+                $ident = $d_Code
+            ENDIF
+            IF $config_wp_ident = 3
+                $ident = substr($d_Code,3,99)
+            ENDIF
+            IF $config_wp_ident = 4
+                $ident = $d_Name
+            ENDIF
+            IF $config_wp_ident = 5
+                $ident = $d_SmartName
+            ENDIF
+            IF $config_wp_ident = 6
+                $ident = eval("$config_custom")
+            ENDIF
+            
+
+            #CLEAN up the cache identification by removing invalid characters
+            # ---------------------------------------------------------------
+
+            $count = RegExCount($validChars, $ident)
+            $cleaned = ""
+            $int = 1
+            WHILE $int <= $count
+                $good = RegExData($validChars,$ident,$int)
+                $cleaned = $cleaned + $good
+                $int = $int + 1
+            ENDWHILE
+            $ident = $cleaned
+
+            $cacheName = $d_Name
+            $placedBy  = $d_PlacedBy
+
+            #-----APPLY the correct difficulty & terrain graphics-----#
+            $diff = str($d_difficulty,3,1)
+            $diff = replace(",",".",$diff,TRUE)      # Some regions use [,] decimal separator vs [.]
+            $diff = replace(".0","",$diff,TRUE)
+            $diff = replace(".5","_5",$diff,TRUE)
+
+            $terrain = str($d_terrain,3,1)
+            $terrain = replace(",",".",$terrain,TRUE)      # Some regions [,] decimal separator vs [.]
+            $terrain = replace(".0","",$terrain,TRUE)
+            $terrain = replace(".5","_5",$terrain,TRUE)
+
+            # clean up the cache name by removing invalid characters
+            # ------------------------------------------------------
+
+            $count = RegExCount($validChars, $cacheName)
+            $cleaned = ""
+            $int = 1
+            WHILE $int <= $count
+                $good = RegExData($validChars,$cacheName,$int)
+                $cleaned = $cleaned + $good
+                $int = $int + 1
+            ENDWHILE
+            $cacheName = $cleaned
+
+            # clean the name of the owner by removing invalid characters
+            # ----------------------------------------------------------
+
+            $count = RegExCount($validChars, $placedBy)
+            $cleaned = ""
+            $int = 1
+            WHILE $int <= $count
+                $good = RegExData($validChars,$placedBy,$int)
+                $cleaned = $cleaned + $good
+                $int = $int + 1
+            ENDWHILE
+            $placedBy = $cleaned
+
+            #----COORDINATES-----#
+            IF $d_HasCorrected
+                IF $config_use_corrected
+                    $Lat = $d_Latitude
+                    $Lon = $d_Longitude
+                ELSE
+                    $Lat = $d_LatOriginal
+                    $Lon = $d_LonOriginal
+                ENDIF
+            ELSE
+                $Lat = $d_Latitude
+                $Lon = $d_Longitude
+            ENDIF
+            $LatLon = GCalc(($Lat + "; " + $Lon),"FormatMinutes")
+
+            #-----TB | no TB-----#
+            IF $d_HasTravelBug
+                $TB = "<img src='http://hulmgulm.de/gc/myGoogleEarth/img_tb.gif'>"
+            ELSE
+                $TB = ""
+            ENDIF
+
+            #-----FOUND | not Found-----#
+            IF $d_Found
+                $found = "<i>You found this cache on [FOUNDDATE]!</i><br><br>"
+            ELSE
+                $found = ""
+            ENDIF
+
+            #-----CONTAINER Size-----#
+            IF $d_Container = "Not chosen"
+                $container = "Unknown"
+            ELSE
+                $container = $d_Container
+            ENDIF
+
+            #-----PLACED date-----#
+            $placedDate = DateToSQL($d_PlacedDate)
+
+            #-----FOUND by me date-----#
+            IF $d_Found
+                $foundDate = DateToSQL($d_FoundByMeDate)
+            ELSE
+                $foundDate = DateToSQL($_Today)
+            ENDIF
+
+            #-----SNIPPET-----#
+            $snippet = $d_code
+
+            IF $config_show_children
+                GOSUB Name=ExportChildren
+            ENDIF
+
+            # fill body template with cache data
+            # ----------------------------------
+
+            $body = "<Placemark>" + $_newLine
+            IF $config_show_timeline = 1
+                $body = $body + "<TimeStamp><when>[PLACED]T00:00:00Z</when></TimeStamp>" + $_newLine
+            ENDIF
+            IF $config_show_timeline = 2 AND $d_Found
+                $body = $body + "<TimeStamp><when>[FOUNDDATE]T00:00:00Z</when></TimeStamp>" + $_newLine
+            ENDIF
+            $body = $body + "<name>[IDENT]</name>" + $_newLine
+            $body = $body + "<styleUrl>#[CACHETYPE]</styleUrl>" + $_newLine
+            $body = $body + "<description>" + $_newLine
+            $body = $body + "<![CDATA[<table width='250'><tr><td align='center'>" + $_newLine
+            $body = $body + "<a href='[URL]'>[GCCODE]</a><br>" + $_newLine
+            $body = $body + "<font size+1><b>[DESCRIPTION]</b></font><br>" + $_newLine
+            $body = $body + "<i>by [PLACEDBY]</i><br><br>" + $_newLine
+            $body = $body + "<img src='[ICONPATH]img_[TYPE].gif'> [TB]<br><br>" + $_newLine
+            $body = $body + "Difficulty: <img src='[ICONPATH]img_stars[DIFF].gif'><br>" + $_newLine
+            $body = $body + "Terrain: <img src='[ICONPATH]img_stars[TERRAIN].gif'><br>" + $_newLine
+            $body = $body + "Size: <img src='[ICONPATH]img_Size_[SIZE].gif'><br><br>" + $_newLine
+            $body = $body + "([COORDS])"
+            IF $d_HasCorrected AND $config_use_corrected
+                $body = $body + " <b><i><font color='red'>Corrected</font></b></i>"
+            ENDIF
+            $body = $body + "<br><br>[FOUND]" + $_newLine
+            $body = $body + "<a href='gsak://%FF/search/[GCCODE]/[DATABASE]'>View in GSAK</a> | <a href='gsak://%FF/flagtoggle/[GCCODE]/[DATABASE]'>GSAK User Flag</a>" + $_newLine
+            $body = $body + "</td></tr></table>]]>" + $_newLine
+            $body = $body + "</description>" + $_newLine
+            $body = $body + "<Snippet><![CDATA[<a href='[URL]'>[GCCODE]</a> [DESCRIPTION]<br>by [PLACEDBY]]]></Snippet>" + $_newLine
+            $body = $body + "<Point><coordinates>[LON], [LAT]</coordinates></Point>" + $_newLine
+            $body = $body + "</Placemark>" + $_newLine
+
+            $body = $body + $cBody
+
+            $body = replace("[IDENT]",       $ident,                 $body, TRUE)
+            $body = replace("[GCCODE]",      $d_Code,                $body, TRUE)
+            $body = replace("[URL]",         $d_URL,                 $body, TRUE)
+            $body = replace("[CACHETYPE]",   $cacheTypeIcon,         $body, TRUE)
+            $body = replace("[DESCRIPTION]", $cacheName,             $body, TRUE)
+            $body = replace("[TYPE]",        $d_CacheType,           $body, TRUE)
+            $body = replace("[PLACEDBY]",    $placedBy,              $body, TRUE)
+            $body = replace("[DIFF]",        $diff,                  $body, TRUE)
+            $body = replace("[TERRAIN]",     $terrain,               $body, TRUE)
+            $body = replace("[SIZE]",        $container,             $body, TRUE)
+            $body = replace("[ICONPATH]",    "http://hulmgulm.de/gc/myGoogleEarth/",   $body, TRUE)
+            $body = replace("[DATABASE]",    $database,              $body, TRUE)
+            $body = replace("[COORDS]",      $LatLon,                $body, TRUE)
+            $body = replace("[TB]",          $TB,                    $body, TRUE)
+            $body = replace("[FOUND]",       $found,                 $body, TRUE)
+            $body = replace("[SNIPPET]",     $snippet,               $body, TRUE)
+            $body = replace("[PLACED]",      $placedDate,            $body, TRUE)
+            $body = replace("[FOUNDDATE]",   $foundDate,             $body, TRUE)
+
+            $body = replace("[LAT]",$Lat,$body,TRUE)
+            $body = replace("[LON]",$Lon,$body,TRUE)
+
+            $res = AppendFile($config_kml_folder + "\" + $config_kml_filename,$body)
+        ENDIF
+
+        GOTO position="next"
+
+    ENDWHILE
+ENDSUB #WaypointLoop
+
+#############################################################
+
+BEGINSUB Name=ExportChildren
+
+    TABLE Active=Waypoints Scope=Parent
+    GOTO Position=Top
+
+    $cBody = ""
+
+    WHILE NOT( $_EOL )
+
+        $msg = "Processing record $currentRecordCount of $totalRecordCount (child waypoints) ..."
+        SHOWSTATUS msg="$msg"
+
+        # determine cache type and icon number
+        # ------------------------------------------------------------
+
+        IF $d_cType = "Final Location"
+            $cCacheType = "F"
+        ELSE
+            IF $d_cType = "Parking Area"
+                $cCacheType = "P"
+            ELSE
+                IF $d_cType = "Question to Answer"
+                    $cCacheType = "Q"
+                ELSE
+                    IF $d_cType = "Stages of a Multicache"
+                        $cCacheType = "M"
+                    ELSE
+                        IF $d_cType = "Trailhead"
+                            $cCacheType = "T"
+                        ELSE
+                            IF $d_cType = "Reference Point"
+                                $cCacheType = "R"
+                            ELSE
+                                $cCacheType = "U"
+                            ENDIF
+                        ENDIF
+                    ENDIF
+                ENDIF
+            ENDIF
+        ENDIF
+
+        $cCacheTypeIcon = "WP" + $cCacheType
+
+        # determine cache identification to be displayed
+        # ----------------------------------------------
+        $cIdent = $d_cCode
+
+        #----COORDINATES-----#
+        $cLat = $d_cLat
+        $cLon = $d_cLon
+        $cLatLon = GCalc(($cLat + "; " + $cLon),"FormatMinutes")
+
+        #-----SNIPPET-----#
+        $cSnippet = $d_code
+
+        # clean up the waypoint name by removing invalid characters
+        # ---------------------------------------------------------
+
+        $cCacheName = $d_cName
+        $count = RegExCount($validChars, $cCacheName)
+        $cleaned = ""
+        $int = 1
+        WHILE $int <= $count
+            $good = RegExData($validChars,$cCacheName,$int)
+            $cleaned = $cleaned + $good
+            $int = $int + 1
+        ENDWHILE
+        $cCacheName = $cleaned
+
+        # clean up the waypoint comment by removing invalid characters
+        # ------------------------------------------------------------
+
+        $cComment = $d_cComment
+        $count = RegExCount($validChars, $cComment)
+        $cleaned = ""
+        $int = 1
+        WHILE $int <= $count
+            $good = RegExData($validChars,$cComment,$int)
+            $cleaned = $cleaned + $good
+            $int = $int + 1
+        ENDWHILE
+        $cComment = $cleaned
+
+        # fill body template with cache data
+        # ----------------------------------
+
+        $cBody = $cBody + "<Placemark>" + $_newLine
+        IF $config_show_timeline = 1
+            $cBody = $cBody + "<TimeStamp><when>[PLACED]T00:00:00Z</when></TimeStamp>" + $_newLine
+        ENDIF
+        IF $config_show_timeline = 2 AND $d_Found
+            $cBody = $cBody + "<TimeStamp><when>[FOUNDDATE]T00:00:00Z</when></TimeStamp>" + $_newLine
+        ENDIF
+        $cBody = $cBody + "<name>[IDENT]</name>" + $_newLine
+        $cBody = $cBody + "<styleUrl>#[CACHETYPE]</styleUrl>" + $_newLine
+        $cBody = $cBody + "<description>" + $_newLine
+        $cBody = $cBody + "<![CDATA[<table width='250'><tr><td align='center'>" + $_newLine
+        $cBody = $cBody + "<a href='[WPURL]'>[WPCODE]</a><br>" + $_newLine
+        $cBody = $cBody + "<font size+1><b>[WP_DESCRIPTION]</b></font><br>" + $_newLine
+        $cBody = $cBody + "<i>[WP_TYPE]</i><br><br>" + $_newLine
+        $cBody = $cBody + "[COMMENT]<br><br>" + $_newLine
+        $cBody = $cBody + "([COORDS])<br><br><br><hr><br>" + $_newLine
+
+        $cBody = $cBody + "<a href='[URL]'>[GCCODE]</a><br>" + $_newLine
+        $cBody = $cBody + "<font size+1><b>[DESCRIPTION]</b></font><br>" + $_newLine
+        $cBody = $cBody + "<i>by [PLACEDBY]</i><br><br>" + $_newLine
+        $cBody = $cBody + "<img src='[ICONPATH]img_[TYPE].gif'>" + $_newLine
+
+        $cBody = $cBody + "</td></tr></table>]]>" + $_newLine
+        $cBody = $cBody + "</description>" + $_newLine
+        $cBody = $cBody + "<Snippet><![CDATA[<a href='[WPURL]'>[WPCODE]</a> [WP_DESCRIPTION]]]></Snippet>" + $_newLine
+        $cBody = $cBody + "<Point><coordinates>[LON], [LAT]</coordinates></Point>" + $_newLine
+        $cBody = $cBody + "</Placemark>" + $_newLine
+
+        $cBody = replace("[IDENT]",       $cIdent,                      $cBody, TRUE)
+        $cBody = replace("[WPCODE]",      $d_cCode,                     $cBody, TRUE)
+        $cBody = replace("[CACHETYPE]",   $cCacheTypeIcon,              $cBody, TRUE)
+        $cBody = replace("[WP_DESCRIPTION]", $cCacheName,               $cBody, TRUE)
+        $cBody = replace("[COMMENT]",     $cComment,                    $cBody, TRUE)
+        $cBody = replace("[WP_TYPE]",     $d_cType,                     $cBody, TRUE)
+        $cBody = replace("[ICONPATH]",    "http://hulmgulm.de/gc/myGoogleEarth/",   $cBody, TRUE)
+        $cBody = replace("[COORDS]",      $cLatLon,                     $cBody, TRUE)
+		IF len($d_cUrl) > 0
+			$cBody = replace("[WPURL]",       $d_cUrl,                      $cBody, TRUE)
+		ELSE
+			$cBody = replace("[WPURL]",       $d_Url,                       $cBody, TRUE)
+		ENDIF
+        $cBody = replace("[URL]",         $d_Url,                       $cBody, TRUE)
+        $cBody = replace("[SNIPPET]",     $cSnippet,                    $cBody, TRUE)
+        $cBody = replace("[PLACED]",      $placedDate,                  $cBody, TRUE)
+        $cBody = replace("[FOUNDDATE]",   $foundDate,                   $cBody, TRUE)
+        $cBody = replace("[LAT]",         $cLat,                        $cBody, TRUE)
+        $cBody = replace("[LON]",         $cLon,                        $cBody, TRUE)
+
+        GOTO Position=Next
+    ENDWHILE
+
+    TABLE Active=Caches
+
+ENDSUB # ExportChildren
+
+#############################################################
+
+BEGINSUB Name=LaunchGoogleEarth
+    SHOWSTATUS msg="Launching your Google Earth ..."
+
+    $myFilename = $config_kml_folder + "\" + $config_kml_filename
+    FILEOPEN file=$myFilename wait=no
+
+    # Restore userflags, filter, and sort
+	IF $currentfilter <> "NA"
+		IF restorefilter($currentfilter, TRUE) = 0
+			PAUSE msg="Previously-set filter would now show no records. Clearing."
+		ENDIF
+	ENDIF
+
+    SQLSORT OrderBy=$currentsort
+ENDSUB # LaunchGoogleEarth
+
+# ======================================================
+# D A T A   V A R I A B L E S
+# ======================================================
+
+<DATA> varname=$header
+<?xml version="1.0" encoding="ISO-8859-1"?>
+    <kml creator="GSAK Google Earth Export Macro" xmlns="http://earth.google.com/kml/2.1">
+    <Document>
+    <name>[Title]</name>
+    <Style id="TNA"><IconStyle id="iconTNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_traditional.png</href></Icon></IconStyle><LabelStyle id="labelTNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="MNA"><IconStyle id="iconMNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_multi.png</href></Icon></IconStyle><LabelStyle id="labelMNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="BNA"><IconStyle id="iconBNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_letterbox.png</href></Icon></IconStyle><LabelStyle id="labelBNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="LNA"><IconStyle id="iconLNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_locationless.png</href></Icon></IconStyle><LabelStyle id="labelLNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="VNA"><IconStyle id="iconVNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_virtual.png</href></Icon></IconStyle><LabelStyle id="labelVNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="CNA"><IconStyle id="iconCNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_cito.png</href></Icon></IconStyle><LabelStyle id="labelCNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="ONA"><IconStyle id="iconONA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_other.png</href></Icon></IconStyle><LabelStyle id="labelONA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="UNA"><IconStyle id="iconUNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_unknown.png</href></Icon></IconStyle><LabelStyle id="labelUNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="WNA"><IconStyle id="iconWNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_webcam.png</href></Icon></IconStyle><LabelStyle id="labelWNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="ENA"><IconStyle id="iconENA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_event.png</href></Icon></IconStyle><LabelStyle id="labelENA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="ZNA"><IconStyle id="iconZNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_event.png</href></Icon></IconStyle><LabelStyle id="labelZNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="RNA"><IconStyle id="iconRNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_earth.png</href></Icon></IconStyle><LabelStyle id="labelRNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="ANA"><IconStyle id="iconANA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_ape.png</href></Icon></IconStyle><LabelStyle id="labelANA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="GNA"><IconStyle id="iconGNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_benchmark.png</href></Icon></IconStyle><LabelStyle id="labelGNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="INA"><IconStyle id="iconINA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_whereigo.png</href></Icon></IconStyle><LabelStyle id="labelINA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="YNA"><IconStyle id="iconYNA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_waymark.png</href></Icon></IconStyle><LabelStyle id="labelYNA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="TFA"><IconStyle id="iconTFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_traditional_found.png</href></Icon></IconStyle><LabelStyle id="labelTFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="MFA"><IconStyle id="iconMFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_multi_found.png</href></Icon></IconStyle><LabelStyle id="labelMFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="BFA"><IconStyle id="iconBFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_letterbox_found.png</href></Icon></IconStyle><LabelStyle id="labelBFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="LFA"><IconStyle id="iconLFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_locationless_found.png</href></Icon></IconStyle><LabelStyle id="labelLFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="VFA"><IconStyle id="iconVFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_virtual_found.png</href></Icon></IconStyle><LabelStyle id="labelVFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="CFA"><IconStyle id="iconCFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_cito_found.png</href></Icon></IconStyle><LabelStyle id="labelCFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="OFA"><IconStyle id="iconOFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_other_found.png</href></Icon></IconStyle><LabelStyle id="labelOFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="UFA"><IconStyle id="iconUFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_unknown_found.png</href></Icon></IconStyle><LabelStyle id="labelUFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="WFA"><IconStyle id="iconWFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_webcam_found.png</href></Icon></IconStyle><LabelStyle id="labelWFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="EFA"><IconStyle id="iconEFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_event_found.png</href></Icon></IconStyle><LabelStyle id="labelEFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="ZFA"><IconStyle id="iconZFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_event_found.png</href></Icon></IconStyle><LabelStyle id="labelZFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="RFA"><IconStyle id="iconRFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_earth_found.png</href></Icon></IconStyle><LabelStyle id="labelRFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="AFA"><IconStyle id="iconAFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_ape_found.png</href></Icon></IconStyle><LabelStyle id="labelAFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="GFA"><IconStyle id="iconGFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_benchmark_found.png</href></Icon></IconStyle><LabelStyle id="labelGFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="IFA"><IconStyle id="iconIFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_whereigo_found.png</href></Icon></IconStyle><LabelStyle id="labelIFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="YFA"><IconStyle id="iconYFA"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_waymark_found.png</href></Icon></IconStyle><LabelStyle id="labelYFA"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="TNU"><IconStyle id="iconTNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_traditional_dis.png</href></Icon></IconStyle><LabelStyle id="labelTNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="MNU"><IconStyle id="iconMNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_multi_dis.png</href></Icon></IconStyle><LabelStyle id="labelMNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="BNU"><IconStyle id="iconBNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_letterbox_dis.png</href></Icon></IconStyle><LabelStyle id="labelBNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="LNU"><IconStyle id="iconLNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_locationless_dis.png</href></Icon></IconStyle><LabelStyle id="labelLNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="VNU"><IconStyle id="iconVNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_virtual_dis.png</href></Icon></IconStyle><LabelStyle id="labelVNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="CNU"><IconStyle id="iconCNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_cito_dis.png</href></Icon></IconStyle><LabelStyle id="labelCNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="ONU"><IconStyle id="iconONU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_other_dis.png</href></Icon></IconStyle><LabelStyle id="labelONU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="UNU"><IconStyle id="iconUNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_unknown_dis.png</href></Icon></IconStyle><LabelStyle id="labelUNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="WNU"><IconStyle id="iconWNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_webcam_dis.png</href></Icon></IconStyle><LabelStyle id="labelWNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="ENU"><IconStyle id="iconENU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_event_dis.png</href></Icon></IconStyle><LabelStyle id="labelENU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="ZNU"><IconStyle id="iconZNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_event_dis.png</href></Icon></IconStyle><LabelStyle id="labelZNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="RNU"><IconStyle id="iconRNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_earth_dis.png</href></Icon></IconStyle><LabelStyle id="labelRNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="ANU"><IconStyle id="iconANU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_ape_dis.png</href></Icon></IconStyle><LabelStyle id="labelANU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="GNU"><IconStyle id="iconGNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_benchmark_dis.png</href></Icon></IconStyle><LabelStyle id="labelGNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="INU"><IconStyle id="iconINU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_whereigo_dis.png</href></Icon></IconStyle><LabelStyle id="labelINU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="YNU"><IconStyle id="iconYNU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_waymark_dis.png</href></Icon></IconStyle><LabelStyle id="labelYNU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="TFU"><IconStyle id="iconTFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_traditional_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelTFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="MFU"><IconStyle id="iconMFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_multi_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelMFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="BFU"><IconStyle id="iconBFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_letterbox_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelBFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="LFU"><IconStyle id="iconLFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_locationless_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelLFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="VFU"><IconStyle id="iconVFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_virtual_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelVFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="CFU"><IconStyle id="iconCFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_cito_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelCFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="OFU"><IconStyle id="iconOFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_other_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelOFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="UFU"><IconStyle id="iconUFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_unknown_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelUFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="WFU"><IconStyle id="iconWFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_webcam_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelWFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="EFU"><IconStyle id="iconEFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_event_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelEFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="ZFU"><IconStyle id="iconZFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_event_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelZFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="RFU"><IconStyle id="iconRFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_earth_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelRFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="AFU"><IconStyle id="iconAFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_ape_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelAFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="GFU"><IconStyle id="iconGFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_benchmark_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelGFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="IFU"><IconStyle id="iconIFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_whereigo_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelIFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="YFU"><IconStyle id="iconYFU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_waymark_found_dis.png</href></Icon></IconStyle><LabelStyle id="labelYFU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="WPF"><IconStyle id="iconWPF"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]wp_final.png</href></Icon></IconStyle><LabelStyle id="labelWPF"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="WPM"><IconStyle id="iconWPM"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]wp_multistage.png</href></Icon></IconStyle><LabelStyle id="labelWPM"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="WPP"><IconStyle id="iconWPP"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]wp_parking.png</href></Icon></IconStyle><LabelStyle id="labelWPP"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="WPQ"><IconStyle id="iconWPQ"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]wp_question.png</href></Icon></IconStyle><LabelStyle id="labelWPQ"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="WPR"><IconStyle id="iconWPR"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]wp_reference.png</href></Icon></IconStyle><LabelStyle id="labelWPR"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="WPT"><IconStyle id="iconWPT"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]wp_trailhead.png</href></Icon></IconStyle><LabelStyle id="labelWPT"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+    <Style id="WPU"><IconStyle id="iconWPU"><scale>[ICONSIZE]</scale><Icon><href>[ICONPATH]mrk_other.png</href></Icon></IconStyle><LabelStyle id="labelWPU"><scale>[LABELSIZE]</scale></LabelStyle></Style>
+<ENDDATA>
+
+<DATA> varname=$footer
+    </Folder>
+    </Document>
+    </kml>
+<ENDDATA>
+
+<DATA> varname=$endOfFolder
+    </Folder>
+<ENDDATA>
+
+#############################################################
+
+<DATA> VarName=$UserOptions
+
+Name = UserOptions
+  Type = Form
+  Height = 502
+  Width = 510
+
+Name = tab1
+  Type = Groupbox
+  Height = 385
+  Left = 17
+  Top = 40
+  Visible = Yes
+  Width = 468
+  Taborder = 0
+
+Name = grpMarkers
+  Type = Groupbox
+  Caption = Map Markers
+  Container = tab1
+  Height = 228
+  Left = 18
+  Top = 143
+  Width = 208
+  Taborder = 0
+
+Name = grpTimeline
+  Type = Groupbox
+  Caption = Timeline
+  Container = tab1
+  Height = 40
+  Left = 240
+  Top = 331
+  Width = 205
+  Taborder = 1
+
+Name = grpFound
+  Type = Groupbox
+  Caption = Separate Category for
+  Container = tab1
+  Height = 40
+  Left = 240
+  Top = 143
+  Width = 205
+  Taborder = 2
+
+Name = grpUnavail
+  Type = Groupbox
+  Caption = Unavailable Caches
+  Container = tab1
+  Height = 40
+  Left = 240
+  Top = 190
+  Width = 205
+  Taborder = 3
+
+Name = grpCorrected
+  Type = Groupbox
+  Caption = Coordinates to use
+  Container = tab1
+  Height = 40
+  Left = 240
+  Top = 237
+  Width = 205
+  Taborder = 4
+
+Name = grpChildren
+  Type = Groupbox
+  Caption = Child Waypoints
+  Container = tab1
+  Height = 40
+  Left = 240
+  Top = 284
+  Width = 205
+  Taborder = 5
+
+Name = grpTitle
+  Type = Groupbox
+  Caption = Map Title
+  Container = tab1
+  Height = 110
+  Left = 18
+  Top = 19
+  Width = 429
+  Taborder = 6
+
+Name = title
+  Type = Label
+  Color = 9790731
+  Font = Tahoma
+  Height = 23
+  Left = 138
+  Size = 14
+  Style = normal
+  Top = 10
+  Width = 218
+  Caption = myGoogleEarth - Options
+
+Name = optMrkNo
+  Type = Radiobutton
+  Container = grpMarkers
+  Height = 17
+  Left = 17
+  Top = 14
+  Width = 15
+  Taborder = 0
+
+Name = lblMrkNo
+  Type = Label
+  Container = grpMarkers
+  Height = 13
+  Left = 40
+  Top = 18
+  Width = 114
+  Caption = No name, only an icon
+
+Name = optMrkGC
+  Type = Radiobutton
+  Container = grpMarkers
+  Height = 17
+  Left = 17
+  Top = 37
+  Width = 15
+  Taborder = 1
+
+Name = lblMrkGC
+  Type = Label
+  Container = grpMarkers
+  Height = 13
+  Left = 40
+  Top = 41
+  Width = 43
+  Caption = GCxxxx
+
+Name = optMrkNoGC
+  Type = Radiobutton
+  Container = grpMarkers
+  Height = 17
+  Left = 17
+  Top = 60
+  Width = 15
+  Taborder = 2
+
+Name = lblMrkNoGC
+  Type = Label
+  Container = grpMarkers
+  Height = 13
+  Left = 40
+  Top = 64
+  Width = 97
+  Caption = Xxxx, 'GC' dropped
+
+Name = optMrkWpt
+  Type = Radiobutton
+  Container = grpMarkers
+  Height = 17
+  Left = 17
+  Top = 83
+  Width = 15
+  Taborder = 3
+
+Name = lblMrkWpt
+  Type = Label
+  Container = grpMarkers
+  Height = 13
+  Left = 40
+  Top = 87
+  Width = 84
+  Caption = Waypoint Name
+
+Name = optMrkSmart
+  Type = Radiobutton
+  Container = grpMarkers
+  Height = 17
+  Left = 17
+  Top = 106
+  Width = 15
+  Taborder = 4
+
+Name = lblMrkSmart
+  Type = Label
+  Container = grpMarkers
+  Height = 13
+  Left = 40
+  Top = 110
+  Width = 66
+  Caption = Smart Name
+
+Name = optTimePlaced
+  Type = Radiobutton
+  Container = grpTimeline
+  Height = 17
+  Left = 15
+  Top = 14
+  Width = 15
+  Taborder = 0
+
+Name = lblTimePlaced
+  Type = Label
+  Container = grpTimeline
+  Height = 13
+  Left = 35
+  Top = 18
+  Width = 41
+  Caption = Placed
+
+Name = optTimeFound
+  Type = Radiobutton
+  Container = grpTimeline
+  Height = 17
+  Left = 80
+  Top = 14
+  Width = 15
+  Taborder = 1
+
+Name = lblTimeFound
+  Type = Label
+  Container = grpTimeline
+  Height = 13
+  Left = 100
+  Top = 18
+  Width = 38
+  Caption = Found
+
+Name = optTimeNone
+  Type = Radiobutton
+  Container = grpTimeline
+  Height = 17
+  Left = 145
+  Top = 14
+  Width = 15
+  Taborder = 2
+
+Name = lblTimeNone
+  Type = Label
+  Container = grpTimeline
+  Height = 13
+  Left = 165
+  Top = 18
+  Width = 34
+  Caption = None
+
+Name = optGrpFound
+  Type = Checkbox
+  Container = grpFound
+  Height = 17
+  Left = 15
+  Top = 14
+  Width = 15
+  Taborder = 0
+
+Name = lblGrpFound
+  Type = Label
+  Container = grpFound
+  Height = 13
+  Left = 40
+  Top = 18
+  Width = 38
+  Caption = Found
+
+Name = optGrpPlaced
+  Type = Checkbox
+  Container = grpFound
+  Height = 17
+  Left = 100
+  Top = 14
+  Width = 15
+  Taborder = 1
+
+Name = lblGrpPlaced
+  Type = Label
+  Container = grpFound
+  Height = 13
+  Left = 123
+  Top = 18
+  Width = 41
+  Caption = Placed
+
+Name = optUnavailOn
+  Type = Radiobutton
+  Container = grpUnavail
+  Height = 17
+  Left = 15
+  Top = 14
+  Width = 15
+  Taborder = 0
+
+Name = lblUnavailOn
+  Type = Label
+  Container = grpUnavail
+  Height = 13
+  Left = 40
+  Top = 18
+  Width = 38
+  Caption = Export
+
+Name = optUnavailOff
+  Type = Radiobutton
+  Container = grpUnavail
+  Height = 17
+  Left = 100
+  Top = 14
+  Width = 15
+  Taborder = 1
+
+Name = lblUnavailOff
+  Type = Label
+  Container = grpUnavail
+  Height = 13
+  Left = 123
+  Top = 18
+  Width = 30
+  Caption = Hide
+
+Name = optCorrCorr
+  Type = Radiobutton
+  Container = grpCorrected
+  Height = 17
+  Left = 15
+  Top = 14
+  Width = 15
+  Taborder = 0
+
+Name = lblCorrCorr
+  Type = Label
+  Container = grpCorrected
+  Height = 13
+  Left = 40
+  Top = 18
+  Width = 54
+  Caption = Corrected
+
+Name = optCorrOrig
+  Type = Radiobutton
+  Container = grpCorrected
+  Height = 17
+  Left = 100
+  Top = 14
+  Width = 15
+  Taborder = 1
+
+Name = lblCorrOrig
+  Type = Label
+  Container = grpCorrected
+  Height = 13
+  Left = 123
+  Top = 18
+  Width = 43
+  Caption = Original
+
+Name = optChildVisible
+  Type = Radiobutton
+  Container = grpChildren
+  Height = 17
+  Left = 15
+  Top = 14
+  Width = 15
+  Taborder = 0
+
+Name = lblChildVisible
+  Type = Label
+  Container = grpChildren
+  Height = 13
+  Left = 40
+  Top = 18
+  Width = 38
+  Caption = Visible
+
+Name = optChildHide
+  Type = Radiobutton
+  Container = grpChildren
+  Height = 17
+  Left = 100
+  Top = 14
+  Width = 15
+  Taborder = 1
+
+Name = lblChildHide
+  Type = Label
+  Container = grpChildren
+  Height = 13
+  Left = 123
+  Top = 18
+  Width = 30
+  Caption = Hide
+
+Name = btnRun
+  Type = Button
+  Height = 25
+  Left = 17
+  Top = 435
+  Width = 95
+  Taborder = 1
+  Caption = Run
+
+Name = btnCancel
+  Type = Button
+  Height = 25
+  Left = 116
+  Top = 435
+  Width = 95
+  Taborder = 2
+  Caption = Cancel
+
+Name = lblVersion
+  Type = Label
+  Height = 30
+  Left = 365
+  Top = 438
+  Width = 121
+  Caption = myGoogleEarth Version:
+
+Name = lblSilent
+  Type = Label
+  Height = 13
+  Left = 423
+  Top = 18
+  Width = 64
+  Caption = Run Silently
+
+Name = chkSilent
+  Type = Checkbox
+  Height = 17
+  Left = 404
+  Top = 16
+  Width = 15
+  Taborder = 3
+
+Name = lblTitle
+  Type = Label
+  Container = grpTitle
+  Height = 13
+  Left = 18
+  Top = 25
+  Width = 28
+  Caption = Title
+
+Name = edTitle
+  Type = Edit
+  Container = grpTitle
+  Height = 21
+  Left = 64
+  Top = 20
+  Width = 331
+  Taborder = 0
+
+Name = lblTitleHint
+  Type = Label
+  Container = grpTitle
+  Height = 13
+  Left = 53
+  Top = 45
+  Width = 352
+  Caption = Hint: [DATABASE] will get replaced by the name of the current database.
+
+Name = Label1
+  Type = Label
+  Container = grpTitle
+  Height = 13
+  Left = 16
+  Top = 72
+  Width = 50
+  Caption = Directory
+
+Name = edKMLfolder
+  Type = Folder
+  Container = grpTitle
+  Height = 21
+  Left = 64
+  Top = 72
+  Width = 331
+  Taborder = 1
+
+Name = optMrkCustom
+  Type = Radiobutton
+  Container = grpMarkers
+  Height = 17
+  Left = 17
+  Top = 129
+  Width = 16
+  Taborder = 5
+
+Name = lblCustom
+  Type = Label
+  Container = grpMarkers
+  Height = 13
+  Left = 40
+  Top = 133
+  Width = 74
+  Caption = Custom Name
+
+Name = edCustom
+  Type = Edit
+  Container = grpMarkers
+  Height = 21
+  Left = 40
+  Top = 154
+  Width = 154
+  Taborder = 6
+
+Name = Label3
+  Type = Label
+  Container = grpMarkers
+  Height = 17
+  Left = 40
+  Top = 176
+  Width = 167
+  Caption = Hint: You can use Smart tags and
+
+Name = Label4
+  Type = Label
+  Container = grpMarkers
+  Height = 17
+  Left = 40
+  Top = 192
+  Width = 170
+  Caption = normal text to formulate the marker
+
+Name = Label5
+  Type = Label
+  Container = grpMarkers
+  Height = 17
+  Left = 40
+  Top = 208
+  Width = 34
+  Caption = name
+
+<enddata>
+
+
+
+
+#############################################################
+
+BEGINSUB Name=DECLAREVariables
+    OPTION Explicit=Yes
+
+    DECLARE Var=$batFile Type=String
+    DECLARE Var=$batString Type=String
+    DECLARE Var=$body Type=String
+    DECLARE Var=$cacheName Type=String
+    DECLARE Var=$cacheType Type=String
+    DECLARE Var=$cacheTypeDecs Type=String
+    DECLARE Var=$cacheTypeIcon Type=String
+    DECLARE Var=$cacheTypeKeys Type=String
+    DECLARE Var=$cacheTypeOrig Type=String
+    DECLARE Var=$cBody Type=String
+    DECLARE Var=$cCacheName Type=String
+    DECLARE Var=$cCacheType Type=String
+    DECLARE Var=$cCacheTypeIcon Type=String
+    DECLARE Var=$cComment Type=String
+    DECLARE Var=$chkSilent Type=Boolean
+    DECLARE Var=$cIdent Type=String
+    DECLARE Var=$cLat Type=String
+    DECLARE Var=$cLatLon Type=String
+    DECLARE Var=$cleaned Type=String
+    DECLARE Var=$cLon Type=String
+    DECLARE Var=$config_custom Type=String
+    DECLARE Var=$config_found_caches Type=Boolean
+    DECLARE Var=$config_icon_size Type=Numeric
+    DECLARE Var=$config_kml_filename Type=String
+    DECLARE Var=$config_kml_folder Type=String
+    DECLARE Var=$config_label_size Type=Numeric
+    DECLARE Var=$config_placed_caches Type=Boolean
+    DECLARE Var=$config_show_children Type=Boolean
+    DECLARE Var=$config_show_timeline Type=Numeric
+    DECLARE Var=$config_title Type=String
+    DECLARE Var=$config_title_html Type=String
+    DECLARE Var=$config_unavail_caches Type=Boolean
+    DECLARE Var=$config_use_corrected Type=Boolean
+    DECLARE Var=$config_user_interaction Type=Boolean
+    DECLARE Var=$config_version Type=String
+    DECLARE Var=$config_wp_ident Type=Numeric
+    DECLARE Var=$configFile Type=String
+    DECLARE Var=$container Type=String
+    DECLARE Var=$count Type=Numeric
+    DECLARE Var=$cSnippet Type=String
+    DECLARE Var=$currentCacheType Type=String
+    DECLARE Var=$currentfilter Type=String
+    DECLARE Var=$currentRecordCount Type=Numeric
+    DECLARE Var=$currentsort Type=String
+    DECLARE Var=$Data Type=String
+    DECLARE Var=$database Type=String
+    DECLARE Var=$diff Type=String
+    DECLARE Var=$dirLibrary Type=String
+    DECLARE Var=$doExport Type=Boolean
+    DECLARE Var=$edKMLfolder Type=String
+    DECLARE Var=$edTitle Type=String
+    DECLARE Var=$edCustom Type=String
+    DECLARE Var=$endOfFolder Type=String
+    DECLARE Var=$Folder Type=String
+    DECLARE Var=$footer Type=String
+    DECLARE Var=$FormExit Type=String
+    DECLARE Var=$found Type=String
+    DECLARE Var=$foundDate Type=String
+    DECLARE Var=$good Type=String
+    DECLARE Var=$header Type=String
+    DECLARE Var=$ident Type=String
+    DECLARE Var=$int Type=Numeric
+    DECLARE Var=$Lat Type=String
+    DECLARE Var=$LatLon Type=String
+    DECLARE Var=$len Type=Numeric
+    DECLARE Var=$Lon Type=String
+    DECLARE Var=$loopType Type=String
+    DECLARE Var=$msg Type=String
+    DECLARE Var=$myFilename Type=String
+    DECLARE Var=$myGoogleEarth_Files Type=String
+    DECLARE Var=$myValue Type=String
+    DECLARE Var=$myVariable Type=String
+    DECLARE Var=$myVersion Type=String
+    DECLARE Var=$optChildHide Type=Boolean
+    DECLARE Var=$optChildVisible Type=Boolean
+    DECLARE Var=$optCorrCorr Type=Boolean
+    DECLARE Var=$optCorrOrig Type=Boolean
+    DECLARE Var=$optGrpFound Type=Boolean
+    DECLARE Var=$optGrpPlaced Type=Boolean
+    DECLARE Var=$optMrkGC Type=Boolean
+    DECLARE Var=$optMrkNo Type=Boolean
+    DECLARE Var=$optMrkNoGC Type=Boolean
+    DECLARE Var=$optMrkSmart Type=Boolean
+    DECLARE Var=$optMrkWpt Type=Boolean
+    DECLARE Var=$optMrkCustom Type=Boolean
+    DECLARE Var=$optTimeFound Type=Boolean
+    DECLARE Var=$optTimeNone Type=Boolean
+    DECLARE Var=$optTimePlaced Type=Boolean
+    DECLARE Var=$optUnavailOff Type=Boolean
+    DECLARE Var=$optUnavailOn Type=Boolean
+    DECLARE Var=$placedBy Type=String
+    DECLARE Var=$placedDate Type=String
+    DECLARE Var=$previousCacheType Type=String
+    DECLARE Var=$res Type=String
+    DECLARE Var=$result Type=String
+    DECLARE Var=$runSilently Type=Boolean
+    DECLARE Var=$sequence Type=String
+    DECLARE Var=$snippet Type=String
+    DECLARE Var=$sortdata Type=String
+    DECLARE Var=$str Type=String
+    DECLARE Var=$TB Type=String
+    DECLARE Var=$terrain Type=String
+    DECLARE Var=$totalRecordCount Type=Numeric
+    DECLARE Var=$UserOptions Type=String
+    DECLARE Var=$validchars Type=String
+    DECLARE Var=$zipFile Type=String
+ENDSUB # DECLAREVariables
+
+

@@ -1,0 +1,276 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = CacheMateLog
+# MacAuthor = Pasha Phares
+# MacFileName = CacheMateLog.gsk
+#*******************************************
+#############################################
+# CacheMateLog.txt v1.6-20060425
+# by Pasha Phares
+# REQUIRES: GSAK V6.6.1.14 or higher
+#
+# Macro to get the latest copy of Cachemate's
+# backup database, extract the finds, update
+# the local copy, then sequentially (by found
+# date and distance from home) open the
+# GC.com logging page with the user notes
+# from the local record copied into the
+# clipboard. Once logging is complete, finds
+# are moved to another database if the user
+# has defined that.
+#
+# REQUIRED: nothing. GSAK has added features
+# that allow the macro to take care of every-
+# thing for you. :)
+#
+# Optional: If you have want to move or copy
+# your found caches to a different database
+# after logging them, you need to have saved
+# settings in the Move/Copy Waypoints dialog
+# and be prepared to specify that saved set-
+# ting name.
+#
+# The default behavior of the CacheMate
+# import is to prefix the log with the log
+# time (allowing you to log in the order in
+# which you found), to place the CacheMate
+# data in the User Log field, to Replace
+# existing logs, to put the YYYYMMDD into the
+# User Sort field, and to match cache records
+# using the GCxxxx code. If you want to
+# change these things, you can do so, but
+# your settings MUST have "Set user flag if
+# updated?" checked... else you'll be logging
+# ALL of your finds, past and present, every
+# time you run it.
+#############################################
+#
+#############################################
+# Usage:	1)Sync your Palm device to make a
+#			backup copy of your CacheMate DB.
+#			2)Run this macro
+#############################################
+#
+# Uncomment below line to turn debugging on
+#Debug Status=On
+
+Option Explicit=Yes
+
+Declare Var=$CacheMateLog Type=String
+Declare Var=$cm2gpx Type=String
+Declare Var=$cm2options Type=String
+Declare Var=$cmd Type=String
+Declare Var=$cmsettings Type=String
+Declare Var=$currentdb Type=String
+Declare Var=$currentfilter Type=String
+Declare Var=$currentsort Type=String
+Declare Var=$database Type=String
+Declare Var=$datafile Type=String
+Declare Var=$datafilepath Type=String
+Declare Var=$fileoutput Type=String
+Declare Var=$findsgpx Type=String
+Declare Var=$inputmsg Type=String
+Declare Var=$movecopysettings Type=String
+Declare Var=$movefinds Type=String
+Declare Var=$pdbfile Type=String
+Declare Var=$sequence Type=String
+Declare Var=$sortdata Type=String
+Declare Var=$tmppath Type=String
+Declare Var=$url Type=String
+Declare Var=$vars Type=String
+
+# Version check
+VERCHECK Version=6.6.1.14 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+
+# Set the name of the command interpreter.
+# The default is for WinXP, but it may also
+# be "command.com", etc. for older Windows
+# versions.
+$cmd = "cmd.exe"
+
+# Save various settings for restoration later
+DATASAVE Data=$d_UserFlag
+$currentsort = $_SortBy
+$currentfilter = SAVEFILTER()
+
+# Set and validate some file paths
+$datafilepath = SysInfo("MACROPATH")
+IF NOT (FolderExists($datafilepath))
+	CANCEL Msg="FAILURE: You don't have a Macros folder in your GSAK install directory! Where did you put this macro? Create one, put this macro there, and restart it."
+ENDIF
+$datafile=$datafilepath + "\Logem.dat"
+$tmppath = $_Install + "\temp"
+IF NOT (FolderExists($tmppath))
+	CANCEL Msg="FAILURE: No temporary folder found in your GSAK install directory! This macro needs a folder called 'tmp' in $_Install. Create one and restart this macro."
+ENDIF
+$findsgpx=$tmppath + "\finds.gpx"
+
+# Get rid of findsgpx if it already exists
+IF (FileExists($findsgpx))
+	RUNPGM Pgm=$cmd Parms=/C del "$findsgpx"
+ENDIF
+
+# Clear all user flags
+USERFLAG Type=clear Range=All
+
+# Does the datafile already exist?
+IF (FileExists($datafile))
+
+	# Yes? Read config values and assign to our vars
+	FILEREAD File=$datafile
+		$database=EXTRACT($line, ";", 1)
+		$cm2gpx=EXTRACT($line, ";", 2)
+		$cm2options=EXTRACT($line, ";", 3)
+		$cmsettings=EXTRACT($line, ";", 4)
+		$pdbfile=EXTRACT($line, ";", 5)
+		$movefinds=EXTRACT($line, ";", 6)
+		$movecopysettings=EXTRACT($line, ";", 7)
+	ENDREAD
+
+ELSE
+
+	# No?  Then we have to ask for the various values and check to see if they're valid.
+	
+	# Database to which to import finds
+	$database="Default"
+	$inputmsg="Enter the name of the database TO WHICH to import finds from Cachemate."
+	INPUT Msg="$inputmsg" Default="$database" Varname=$database
+	WHILE NOT (DataBaseExists($database))
+		$inputmsg="That database doesn't exist! Enter a valid database name:"
+		INPUT Msg="$inputmsg" Default="$database" Varname=$database
+	ENDWHILE
+	
+	# Location of cm2gpx.exe
+	$cm2gpx=$_Install + "\cm2gpx.exe"
+	WHILE NOT (FileExists($cm2gpx))
+		$inputmsg=$cm2gpx + " not found." + $_NewLine + "Enter fully-qualified path to CM2GPX.exe"
+		INPUT Msg="$inputmsg" Default="$cm2gpx" Varname=$cm2gpx
+	ENDWHILE
+	
+	# cm2gpx.exe command line options
+	$cm2options="-f"
+	$inputmsg="Enter cm2gpx.exe command-line options." + $_NewLine + $_NewLine + "The default (-f) is to only import records with the 'Found' box checked. See the cm2gpx help for more information."
+	INPUT Msg="$inputmsg" Default="$cm2options" Varname=$cm2options
+	
+	# CacheMate dialog saved settings; if specified, we'll use them instead of the defaults
+	$inputmsg="Enter name of saved CacheMate import settings." + $_NewLine + $_NewLine + "LEAVE THIS BLANK unless you've read the help text at the beginning of the macro and know what you're doing!"
+	INPUT Msg="$inputmsg" Default="" Varname=$cmsettings
+	
+	# Cachemate database backup file to grab finds from
+	$pdbfile="C:\Program Files\palmOne\[YOUR PALM USERNAME]\Backup\DefaultItems-cMat.PDB"
+	$inputmsg="Cachemate database file to grab finds from:" + $_NewLine + $_NewLine + "(At the least, change [YOUR PALM USERNAME] to match your Palm username (and this is likely only the first 6 characters of the name); if needed, change the whole string to match the PDB file to use.)"
+	INPUT Msg="$inputmsg" Default="$pdbfile" Varname=$pdbfile
+	WHILE NOT (FileExists($pdbfile))
+		$inputmsg="No such file exists!" + $_NewLine + "(At least, change [YOUR PALM USERNAME] to match the first six characters of your Palm username; if needed, change the whole string to match the PDB file to use.)" + $_NewLine + $_NewLine + "(My Palm username is 'Chromag', so my entry here reads 'C:\Program Files\PalmOne\Chroma\Backup\DefaultItems-cMat.pdb'.)"
+		INPUT Msg="$inputmsg" Default="$pdbfile" Varname=$pdbfile
+	ENDWHILE
+
+	# Whether or not to move Found caches to a separate database by default
+	$inputmsg="Shall Found caches be moved to a separate database after logging?"
+	CHOOSE Msg=$inputmsg opt1="Yes" opt2="No"
+	$movefinds=NumToStr($Result)
+	
+	# If yes, get the Move/Copy saved settings name
+	IF $movefinds="1"
+		$movecopysettings="Found"
+		$inputmsg="Move/Copy saved settings name:"
+		INPUT Msg=$inputmsg Default="$movecopysettings" Varname=$movecopysettings
+	ELSE
+		$movecopysettings=""
+	ENDIF
+	
+	# Now save all those values for next time into $datafile, separated by ;
+	$vars=$database + ";" + $cm2gpx + ";" + $cm2options + ";" + $cmsettings + ";" + $pdbfile + ";" + $movefinds + ";" + $movecopysettings
+	$fileoutput=PUTFILE($datafile, $vars)
+	IF Left($fileoutput, 7) = "*Error*"
+		CANCEL Msg="FAILURE: Unable to write to $datafile!"
+	ENDIF
+
+# End "No $datafile" IF
+ENDIF
+
+# Whew.  Now we can actually do something with all those vars:
+
+# Select the database if it isn't already
+$currentdb = $_CurrentDatabase
+IF $currentdb <> $database
+	DATABASE Name="$database" Action=Select
+ENDIF
+
+# Run cm2gpx.exe to create $findsgpx
+RUNPGM Pgm=$cm2gpx Parms=$cm2options -o "$findsgpx" "$pdbfile" Wait=Yes
+
+# Make sure findsgpx exists before continuing
+IF NOT (FileExists($findsgpx))
+	PAUSE Msg="FAILURE: $findsgpx does not exist! Verify that your Cachemate backup database is in the right place and contains caches marked as found. Note that you'll need to edit or delete the file $datafile in order to change your previously-specified values."
+ELSE
+
+	# Import $findsgpx into GSAK using user settings if they exist; else use defaults
+	IF IsEmpty($cmsettings)
+		MACROSET Dialog=CacheMateLog VarName=$CacheMateLog
+		CACHEMATE Settings=<macro> File="$findsgpx"
+	ELSE
+		CACHEMATE Settings=$cmsettings File="$findsgpx"
+	ENDIF
+
+	# Filter so our list is only new finds using the UserFlag set during Cachemate import
+	MFILTER IF=$d_UserFlag
+
+	# If there's records in the filter, sort 'em and log 'em, pausing between each for the user to confirm.
+	IF $_FilterCount > 0
+		SORT By="FoundByMe;UserSort"
+		GOTO Position=Top
+		WHILE NOT ($_EOL)
+			$url = "http://www.geocaching.com/seek/log.aspx?ID=%gcid"
+			WEB Url=$url
+			PAUSE Msg="Click Continue when logged successfully."
+			GOTO Position=Next
+		ENDWHILE
+		# Move Finds to separate DB if user has specified that
+		IF $movefinds="1"
+			MOVECOPY Settings="$movecopysettings"
+		ENDIF
+	ELSE
+		PAUSE Msg="No found caches in filter! Clearing and exiting."
+	ENDIF
+ENDIF
+
+# Done with everything.  Remove the GPX file.
+RUNPGM Pgm=$cmd Parms=/C del "$findsgpx"
+
+# Clear temporary filter and user flags
+CANCELFILTER
+USERFLAG Type=clear Range=All
+
+# Return to original database, if different
+IF $_CurrentDatabase <> $currentdb
+	DATABASE Name=$currentdb Action=select
+ENDIF
+
+# Restore userflags, filter, and sort
+DATARESTORE Data=$d_UserFlag
+IF RESTOREFILTER($currentfilter, True) = 0
+	PAUSE Msg="Previously-set filter now would show no records. Clearing."
+ENDIF
+$sortdata = Extract($currentsort, "=",1)
+$sequence = Extract($currentsort, "=",2)
+SORT By=$sortdata Sequence=$sequence
+
+<data> VarName=$CacheMateLog
+[TfmCmateLog]
+rbtLog.Checked=False
+rbtNo.Checked=False
+rbtNotes.Checked=TRUE
+rbtYes.Checked=True
+File1.Filename=
+rbtReplace.Checked=False
+rbtAdd.Checked=TRUE
+rbtFlagNo.Checked=False
+rbtFlagYes.Checked=True
+rbtDateOnly.Checked=False
+rbtDateTime.Checked=True
+rbtUserNo.Checked=False
+rbtUserYes.Checked=True
+rbtCode.Checked=True
+rbtSmart.Checked=False
+<enddata>

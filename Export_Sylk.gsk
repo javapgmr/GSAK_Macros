@@ -1,0 +1,240 @@
+# ----------------------------------------------------------------------------------------------------------------------
+# MacVersion = 1.0
+# MacFileName = Export_Sylk.gsk
+# MacAuthor = Jan Paul - Team_Wolfje
+# MacDescription = Export to Sylk file (for ie Excel).
+# MacURL = http://gsak.net/board/index.php
+# ----------------------------------------------------------------------------------------------------------------------
+# Date			Version	Remarks
+# ------------- ------- ------------------------------------------------------------------------------------------------
+# 30-08-2006	1.0		- First Version
+# ----------------------------------------------------------------------------------------------------------------------
+#DEBUG Status="On"
+$Ver = "1.0"
+$Name = "Export_Sylk"
+VerCheck Version=7.1.0.0 (You can find the latest version of GSAK in the forums at http://support.gsak.net/.)
+# ----------------------------------------------------------------------------------------------------------------------
+
+# Declarations
+Declare Var=$Version Type=String
+Declare Var=$Ver Type=String
+Declare Var=$MessageWidth Type=Numeric
+Declare Var=$RowCount Type=Numeric
+Declare Var=$File Type=String
+Declare Var=$Out Type=String
+Declare Var=$Name Type=String
+Declare Var=$StatusMessage Type=String
+Declare Var=$PauseMessage Type=String
+Declare Var=$Error Type=String
+
+# Variables.
+$Version = $Name + " (" + $Ver + ") "
+$MessageWidth=400
+
+# Status message.
+$StatusMessage = "Start " + $Version + "..."
+ShowStatus Msg=$StatusMessage Width=$MessageWidth
+
+# Textfor end message.
+$PauseMessage = "Start " + $Version + ":" + $_NewLine
+
+# Filename.
+$File = $_Install + "\macros\GeoCaches_Sylk.xls"
+$RowCount = 1
+
+# Header.
+# - P0   = First format record.
+# - SM0  = First font record.
+# - FD0R = Column alignment (L,C,R).
+# - W0   = Column width.
+$Out = "ID;GSAK " + $_Version + " " + DateToString($_Today) + $_NewLine
+$Out = $Out + "P;P#############" + $_NewLine
+$Out = $Out + "P;PGeneral" + $_NewLine
+$Out = $Out + "P;Pdd-mm-yyyy" + $_NewLine
+$Out = $Out + "P;P000000" + $_NewLine
+$Out = $Out + "P;FTahoma;M200" + $_NewLine
+$Out = $Out + "P;FTahoma;M200;SB" + $_NewLine
+$Out = $Out + "F;C1;FD0L;SM1" + $_NewLine
+$Out = $Out + "F;C10;FD0C;P2" + $_NewLine
+$Out = $Out + "F;C11;FD0C;P2" + $_NewLine
+$Out = $Out + "F;C12;FD0C;P2" + $_NewLine
+$Out = $Out + "F;R1;FD0L;SM1" + $_NewLine
+$Out = $Out + "F;W1 1 15" + $_NewLine
+$Out = $Out + "F;W2 2 5" + $_NewLine
+$Out = $Out + "F;W3 3 50" + $_NewLine
+$Out = $Out + "F;W4 4 5" + $_NewLine
+$Out = $Out + "F;W5 5 10" + $_NewLine
+$Out = $Out + "F;W6 9 5" + $_NewLine
+$Out = $Out + "F;W10 12 10" + $_NewLine
+$Out = $Out + "F;W13 14 12" + $_NewLine
+$Out = $Out + "F;W15 17 10" + $_NewLine
+$Out = $Out + "F;W18 18 40" + $_NewLine
+
+# Fill header.
+$Out = $Out + "C;Y" + Alltrim(Str($RowCount,10,0)) + ";X1;K" + $_Quote + "GCCode" + $_Quote + $_NewLine
+$Out = $Out + "C;X2;K" + Quote("Sort") + $_NewLine
+$Out = $Out + "C;X3;K" + Quote("Name") + $_NewLine
+$Out = $Out + "C;X4;K" + Quote("Type") + $_NewLine
+$Out = $Out + "C;X5;K" + Quote("Container") + $_NewLine
+$Out = $Out + "C;X6;K" + Quote("Dif") + $_NewLine
+$Out = $Out + "C;X7;K" + Quote("Ter") + $_NewLine
+$Out = $Out + "C;X8;K" + Quote("Active") + $_NewLine
+$Out = $Out + "C;X9;K" + Quote("TB") + $_NewLine
+$Out = $Out + "C;X10;K" + Quote("Last Found") + $_NewLine
+$Out = $Out + "C;X11;K" + Quote("Last Log") + $_NewLine
+$Out = $Out + "C;X12;K" + Quote("Last GPX") + $_NewLine
+$Out = $Out + "C;X13;K" + Quote("Lat") + $_NewLine
+$Out = $Out + "C;X14;K" + Quote("Long") + $_NewLine
+$Out = $Out + "C;X15;K" + Quote("Number") + $_NewLine
+$Out = $Out + "C;X16;K" + Quote("Date Found") + $_NewLine
+$Out = $Out + "C;X17;K" + Quote("Time Found") + $_NewLine
+$Out = $Out + "C;X18;K" + Quote("Hint") + $_NewLine
+
+# Loop through database.
+GoTo Position="Top"
+While not($_EOL)
+
+	# Row counter
+	$RowCount=$RowCount+1
+	
+	# Show message.
+	$StatusMessage = $Version + "Exporting cache " + $d_Code + "..."
+	ShowStatus Msg=$StatusMessage Width=$MessageWidth
+
+	# Fields.
+	$Out = $Out + "C;Y" + Alltrim(Str($RowCount,10,0)) + ";X1;K" + Quote($d_Code) + $_NewLine
+	$Out = $Out + "C;X2;K" + Alltrim(Str($d_UserSort,10,0)) + $_NewLine
+	$Tekst = $d_Name
+	$Tekst = Replace($_NewLine,"",$Tekst,True)
+	$Tekst = Replace($_Quote,"''",$Tekst,True)
+	$Out = $Out + "C;X3;K" + Quote($Tekst) + $_NewLine
+	$Out = $Out + "C;X4;K" + Quote($d_CacheType) + $_NewLine
+	$Out = $Out + "C;X5;K" + Quote($d_Container) + $_NewLine
+	If $d_Difficulty < 1 
+		$Out = $Out + "C;X6;K" + "1" + $_NewLine
+	Else
+		$Out = $Out + "C;X6;K" + Replace(",",".",Alltrim(Str($d_Difficulty,10,1)),True) + $_NewLine
+	EndIf
+	If $d_Terrain < 1 
+		$Out = $Out + "C;X7;K" + "1" + $_NewLine
+	Else
+		$Out = $Out + "C;X7;K" + Replace(",",".",Alltrim(Str($d_Terrain,10,1)),True) + $_NewLine
+	EndIf
+	If $d_Archived = True .or. $d_TempDisabled = True
+		$Out = $Out + "C;X8;K" + Quote("No") + $_NewLine
+	Else
+		$Out = $Out + "C;X8;K" + Quote("Yes") + $_NewLine
+	EndIf
+	If $d_HasTravelBug = True
+		$Out = $Out + "C;X9;K" + Quote("Yes") + $_NewLine
+	Else
+		$Out = $Out + "C;X9;K" + Quote("No") + $_NewLine
+	EndIf
+	If $d_LastFoundDate > 0
+		$Out = $Out + "C;X10;K" + Quote(DateFormat($d_LastFoundDate)) + $_NewLine
+	Else
+		$Out = $Out + "C;X10;K" + Quote("No") + $_NewLine
+	EndIf
+	If $d_LastLog > 0
+		$Out = $Out + "C;X11;K" + Quote(DateFormat($d_LastLog)) + $_NewLine
+	Else
+		$Out = $Out + "C;X11;K" + Quote("No") + $_NewLine
+	EndIf
+	If $d_LastGPXDate > 0
+		$Out = $Out + "C;X12;K" + Quote(DateFormat($d_LastGPXDate)) + $_NewLine
+	Else
+		$Out = $Out + "C;X12;K" + Quote("None") + $_NewLine
+	EndIf
+	$Temp = GeoCalc($d_Latitude + ";" + $d_Longitude,"FormatMinutes")
+	$Out = $Out + "C;X13;K" + Quote(Extract($Temp,";",1)) + $_NewLine
+	$Out = $Out + "C;X14;K" + Quote(Extract($Temp,";",2)) + $_NewLine
+	$Out = $Out + "C;X15;K" + Quote("") + $_NewLine
+	$Out = $Out + "C;X16;K" + Quote("") + $_NewLine
+	$Out = $Out + "C;X17;K" + Quote("") + $_NewLine
+	If Alltrim($d_Hints)=""
+		$Out = $Out + "C;X18;K" + Quote("") + $_NewLine
+	Else
+		$Tekst = $d_Hints
+		$Tekst = Replace($_NewLine,"",$Tekst,True)
+		$Tekst = Replace($_Quote,"''",$Tekst,True)
+		$Out = $Out + "C;X18;K" + Quote($Tekst) + $_NewLine
+	EndIf
+
+	# Child Waypoints.
+	Table Active=Waypoints Scope=Parent
+	While not($_EOL)
+
+		# Row counter.
+		$RowCount=$RowCount+1
+	
+		# Show message.
+		$StatusMessage = $Version + "Exporting waypoint " + $d_cCode + "..."
+		ShowStatus Msg=$StatusMessage Width=$MessageWidth
+
+		# Fields.
+		$Out = $Out + "C;Y" + Alltrim(Str($RowCount,10,0)) + ";X1;K" + Quote($d_Code + "-" + $d_cPrefix) + $_NewLine
+		$Out = $Out + "C;X2;K" + Alltrim(Str($d_UserSort,10,0)) + $_NewLine
+		$Tekst = $d_cType + ": " + $d_cName
+		$Tekst = Replace($_NewLine,"",$Tekst,True)
+		$Tekst = Replace($_Quote,"''",$Tekst,True)
+		$Out = $Out + "C;X3;K" + Quote($Tekst) + $_NewLine
+		$Out = $Out + "C;X4;K" + Quote("") + $_NewLine
+		$Out = $Out + "C;X5;K" + Quote("") + $_NewLine
+		$Out = $Out + "C;X6;K" + Quote("") + $_NewLine
+		$Out = $Out + "C;X7;K" + Quote("") + $_NewLine
+		$Out = $Out + "C;X8;K" + Quote("") + $_NewLine
+		$Out = $Out + "C;X9;K" + Quote("") + $_NewLine
+		$Out = $Out + "C;X10;K" + Quote("") + $_NewLine
+		$Out = $Out + "C;X11;K" + Quote("") + $_NewLine
+		$Out = $Out + "C;X12;K" + Quote("") + $_NewLine
+		$Temp = GeoCalc($d_cLat + ";" + $d_cLon,"FormatMinutes")
+		$Out = $Out + "C;X13;K" + Quote(Extract($Temp,";",1)) + $_NewLine
+		$Out = $Out + "C;X14;K" + Quote(Extract($Temp,";",2)) + $_NewLine
+		$Out = $Out + "C;X15;K" + Quote("") + $_NewLine
+		$Out = $Out + "C;X16;K" + Quote("") + $_NewLine
+		$Out = $Out + "C;X17;K" + Quote("") + $_NewLine
+		$Tekst = $d_cComment
+		$Tekst = Replace($_NewLine,"",$Tekst,True)
+		$Tekst = Replace($_Quote,"''",$Tekst,True)
+		$Out = $Out + "C;X18;K" + Quote($Tekst) + $_NewLine
+
+	  	# Next record.
+		GoTo Position="Next"
+
+	EndWhile
+
+	# Back to caches.
+	Table Active=Caches
+
+  	# Next record.
+	GoTo Position="Next"
+	
+EndWhile
+
+# Fill footer.
+$Out = $Out + "E" + $_NewLine
+
+# Delete old file.
+If FileExists($File)
+	FileErase File=$File
+EndIf
+
+# Write file.
+$Error = Appendfile($File,$Out)
+
+# On error, show message.
+If Left($Error, 7) = "*Error*"
+	$PauseMessage = $PauseMessage + $_NewLine + "Error writing file" + $_NewLine + "'" + $File + "':" + $_NewLine + $Error
+Else
+	# If no error, display exported records.
+	If $RowCount=1
+		$RowCount = 0
+	EndIf
+	$PauseMessage = $PauseMessage + $_NewLine + "- Written records: $RowCount"
+EndIf
+
+# Show end message.
+If Len(Trim($PauseMessage))>0
+	$PauseMessage = $PauseMessage + $_NewLine
+	MsgOK Caption=$Version Msg=$PauseMessage
+EndIf

@@ -1,0 +1,56 @@
+# Export of caches to googlemap.txt
+$out=""
+$name=""
+$ThisRecord = 0
+$x = 0
+
+Goto Position=Top
+While .not. $_eol
+
+# Give some information about processing
+  $ThisRecord = $ThisRecord + 1
+  $x = $x + 1
+  if $x = 5
+    $status = "Now processing: " + "$ThisRecord" + " of " + "$_Count"
+    ShowStatus msg="$status"  
+    $x = 0
+  endif  
+
+  $out = $out + "cache('" + $d_Code + "', '"
+  $out = $out + $d_Latitude+ "', '"
+  $out = $out + $d_Longitude + "', '"
+  $out = $out + NumToStr($d_Difficulty) + "', '"
+  $out = $out + NumToStr($d_Terrain) + "', '"
+  $out = $out + $d_CacheType + "', '" 
+
+# replace some html-characters
+  $name = $d_Name
+  $name = Replace("'","&prime;",$name,false)
+  $name = Replace("$_quote","&quot;",$name,false)
+  $name = Replace("°","&deg;",$name,false)
+  $name = Replace(",","\,",$name,false)
+  $name = Replace(")","\)",$name,false)
+  $name = Replace("(","\(",$name,false)
+  $name = Replace("ä","&auml;",$name,false)
+  $name = Replace("ö","&ouml;",$name,false)
+  $name = Replace("ü","&uuml;",$name,false)
+  $name = Replace("ß","&szlig;",$name,false)
+  $name = Replace("Ä","&Auml;",$name,false)
+  $name = Replace("Ö","&Ouml;",$name,false)
+  $name = Replace("Ü","&Uuml;",$name,false)
+  $name = Replace("Ü","&Uuml;",$name,false)
+  $out = $out + $name + "', '"
+
+  $out = $out + "');" + $_NewLine
+
+  Goto Position=Next
+  
+EndWhile
+
+# Write file to temp-directory
+$FileName = "$_Install\temp\googlemap.html"
+$Error = PutFile($FileName,$out)
+
+web url="file:///$_Install/Macros/googlemap.html"
+
+Goto Position=Top

@@ -1,0 +1,38 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Check urls for invalid information
+# MacAuthor = javapgmr
+# MacFileName = checkURL.gsk
+#*******************************************************
+#   Variable declarations for
+#   checkURL.gsk
+#
+#   Generated 06/26/2007 4:46:24 PM on GSAKVariables.gsk Rev V0.20 B8
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$ThisRecord Type=Numeric
+Declare Var=$Expression Type=String
+
+$Expression = "http://www.geocaching.com/seek/cache_details.aspx\?guid\="
+
+$ThisRecord = 0
+MacroFlag Type=Clear Range=All
+GoTo position=Top
+While not($_eol)
+ $ThisRecord = $ThisRecord + 1
+ IF frac($ThisRecord/10) = 0
+   Showstatus msg="Now processing record $Thisrecord of $_count"
+ Endif
+ IF NOT(RegEx($Expression,"$d_Url"))
+   $d_MacroFlag=True
+ Endif
+ GoTo Position=Next
+EndWhile
+Mfilter expression=$d_Macroflag
+If $_FilterCount = 0
+ MsgOk msg="No suspect URLs found"
+EndIf

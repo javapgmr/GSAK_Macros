@@ -1,0 +1,119 @@
+############################################
+#					                                 #
+# Magellan Distance Sort / export          #
+#					                                 #
+# Version 3   Rev.  1.00               	   #
+#					                                 #
+############################################
+
+# Get PC User name
+	Set $user = GetEnvV("USERNAME")
+	Set $count = 0
+  SET $exportLoc = "C:\apps\gsakout\segmented"
+# Delete Exisitng Explorist Files
+	FileErase File="$exportLoc\*.*" OnError=Continue
+
+# Set Database, Clear user and macro Flags, Sort Database By Destination
+	$Database = $_CurrentDatabase
+	USERFLAG type=clear range=all
+	Macroflag type=clear range=all
+	SORT By=Distance Sequence=A 
+
+# Create Magellen Export Files
+	MacroFlag type=set range=all
+	UserFlag  type=clear range=all
+	Mfilter If=$d_MacroFlag
+	While $_FilterCount <> 0
+ 	Goto Position=Top
+ 	UserFlag type=set range=200
+ 	MFilter if=$d_MacroFlag .and. $d_UserFlag
+ 	Macroset Dialog=MagellanSD VarName=$MagellanSD 
+	GoTo Position=Bottom
+	$LastDist = AllTrim(Str($d_Distance,5,0))
+	Goto Position=Top
+	$FirstDist = AllTrim(Str($d_Distance,5,0))
+	Export Type=MAGSD Settings=<macro> File="$exportLoc\$FirstDist-$LastDist-$Database.gs"
+
+# now prepare for your next 200 records
+	MFilter if=$d_UserFlag
+	MacroFlag type=clear range=filter
+	MFilter if=$d_MacroFlag
+	EndWhile 
+
+# Reset Database
+	USERFLAG type=clear range=all
+	Macroflag type=clear range=all
+	SORT By=Distance Sequence=A 
+
+
+#######################################################
+# embeded settings
+
+<data> VarName=$MagellanSD
+[TfmMagPro]
+edtFormat.Text=%Name
+edtProblem.Text=
+cbxGps.Checked=False
+edtMaxGps.Text=20
+edtWaypoint.Text=%Code
+cbxFormat.Text=Explorist Geocaches
+chkMacro.Checked=False
+File1.Filename=
+chkChild.Checked=False
+chkFlag.Checked=False
+[TfmIcons]
+rbtBoth.Checked=False
+rbtStatus.Checked=True
+rbtType.Checked=False
+[icons]Archived=aerial
+CITO+Archived=aerial
+CITO+Found=aerial
+CITO+Not Found=aerial
+CITO+Placed=aerial
+CITO=aerial
+Event+Archived=airport
+Event+Found=airport
+Event+Not Found=airport
+Event+Placed=airport
+Event=airport
+Found=crossed square
+LetterBox+Archived=house
+LetterBox+Found=house
+LetterBox+Not Found=house
+LetterBox+Placed=house
+LetterBox=house
+Locationless+Archived=amusement park
+Locationless+Found=amusement park
+Locationless+Not Found=amusement park
+Locationless+Placed=amusement park
+Locationless=amusement park
+Multi+Archived=box
+Multi+Found=box
+Multi+Not Found=box
+Multi+Placed=box
+Multi=box
+Mystery+Archived=boating
+Mystery+Found=boating
+Mystery+Not Found=boating
+Mystery+Placed=boating
+Mystery=boating
+Not Found=box
+Placed=house
+Traditional+Archived=crossed square
+Traditional+Found=crossed square
+Traditional+Not Found=crossed square
+Traditional+Placed=crossed square
+Traditional=crossed square
+Version4.3
+Virtual+Archived=ATM
+Virtual+Found=ATM
+Virtual+Not Found=ATM
+Virtual+Placed=ATM
+Virtual=ATM
+Web Cam+Archived=auto repair
+Web Cam+Found=auto repair
+Web Cam+Not Found=auto repair
+Web Cam+Placed=auto repair
+Web Cam=auto repair
+
+<enddata>	

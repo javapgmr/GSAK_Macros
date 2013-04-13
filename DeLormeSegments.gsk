@@ -1,0 +1,499 @@
+#*******************************************
+# MacVersion = 1.2
+# MacDescription = Export Multiple Cache Segments to DeLorme PN-xx SD Card.
+# MacAuthor = Stevew
+# MacFileName = DeLormeSegments.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=16241
+#*******************************************
+# 2.8 firmware and GSAK 7.7.2.49 required.
+# This macro uses a saved setting for GPX Export configuration with the name, "PN Export"
+# Use the File->Export->GPX/LOC File option to configure and save settings.
+#
+# Waypoint files are placed directly on the SD card in the \waypoints folder.
+# The file name structure is <prefix>-<segment>
+# 	where <prefix> defaults to the name of the current database.
+# 	and <segment> is the waypoint segment file (Central, North, East, South, West)
+#  Version 1.1 - Expanded max waypoints to 1500 to accomodate PN-60
+#  Version 1.2 - Removed use of deprecated functions (Sort, DbToSqlite)
+#              - Restore original filter if all waypoints are sent to PN-xx
+#*******************************************
+
+VerCheck Version=7.7.2.49 (please update GSAK to the latest version to run this macro - see http://gsak.net)
+
+$DefaultMaxWaypoints = "975" # Default maximum waypoints per file (caches + children)
+$CachesPerChild = 1.3	# Average number of caches per child waypoint (1 child for every 3 caches)
+$NegOne = -1		# For some reason, can't mutiply directly, so using a variable
+$SavedGPXSetting = "PN Export"	# Must have this saved setting in File->Export->GPX/Loc dialog
+$ParentCount = 0
+$ChildCount = 0
+$TotalCount= 0
+
+$Settings = SysInfo ("S_GPX")	# Test for saved GPX Export settings
+$cnt = 1
+$CheckString = Extract($Settings, ";", $cnt)
+While $CheckString <> ""	# Scan through the GPX Export settings
+   If $CheckString = $SavedGPXSetting	# Found it
+      Break
+   EndIf
+   $cnt=$cnt + 1
+   $CheckString = Extract($Settings, ";", $cnt)
+EndWhile
+
+If $CheckString = ""	# Didn't find the setting. Create it.
+   MacroSet Dialog=GPX VarName=$GPXDialogSettings Name=$SavedGPXSetting
+EndIf
+
+#-- See if the saved setting includes child waypoints
+$database = "$_AppData\gsak.db3"
+$data = Sqlite("open",$database)
+$sql="SELECT Data FROM Settings WHERE Type='SX' AND Description='$SavedGPXSetting'"
+$GPXConfig = Sqlite("sql",$sql)
+$data = Sqlite("close")
+
+If At("chkChild.Checked=True", $GPXConfig) > 0	# Include children in export
+   $IncludeChildren=True
+Else
+   $IncludeChildren=False
+EndIf
+
+$Drive = ""
+$FolderPath = ""
+GOSUB Name=DetectPN	# Find the PN-XX
+
+$editMaxWaypoints = "0"	# Initialize
+$Form = EditForm($form,"Label2","Caption","DeLorme SD card found on drive" + " " + $Drive)
+
+MacSettings Type=R FileCheck=N	# Restore previous settings
+
+If Val($editMaxWaypoints) < 1 	# No value read from saved settings
+   $editMaxWaypoints = $DefaultMaxWaypoints	# Use default
+EndIf
+
+$editPrefix = $_CurrentDatabase	# Default prefix is current database name
+
+$Loop=True
+While $Loop
+   $FormExit = form($form,"")
+     BeginCase
+       Case $FormExit = "SystemExit"
+       Case $FormExit = "btnCancel"
+         Cancel
+       Case $FormExit = "btnOK"
+         If Val($editMaxWaypoints) > 1500 or Val($editMaxWaypoints) < 1
+           MsgOk Msg="Max Waypoints must be 1-1500"
+         Else
+            Break	# We're good to go
+         EndIf
+       Case $FormExit = "btnHelp"
+         MsgOk Msg=$HelpText Caption="DelormeSegements"
+     EndCase
+EndWhile
+
+MacSettings Type=S Vars=editMaxWaypoints	# Save max waypoints for future runs
+
+$MaxWaypoints = Val($editMaxWaypoints)
+
+If $chkCentroid		# Calculate the centroid
+   GOSUB Name=CalcCentroid
+EndIf
+
+#-- User flag defines the full data set. Macro Flag defines the working set. As caches are sent to GPSr, User flag is cleared.
+#Save the joined filter (i.e. the List of Codes)
+$p_Codes=""
+$_sql="Select Code from CachesAll Where $_Where"
+$Codes=Sqlite("sql",$_sql)
+$p_Codes="'" + Replace($_CrLf,"','",$Codes) + "'"
+
+# cancel the current filter to work on the whole database
+CancelFilter
+DataSave data=$d_UserFlag	# Save the current user flag settings
+UserFlag Type=Clear Range=All	# Start fresh
+MacroFlag type=clear range=all
+
+#restore the filter by using the codes:
+$_sql=$p_Codes
+MFILTER Where=Code IN($_sql)
+
+# Set the user flag for the original filter set. This will be our starting point
+UserFlag Type=Set Range=Filter
+
+IF $_FilterCount <= 0	# Shouldn't happen, but just in case.
+  PAUSE Msg="No waypoints in filter, action cancelled"
+ENDIF
+
+#-- Start from center waypoint and extend outward
+SQLsort Orderby=Distance
+$Segment="Center"
+GOSUB Name=CountWaypointsAndSend
+$Finalmsg = "All done" + $_NewLine + $_NewLine
+$Finalmsg =  $Finalmsg + "$Segment: " + NumtoStr($ParentCount) + " Caches + " + NumtoStr($ChildCount) + " Children = " + NumtoStr($TotalCount) + $_NewLine
+USERFLAG Type=Clear Range=filter   # Don't need these waypoints since they have been sent.
+
+#-- Now get the North slice
+CANCELFILTER 
+MFILTER Where=UserFlag and((Degrees >= 0 and Degrees < 45) or (Degrees >= 315 and degrees < 360))
+IF $_FilterCount > 0
+   $Segment="North"
+   GOSUB Name=CountWaypointsAndSend
+   $Finalmsg =  $Finalmsg + "$Segment: " + NumtoStr($ParentCount) + " Caches + " + NumtoStr($ChildCount) + " Children = " + NumtoStr($TotalCount) + $_NewLine
+   USERFLAG Type=Clear Range=filter   # Don't need these waypoints since they have been sent.
+ENDIF
+
+#-- Now get the East slice
+CANCELFILTER 
+MFILTER Where=UserFlag and((Degrees >= 45 and Degrees < 135))
+IF $_FilterCount > 0
+   $Segment="East"
+   GOSUB Name=CountWaypointsAndSend
+   $Finalmsg =  $Finalmsg + "$Segment: " + NumtoStr($ParentCount) + " Caches + " + NumtoStr($ChildCount) + " Children = " + NumtoStr($TotalCount) + $_NewLine
+   USERFLAG Type=Clear Range=filter   # Don't need these waypoints since they have been sent.
+ENDIF
+
+#-- Now get the South slice
+CANCELFILTER 
+MFILTER Where=UserFlag and ((Degrees >= 135 and Degrees < 225))
+IF $_FilterCount > 0
+   $Segment="South"
+   GOSUB Name=CountWaypointsAndSend
+   $Finalmsg =  $Finalmsg + "$Segment: " + NumtoStr($ParentCount) + " Caches + " + NumtoStr($ChildCount) + " Children = " + NumtoStr($TotalCount) + $_NewLine
+   USERFLAG Type=Clear Range=filter   # Don't need these waypoints since they have been sent.
+ENDIF
+
+#-- Now get the West slice
+CANCELFILTER 
+MFILTER Where=UserFlag and((Degrees >= 225 and Degrees < 315))
+IF $_FilterCount > 0
+   $Segment="West"
+   GOSUB Name=CountWaypointsAndSend
+   $Finalmsg =  $Finalmsg + "$Segment: " + NumtoStr($ParentCount) + " Caches + " + NumtoStr($ChildCount) + " Children = " + NumtoStr($TotalCount) + $_NewLine
+   USERFLAG Type=Clear Range=filter   # Don't need these waypoints since they have been sent.
+ENDIF
+
+CANCELFILTER
+MFILTER Where=UserFlag
+IF $_FilterCount > 0
+   $Finalmsg = $Finalmsg + $_NewLine + " Current filter shows waypoints not sent (" + NumtoStr($_FilterCount) + ")"
+   MACROFLAG Type=Clear Range=All
+   MACROFLAG Type=Set Range=Filter	# Use the macro flag to tag unsent waypoints
+ELSE
+   MACROFLAG Type=Clear Range=All
+ENDIF
+
+USERFLAG Type=Clear Range=All
+CancelFilter
+DataRestore data=$d_UserFlag	# Restore original User Flag settings
+SPEEDMODE Status=Off
+MFILTER Where=MacroFlag
+IF $_FilterCount = 0		# All waypoints in filter were sent
+   $_sql=$p_Codes
+   MFILTER Where=Code IN($_sql) # Restore original filter
+ENDIF
+
+MSGOK msg=$Finalmsg
+#============================================================================
+BeginSub Name=CountWaypointsAndSend
+#-- Count the number of waypoints and build list to export
+Goto Position=Top
+MACROFLAG Type=Clear Range=All
+MACROFLAG Type=Set Range=$MaxWaypoints  # Start with user-supplied count and reduce from there
+MFILTER Where=MacroFlag
+
+$ParentCount=$_Count
+$ChildCount = 0
+If $IncludeChildren
+   $ChildCount=TotChild("Filter")
+EndIf
+
+$TotalCount=$ParentCount+$ChildCount
+$ReduceCount=0
+WHILE $TotalCount>$MaxWaypoints         # Too many waypoints. Reduce count
+   $ReduceCount = ROUND((($TotalCount-$MaxWaypoints)/$CachesPerChild),0)	#Estimate number of caches to reduce
+   $ReduceCount = $ReduceCount * $NegOne	# Make negative
+   GOTO position=bottom
+   GOTO position=$ReduceCount
+   GOTO position=1		# Move down 1 to adjust for for zero-base
+   $ReduceCount = $ReduceCount * $NegOne      # Make positive
+   MACROFLAG Type=Clear Range=$Reducecount  # Clear the flag for last group of caches on the list
+   GOTO position=top
+   MFILTER Where=MacroFlag       # Re-filter to get reduced set
+   $ParentCount=$_Count
+   If $IncludeChildren
+      $ChildCount=TotChild("Filter")
+   EndIf
+   $TotalCount=$ParentCount+$ChildCount
+ENDWHILE
+
+$msg="Exporting " + $Segment + " (" + NumToStr($ParentCount) + " caches + " + NumToStr($ChildCount) + " children = " + NumToStr($TotalCount) + " total waypoints)"
+SHOWSTATUS msg=$msg Width=365
+
+$FilePath = $FolderPath + "\" + AllTrim($editPrefix) + "-" + $Segment + ".gpx"
+EXPORT Type=GPX Settings=$SavedGPXSetting File=$FilePath
+SHOWSTATUS Display=Off
+EndSub
+
+#============================================================================
+BEGINSUB Name=DetectPN
+$Mode = GPSInfo ("DelormeMode")
+	
+BeginCase
+   Case $Mode = "Internal"
+      MSGOK msg="PN-xx GPSr must be in SD Card mode"
+      Cancel
+
+   Case $Mode = "SD Card"
+      $Drive = GPSInfo ("DelormeSdCard")
+      $Folder = "\waypoints"
+      $FolderPath = $Drive + $Folder
+      IF FolderExists($FolderPath)	# Verify the folder path
+         EXITSUB
+      ELSE
+         MSGOK msg="\waypoints folder not found on Drive $Drive"
+         Cancel
+      ENDIF
+   EndCase
+	
+   # Nothing found
+   MSGOK msg="GPSr not detected - Check connection and SD mode"
+   Cancel
+ENDSUB
+
+#============================================================================
+# Caclulate centroid - derived from Lignumaqua's Centroid macro
+BEGINSUB Name=CalcCentroid
+
+GOTO Position=Top		# First cache on the list
+   $ThisRecord = 1
+   $count = $_Count
+   $x = 0
+   $y = 0
+   $z = 0
+   $pi = 3.14159265359
+   # Parameters for WGS84 ellipsoid
+   $axis = 6378137
+   $ecc = 0.00669438038
+   WHILE not($_EOL)
+     IF Frac($ThisRecord/10) = 0
+        SHOWSTATUS msg="Calculating centroid, $ThisRecord" Width=350
+     ENDIF
+	
+   # Convert to Decimal degrees then to Radians
+   $LatitudeN = Val($d_Latitude) * $pi / 180
+      $LongitudeN = Val($d_Longitude) * $pi / 180
+  
+      # Calculate 3D cartesian coordinates and average them
+      $v = $axis / (Sqrt(1-($ecc * Sin($LatitudeN) * Sin($LatitudeN))))
+      $x = $x + $v * (Cos($LatitudeN) * Sin($LongitudeN))
+      $y = $y + $v * ( -1 * Cos($LatitudeN) * Cos($LongitudeN))
+      $z = $z + $v * (1 - $ecc) * Sin($LatitudeN)	
+  	
+      GOTO Position=Next
+      $ThisRecord = $ThisRecord + 1
+   ENDWHILE
+
+$x = $x/$count
+$y = $y/$count
+$z = $z/$count
+
+# Project the average point back up to the surface of the WGS84 Ellipsoid
+# Note this requires iteration
+	
+# Longitude = ArcTan2(x, -y)
+$y = -$y
+
+$longitudeN = ArcTan2($x,$y)
+		
+# Latitude = ArcTan2(z, sqrt(x*x + y*y))
+
+$y = Sqrt(Sqr($x) + Sqr($y))
+	
+$latitudeN = ArcTan2($z,($y * (1 - $ecc)))
+$v = $axis / (Sqrt(1-($ecc * Sin($LatitudeN) * Sin($LatitudeN))))
+$errvalue = 1
+$tmpN = 0
+
+$tmpM = 0
+WHILE $errvalue > 0.000001 AND $tmpM <5
+   $tmpM = $tmpM + 1
+   $x = ($ecc * $v * Sin($LatitudeN))
+   $tmpN = ArcTan2($z + $x, $y)
+   $errvalue = Abs($tmpN - $LatitudeN)
+   $LatitudeN = $tmpN
+ENDWHILE
+
+# Convert from radians to degrees and format as decimal minutes
+
+$latitudeN = 180 * $latitudeN / $pi
+$longitudeN = 180 * $longitudeN / $pi
+
+$latitude = NumToStr($latitudeN)
+$longitude = NumToStr($longitudeN)
+
+# Deal with commas as decimal separator
+$latitude = Replace(",",".",$latitude,TRUE)
+$longitude = Replace(",",".",$longitude,TRUE)
+
+$coords = $Latitude + " " + $Longitude
+Center Location="Center" COORDINATES=$coords
+ShowStatus Display=Off
+
+ENDSUB
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Tue 27-Jul-2010 17:08:29
+#********************************************************************
+
+Name = ConfigForm
+  Type = Form
+  Height = 242
+  Width = 374
+
+Name = chkCentroid
+  Type = Checkbox
+  Height = 17
+  Left = 32
+  Top = 72
+  Width = 225
+  Taborder = 13
+  Caption = Calculate centroid of current filter set
+
+Name = editMaxWaypoints
+  Type = Edit
+  Height = 21
+  Left = 32
+  Top = 104
+  Width = 49
+  Taborder = 1
+
+Name = Label1
+  Type = Label
+  Height = 13
+  Left = 89
+  Top = 107
+  Width = 197
+  Caption = Max waypoints (caches + children) per file
+
+Name = Label2
+  Type = Label
+  Height = 20
+  Left = 32
+  Size = 12
+  Top = 8
+  Width = 232
+  Caption = DeLorme SD card found on drive
+
+Name = btnOK
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 32
+  Top = 152
+  Width = 75
+  Taborder = 9
+  Caption = OK
+
+Name = btnCancel
+  Type = Button
+  Escape = Yes
+  Height = 25
+  Left = 136
+  Top = 152
+  Width = 75
+  Taborder = 10
+  Caption = Cancel Macro
+
+Name = btnHelp
+  Type = Button
+  Height = 25
+  Left = 240
+  Top = 152
+  Width = 75
+  Taborder = 11
+  Caption = Help
+
+Name = editPrefix
+  Type = Edit
+  Height = 21
+  Left = 32
+  Top = 40
+  Width = 121
+  Taborder = 12
+
+Name = Label3
+  Type = Label
+  Height = 13
+  Left = 160
+  Top = 40
+  Width = 70
+  Caption = Segment prefix
+
+<enddata>
+
+<data> VarName=$HelpText
+This macro separates the current list of caches into 5 segments and 
+exports those segments to files on the SD card of the DeLorme PN-xx GPSr.
+
+Note: DeLorme GPSr firmware version 2.8 or higher is required. 
+
+The macro first creates a "Center" segment by selecting and exporting 
+the caches nearest the center. It then creates and exports segments 
+for areas North, East, South and West of the center segment.
+
+The files are named, "<prefix>-<segment>" where <prefix> defaults to the
+current database name and <segment> is Center, North, East, South, West.
+You can specify a different prefix, if desired.
+
+
+To use this macro:
+1) The macro relies on a saved GPX Export setting called, "PN Export". If this
+   setting is not found, it is created. You can change the export settings 
+   in the File->Export->GPX/Loc dialog. If you change the settings, 
+   be sure to save them with a name of "PN Export".
+2) Connect the GPSr and place it in, "Open SD Card" mode 
+      (Menu->Device Settings->Connect to Computer)
+3) Filter your GSAK database to the list of caches you wish to export
+4) Run the macro.
+5) Specify the maximum number of waypoints to include in each segment.
+   I use 975, which leaves 25 waypoints available for other use.
+6) The macro will use the current database center point when creating 
+   the segments. If you check the "Calculate centroid" box, the macro will calculate
+   the centroid of the current filter set and will use it instead.
+7) The macro exports the segment files to the SD card and displays
+   the list of waypoints (if any) that were not exported.
+8) To open a segment file on the GPSr, from the Geocaches page, press the
+   <Menu> button and choose File->Open.
+
+<enddata>
+
+
+<data> VarName=$GPXDialogSettings
+[TfmExportGpx]
+fnmTo.Text=F:\waypoints\Test.gpx
+cbxLimit.Text=10
+cbxUserNotes.Checked=True
+chkActual.Checked=False
+chkDefault.Checked=False
+chkExtra.Checked=False
+chkMyLogs.Checked=False
+chkSymbol.Checked=False
+edtFormat.Text=%name %children %c_name %c_comment
+edtMax.Text=
+edtMaxGps.Text=30
+edtWaypoint.Text=%code %children %shortname=14 %c_code
+rbtGpx.Checked=True
+rbtLoc.Checked=False
+edtProblem.Text=
+edtExtra.Text=
+chkChild.Checked=True
+chkOnlyChild.Checked=False
+rbtAllChildren.Checked=True
+rbtOnlyFlagged.Checked=False
+rbtOnlyUnFlagged.Checked=False
+chkApplyName.Checked=False
+chkForce.Checked=True
+cbxVersion.Text=Ver 1.0
+chkLogAlternate.Checked=True
+[TfmExportGpx.cbxRecent.Items]
+Count=0
+<enddata>
+

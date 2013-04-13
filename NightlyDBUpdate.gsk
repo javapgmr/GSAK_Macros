@@ -1,0 +1,1731 @@
+#************************************************************************
+# MacVersion = 1.26
+# MacDescription = Automatically backup and update your database(s) each night
+# MacAuthor = Tigerz
+# MacFileName = NightlyDBUpdate.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=8096
+#************************************************************************
+# This macro will automatically update and trim the default database
+# at a just about any frequency (such as nightly).  A one time user
+# configuration is necessary.  Features include updating all waypoints
+# up to 50 miles/kilometers away, updating owned caches to for use 
+# in calculating FindStatGen statistics, trimming the logs of both 
+# found and unfound caches to prevent bloating, and automatically
+# deleting unfound caches that have been archived.
+#************************************************************************
+# Version History
+# 1.26 - 4 August 2008
+#   +  Corrected typo in variable declarations
+# 1.25 - 3 August 2008
+#   +  Changed Help/Support link from a PDF file to the appropriate GSAK
+#      Forum
+# 1.24 - 3 July 2008
+#   +  Bug correction
+# 1.23 - 3 July 2008
+#   +  Macro now goes to the Configuration Menu when Help File is 
+#      downloaded
+#   +  Added logic to prevent user locked waypoints from being updated
+#      as the macro refreshes the database
+# 1.22 - 3 May 2008
+#   +  Added the ability to save a backup of all databases for the last 
+#      5 runs ... thanks to DopeyDuck for this and other fine suggestions
+#      and to Kai Team for the start in the right direction!
+#   +  Moved the removal of the split screen to after the Configuration
+#      Menu ... should the macro be canceled from the Start Screen or
+#      Configuration Menu the user will remain in split screen mode
+# 1.21 - 23 Apr 2008
+#   +  Added a dummy mask of asteriks and a comment to shield the password in 
+#      the Configuration Menu
+#   +  Added the ability to move caches that are both Unfound and Archived
+#      to a user-defined "Archived" database ... note that a "MoveArchived"
+#      setting must first be saved in the Database \ Move/Copy Waypoints dialog
+#   +  Corrected an error in the trimming of Found and Unfound caches
+#   +  Corrected an error where logs from Owned caches were being inadvertently 
+#      included in the purge during the TrimFound and TrimUnfound operations
+#   +  Added fix to turn off split screen view to work around an
+#      internal GSAK error ... see http://gsak.net/board/index.php?showtopic=8200
+#   +  Placed the Configuration Menu in a subroutine to allow for more
+#      efficient validating of configuration preferences
+#   +  Cleaned up the code associated with the Configuration Menu Form ... 
+#      clarified the "Center Point" as a GSAK "Location" (Tools\Options\Locations)
+#   +  Revised the online Help file to reflect the new capabilities
+# 1.20 - 22 Apr 2008
+#   +  Added Start Screen that is present for 10 seconds at beginning of each
+#      run ... "Options" on Start Screen eliminated the need for user to
+#      load the macro editor to configure their preferences 
+#   +  For ease of use, preferences are now saved to a data file
+#   +  If configuration preferences have not been updated, the user will
+#      automatically be taken the Configuration Menu
+#   +  Added version number in data file to help facilitate future updates
+#   +  Added link on Start Screen and Configuration Menu to online PDF
+#      help file
+# 1.10 - 18 Apr 2008
+#   +  Added ability to first export unfound/archived caches before 
+#      deleting - caches will be saved in the \Backup folder to a GPX 
+#      file called Archived followed by the current date ... user must 
+#      save a "NightlyDBUpdate" GPX setting before using
+#   +  Added ability to use separate databases for Owned, Found
+#      and Unfound caches
+#   +  Given the new opportunity to change multiple databases, all 
+#      databases can optionally be backed up before any other operations
+#      are initiated
+#   +  User now has the option to exit GSAK completely or just end
+#      the macro
+# 1.00 - 10 Apr 2008 - Released for public use
+# 0.00 - 7 Apr 2008 - Released for initial testing and comments
+#************************************************************************
+# Thanks to Clyde, the GSAK development team, and the many contributors
+# to the GSAK macro forum for their insight and top-notch support.  
+# Special thanks to Bushman4 (RefreshAllGPX.gsk) as the gist of his
+# logic and earlier macro have been incorporated in to this macro.  Thanks
+# also to Kai Team for the code/assistance to save the last 5 nightly
+# database backups.
+#************************************************************************
+# Comments and requests for support are encouraged at
+# http://gsak.net/board/index.php?showtopic=8095.
+#************************************************************************
+
+# Use of some of the functions in this macro require at least version 7.2 of GSAK
+VerCheck Version=7.2.0.0 (To run this macro, please update to the lastest GSAK version at http://gsak.net)
+
+# Troubleshooting
+DEBUG Status=Off
+SPEEDMODE Status=On
+
+#********************************************************************
+# Declare/Define Variables
+GOSUB Name=Declare
+$DBList=SysInfo("Databases")
+$LocList=SysInfo("Locations")
+$LocNames=RegexReplace(",.*?;",$LocList,";")
+
+#********************************************************************
+# Default configuration values if data file is not present
+#********************************************************************
+$Backup=TRUE
+$BackupCount=0		
+$FilterOnly=FALSE		
+$CheckEmail=FALSE		
+$UpdateOwned=FALSE		
+$TrimUnfound=FALSE		
+$TrimFound=FALSE
+$DelArchived=FALSE
+$SaveArchived=FALSE
+$MoveArchived=FALSE
+$ExitMacro=FALSE
+$MyUserName="YourUserName"	
+$MyPassword="YourPassword"
+$DistanceMiles="5"
+$UpdateDays="30"
+$UnfoundDB="YourUnfoundDB"
+$FoundDB="YourFoundDB"
+$OwnedDB="YourOwnedDB"
+$ArchivedDB="YourArchivedDB"
+$CenterPt="Name"
+$GPXUploadSettings="None"
+$OtherMacros=FALSE
+$Macro01=""
+$Macro02=""
+$Macro03=""
+$Macro04=""
+$Macro05=""
+$Macro06=""
+$MacroVer="1.26"
+$PassNo=0
+
+#********************************************************************
+# Check for an existing data file and read it
+#********************************************************************
+# Set the file path for the data file
+$datafile=$_Install + "\Macros\NightlyDBUpdate.dat"
+
+IF (FileExists($datafile))
+
+    FILEREAD File=$datafile
+
+      $Backup=StrToBool(EXTRACT($line, ";", 1))
+      $FilterOnly=StrToBool(EXTRACT($line, ";", 2))
+      $CheckEmail=StrToBool(EXTRACT($line, ";", 3))
+      $UpdateOwned=StrToBool(EXTRACT($line, ";", 4))
+      $TrimUnfound=StrToBool(EXTRACT($line, ";", 5))
+      $TrimFound=StrToBool(EXTRACT($line, ";", 6))
+      $DelArchived=StrToBool(EXTRACT($line, ";", 7))
+      $SaveArchived=StrToBool(EXTRACT($line, ";", 8))
+      $ExitMacro=StrToBool(EXTRACT($line, ";", 9))
+      $MyUserName=EXTRACT($line, ";", 10)
+      $MyPassword=EXTRACT($line, ";", 11)
+      $DistanceMiles=EXTRACT($line, ";", 12)
+      $UpdateDays=EXTRACT($line, ";", 13)
+      $UnfoundDB=EXTRACT($line, ";", 14)
+      $FoundDB=EXTRACT($line, ";", 15)
+      $OwnedDB=EXTRACT($line, ";", 16)
+      $CenterPt=EXTRACT($line, ";", 17)
+      $GPXUploadSettings=EXTRACT($line, ";", 18)
+      $OtherMacros=StrToBool(EXTRACT($line, ";", 19))
+      $Macro01=EXTRACT($line, ";", 20)
+      $Macro02=EXTRACT($line, ";", 21)
+      $Macro03=EXTRACT($line, ";", 22)
+      $Macro04=EXTRACT($line, ";", 23)
+      $Macro05=EXTRACT($line, ";", 24)
+      $Macro06=EXTRACT($line, ";", 25)
+      $MacroVer=Extract($line, ";", 26)
+      $MoveArchived=StrToBool(EXTRACT($line, ";", 27))
+      $ArchivedDB=EXTRACT($line, ";", 28)
+      $BackupCount=Val(EXTRACT($line, ";", 29))
+
+    ENDREAD
+
+ENDIF
+
+IF ShowForm($StartScreen)
+
+   BeginCase
+
+      Case $Cancel
+      Cancel Msg="Macro was canceled by user"
+ 
+      Case $Options
+      GOSUB Name=ConfigMenu
+
+      Case $Help
+      RunPgm Pgm="http://gsak.net/board/index.php?showtopic=8095"
+      GOSUB Name=ConfigMenu
+
+      Case $Continue
+      # User clicked on Continue and all is well
+
+    EndCase
+
+ENDIF
+
+#********************************************************************
+# Ensure the user configuration area has been updated
+
+  IF Val($MacroVer)<=1.23 .OR. $MyPassword="MyPassword" .OR. $MyUserName="MyUserName" .OR. $FoundDB="YourFoundDB" .OR. $UnfoundDB="YourUnfoundDB" .OR. $OwnedDB="YourOwnedDB"  .OR. $ArchivedDB="YourArchivedDB".AND. $PassNo=0
+
+  Pause Msg="Either the macro has been updated with new configuration options or the original user configuration portion of the NightlyDBUpdate macro has not been updated to reflect your personal preferences.  You are about to be re-directed to the Configuration Menu."
+  GOSUB Name=ConfigMenu
+
+  ENDIF
+
+
+#********************************************************************
+# Save the data input values for the future
+#********************************************************************
+IF $MyPassword="*** PW is Hidden ***"
+   $MyPassword=$GoodPW
+ENDIF
+
+$MacroVer="1.26"
+
+IF $Backup
+  $BackupCount=$BackupCount+1
+  IF $BackupCount>5
+     $BackupCount=1
+  ENDIF
+ENDIF
+
+$UserChoices="$Backup;$FilterOnly;$CheckEmail;$UpdateOwned;$TrimUnfound;$TrimFound;$DelArchived;$SaveArchived;$ExitMacro;$MyUserName;$MyPassword;$DistanceMiles;$UpdateDays;$UnfoundDB;$FoundDB;$OwnedDB;$CenterPt;$GPXUploadSettings;$OtherMacros;$Macro01;$Macro02;$Macro03;$Macro04;$Macro05;$Macro06;$MacroVer;$MoveArchived;$ArchivedDB;$BackupCount"
+$SavedFile=PUTFILE($datafile, $UserChoices)
+
+IF Left($SavedFile, 7) = "*Error*"
+
+  CANCEL Msg="Unable to write to $datafile!"
+
+ENDIF
+
+
+#********************************************************************
+# If desired, create backup copy of all databases
+IF $Backup
+  GOSUB Name=BackupDB
+ENDIF
+#********************************************************************
+
+#********************************************************************
+# Check for out-of-bounds entries
+GOSUB Name=Condition
+#********************************************************************
+
+#********************************************************************
+# Call GetMail if user wants to update with any new PQ's first
+#********************************************************************
+IF $CheckEmail
+  ShowStatus Msg="Retrieving any new PQ's ... " WIDTH=300
+  GETMAIL Settings="default" OnError=Prompt "To use GetMail to check for new PQ's, you must first save a 'default' setting."
+ENDIF
+
+#********************************************************************
+# Rotate through the various options calling the appropriate 
+# subroutines
+#********************************************************************
+IF $FilterOnly
+   GOSUB Name=FilterOnly
+ELSE
+   GOSUB Name=Update
+ENDIF
+
+IF $UpdateOwned
+   GOSUB Name=UpdateOwned
+ENDIF
+
+IF $TrimFound .OR. $TrimUnfound .OR. $DelArchived
+#********************************************************************
+# Turn off split screen viewing
+#********************************************************************
+   $status = sysinfo("gsakini;TfmOffline;sbbVwSplit.Down")
+   IF $status = "True"
+     $SaveScrnStatus=TRUE
+     SplitScreen Display=Off
+   ENDIF
+   GOSUB Name=TrimDelete
+ENDIF
+
+IF $OtherMacros
+   GOSUB Name=OtherMacros
+ENDIF
+
+# Turn split screen viewing back on
+IF $SaveScrnStatus
+   SplitScreen Display=On
+ENDIF
+
+IF $ExitMacro
+
+   EXIT
+
+ELSE
+
+   # Cancel any filters and refresh the screen before ending macro
+   CANCELFILTER
+   SPEEDMODE Status=Off
+
+   CANCEL
+
+ENDIF
+
+
+#********************************************************************
+#********************************************************************
+#********************************************************************
+# Subroutines
+#********************************************************************
+#********************************************************************
+#********************************************************************
+
+
+#********************************************************************
+# Declare Variables
+#********************************************************************
+BEGINSUB Name=Declare
+
+Option Explicit=Yes
+
+Declare Var=$ArchivedDB Type=String
+Declare Var=$Backup Type=Boolean
+Declare Var=$BackupCount Type=Numeric
+Declare Var=$BackupFile Type=String
+Declare Var=$CenterPt Type=String
+Declare Var=$CheckEmail Type=Boolean
+Declare Var=$ChooseMsg Type=String
+Declare Var=$Completed Type=Numeric
+Declare Var=$Count Type=Numeric
+Declare Var=$data Type=String
+Declare Var=$DataFile Type=String
+Declare Var=$DBList Type=String
+Declare Var=$DelArchived Type=Boolean
+Declare Var=$DistanceMiles Type=String
+Declare Var=$error Type=String
+Declare Var=$ExitMacro Type=Boolean
+Declare Var=$FilterOnly Type=Boolean
+Declare Var=$Form Type=String
+Declare Var=$FoundDB Type=String
+Declare Var=$GetGPX Type=String
+Declare Var=$GetGPXexe Type=String
+Declare Var=$GoodPW Type=String
+Declare Var=$GPXFile Type=String
+Declare Var=$GPXUploadSettings Type=String
+Declare Var=$LocList Type=String
+Declare Var=$LocNames Type=String
+Declare Var=$Macro01 Type=String
+Declare Var=$Macro02 Type=String
+Declare Var=$Macro03 Type=String
+Declare Var=$Macro04 Type=String
+Declare Var=$Macro05 Type=String
+Declare Var=$Macro06 Type=String
+Declare Var=$MacroDir Type=String
+Declare Var=$MacroVer Type=String
+Declare Var=$Mouse Type=String
+Declare Var=$MoveArchived Type=Boolean
+Declare Var=$myEXE Type=String
+Declare Var=$myEXEPath Type=String
+Declare Var=$myParms Type=String
+Declare Var=$MyPassword Type=String
+Declare Var=$MyUserName Type=String
+Declare Var=$OtherMacros Type=Boolean
+Declare Var=$OwnedDB Type=String
+Declare Var=$OwnedSameDB Type=Boolean
+Declare Var=$PassNo Type=Numeric
+Declare Var=$s1 Type=String
+Declare Var=$s2 Type=String
+Declare Var=$SaveArchived Type=Boolean
+Declare Var=$SaveArchivedFile Type=String
+Declare Var=$SavedFile Type=String
+Declare Var=$SavedPassword Type=String
+Declare Var=$SaveScrnStatus Type=Boolean
+Declare Var=$ScrnStatus Type=Boolean
+Declare Var=$Status Type=String
+Declare Var=$TextToAdd Type=String
+Declare Var=$TimeToFinish Type=Numeric
+Declare Var=$Today Type=String
+Declare Var=$UpdateDays Type=String
+Declare Var=$TrimUnfound Type=Boolean
+Declare Var=$TrimFound Type=Boolean
+Declare Var=$RunAt2400 Type=Boolean
+Declare Var=$UnfoundDB Type=String
+Declare Var=$UpdateOwned Type=Boolean
+Declare Var=$UserChoices Type=String
+
+ENDSUB
+
+
+#********************************************************************
+# Configuration Menu
+#********************************************************************
+BEGINSUB Name=ConfigMenu
+IF $MyPassword<>"YourPassword" .AND. $MyPassword<>"*** PW is Hidden ***"
+   $GoodPW=$MyPassword
+   $MyPassword="*** PW is Hidden ***"
+ENDIF
+
+$PassNo=$PassNo + 1
+
+IF ShowForm($ConfigForm)
+
+  BeginCase
+
+    Case $Continue
+    # User clicked Continue and all is well
+
+    Case $Cancel
+    Cancel Msg="Macro was canceled by user"
+
+    Case $Help
+    RunPgm Pgm="http://gsak.net/board/index.php?showtopic=8095"
+    GOSUB Name=ConfigMenu
+
+  EndCase
+
+ENDIF
+
+ENDSUB
+
+
+#********************************************************************
+# Backup current database
+#********************************************************************
+BEGINSUB Name=BackupDB
+
+  ShowStatus Msg="Making a backup copy of your databases ... " Width=350
+
+  $BackupFile=$_Install + "\Backup\" + "NightlyBackup" + NumToStr($BackupCount) + ".zip"
+  BACKUP File=$BackupFile Database=All Settings=No GrabbedImages=No 
+
+ENDSUB
+    
+
+#********************************************************************
+# Call other macros
+#********************************************************************
+BEGINSUB Name=OtherMacros
+
+Option Explicit=No
+
+$MacroDir=$_Install + "\Macros"
+
+IF $Macro01 <> ""
+  SHOWSTATUS MSG="Calling $Macro01 ... " WIDTH=300
+  DELAY MS=1000
+  MACRO File=$MacroDir\$Macro01
+ENDIF
+
+IF $Macro02 <> ""
+  SHOWSTATUS MSG="Calling $Macro02 ... " WIDTH=300
+  DELAY MS=1000
+  MACRO File=$MacroDir\$Macro02
+ENDIF
+
+IF $Macro03 <> ""
+  SHOWSTATUS MSG="Calling $Macro03 ... " WIDTH=300
+  DELAY MS=1000
+  MACRO File=$MacroDir\$Macro03
+ENDIF
+
+IF $Macro04 <> ""
+  SHOWSTATUS MSG="Calling $Macro04 ... " WIDTH=300
+  DELAY MS=1000
+  MACRO File=$MacroDir\$Macro04
+ENDIF
+
+IF $Macro05 <> ""
+  SHOWSTATUS MSG="Calling $Macro05 ... " WIDTH=300
+  DELAY MS=1000
+  MACRO File=$MacroDir\$Macro05
+ENDIF
+
+IF $Macro06 <> ""
+  SHOWSTATUS MSG="Calling $Macro06 ... " WIDTH=300
+  DELAY MS=1000
+  MACRO File=$MacroDir\$Macro06
+ENDIF
+
+ENDSUB
+
+
+
+#********************************************************************
+# Filter from the current/desired center point of the Unfound DB the  
+# chosen distance for waypoints that haven't been updated in the 
+# desired time frame
+#********************************************************************
+BEGINSUB Name=Update
+
+# Provide status and a button for user to cancel the macro
+ShowStatus Msg="Looking for out-of-date waypoints ... " Width=350 Height=150
+
+IF $_CurrentDatabase<>$UnfoundDB
+
+   DATABASE Name=$UnfoundDB Action=Select
+
+ENDIF
+
+# Reset center point as needed
+IF $CenterPt<>"Name"
+   Center Location="$CenterPt"
+ENDIF
+
+# Clear any existing filters
+CANCELFILTER
+
+  MFILTER IF=$d_LastGPXDate < $_Today - Val($UpdateDays) .AND. $d_distance <= Val($DistanceMiles) .AND..NOT. $d_Found .AND..NOT. $d_Archived .AND..NOT. $d_CacheType="O" .AND. .NOT. $d_Lock
+
+# End the macro if the filter returns no waypoints in need of refreshing, otherwise call RefreshAllGPX
+IF $_FilterCount > 0
+
+  SORT By="distance"
+  MACROFLAG type=clear range=all
+  MACROFLAG type=set range=filter
+
+  ShowStatus Msg="Updating waypoints from geocaching.com ... expect this to be slow! (15 Min per 100)" Width=500
+
+#********************************************************************
+# Refresh out-of-date waypoints with subroutine RefreshAllGPX.  This
+# is a modified form of RefreshGPXAll.gsk (Messages/Pauses were deleted).
+# Before calling RefreshAllGPX, ensure the password has been included.
+# After calling RefreshAllGPX, call UpdateOwned and TrimDelete to check 
+# if user wants to update their owned caches, to trim logs and/or delete 
+# unfound archived caches.
+#********************************************************************
+  GOSUB Name=RefreshAllGPX
+
+ENDIF
+
+ENDSUB
+
+
+BEGINSUB Name=FilterOnly
+    
+  ShowStatus Msg="Searching for caches within the desired range ..." WIDTH=400
+  
+  IF $_CurrentDatabase<>$UnfoundDB
+
+    DATABASE Name=$UnfoundDB Action=Select
+
+  ENDIF
+
+  CANCELFILTER
+  MFILTER IF=$d_LastGPXDate < $_Today - val($UpdateDays) .AND. $d_distance <= val($DistanceMiles) .AND..NOT. $d_Found .AND..NOT. $d_Archived .AND..NOT. $d_CacheType="O" .AND. .NOT. $d_Lock
+
+  IF $_FilterCount > 0
+
+	ShowStatus Msg="All waypoints are current ... restoring."
+        DELAY MS=5000
+
+  ENDIF
+
+ENDSUB
+
+
+
+BEGINSUB Name=TrimDelete
+#********************************************************************
+# If no logs are to be purged or waypoints deleted, end the macro
+#********************************************************************
+IF .NOT. $TrimFound .AND..NOT. $TrimUnfound .AND..NOT. $DelArchived .AND..NOT. $UpdateOwned .AND. .NOT. $d_Lock
+    CANCEL
+ENDIF
+
+
+
+#********************************************************************
+# Check to see if the user has elected to trim the number of logs
+# on Found caches.  
+#********************************************************************
+# From the Database - Purge Logs Dialog, the user must first create a
+# setting called "TrimFound" (without the quotes).  TrimFound defines
+# which specific logs are to be retained.  A warning will be issued
+# before any logs are deleted.
+#********************************************************************
+IF $TrimFound
+
+   CANCELFILTER
+
+   ShowStatus Msg="Trimming your Found logs ... this can be slow!" WIDTH=300
+
+   IF $_CurrentDatabase<>$FoundDB
+
+     DATABASE Name=$FoundDB Action=Select
+
+   ENDIF
+
+   MFILTER IF=$MyUserName<>$d_PlacedBy .AND. $d_Found .AND..NOT. IsOwner() .AND..NOT. regex($MyUserName,$d_OwnerName) .AND. .NOT. $d_Lock
+
+   IF $_FilterCount > 0
+
+     PURGELOGS Settings="TrimFound"
+
+   ENDIF
+
+ENDIF
+
+
+
+#********************************************************************
+# Check to see if the user has elected to trim the number of logs
+# on UnFound caches.  
+#********************************************************************
+# From the Database - Purge Logs Dialog, the user must first create a
+# setting called "TrimUnfound" (without the quotes).  TrimUnfound defines
+# which specific logs are to be retained.  A warning will be issued
+# before any logs are deleted.
+#********************************************************************
+IF $TrimUnfound
+
+   CANCELFILTER
+
+   ShowStatus Msg="Trimming your Unfound logs ... this can be slow!" WIDTH=300
+     
+     IF $_CurrentDatabase<>$UnfoundDB
+
+       DATABASE Name=$UnfoundDB Action=Select
+
+     ENDIF
+
+     MFILTER IF=$MyUserName<>$d_PlacedBy .AND..NOT. $d_Found .AND..NOT. IsOwner() .AND..NOT. regex($MyUserName,$d_OwnerName) .AND. .NOT. $d_Lock
+
+     IF $_FilterCount > 0
+
+       PURGELOGS Settings="TrimUnfound"
+
+     ENDIF
+
+ENDIF
+
+
+
+#********************************************************************
+# Check to see if the user has elected to delete all caches that meet
+# the distance and update critiria and are also both unfound and 
+# archived ... a warning will be issued before waypoints are deleted
+#********************************************************************
+IF $DelArchived
+
+  # Filter for caches that do not belong to the current user and are both archived and unfound
+
+  ShowStatus Msg="Searching for caches that are both archived and unfound ... " Width=400 
+
+  IF $_CurrentDatabase<>$UnfoundDB
+
+    DATABASE Name=$UnfoundDB Action=Select
+
+  ENDIF
+
+  CANCELFILTER
+
+  MFILTER IF=$d_Archived .AND. $MyUserName<>$d_PlacedBy .AND..NOT. $d_Found .AND..NOT. IsOwner() .AND..NOT. regex($MyUserName,$d_OwnerName)
+
+  # End the routine if the filter returns no waypoints that are both archived and unfound
+  IF $_FilterCount > 0
+
+     IF $SaveArchived
+
+	$Today=DateToString($_Today)
+        ShowStatus Msg="Saving archived and unfound to Archived-YYYYMMDD before deleting" Width=500 
+        $SaveArchivedFile=$_Install + "\Backup\Archived-" + $Today
+        EXPORT Type=GPX Settings="NightlyDBUpdate" File="$SaveArchivedFile"
+
+     ENDIF
+
+     IF $MoveArchived
+
+        ShowStatus Msg="Moving Archived and Unfound caches to the $ArchivedDB database ... " Width=500 
+        MoveCopy Settings="MoveArchived"
+
+     ENDIF
+
+  ShowStatus Msg="Deleting unfound archived caches ... expect this to be slow!" Width=400 
+
+  # Return to the Unfound database, reset the filter, and delete the Unfound/Archived caches
+
+  IF .NOT. $MoveArchived
+
+     IF $_CurrentDatabase<>$UnfoundDB
+
+       DATABASE Name=$UnfoundDB Action=Select
+
+     ENDIF
+
+     MFILTER IF=$d_Archived .AND. $MyUserName<>$d_PlacedBy .AND..NOT. $d_Found .AND..NOT. IsOwner() .AND..NOT. regex($MyUserName,$d_OwnerName)
+
+     # Commit and then physically remove the selected caches
+     macrodelete action=delscope
+     macrodelete action=commit
+
+     CANCELFILTER
+
+ ENDIF
+
+ ENDIF
+
+ENDIF
+
+# Reset to Unfound Database
+IF $_CurrentDatabase<>$UnfoundDB
+  DATABASE Name=$UnfoundDB Action=Select
+ENDIF
+
+ENDSUB
+
+
+
+#********************************************************************
+# Subroutine to update owned caches
+#********************************************************************
+BEGINSUB Name=UpdateOwned
+
+  # If owned caches are in a separate database, change databases
+
+      IF $_CurrentDatabase<>$OwnedDB
+
+         DATABASE Name=$OwnedDB Action=Select
+	 ShowStatus Msg="Updating $OwnedDB ... expect this to be slow! (15 Min per 100)" Width=400
+
+      ELSE
+
+         ShowStatus Msg="Updating ... expect this to be slow! (15 Min per 100)" Width=400
+
+      ENDIF
+
+  # Filter for caches that are owned by the user and have not been updated earlier today
+
+      CANCELFILTER
+      MFILTER IF=IsOwner() .AND..NOT. $d_LastGPXDate=$_Today .AND..NOT. $d_Archived .AND. .NOT. $d_Lock
+
+      # End the routine if the filter returns no owned waypoints that have not been already updated today
+      IF $_FilterCount > 0
+
+         GOSUB Name=RefreshAllGPX
+
+      ENDIF
+
+ENDSUB
+
+
+
+BEGINSUB Name=Condition
+#********************************************************************
+# Condition any out-of-bounds variables entered by user
+#********************************************************************
+IF Val($DistanceMiles) < 0.1
+   $DistanceMiles="0.1"
+   ShowStatus Msg="Distance must be greater than 0 ... resetting to 0.1" Width=400
+   DELAY MS=3000
+ENDIF
+
+IF Val($DistanceMiles) > 50
+   $DistanceMiles="50"
+   ShowStatus Msg="Distance must be less than 50 miles ... resetting to 50" Width=400
+   DELAY MS=3000
+ENDIF
+
+IF Val($UpdateDays) < 1
+   $UpdateDays="1"
+   ShowStatus Msg="Update timing must be at least a day ... resetting to 1" Width=400
+   DELAY MS=3000
+ENDIF
+
+IF Val($UpdateDays) > 365
+   $UpdateDays="365"
+   ShowStatus Msg="Update timing must be less than 366 days ... resetting to 365" Width=400
+   DELAY MS=3000
+ENDIF
+
+ENDSUB
+
+
+
+BEGINSUB Name=RefreshAllGPX
+#********************************************************************
+# The following is a modified copy of Bushman4's RefreshAllGPX.gsk
+#********************************************************************
+
+$myEXEPath = $_Install + "\temp\"
+
+$Count=0
+MacroFlag Type=Clear Range=All
+GOTO Position=Top
+While .not. $_EOL
+  MacroFlag Type=Set Range=1
+  $Count = $Count + 1
+  If $Count=250
+    Break
+  EndIf  
+  Goto Position=Next
+EndWhile
+MFILTER If=$d_MacroFlag .AND. .NOT. $d_Lock
+
+$myEXE = $myEXEPath + "GetGPX.exe"
+
+$GetGPXexe = MimeDecode($GetGpx)
+$status = PutFile($myExe,$GetGpxExe)
+
+$TextToAdd = "<?xml version=" + $_Quote 
+$TextToAdd = $TextToAdd + "1.0" + $_Quote 
+$TextToAdd = $TextToAdd + " encoding=" + $_Quote 
+$TextToAdd = $TextToAdd + "utf-8" + $_Quote + "?>" 
+$TextToAdd = $TextToAdd + $_newLine
+$TextToAdd = $TextToAdd + "<gpx xmlns:xsd=" 
+$TextToAdd = $TextToAdd + $_Quote + "http://www.w3.org/2001/XMLSchema" 
+$TextToAdd = $TextToAdd + $_Quote + " xmlns:xsi=" 
+$TextToAdd = $TextToAdd + $_Quote +"http://www.w3.org/2001/XMLSchema-instance"
+$TextToAdd = $TextToAdd + $_Quote + " version=" + $_Quote + "1.0" + $_Quote 
+$TextToAdd = $TextToAdd + " creator=" + $_Quote + "GetGPX" + $_Quote 
+$TextToAdd = $TextToAdd + " xsi:schemaLocation=" + $_Quote 
+$TextToAdd = $TextToAdd + "http://www.topografix.com/GPX/1/0 "
+$TextToAdd = $TextToAdd + "http://www.topografix.com/GPX/1/0/gpx.xsd "
+$TextToAdd = $TextToAdd + "http://www.groundspeak.com/cache/1/0 "
+$TextToAdd = $TextToAdd + "http://www.groundspeak.com/cache/1/0/cache.xsd" + $_Quote 
+$TextToAdd = $TextToAdd + " xmlns=" + $_Quote + "http://www.topografix.com/GPX/1/0" 
+$TextToAdd = $TextToAdd + $_Quote + ">" + $_newLine
+$error = Putfile($myEXEPath + "\Batch.gpx", $TextToAdd)
+
+$Completed = 0
+goto position=top
+while .not. $_EOL
+        $Completed = $completed + 1
+        SHOWSTATUS msg="Now retrieving cache $Completed: $d_Code - $d_Name" width=400
+        $myParms = "/u " + $_Quote + $myUserName + $_Quote + " /p " + $_Quote + $myPassword + $_Quote + " /wp " + $d_Code + " /batch Batch.gpx /verbose"
+        RUNPGM pgm=$myEXE parms=$myParms wait=yes
+        goto position=next
+endwhile
+$TextToAdd = "</gpx>" + $_newLine
+$error = AppendFile($myEXEPath + "\Batch.gpx", $TextToAdd)
+$GPXFile = $myEXEPath + "Batch.gpx"
+
+IF $GPXUploadSettings<>"None"
+  LOAD File=$GPXFile Settings="$GPXUploadSettings"
+ELSE
+  LOAD File=$GPXFile
+ENDIF
+
+<data> VarName=$GetGPX
+TVqQAAMAAAAEAAAA//8AALgAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+gAAAAA4fug4AtAnNIbgBTM0hVGhpcyBwcm9ncmFtIGNhbm5vdCBiZSBydW4gaW4gRE9TIG1vZGUuDQ0K
+JAAAAAAAAABQRQAATAEEAHTdw0YAAAAAAAAAAOAADgELAQYAACQAAAAOAAAAAAAAvkMAAAAgAAAAYAAA
+AAAAEQAgAAAAAgAABAAAAAAAAAAEAAAAAAAAAADAAAAABAAAAAAAAAIAAAQAABAAABAAAAAAEAAAEAAA
+AAAAABAAAAAAAAAAAAAAAGhDAABTAAAAAIAAAFgIAAAAAAAAAAAAAAAAAAAAAAAAAKAAAAwAAAAAYAAA
+HAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAACAAAAAAAAAAAAAAA
+CCAAAEgAAAAAAAAAAAAAAC50ZXh0AAAAxCMAAAAgAAAAJAAAAAQAAAAAAAAAAAAAAAAAACAAAGAuc2Rh
+dGEAAG0AAAAAYAAAAAIAAAAoAAAAAAAAAAAAAAAAAABAAADALnJzcmMAAABYCAAAAIAAAAAKAAAAKgAA
+AAAAAAAAAAAAAAAAQAAAQC5yZWxvYwAADAAAAACgAAAAAgAAADQAAAAAAAAAAAAAAAAAAEAAAEIAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+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
+AQCwKgAAAAARAA4BXgAEAPgqAAAAABEAJAFeAAUAQCsAAAAAEQA3AV4ABgAAAAEA8wAAAAIA/AAAAAMA
+BQEAAAEAGwEAAAEAGwEAAAEAGwEhAGMBYwAhAHgBaAApAIwBbAApAJgBcQAxAK4BdwA5AMcBfAA5ANUB
+fABBAOsBXgBJACMCgQApACoCiAARADECjgBRAEMClAAZAEsCaABZAGcCmQARAHECngBhAJwCogAZAKMC
+qwBJAKsCsQBhALQCtwB5AMgCvwAZANMCqwAZAN4CxQApACoCtwCBAP4CzQApAAQDbAApAAQD0gApAIwB
+0gApACoCVwARADECmQAZAAwDaABhABUD2ACJADECngCpADECngBZAGcCngC5AJUDXgDBAKoD+QCZALED
+/wCZANEDBQGhAN0DCgGRADECDwGRAO8DaACRAHECngCxAHECngChAHECngCZAPkDmQCZAAQEmQCZABQE
+FQGZACIEmQCpAC4EGgHRAD4EIAGpAAwDaADRAEgEJQE5AFEEKwGZAFwELwGZAG4ECgGxAH8ENAGxAIUE
+ngDZAJcEEwDhADECngDpADECngDxADECbgH5ADECmQABATECmQAJATECFQERATECmQAZATECmQAhATEC
+mQApATECmQAxATECmQA5ATECmQAOAAQAGgAuAAsCqwEuACsCqwEuAOsBdAEuAPsBewEuAAMCpQEuADMC
+qwEuABMCqwEuABsCqwEuACMCqwFAAOMBaQFDANsBaQHgADwBYwFjAWMBTQCxAVAAUABQALUBFwAXABcA
+FwAXABcAUwCxAbEBFwBQALkBuQG9ARcAwQHFAckBzQHNAdEB0QEXABcAFwAXABcAzQHFAc0BxQGxARcA
+UABQABcAUABQABcAUABQAASAAAABAAAA3wqHoQAAAAAAAHsAAAABAAAAiBMAAAAAAAABAAoAAAAAAAcA
+AACIEwAAAAAAAAoAEwAAAAAAAQAAAIgTAAAAAAAAAQApAAAAAAABAAAAiBMAAAAAAAABADAAAAAAAAEA
+AACIEwAAAAAAAAoAPAAAAAAAAQAAAIgTAAAAAAAAAQBLAAAAAAABAAAAiBMAAAAAAAABAGAAAAAAAAEA
+AACIEwAAAAAAAAoAawAAAAAAAAAAPE1vZHVsZT4AbXNjb3JsaWIATWljcm9zb2Z0LlZpc3VhbEJhc2lj
+AFN5c3RlbQBTeXN0ZW0uRGF0YQBTeXN0ZW0uRHJhd2luZwBTeXN0ZW0uV2luZG93cy5Gb3JtcwBTeXN0
+ZW0uWG1sAFN5c3RlbS5XZWIATWFpbgBHZXRHUFgAT2JqZWN0AC5jY3RvcgBCT1VOREFSWQBnYm9sQmF0
+Y2gAZ2JvbFZlcmJvc2UAZ2ludEhhbW1lclRpbWUAZ3N0ckRpcmVjdG9yeQBTeXN0ZW0uSU8AU3RyZWFt
+V3JpdGVyAGdzd0xvZwBHZXRHQ0dQWABVc2VybmFtZQBQYXNzd29yZABXYXlQb2ludABHZXRWaWV3U3Rh
+dGUAUmVzcG9uc2UAR2V0RXZlbnRWYWxpZGF0aW9uAEdldEdVSUQARGF0ZVRpbWUAU3lzdGVtLlJlZmxl
+Y3Rpb24AQXNzZW1ibHkAR2V0RXhlY3V0aW5nQXNzZW1ibHkAZ2V0X0xvY2F0aW9uAFN0cmluZwBMYXN0
+SW5kZXhPZgBTdWJzdHJpbmcARW52aXJvbm1lbnQAR2V0Q29tbWFuZExpbmVBcmdzAEFycmF5AEdldFVw
+cGVyQm91bmQAR2V0TG93ZXJCb3VuZABTdHJpbmdzAExDYXNlAE1pY3Jvc29mdC5WaXN1YWxCYXNpYy5D
+b21waWxlclNlcnZpY2VzAFN0cmluZ1R5cGUAU3RyQ21wAENvbmNhdAAuY3RvcgBEYXRlQW5kVGltZQBn
+ZXRfTm93AFRvTG9uZ1RpbWVTdHJpbmcAVGV4dFdyaXRlcgBXcml0ZUxpbmUAQ2xvc2UASW50ZXJhY3Rp
+b24ATXNnQm94UmVzdWx0AE1zZ0JveFN0eWxlAE1zZ0JveABBZGREYXlzAEZyb21EYXRlAEdldFNldHRp
+bmcARGF0ZVR5cGUARnJvbVN0cmluZwBBZGRTZWNvbmRzAENvbXBhcmUAU3lzdGVtLlRocmVhZGluZwBU
+aHJlYWQAU2xlZXAASW5kZXhPZgBUb1N0cmluZwBTYXZlU2V0dGluZwBTeXN0ZW0uTmV0AENvb2tpZUNv
+bnRhaW5lcgBTdHJlYW1SZWFkZXIASHR0cFdlYlJlcXVlc3QASHR0cFdlYlJlc3BvbnNlAFN5c3RlbS5U
+ZXh0AFN0cmluZ0J1aWxkZXIAU3RyZWFtAEh0dHBVdGlsaXR5AFVybEVuY29kZQBXZWJSZXF1ZXN0AENy
+ZWF0ZQBzZXRfQ29va2llQ29udGFpbmVyAFdlYlJlc3BvbnNlAEdldFJlc3BvbnNlAEdldFJlc3BvbnNl
+U3RyZWFtAFJlYWRUb0VuZABzZXRfTWV0aG9kAHNldF9Db250ZW50VHlwZQBzZXRfS2VlcEFsaXZlAHNl
+dF9SZWZlcmVyAEFwcGVuZABFbmNvZGluZwBnZXRfQVNDSUkAR2V0Qnl0ZXMAZ2V0X0xlbmd0aABzZXRf
+Q29udGVudExlbmd0aABHZXRSZXF1ZXN0U3RyZWFtAFdyaXRlAEZsdXNoAFByb2plY3REYXRhAEVuZEFw
+cABTdGFuZGFyZE1vZHVsZUF0dHJpYnV0ZQBTVEFUaHJlYWRBdHRyaWJ1dGUAU3lzdGVtLkRpYWdub3N0
+aWNzAERlYnVnZ2FibGVBdHRyaWJ1dGUAQXNzZW1ibHlWZXJzaW9uQXR0cmlidXRlAFN5c3RlbS5SdW50
+aW1lLkludGVyb3BTZXJ2aWNlcwBHdWlkQXR0cmlidXRlAENMU0NvbXBsaWFudEF0dHJpYnV0ZQBBc3Nl
+bWJseVRyYWRlbWFya0F0dHJpYnV0ZQBBc3NlbWJseUNvcHlyaWdodEF0dHJpYnV0ZQBBc3NlbWJseVBy
+b2R1Y3RBdHRyaWJ1dGUAQXNzZW1ibHlDb21wYW55QXR0cmlidXRlAEFzc2VtYmx5RGVzY3JpcHRpb25B
+dHRyaWJ1dGUAQXNzZW1ibHlUaXRsZUF0dHJpYnV0ZQBHZXRHUFguZXhlAAAAA1wAAAUvAHUAAAUvAHAA
+AAcvAHcAcAAADS8AYgBhAHQAYwBoAAARLwB2AGUAcgBiAG8AcwBlAAAXXABHAGUAdABHAFAAWAAuAGwA
+bwBnAAAZIAAtACAAUwB0AGEAcgB0AGkAbgBnACAAAQEAKVUAcwBhAGcAZQAgAEkAbgBzAHQAcgB1AGMA
+dABpAG8AbgBzAA0ACgAABQ0ACgAAgKtVAHMAYQBnAGUAOgAgAEcAZQB0AEcAUABYACAALwB1ACAAdQBz
+AGUAcgBuAGEAbQBlACAALwBwACAAcABhAHMAcwB3AG8AcgBkACAALwB3AHAAIABXAGEAeQBwAG8AaQBu
+AHQAIABbAC8AdgBlAHIAYgBvAHMAZQBdACAAWwAvAGIAYQB0AGMAaAAgAGYAaQBsAGUAbgBhAG0AZQAu
+AGcAcAB4AF0ADQAKAABDIAAgACAALwB1ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgAEcAQwAg
+AFUAcwBlAHIAbgBhAG0AZQANAAoAAEMgACAAIAAvAHAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
+ACAARwBDACAAUABhAHMAcwB3AG8AcgBkAA0ACgAASSAAIAAgAC8AdwBwACAAIAAgACAAIAAgACAAIAAg
+ACAAIAAgAEcAQwAjACAAbwBmACAAdABoAGUAIABjAGEAYwBoAGUADQAKAABlIAAgACAALwBiAGEAdABj
+AGgAIAAgACAAIAAgACAAIAAgAE8AcAB0AGkAbwBuAGEAbAAgAGYAaQBsAGUAIABuAGEAbQBlACAAdABv
+ACAAYQBwAHAAZQBuAGQAIAB0AG8ADQAKAABRIAAgACAALwB2AGUAcgBiAG8AcwBlACAAIAAgACAATwBw
+AHQAaQBvAG4AYQBsACAAdgBlAHIAYgBvAHMAZQAgAG8AdQB0AHAAdQB0AA0ACgAAgJdFAG4AYwBsAG8A
+cwBlACAAdQBzAGUAcgBuAGEAbQBlACwAIABwAGEAcwBzAHcAbwByAGQALAAgAG8AcgAgAGYAaQBsAGUA
+bgBhAG0AZQAgAGkAbgAgAHEAdQBvAHQAZQBzACAAaQBmACAAdABoAGUAeQAgAGMAbwBuAHQAYQBpAG4A
+IABzAHAAYQBjAGUAcwAuAA0ACgAAgJdOAEIAOgAgAFcAaABlAG4AIAB1AHMAaQBuAGcAIAB0AGgAZQAg
+ACIAYgBhAHQAYwBoACIAIABzAHcAaQB0AGMAaAAsACAAdABoAGUAIABoAGUAYQBkAGUAcgAgAGEAbgBk
+ACAAZgBvAG8AdABlAHIAIABpAG4AZgBvAHIAbQBhAHQAaQBvAG4AIAB3AGkAbABsAA0ACgAAgJUgACAA
+IAAgAG4AZQBlAGQAIAB0AG8AIABiAGUAIABhAGQAZABlAGQAIAB0AG8AIAB0AGgAZQAgAGYAaQBsAGUA
+IABtAGEAbgB1AGEAbABsAHkALgAgACAAVABoAGkAcwAgAGkAbgBjAGwAdQBkAGUAcwAgAHQAaABlACAA
+PABYAE0ATAA+ACAAYQBuAGQAIAANAAoAAFcgACAAIAAgADwARwBQAFgAPgAgAGgAZQBhAGQAZQByAHMA
+LAAgAGEAbgBkACAAdABoAGUAIAA8AC8ARwBQAFgAPgAgAGYAbwBvAHQAZQByAC4ADQAKAAANRwBlAHQA
+RwBQAFgAABFTAGUAdAB0AGkAbgBnAHMAAA9MAGEAcwB0AFIAdQBuAAA1IAAtACAAUABhAHUAcwBpAG4A
+ZwAgAHUAbgB0AGkAbAAgAGEAdAAgAGwAZQBhAHMAdAAgAAFrIAB0AG8AIABhAHYAaQBvAGQAIABoAGEA
+bQBtAGUAcgBpAG4AZwAgAHQAaABlACAARwBDAC4AYwBvAG0AIABzAGUAcgB2AGUAcgBzAC4AIAAgAFAA
+bABlAGEAcwBlACAAdwBhAGkAdAAuAAADPgAACTwAZwBwAHgAAAkvAGcAcAB4AAAJLgBnAHAAeAAAIyAA
+LQAgAFAAcgBvAGMAZQBzAHMAaQBuAGcAIABXAFAAIAABd2gAdAB0AHAAOgAvAC8AdwB3AHcALgBnAGUA
+bwBjAGEAYwBoAGkAbgBnAC4AYwBvAG0ALwBsAG8AZwBpAG4ALwBkAGUAZgBhAHUAbAB0AC4AYQBzAHAA
+eAA/AFIARQBTAEUAVAA9AFkAJgByAGUAZABpAHIAPQAAa2gAdAB0AHAAOgAvAC8AdwB3AHcALgBnAGUA
+bwBjAGEAYwBoAGkAbgBnAC4AYwBvAG0ALwBzAGUAZQBrAC8AYwBhAGMAaABlAF8AZABlAHQAYQBpAGwA
+cwAuAGEAcwBwAHgAPwB3AHAAPQAACVAATwBTAFQAAENhAHAAcABsAGkAYwBhAHQAaQBvAG4ALwB4AC0A
+dwB3AHcALQBmAG8AcgBtAC0AdQByAGwAZQBuAGMAbwBkAGUAZAABGV8AXwBWAEkARQBXAFMAVABBAFQA
+RQA9AAAZJgBtAHkAVQBzAGUAcgBuAGEAbQBlAD0AABkmAG0AeQBQAGEAcwBzAHcAbwByAGQAPQAAMSYA
+YwBvAG8AawBpAGUAPQBvAG4AJgBCAHUAdAB0AG8AbgAxAD0ATABvAGcAaQBuAAAnJgBfAF8ARQBWAEUA
+TgBUAFYAQQBMAEkARABBAFQASQBPAE4APQAAY1kAbwB1AHIAIAB1AHMAZQByAG4AYQBtAGUALwBwAGEA
+cwBzAHcAbwByAGQAIABjAG8AbQBiAGkAbgBhAHQAaQBvAG4AIABkAG8AZQBzACAAbgBvAHQAIABtAGEA
+dABjAGgAACsgAC0AIABMAG8AZwBpAG4AIAB1AG4AcwB1AGMAZQBzAHMAZgB1AGwALgABGyAALQAgAHUA
+cwBlAHIAbgBhAG0AZQA6ACAAARsgAC0AIABwAGEAcwBzAHcAbwByAGQAOgAgAAERYgB0AG4ARwBQAFgA
+RABMAAA9IAAtACAARwBQAFgAIABEAG8AdwBuAGwAbwBhAGQAIABuAG8AdAAgAGEAdgBhAGkAbABhAGIA
+bABlAC4AAWMgAC0AIABUAGgAZQByAGUAIABpAHMAIABlAGkAdABoAGUAcgAgAGEAIABwAHIAbwBiAGwA
+ZQBtACAAdwBpAHQAaAAgAHQAaABlACAAYwBhAGMAaABlACAAcABhAGcAZQAsAAFXIAAtACAAbwByACAA
+cABlAHIAaABhAHAAcwAgAHkAbwB1ACAAYQByAGUAIABuAG8AdAAgAGEAIABwAHIAZQBtAGkAdQBtACAA
+bQBlAG0AYgBlAHIALgABHyAALQAgACAAIAB1AHMAZQByAG4AYQBtAGUAOgAgAAEfIAAtACAAIAAgAHAA
+YQBzAHMAdwBvAHIAZAA6ACAAATcmAGIAdABuAEcAUABYAEQATAA9AEcAUABYACsAZQBYAGMAaABhAG4A
+ZwBlACsARgBpAGwAZQAAAyIAACFpAGQAPQAiAF8AXwBWAEkARQBXAFMAVABBAFQARQAiAAAtaQBkAD0A
+IgBfAF8ARQBWAEUATgBUAFYAQQBMAEkARABBAFQASQBPAE4AIgAAAz0AAAtnAHUAaQBkAD0AAAMnAAEA
+bbkQPnYzOkWEryyf+K0TnQAIt3pcVhk04IkIsD9ffxHVCjoDAAABAgYOMkQAMQA1AHAAfAA0AHkALgBK
+AFAAMwA2AC4AMABuAC4AWQAwAHUAcgAuADcAMQB2ADAAAgYCAgYIAwYSCQYAAw4ODg4EAAEODgQAABIR
+AyAADgQgAQgOBSACDggIBAAAHQ4EIAEICAYAAwgODgIFAAIODg4FIAIBDgIEAAARDQQgAQEOAyAAAQgA
+AxE1HBE5HAUgARENDQUAAQ4RDQcABA4ODg4OBQABEQ0OBwACCBENEQ0EAAEBCAUgAggOCAcABAEODg4O
+GAcRAhENCAgIHQ4ODg4ODg4SCRENEQ0OCAUAARJhDgUgAQESRQQgABJlBCAAElkFIAEBElkEIAEBAgUg
+ARJVDgQAABJpBSABHQUOAyAACAQgAQEKByADAR0FCAgmBxUdBR0FEkUOEkkSTRJRElUSVRJZElkODg4O
+DhJVEk0SVRJNEQ0FBwMOCAgEAQAAAAUgAgECAgYBAAEBAAApAQAkNzE5QzIxODctRDg5NC00NERCLUIy
+ODMtQTJENDNCODVERUREAAAFAQABAAAFAQAAAAADBhENAwYdDgMGHQUDBhJFAwYSSQMGEk0DBhJRAwYS
+VQMGElkAAACQQwAAAAAAAAAAAACuQwAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAoEMAAAAAAAAAAAAA
+AAAAAAAAX0NvckV4ZU1haW4AbXNjb3JlZS5kbGwAAICeF/8lACAAEQAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB03cNGAAAAAAIAAABRAAAA
+HGAAABwoAABSU0RTJS8c8IctSkqcnDgmQJPy4gEAAABDOlx+R01TIERhdGFcTXkgQXBwbGljYXRpb25z
+XEdldEdQWFxvYmpcRGVidWdcR2V0R1BYLnBkYgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAMAAAAoAACADgAAAEgAAIAQAAAAYAAAgAAAAAAAAAAA
+AAAAAAAAAgACAAAAeAAAgAMAAACQAACAAAAAAAAAAAAAAAAAAAABAAB/AACoAACAAAAAAAAAAAAAAAAA
+AAABAAEAAADAAACAAAAAAAAAAAAAAAAAAAABAAAAAADYAAAAAAAAAAAAAAAAAAAAAAABAAAAAADoAAAA
+AAAAAAAAAAAAAAAAAAABAAAAAAD4AAAAAAAAAAAAAAAAAAAAAAABAAAAAAAIAQAAIIQAAOgCAAAAAAAA
+AAAAAAiHAAAoAQAAAAAAAAAAAAAwiAAAIgAAAAAAAAAAAAAAGIEAAAQDAAAAAAAAAAAAAAQDNAAAAFYA
+UwBfAFYARQBSAFMASQBPAE4AXwBJAE4ARgBPAAAAAAC9BO/+AAABAAAAAQCHod8KAAABAIeh3wo/AAAA
+AAAAAAQAAAABAAAAAAAAAAAAAAAAAAAARAAAAAEAVgBhAHIARgBpAGwAZQBJAG4AZgBvAAAAAAAkAAQA
+AABUAHIAYQBuAHMAbABhAHQAaQBvAG4AAAAAAAAAsARkAgAAAQBTAHQAcgBpAG4AZwBGAGkAbABlAEkA
+bgBmAG8AAABAAgAAAQAwADAAMAAwADAANABiADAAAAAcAAIAAQBDAG8AbQBtAGUAbgB0AHMAAAAgAAAA
+JAACAAEAQwBvAG0AcABhAG4AeQBOAGEAbQBlAAAAAAAgAAAALAACAAEARgBpAGwAZQBEAGUAcwBjAHIA
+aQBwAHQAaQBvAG4AAAAAACAAAABAAA8AAQBGAGkAbABlAFYAZQByAHMAaQBvAG4AAAAAADEALgAwAC4A
+MgA3ADgAMwAuADQAMQAzADUAMQAAAAAAOAALAAEASQBuAHQAZQByAG4AYQBsAE4AYQBtAGUAAABHAGUA
+dABHAFAAWAAuAGUAeABlAAAAAAAoAAIAAQBMAGUAZwBhAGwAQwBvAHAAeQByAGkAZwBoAHQAAAAgAAAA
+LAACAAEATABlAGcAYQBsAFQAcgBhAGQAZQBtAGEAcgBrAHMAAAAAACAAAABAAAsAAQBPAHIAaQBnAGkA
+bgBhAGwARgBpAGwAZQBuAGEAbQBlAAAARwBlAHQARwBQAFgALgBlAHgAZQAAAAAAJAACAAEAUAByAG8A
+ZAB1AGMAdABOAGEAbQBlAAAAAAAgAAAARAAPAAEAUAByAG8AZAB1AGMAdABWAGUAcgBzAGkAbwBuAAAA
+MQAuADAALgAyADcAOAAzAC4ANAAxADMANQAxAAAAAABIAA8AAQBBAHMAcwBlAG0AYgBsAHkAIABWAGUA
+cgBzAGkAbwBuAAAAMQAuADAALgAyADcAOAAzAC4ANAAxADMANQAxAAAAAAAAAAAAKAAAACAAAABAAAAA
+AQAEAAAAAACAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAIAAAACAgACAAAAAgACAAICAAACAgIAA
+wMDAAAAA/wAA/wAAAP//AP8AAAD/AP8A//8AAP///wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHd3d3d3d3d3d3d3d3d3cARERERERERE
+RERERERERHAE//////////////////RwBP/////////////////0cAT/////////////////9HAE////
+//////////////RwBP/////////////////0cAT/////////////////9HAE//////////////////Rw
+BP/////////////////0cAT/////////////////9HAE//////////////////RwBP//////////////
+///0cAT/////////////////9HAE//////////////////RwBP/////////////////0cAT/////////
+////////9HAE//////////////////RwBP/////////////////0cAT/////////////////9HAEiIiI
+iIiIiIiIiIiIiIRwBEREREREREREREREREREcARMTExMTExMTExOzs5JdHAEzMzMzMzMzMzMzMzMzMQA
+AERERERERERERERERERAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAP/////////////////////AAAABgAAAAYAAAAGAAAABgAAAAYAAAAGAAAABgAAAAYAAAAGAAAAB
+gAAAAYAAAAGAAAABgAAAAYAAAAGAAAABgAAAAYAAAAGAAAABgAAAAYAAAAGAAAABgAAAAYAAAAPAAAAH
+////////////////KAAAABAAAAAgAAAAAQAEAAAAAADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAA
+AIAAAACAgACAAAAAgACAAICAAACAgIAAwMDAAAAA/wAA/wAAAP//AP8AAAD/AP8A//8AAP///wAAAAAA
+AAAAAAd3d3d3d3d3REREREREREdP///////4R0////////hHT///////+EdP///////4R0////////hH
+T///////+EdP///////4R0////////hHSIiIiIiIiEdMzMzMzMzMR8RERERERETAAAAAAAAAAAAAAAAA
+AAAAAP//AACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA
+//8AAP//AAAAAAEAAgAgIBAAAQAEAOgCAAACABAQEAABAAQAKAEAAAMAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAMAAAA
+wDMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+<enddata>
+
+ENDSUB
+
+
+<Data> VarName=$StartScreen
+#********************************************************************
+# Form generated by GSAK form designer on Sun 20-Apr-2008 07:42:06
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Nightly Database Update
+  Color = 16777215
+  Delay = 10
+  Height = 175
+  Width = 330
+
+Name = Label1
+  Type = Label
+  Color = 255
+  Height = 20
+  Left = 60
+  Size = 13
+  Style = bold
+  Top = 16
+  Width = 209
+  Caption = Nightly Database Update
+
+Name = Label2
+  Type = Label
+  Height = 15
+  Left = 24
+  Size = 9
+  Top = 56
+  Width = 237
+  Caption = Select Options to configure ... otherwise, the
+
+Name = Label3
+  Type = Label
+  Height = 15
+  Left = 24
+  Size = 9
+  Top = 71
+  Width = 185
+  Caption = macro will autostart in 10 seconds
+
+Name = Continue
+  Type = Button
+  Height = 20
+  Left = 16
+  Top = 107
+  Width = 60
+  Taborder = 1
+  Caption = Continue
+
+Name = Cancel
+  Type = Button
+  Height = 20
+  Left = 90
+  Top = 107
+  Width = 60
+  Taborder = 2
+  Caption = Cancel
+
+Name = Options
+  Type = Button
+  Height = 20
+  Left = 170
+  Top = 107
+  Width = 60
+  Taborder = 3
+  Caption = Options
+
+Name = Help
+  Type = Button
+  Height = 20
+  Left = 245
+  Top = 107
+  Width = 60
+  Taborder = 4
+  Caption = Support
+
+<enddata>
+
+
+<Data> VarName=$ConfigForm
+#********************************************************************
+# Configuration Menu
+# Form generated by GSAK form designer on Sun 20-Apr-2008 10:15:54
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Nightly Database Update Configuration
+  Color = 16777215
+  Height = 750
+  Width = 570
+
+Name = Label1
+  Type = Label
+  Color = 255
+  Height = 20
+  Left = 123
+  Size = 12
+  Style = bold
+  Top = 10
+  Width = 314
+  Caption = Nightly Database Update Configuration
+
+Name = Label1A
+  Type = Label
+  Height = 15
+  Left = 144
+  Size = 9
+  Top = 30
+  Width = 272
+  Caption = (Enter your preferences before running the macro)
+
+
+#********************************************************************
+# Options
+#********************************************************************
+
+Name = LOptions
+  Type = Label
+  Height = 15
+  Left = 11
+  Size = 9
+  Style = bold
+  Top = 54
+  Width = 49
+  Caption = Options
+
+Name = Backup
+  Type = Checkbox
+  Height = 17
+  Left = 16
+  Top = 80
+  Width = 15
+  Taborder = 10
+
+Name = LBackup
+  Type = Label
+  Height = 15
+  Left = 38
+  Size = 9
+  Top = 80
+  Width = 276
+  Caption = Backup all databases before taking any other steps
+
+Name = FilterOnly
+  Type = Checkbox
+  Height = 17
+  Left = 16
+  Top = 105
+  Width = 15
+  Taborder = 14
+
+Name = LFilterOnly
+  Type = Label
+  Height = 15
+  Left = 38
+  Size = 9
+  Top = 105
+  Width = 276
+  Caption = Filter only and do not update from geocaching.com
+
+Name = CheckEMail
+  Type = Checkbox
+  Height = 17
+  Left = 16
+  Top = 130
+  Width = 15
+  Taborder = 15
+
+Name = LCheckEMail
+  Type = Label
+  Height = 15
+  Left = 38
+  Size = 9
+  Top = 130
+  Width = 299
+  Caption = Use GetMail to check for any new PQ's before updating
+
+Name = UpdateOwned
+  Type = Checkbox
+  Height = 17
+  Left = 16
+  Top = 155
+  Width = 15
+  Taborder = 17
+
+Name = LUpdateOwned
+  Type = Label
+  Height = 15
+  Left = 38
+  Size = 9
+  Top = 155
+  Width = 345
+  Caption = Update the logs (from geocaching.com) for any caches you own
+
+Name = TrimUnfound
+  Type = Checkbox
+  Height = 17
+  Left = 16
+  Top = 180
+  Width = 15
+  Taborder = 18
+
+Name = LTrimUnfound
+  Type = Label
+  Height = 15
+  Left = 38
+  Size = 9
+  Top = 180
+  Width = 346
+  Caption = Trim Unfound caches to the # of logs in the TrimUnfound setting
+
+Name = TrimFound
+  Type = Checkbox
+  Height = 17
+  Left = 16
+  Top = 205
+  Width = 15
+  Taborder = 19
+
+Name = LTrimFound
+  Type = Label
+  Height = 15
+  Left = 38
+  Size = 9
+  Top = 205
+  Width = 322
+  Caption = Trim Found caches to the # of logs in the TrimFound setting
+
+Name = DelArchived
+  Type = Checkbox
+  Height = 17
+  Left = 16
+  Top = 230
+  Width = 15
+  Taborder = 20
+
+Name = LDelArchived
+  Type = Label
+  Height = 15
+  Left = 38
+  Size = 9
+  Top = 230
+  Width = 272
+  Caption = Delete caches that are both Unfound and Archived
+
+Name = SaveArchived
+  Type = Checkbox
+  Height = 17
+  Left = 328
+  Top = 230
+  Width = 15
+  Taborder = 21
+
+Name = LSaveArchived
+  Type = Label
+  Height = 15
+  Left = 350
+  Size = 9
+  Top = 230
+  Width = 153
+  Caption = Save to GPX before deleting
+
+Name = MoveArchived
+  Type = Checkbox
+  Height = 17
+  Left = 328
+  Top = 255
+  Width = 15
+  Taborder = 21
+
+Name = LMoveArchived01
+  Type = Label
+  Height = 15
+  Left = 263
+  Size = 9
+  Top = 255
+  Width = 160
+  Caption = ... and/or
+
+Name = LMoveArchived02
+  Type = Label
+  Height = 15
+  Left = 350
+  Size = 9
+  Top = 255
+  Width = 153
+  Caption = Move to 'Archive' DB listed below
+
+Name = ExitMacro
+  Type = Checkbox
+  Height = 17
+  Left = 16
+  Top = 280
+  Width = 15
+  Taborder = 22
+
+Name = LExitMacro
+  Type = Label
+  Height = 15
+  Left = 38
+  Size = 9
+  Top = 280
+  Width = 204
+  Caption = Exit GSAK when the macro is finished
+
+
+#********************************************************************
+# ID, Databases, and Other Preferences
+#********************************************************************
+
+Name = LPreferences
+  Type = Label
+  Height = 15
+  Left = 13
+  Size = 9
+  Style = bold
+  Top = 313
+  Width = 242
+  Caption = User ID, Databases, and Other Preferences
+
+Name = MyUserName
+  Type = Edit
+  Height = 21
+  Left = 159
+  Top = 340
+  Width = 121
+  Taborder = 8
+
+Name = LMyUserName
+  Type = Label
+  Height = 15
+  Left = 16
+  Size = 9
+  Top = 342
+  Width = 137
+  Caption = Geocaching.com User ID
+
+Name = MyPassword
+  Type = Edit
+  Height = 21
+  Left = 384
+  Top = 340
+  Width = 121
+  Taborder = 9
+
+Name = LMyPassword
+  Type = Label
+  Height = 15
+  Left = 321
+  Size = 9
+  Top = 342
+  Width = 54
+  Caption = Password
+
+Name = DistanceMiles
+  Type = Edit
+  Height = 21
+  Left = 16
+  Top = 370
+  Width = 57
+  Taborder = 12
+
+Name = LDistanceMiles
+  Type = Label
+  Height = 15
+  Left = 84
+  Size = 9
+  Top = 372
+  Width = 334
+  Caption = Default distance from center point (0.1 to 50 miles/kilometers)
+
+Name = UpdateDays
+  Type = Edit
+  Height = 21
+  Left = 16
+  Top = 400
+  Width = 57
+  Taborder = 13
+
+Name = LUpdateDays
+  Type = Label
+  Height = 15
+  Left = 84
+  Size = 9
+  Top = 402
+  Width = 332
+  Caption = Default number of days since last GPX update (1 to 365 days)
+
+Name = UnfoundDB
+  Type = Combobox
+  Values=$DBList
+  Height = 21
+  Left = 16
+  Top = 430
+  Width = 145
+  Taborder = 30
+
+Name = LUnfoundDB
+  Type = Label
+  Height = 15
+  Left = 167
+  Size = 9
+  Top = 431
+  Width = 103
+  Caption = Unfound Database
+
+Name = FoundDB
+  Type = Combobox
+  Values=$DBList
+  Height = 21
+  Left = 298
+  Top = 430
+  Width = 145
+  Taborder = 31
+
+Name = LFoundDB
+  Type = Label
+  Height = 15
+  Left = 449
+  Size = 9
+  Top = 431
+  Width = 91
+  Caption = Found Database
+
+Name = OwnedDB
+  Type = Combobox
+  Values=$DBList
+  Height = 21
+  Left = 16
+  Top = 460
+  Width = 145
+  Taborder = 32
+
+Name = LOwnedDB
+  Type = Label
+  Height = 15
+  Left = 167
+  Size = 9
+  Top = 461
+  Width = 225
+  Caption = Database containing the caches you Own
+
+Name = ArchivedDB
+  Type = Combobox
+  Values=$DBList
+  Height = 21
+  Left = 16
+  Top = 488
+  Width = 145
+  Taborder = 32
+
+Name = LArchivedDB
+  Type = Label
+  Height = 15
+  Left = 167
+  Size = 9
+  Top = 489
+  Width = 225
+  Caption = Database containing caches that have been Archived
+
+Name = CenterPt
+  Type = Combobox
+  Values=$LocNames
+  Height = 21
+  Left = 16
+  Top = 515
+  Width = 145
+  Taborder = 11
+
+Name = LCenterPt
+  Type = Label
+  Height = 15
+  Left = 167
+  Size = 9
+  Top = 516
+  Width = 360
+  Caption = Center point (Location) from which to update Unfound caches
+
+Name = GPXUploadSettings
+  Type = Edit
+  Height = 21
+  Left = 16
+  Top = 545
+  Width = 121
+  Taborder = 16
+
+Name = LGPXUploadSettings
+  Type = Label
+  Height = 15
+  Left = 148
+  Size = 9
+  Top = 547
+  Width = 347
+  Caption = Enter the name of any special settings to load GPX/LOC/ZIP files
+
+Name = OtherMacros
+  Type = Checkbox
+  Height = 17
+  Left = 16
+  Top = 575
+  Width = 15
+  Taborder = 23
+
+Name = LOtherMacros
+  Type = Label
+  Height = 15
+  Left = 36
+  Size = 9
+  Top = 575
+  Width = 399
+  Caption = Call and run other macros (enter the full name with extension such as FindStatGen3.gsk)
+
+Name = Macro01
+  Type = Edit
+  Height = 21
+  Left = 67
+  Top = 598
+  Width = 121
+  Taborder = 24
+
+Name = LMacro01
+  Type = Label
+  Height = 15
+  Left = 194
+  Size = 9
+  Top = 600
+  Width = 45
+  Caption = Macro 1
+
+Name = Macro02
+  Type = Edit
+  Height = 21
+  Left = 67
+  Top = 623
+  Width = 121
+  Taborder = 25
+
+Name = LMacro02
+  Type = Label
+  Height = 15
+  Left = 194
+  Size = 9
+  Top = 625
+  Width = 45
+  Caption = Macro 2
+
+Name = Macro03
+  Type = Edit
+  Height = 21
+  Left = 67
+  Top = 648
+  Width = 121
+  Taborder = 26
+
+Name = LMacro03
+  Type = Label
+  Height = 15
+  Left = 194
+  Size = 9
+  Top = 650
+  Width = 45
+  Caption = Macro 3
+
+Name = Macro04
+  Type = Edit
+  Height = 21
+  Left = 307
+  Top = 598
+  Width = 121
+  Taborder = 27
+
+Name = LMacro04
+  Type = Label
+  Height = 15
+  Left = 434
+  Size = 9
+  Top = 600
+  Width = 45
+  Caption = Macro 4
+
+Name = Macro05
+  Type = Edit
+  Height = 21
+  Left = 307
+  Top = 623
+  Width = 121
+  Taborder = 28
+
+Name = LMacro05
+  Type = Label
+  Height = 15
+  Left = 434
+  Size = 9
+  Top = 625
+  Width = 45
+  Caption = Macro 5
+
+Name = Macro06
+  Type = Edit
+  Height = 21
+  Left = 307
+  Top = 648
+  Width = 121
+  Taborder = 29
+
+Name = LMacro06
+  Type = Label
+  Height = 15
+  Left = 434
+  Size = 9
+  Top = 650
+  Width = 45
+  Caption = Macro 6
+
+
+#********************************************************************
+# Buttons
+#********************************************************************
+
+Name = Continue
+  Type = Button
+  Height = 25
+  Left = 135
+  Top = 685
+  Width = 75
+  Taborder = 33
+  Caption = Continue
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 239
+  Top = 685
+  Width = 75
+  Taborder = 34
+  Caption = Cancel
+
+Name = Help
+  Type = Button
+  Height = 25
+  Left = 343
+  Top = 685
+  Width = 75
+  Taborder = 35
+  Caption = Support
+
+<enddata>
+
+
+# End of Macro
+

@@ -1,0 +1,60 @@
+#*******************************************
+# MacVersion = 1.4
+# MacDescription = Show your current filter in Google Earth
+# MacAuthor = clyde
+# MacFileName = GoogleEarth.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=1464&view=findpost&p=32560
+#*******************************************
+
+
+VerCheck Version=7.0.0.120
+# set up absolute paths to required files
+$KMLFile=$_Install + "\temp\GSAK.KML"
+$GPXFile=$_Install + "\temp\babel.gpx"
+$Babel = $_ExePath + "\gpsbabel.exe"
+
+# set up custom load
+$gpx = $gpx + "fnmto.Text=" + $gpxFile + $_NewLine
+Macroset Dialog=GPX VarName=$gpx
+
+
+# set up $custom export
+$Custom = $custom + "edtBabelOut.Text=" + quote($Babel) + " -N -i gpx -f " + quote($GPXfile) + " -o kml -F " + quote($KMLFile)
+MACROSET Dialog=Custom VarName=$Custom
+
+
+# Export to KML
+EXPORT Type=CUS Settings=<macro>
+
+# Open the file in Google Earth
+OpenFile File=$KMLFile
+
+
+<data> VarName=$Custom
+[TfmBabel2]
+chkDebug.Checked=False
+chkYes.Checked=True
+cbxGPX.Text=<macro>
+<enddata>
+
+
+<data> VarName=$GPX
+[TfmExportGpx]
+cbxLimit.Text=No Limit
+cbxUserNotes.Checked=True
+chkActual.Checked=False
+chkChild.Checked=False
+chkDefault.Checked=False
+chkExtra.Checked=True
+chkFlag.Checked=False
+chkMyLogs.Checked=False
+chkSymbol.Checked=False
+edtFormat.Text=%Name by %By (%Dif/%Ter)
+edtMax.Text=
+edtMaxGps.Text=15
+edtWaypoint.Text=%code
+rbtGpx.Checked=True
+rbtLoc.Checked=False
+edtProblem.Text=
+<enddata>
+

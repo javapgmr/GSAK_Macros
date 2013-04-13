@@ -1,0 +1,75 @@
+##############################
+# Sub FILECOPY_RENAME
+# copy files from source to destination
+# if file exists a number will be added
+
+BEGINSUB Name=FILECOPY_RENAME
+ GOSUB Name=DeclareFileCopy
+
+ # get source directory
+ $filecopy_rename_src_dir = SubStr($filecopy_rename_src,0,RegExPos("\\",$filecopy_rename_src,RegExCount("\\",$filecopy_rename_src)))
+ # list alle files in source dir
+ $filecopy_rename_src_list = dir($filecopy_rename_src,"F")
+ $filecopy_rename_src_count=RegExCount("\r\n",$filecopy_rename_src_list)
+ $filecopy_rename_temp_i=0
+ WHILE ($filecopy_rename_src_count<>$filecopy_rename_temp_i)
+   $filecopy_rename_temp_i=$filecopy_rename_temp_i+1
+   IF ($filecopy_rename_temp_i=$filecopy_rename_src_count)
+       $filecopy_rename_file_start = RegExPos("\r\n",$filecopy_rename_src_list,($filecopy_rename_temp_i-1)) +2
+       $filecopy_rename_file_length = Len($filecopy_rename_src_list)-$filecopy_rename_file_start-1
+   ELSE
+       IF ($filecopy_rename_temp_i<>1)
+           $filecopy_rename_file_start = RegExPos("\r\n",$filecopy_rename_src_list,($filecopy_rename_temp_i-1)) +2
+           $filecopy_rename_file_length = RegExPos("\r\n",$filecopy_rename_src_list,$filecopy_rename_temp_i)-$filecopy_rename_file_start-1
+       ELSE
+           $filecopy_rename_file_start = 0
+           $filecopy_rename_file_length = RegExPos("\r\n",$filecopy_rename_src_list,$filecopy_rename_temp_i)-$filecopy_rename_file_start-1
+       ENDIF
+   ENDIF
+   $filecopy_rename_file  = SubStr($filecopy_rename_src_list,$filecopy_rename_file_start,$filecopy_rename_file_length)
+   IF ($filecopy_rename_file <> "")
+     $filecopy_rename_src_file = $filecopy_rename_src_dir + $filecopy_rename_file
+     $filecopy_rename_dest_file = $filecopy_rename_dest + $filecopy_rename_file
+     IF FileExists($filecopy_rename_dest_file)
+       $filecopy_rename_type=""
+       IF (RegExCount(".zip",$filecopy_rename_file)=1)
+         $filecopy_rename_type=".zip"
+       ENDIF
+       IF (RegExCount(".gpx",$filecopy_rename_file)=1)
+         $filecopy_rename_type=".gpx"
+       ENDIF
+IF ($filecopy_rename_type<>"")
+         $filecopy_rename_temp_done=0
+         $filecopy_rename_temp_j=0
+         WHILE ($filecopy_rename_temp_done=0)
+             $filecopy_rename_dest_file = $filecopy_rename_dest + SubStr($filecopy_rename_file,0,RegExPos($filecopy_rename_type,$filecopy_rename_file,1)-1) + NumToStr($filecopy_rename_temp_j) + $filecopy_rename_type
+             IF FileExists($filecopy_rename_dest_file) = FALSE
+               FILECOPY From="$filecopy_rename_src_file" To="$filecopy_rename_dest_file"
+               $filecopy_rename_temp_done=1
+             ENDIF
+             $filecopy_rename_temp_j=$filecopy_rename_temp_j+1
+         ENDWHILE
+       ENDIF
+     ELSE
+       FILECOPY From="$filecopy_rename_src_file" To="$filecopy_rename_dest_file"
+     ENDIF
+   ENDIF
+ ENDWHILE
+ENDSUB
+
+BEGINSUB Name=DeclareFileCopy
+ DECLARE Var=$filecopy_rename_src Type=String
+ DECLARE Var=$filecopy_rename_src_count Type=Numeric
+ DECLARE Var=$filecopy_rename_src_dir Type=String
+ DECLARE Var=$filecopy_rename_src_file Type=String
+ DECLARE Var=$filecopy_rename_src_list Type=String
+ DECLARE Var=$filecopy_rename_dest Type=String
+ DECLARE Var=$filecopy_rename_dest_file Type=String
+ DECLARE Var=$filecopy_rename_file_start Type=Numeric
+ DECLARE Var=$filecopy_rename_file_length Type=Numeric
+ DECLARE Var=$filecopy_rename_file Type=String
+ DECLARE Var=$filecopy_rename_type Type=String
+ DECLARE Var=$filecopy_rename_temp_done Type=Numeric
+ DECLARE Var=$filecopy_rename_temp_i Type=Numeric
+ DECLARE Var=$filecopy_rename_temp_j Type=Numeric
+ENDSUB

@@ -1,0 +1,607 @@
+#*******************************************
+# MacDescription = This macro wll get all users found logs during a given time period using the API
+# MacFileName = GetAllLogsForUser.gsk
+# MacAuthor = The CEO
+# MacVersion = 1.05
+# MacUrl = 
+#*******************************************
+
+VERCHECK Version=8.1.1.10 (please update GSAK to version 8.1.1.10 or later to run this macro)
+
+$status = sqlite("open","$_AppData\gsak.db3")
+$MyUserName = sqlite("sql","select uData from UserInfo where uKey = 'UserName'")
+$MyUserID = sqlite("sql","select uData from UserInfo where uKey = 'UserId'")
+$status = sqlite("close", "")
+
+$NumOfDays=30
+$StartDate = SQLToDate(sqlite("sql","SELECT Date('now','localtime','-$NumOfDays days') as StartDate"))  
+
+# MsgOk msg=$StartDate
+
+# Set default values
+
+$FoundIt=TRUE
+$DNF=TRUE
+$WriteNote=FALSE
+$NeedsMaintenance=FALSE
+$WillAttend=TRUE
+$OtherLogTypes=FALSE
+
+$AddCacheIfNotInDatabase=TRUE
+
+$UsersForSelectionList= ""
+
+# Load values saved in previous settings
+
+MacSettings Type=R FileCheck=N
+ 
+$MaxDownloadPerCall=4010
+$StartIndex=0
+$AlreadyDownloaded=0
+
+GOSUB Name=ShowForm
+
+BEGINSUB Name=Main
+	# $MyUserName = "The CEO"
+	CANCELFILTER
+	
+	$LogTypes=""
+	IF $FoundIt=TRUE
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">2</long>" + $_CrLf
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">10</long>" + $_CrLf
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">11</long>" + $_CrLf
+	ENDIF
+	IF $DNF=TRUE
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">3</long>" + $_CrLf
+	ENDIF
+	IF $WriteNote=TRUE
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">4</long>" + $_CrLf
+	ENDIF
+	IF $WillAttend=TRUE
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">9</long>" + $_CrLf
+	ENDIF
+	IF $NeedsMaintenance=TRUE
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">7</long>" + $_CrLf
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">45</long>" + $_CrLf
+	ENDIF
+	IF $OtherLogTypes=TRUE
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">1</long>" + $_CrLf
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">5</long>" + $_CrLf
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">6</long>" + $_CrLf
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">12</long>" + $_CrLf
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">18</long>" + $_CrLf
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">22</long>" + $_CrLf
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">24</long>" + $_CrLf
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">46</long>" + $_CrLf
+		$LogTypes=$LogTypes+"<long xmlns=""http://schemas.microsoft.com/2003/10/Serialization/Arrays"">47</long>" + $_CrLf
+	ENDIF
+		
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">1</long> = UnArchive
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">2</long> = Found It
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">3</long> = DNF
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">4</long> = Write Note
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">5</long> = Archive
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">6</long> = Permanently Archived
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">7</long> = Need Archived
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">9</long> = Will Attend
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">10</long> = Attended
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">11</long> = WebCam Photo Taken
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">12</long> = Unarchive
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">13</long> = Retrieved from a cache
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">18</long> = Post Reviewer Note
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">22</long> = Temporary Disable
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">23</long> = Enable Listing
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">24</long> = Publish
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">45</long> = Needs Maintenance
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">46</long> = Owner Maintenance
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">47</long> = Update Coords
+	
+	$StatusOrig = Replace("~~LogTypes~~",$LogTypes,$StatusOrig)
+	
+#	MsgOk msg=$StatusOrig
+	
+	$TempDateString=DateToString($StartDate)
+	$STARTDATESTRING = Left($TempDateString,4)+"-"+SubStr($TempDateString,5,2)+"-"+Right($TempDateString,2)+"T00:00:00"
+	
+	$TempDateString=DateToString($EndDate)
+	$ENDDATESTRING = Left($TempDateString,4)+"-"+SubStr($TempDateString,5,2)+"-"+Right($TempDateString,2)+"T23:59:59"
+	
+	GOSUB NAME=ReplaceSpecialCharacters
+	
+	$StatusOrig = Replace("~~USERNAME~~",$SelectedUserName,$StatusOrig)
+
+#	$data = GcApi("GetWptLogTypes")
+#	CANCEL
+
+
+
+#	$data = GcApi("GetAPILimits")
+#	CANCEL
+
+
+	
+	GOSUB Name=GetLogsForUser	
+
+ENDSUB
+
+BeginSub NAME=GetLogsForUser
+	$CachesAdded=0
+	$SkippedNotInDB=0
+	$SkippedAlreadyExists=0
+	$AddedLog=0
+	$APIlogs=0
+	$NumOfRows=0
+	
+	WHILE $StartIndex<>-1
+		$status = $statusOrig
+		$status = Replace("~~StartDate~~",$StartDateString,$status)
+#		IF $NumOfRows=0
+			$status = Replace("~~EndDate~~",$EndDateString,$status)
+#		ELSE
+#			$NewEndDate=sqlite("sql","select data from GcApi where key = '/GetGeocacheLogResponse/Logs/a:GeocacheLog/a:VisitDate' ORDER By Data LIMIT 1","Headings=N")
+#			$NewEndDate=sqlite("sql","select data from GcApi where key = '/GetGeocacheLogResponse/Logs/a:GeocacheLog/a:UTCCreateDate' ORDER By Data LIMIT 1","Headings=N")	
+#			$NewEndDate=Left($NewEndDate,10)+"T23:59:59"
+#			$status = Replace("~~EndDate~~",$NewEndDate,$status)		
+#		ENDIF
+		$status = Replace("~~MaxDownloadPerCall~~", NumToStr($MaxDownloadPerCall), $status)
+		$status = Replace("~~StartIndex~~", NumToStr($StartIndex), $status)
+
+		SHOWSTATUS msg="Retrieving logs via API..." Width=350	
+	#	MSGOK msg= $status
+		$temp= PutFile($_AppData + "\macros\GetAllLogsForUser_APICall.txt", $status) 	
+		$data = GcApi("GetUsersGeocacheLogs",$status)
+
+	#	CANCEL
+		
+		IF $_GcApiError
+			# error running api so show error message
+			MSGOK msg= $data
+			BREAK
+		Else 
+			$Codes = sqlite("sql","select data from GcApi where key = '/GetGeocacheLogResponse/Logs/a:GeocacheLog/a:CacheCode'","Headings=N")
+			$NumOfRows = $_SqlRows
+			$APIlogs=$APIlogs+$_SqlRows
+			IF $NumOfRows = 0
+				$ErrorMessage = sqlite("sql","select data from GcApi where key = '/GetGeocacheLogResponse/Status/StatusMessage'","Headings=N")	
+				IF $ErrorMessage="OK"
+					$ErrorMessage=$ErrorMessage + $_CrLf + " (Username $SelectedUserName was found, but there were no logs in the given date-range)"
+				ELSE
+					$ErrorMessahe=" An error occurred."+$_CrLf+" "+$ErrorMessage
+				ENDIF
+				MsgOk msg= API message: $ErrorMessage $_CrLf $_CrLf  Macro will now exit.
+				CANCEL
+			ENDIF
+
+			SHOWSTATUS msg="$NumOfRows logs retrieved via API." Width=350
+			
+			$FinderNames = sqlite("sql","select data from GcApi where key = '/GetGeocacheLogResponse/Logs/a:GeocacheLog/a:Finder/a:UserName'","Headings=N")
+			$LogTexts = sqlite("sql","select data from GcApi where key = '/GetGeocacheLogResponse/Logs/a:GeocacheLog/a:LogText'","Headings=N crlfcvt=~~~~CrLf~~~~")
+			$LogTypes = sqlite("sql","select data from GcApi where key = '/GetGeocacheLogResponse/Logs/a:GeocacheLog/a:LogType/a:WptLogTypeName'","Headings=N")
+			$VisitDates = sqlite("sql","select data from GcApi where key = '/GetGeocacheLogResponse/Logs/a:GeocacheLog/a:VisitDate'","Headings=N")
+			$FinderIDs = sqlite("sql","select data from GcApi where key = '/GetGeocacheLogResponse/Logs/a:GeocacheLog/a:Finder/a:Id'","Headings=N")
+			$LogIDs = sqlite("sql","select data from GcApi where key = '/GetGeocacheLogResponse/Logs/a:GeocacheLog/a:ID'","Headings=N")
+			$LogTypeIDs = sqlite("sql","select data from GcApi where key = '/GetGeocacheLogResponse/Logs/a:GeocacheLog/a:LogType/a:WptLogTypeId'","Headings=N")		
+			
+		ENDIF
+
+		# ###########################################
+		
+		$X = 1
+
+		TransAction Action=Begin
+		While $X <= $NumOfRows
+			$X2=$X+$AlreadyDownloaded
+			$NumOfRows2=$NumOfRows+$AlreadyDownloaded
+			$ThisCode = Extract($Codes,$_NewLine,$X)
+			if $AddCacheIfNotInDatabase
+				if Not(Seek($ThisCode))
+					# cache does not exist in database, add it 
+					AddNew
+					$d_Code = $ThisCode
+					$d_Symbol = "Geocache"
+					$CachesAdded=$CachesAdded+1
+				ENDIF
+			ENDIF
+
+			if Seek($ThisCode)
+				TABLE Active=Logs scope=Parent
+				$ThisLogID = Extract($LogIDs,$_NewLine,$X)
+				If Seek($ThisLogID)
+					SHOWSTATUS msg="Skipping log $X2 / $NumOfRows2" Width=350
+					$SkippedAlreadyExists=$SkippedAlreadyExists+1
+					TABLE Active=Caches
+				ELSE
+					SHOWSTATUS msg="Adding log $X2 / $NumOfRows2" Width=350
+					$ThisFinderName = Extract($FinderNames,$_NewLine,$X)
+					$ThisLogText = Extract($LogTexts,$_NewLine,$X)
+					$ThisLogType = Extract($LogTypes,$_NewLine,$X)
+					$ThisLogTypeID = val(Extract($LogTypeIDs,$_NewLine,$X))
+					$ThisVisitDate = Extract($VisitDates,$_NewLine,$X)
+					$ThisFinderID = Extract($FinderIDs,$_NewLine,$X)
+					$ThisLogID = Extract($LogIDs,$_NewLine,$X)
+					# AddNewLog assumes we are already in TABLE Active=Logs
+					GOSUB Name=AddNewLog
+					TABLE Active=Caches
+					IF ($ThisFinderID = $MyUserID) and ($ThisLogTypeID=2 or $ThisLogTypeID=10 or $ThisLogTypeID=11)
+						$d_Symbol = "Geocache Found"
+					ENDIF
+				ENDIF
+			ELSE 
+				# cache does not exist is database
+				$SkippedNotInDB=$SkippedNotInDB+1
+			ENDIF
+
+			$X = $X + 1
+		EndWhile
+		TransAction Action=End
+		
+		# ###########################################
+
+		CancelFilter
+		ResyncLogs
+		
+		IF ($MaxDownloadPerCall - $NumOfRows) < 100
+			$StartIndex=$StartIndex+$NumOfRows
+	#		$StartIndex=0
+			$AlreadyDownloaded=$AlreadyDownloaded+$NumOfRows
+			GOSUB name=DelayTimer
+		ELSE
+			$StartIndex=-1
+		ENDIF
+	ENDWHILE # $StartIndex<>-1
+
+	$_sql="g_contains('addnew1',name)   "
+	MFILTER WHERE=$_sql
+
+	IF $_FilterCount > 0
+		SHOWSTATUS msg="Retrieving cache data for $_FilterCount new added caches" Width=350
+		MACROSET  Dialog="Load" VarName=$Load
+		GcRefresh Scope=Filter LogsPerCache=0 LoadSettings="<macro>" 
+	ENDIF
+	
+	CancelFilter
+	
+	SHOWSTATUS msg="Finished!" Width=350
+	$TempText=DateFormat($StartDate)+" and "+DateFormat($EndDate)
+	MsgOk msg=" Macro Finished. $_CrLF $_CrLF Summary: $_CrLF API returned $APIlogs logs for user $SelectedUserName between $TempText $_CrLf $_CrLf $CachesAdded new caches were added to the database $_CrLf $SkippedNotInDB logs skipped because the cache is not in the database $_CrLf $SkippedAlreadyExists logs skipped because the log already exists in the database $_CrLf $AddedLog new logs were added to the database"
+
+ENDSUB 
+
+<data> varname=$statusOrig
+<GetUsersGeocacheLogsRequest xmlns="http://www.geocaching.com/Geocaching.Live/data">
+  <AccessToken>{ACCESSTOKEN}</AccessToken>
+  <Username>~~USERNAME~~</Username>
+  <Range>
+	<StartDate>~~StartDate~~</StartDate>
+    <EndDate>~~EndDate~~</EndDate>
+  </Range>
+  <LogTypes>
+	~~LogTypes~~  </LogTypes>
+  <ExcludeArchived>true</ExcludeArchived>
+  <StartIndex>~~StartIndex~~</StartIndex>
+  <MaxPerPage>~~MaxDownloadPerCall~~</MaxPerPage>
+</GetUsersGeocacheLogsRequest>
+<enddata>
+
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">1</long> = UnArchive
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">2</long> = Found It
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">3</long> = DNF
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">4</long> = Write Note
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">5</long> = Archive
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">6</long> = Permanently Archived
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">7</long> = Need Archived
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">9</long> = Will Attend
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">10</long> = Attended
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">11</long> = WebCam Photo Taken
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">12</long> = Unarchive
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">13</long> = Retrieved from a cache
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">22</long> = Temporary Disable
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">23</long> = Enable Listing
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">45</long> = Needs Maintenance
+#     <long xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">46</long> = Owner Maintenance
+
+
+BEGINSUB NAME=ReplaceSpecialCharacters
+ $SelectedUserName = REPLACE("&","&amp;",$SelectedUserName )        
+ $SelectedUserName = REPLACE("<","&lt;",$SelectedUserName )
+ $SelectedUserName = REPLACE(">","&gt;",$SelectedUserName )
+ $SelectedUserName = REPLACE($_Quote,"&quot;",$SelectedUserName )
+ $SelectedUserName = REPLACE("'","&apos;",$SelectedUserName )
+ENDSUB
+
+BEGINSUB Name=AddNewLog
+	AddNew
+
+	$d_lType = $ThisLogType
+  
+	$ThisLogText=Replace("~~~~CrLf~~~~",$_CrLf,$ThisLogText)
+	$ThisLogText=UTF8($ThisLogText,"d")
+
+	$d_lText = $ThisLogText
+	#  Pause msg=$ThisLogText
+
+	$d_lDate = SQLToDate(Extract($ThisVisitDate,"T",1))
+
+	# The API returns the date+logtime in PST (Seatle)
+	# So the logdate is always identical to what is shown on gc.com website
+	# GSAK automatically enters 12:00 as logtime (cannot change that using ltime)
+	# even if GSAK subtracts 07:00 08:00, the logdate should still be correct.	
+	
+	#	$d_lTime = Extract($ThisDateTime,"T",2)
+	
+	$d_lBy = UTF8($ThisFinderName,"d")
+	$d_lLogId = Val($ThisLogID)
+  
+#  If $ThisLatitude <> ""
+#    $d_lLat = $ThisLatitude
+#  EndIf
+#  If $ThisLongitude <> ""
+#    $d_lLon = $ThisLongitude
+#  EndIf
+
+	$d_lOwnerid = Val($ThisFinderID)
+	
+	$AddedLog=$AddedLog+1
+ENDSUB
+
+BEGINSUB Name=ShowForm
+
+
+IF $UsersForSelectionList=""		
+	$UserNames = $MyUserName+";<type a new username>;<clear all saved usernames>"
+ELSE
+	$UserNames = $MyUserName+";"+$UsersForSelectionList+";<type a new username>;<clear all saved usernames>"
+ENDIF
+$UserNamesBefore=$UserNames
+
+$FormExit = form($form,"")
+  BeginCase
+    Case $FormExit = "DelayExit"
+      # MsgOk msg="Macro will now CANCEL"
+      CANCEL
+    Case $FormExit = "SystemExit"
+      # MsgOk msg="Macro will now CANCEL"
+      CANCEL
+    Case $FormExit = "ExitButton"
+      # MsgOk msg="Macro will now CANCEL"
+      CANCEL
+    Case $FormExit = "StartButton"
+		$SelectedUserName=$UserNames	# selected username from the ComboBox		
+		If AT($SelectedUserName, $UserNamesBefore) = 0 # new username
+			IF $UsersForSelectionList = ""
+				$UsersForSelectionList=$SelectedUserName
+			ELSE
+				$UsersForSelectionList=$UsersForSelectionList+";"+$SelectedUserName
+			ENDIF
+		endif
+		IF $SelectedUserName="<clear all saved usernames>"
+			$UsersForSelectionList=""
+			MACSETTINGS Type=S Vars=FoundIt,DNF,WriteNote,NeedsMaintenance,WillAttend,OtherLogTypes,UsersForSelectionList,AddCacheIfNotInDatabase
+			CANCEL Msg="All saved usernames cleared. Re-run the macro."
+		ENDIF	
+		
+		MACSETTINGS Type=S Vars=FoundIt,DNF,WriteNote,NeedsMaintenance,WillAttend,OtherLogTypes,UsersForSelectionList,AddCacheIfNotInDatabase	
+		GOSUB Name=Main
+  EndCase
+ENDSUB
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Wed 18-Jul-2012 01:05:34
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Add cache to database if not yet in database?
+  Height = 325
+  Width = 633
+
+Name = StartDate
+  Type = Date
+  Height = 21
+  Left = 128
+  Top = 90
+  Width = 121
+  Taborder = 1
+
+Name = EndDate
+  Type = Date
+  Height = 21
+  Left = 128
+  Top = 120
+  Width = 121
+  Taborder = 2
+
+Name = Label1
+  Type = Label
+  Height = 17
+  Left = 56
+  Top = 56
+  Width = 56
+  Caption = Username
+
+Name = Label2
+  Type = Label
+  Height = 17
+  Left = 56
+  Top = 92
+  Width = 53
+  Caption = StartDate
+
+Name = Label3
+  Type = Label
+  Height = 17
+  Left = 56
+  Top = 122
+  Width = 50
+  Caption = EndDate
+
+Name = StartButton
+  Type = Button
+  Height = 25
+  Left = 224
+  Top = 240
+  Width = 75
+  Taborder = 3
+  Caption = Get Logs
+
+Name = ExitButton
+  Type = Button
+  Height = 25
+  Left = 344
+  Top = 240
+  Width = 75
+  Taborder = 4
+  Caption = Exit
+
+Name = AddCacheIfNotInDatabase
+  Type = Checkbox
+  Height = 20
+  Left = 56
+  Top = 176
+  Width = 321
+  Taborder = 5
+  Caption = Add cache to database if not yet in database?
+
+Name = FoundIt
+  Type = Checkbox
+  Height = 20
+  Left = 336
+  Top = 56
+  Width = 209
+  Taborder = 6
+  Caption = Found It / Attended / WebCam Photo
+
+Name = DNF
+  Type = Checkbox
+  Height = 20
+  Left = 336
+  Top = 80
+  Width = 98
+  Taborder = 7
+  Caption = Didn't Find It
+
+Name = WriteNote
+  Type = Checkbox
+  Height = 20
+  Left = 336
+  Top = 128
+  Width = 98
+  Taborder = 8
+  Caption = Write Note
+
+Name = Usernames
+  Type = Combobox
+  Directinput = Yes
+  Height = 21
+  Left = 128
+  Top = 56
+  Values = $UserNames
+  Width = 177
+  Taborder = 0
+
+Name = NeedsMaintenance
+  Type = Checkbox
+  Height = 20
+  Left = 336
+  Top = 104
+  Width = 217
+  Taborder = 9
+  Caption = Needs Maintenance / Needs Archived
+
+Name = OtherLogTypes
+  Type = Checkbox
+  Height = 20
+  Left = 336
+  Top = 176
+  Width = 225
+  Taborder = 10
+  Caption = Other (Enable / Disable / ...)
+
+Name = Label5
+  Type = Label
+  Height = 17
+  Left = 336
+  Style = bold;underline
+  Top = 32
+  Width = 172
+  Caption = Select logtypes to download:
+
+Name = WillAttend
+  Type = Checkbox
+  Height = 20
+  Left = 336
+  Top = 152
+  Width = 98
+  Taborder = 11
+  Caption = Will Attend
+
+Name = Label4
+  Type = Label
+  Height = 17
+  Left = 56
+  Style = bold;underline
+  Top = 32
+  Width = 241
+  Caption = Download Logs for Geocaching.com user
+
+<enddata>
+
+
+
+
+
+
+
+
+
+<data> VarName=$Load
+[TfmGpxLoad]
+chkGpx.Checked=True
+chkLoc.Checked=False
+chkZip.Checked=True
+cbxZap.Checked=False
+chkClearUser.Checked=False
+chkDefault.Checked=False
+chkDelete.Checked=False
+chkSetUser.Checked=False
+chkUserOnly.Checked=False
+rbtAddOnly.Checked=False
+rbtAlways.Checked=True
+rbtExists.Checked=False
+rbtExtraChild.Checked=True
+rbtExtraExclude.Checked=False
+rbtExtraParent.Checked=False
+rbtFoundAlways.Checked=False
+rbtFoundNever.Checked=True
+rbtFoundOnly.Checked=False
+rbtNewer.Checked=False
+rbtLoadFile.Checked=True
+rbtLoadFolder.Checked=False
+edtFoundSymbol.Text=Geocache Found
+chkUpdateSymbol.Checked=False
+cbxDataBases.Text=Test2
+edtCounty.Text=YB
+cbxFileType.Text=GPX/LOC (including inside zip)
+edtState.Text=SB
+chkKeepFocus.Checked=False
+chkDecodeEntity.Checked=True
+chkSummary.Checked=False
+edtFolder.Text=
+fnmFrom.Text=
+[General]
+cbxlock.Text=
+chkSaveFile.Checked=False
+chkSaveDatabase.Checked=False
+<enddata>
+
+BeginSub name=DelayTimer
+  $ThisDelay = 60000
+  $DelaySeconds = $ThisDelay / 1000
+  While $DelaySeconds > -1
+    Delay MS=1000
+    ShowStatus Msg=Waiting for Minute to expire Title=API Delay: $DelaySeconds
+    $DelaySeconds = $DelaySeconds - 1
+  EndWhile
+EndSub
+

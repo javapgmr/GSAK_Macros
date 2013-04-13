@@ -1,0 +1,358 @@
+#*******************************************
+# MacDescription = Total Found Logs (by anyone)
+# MacFileName = FoundLogsCount.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.26
+# MacUrl=http://gsak.net/board/index.php?showtopic=8586&view=findpost&p=76057
+#*******************************************
+
+VERCHECK Version=7.5.1.0 (please update GSAK to the latest version to run this macro - see http://gsak.net)
+
+$LogCount=0
+$Date1=[20000101]
+$Radiobutton3=TRUE
+MACSETTINGS Type=R FileCheck=N
+
+WHILE TRUE
+    $FormExit = form($Form,"")
+    BEGINCASE
+        CASE $FormExit = "SystemExit"
+            CANCEL Msg="Macro Cancelled"
+
+        CASE $FormExit = "OK"
+            MACSETTINGS Type=S Vars=Radiobutton1,Radiobutton2,Radiobutton3,Radiobutton4,Radiobutton5,Date1
+            #Check status of split screen, turn off if active
+            $SplitScreenStart=$_SplitScreen
+            IF $_SplitScreen
+                SPLITSCREEN Display=Off
+            ENDIF
+            SQLSORT OrderBy=RowID Desc
+            GOTO Position=Top
+
+            BEGINCASE
+                 CASE $Radiobutton1=TRUE
+                    MACROSET Dialog=Replace VarName=$UserData
+                    Replace Settings=<macro>
+                 CASE $Radiobutton2=TRUE
+                    MACROSET Dialog=Replace VarName=$User2
+                    Replace Settings=<macro>
+                 CASE $Radiobutton3=TRUE
+                    MACROSET Dialog=Replace VarName=$UserSort
+                    Replace Settings=<macro>
+                 CASE $Radiobutton4=TRUE
+                    MACROSET Dialog=Replace VarName=$User3
+                    Replace Settings=<macro>
+                 CASE $RadioButton5=TRUE
+                    MACROSET Dialog=Replace VarName=$User4
+                    Replace Settings=<macro>
+            ENDCASE
+
+            WHILE NOT($_EOL)
+                TABLE Active=Logs Scope=Parent
+                WHILE NOT($_EOL)
+                    IF ($d_lType="Found it" OR $d_lType="Attended" OR $d_lType="Webcam Photo Taken") AND $d_lDate>=$Date1
+                        $LogCount=$LogCount+1
+                    ENDIF
+                    GOTO Position=Next
+                ENDWHILE
+
+                IF $LogCount>0
+                    BEGINCASE
+                    CASE $Radiobutton1=TRUE
+                        $d_UserData=Str($LogCount,5,0)
+
+                    CASE $Radiobutton2=TRUE
+                        $d_User2=Str($LogCount,5,0)
+
+                    CASE $Radiobutton3=TRUE
+                        $d_UserSort=$LogCount
+
+                    CASE $Radiobutton4=TRUE
+                        $d_User3=Str($LogCount,5,0)
+
+                    CASE $RadioButton5=TRUE
+                        $d_User4=Str($LogCount,5,0)
+                    ENDCASE
+                ENDIF
+
+                $LogCount=0
+                TABLE Active=Caches
+                GOTO Position=Next
+            ENDWHILE
+
+            BEGINCASE
+                 CASE $Radiobutton1=TRUE
+                    IF $_FilterActive
+                        MFILTER Expression=Not(IsEmpty($d_UserData)) Join=AND
+                    ELSE
+                        MFILTER Expression=Not(IsEmpty($d_UserData))
+                    ENDIF
+                    SQLSORT OrderBy=UserData Desc
+                 CASE $Radiobutton2=TRUE
+                    IF $_FilterActive
+                        MFILTER Expression=Not(IsEmpty($d_User2)) Join=AND
+                    ELSE
+                        MFILTER Expression=Not(IsEmpty($d_User2))
+                    ENDIF
+                    SQLSORT OrderBy=User2 Desc
+                 CASE $Radiobutton3=TRUE
+                    IF $_FilterActive
+                        MFILTER Expression=$d_UserSort>0 Join=AND
+                    ELSE
+                        MFILTER Expression=$d_UserSort>0
+                    ENDIF
+                    SQLSORT OrderBy=Usersort Desc
+                 CASE $Radiobutton4=TRUE
+                    IF $_FilterActive
+                        MFILTER Expression=Not(IsEmpty($d_User3)) Join=AND
+                    ELSE
+                        MFILTER Expression=Not(IsEmpty($d_User3))
+                    ENDIF
+                    SQLSORT OrderBy=User3 Desc
+                 CASE $RadioButton5=TRUE
+                    IF  $_FilterActive
+                        MFILTER Expression=Not(IsEmpty($d_User4)) Join=AND
+                    ELSE
+                        MFILTER Expression=Not(IsEmpty($d_User4))
+                    ENDIF
+                    SQLSORT OrderBy=User4 Desc
+            ENDCASE
+            BREAK
+
+        CASE $FormExit = "Cancel"
+            CANCEL Msg="Macro Cancelled"
+    ENDCASE
+ENDWHILE
+
+GOTO Position=Top
+#Restore status of split screen
+IF $_SplitScreen=FALSE AND $SplitScreenStart=TRUE
+    SPLITSCREEN Display=On
+ENDIF
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Tue 14-Apr-2009 19:04:24
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Count and insert found logs
+  Height = 234
+  Width = 344
+
+Name = Label1
+  Type = Label
+  Color = 16711680
+  Height = 13
+  Left = 8
+  Style = Bold
+  Top = 18
+  Width = 302
+  Caption = Select the GSAK field to record the found log count:*
+
+Name = Radiobutton1
+  Type = Radiobutton
+  Height = 17
+  Left = 12
+  Top = 43
+  Width = 15
+  Taborder = 8
+
+Name = Radiobutton2
+  Type = Radiobutton
+  Height = 17
+  Left = 114
+  Top = 43
+  Width = 15
+  Taborder = 9
+
+Name = Radiobutton3
+  Type = Radiobutton
+  Height = 17
+  Left = 221
+  Top = 43
+  Width = 15
+  Taborder = 10
+
+Name = Label2
+  Type = Label
+  Height = 13
+  Left = 30
+  Style = Bold
+  Top = 45
+  Width = 57
+  Caption = User Data
+
+Name = Label3
+  Type = Label
+  Height = 13
+  Left = 132
+  Style = Bold
+  Top = 45
+  Width = 68
+  Caption = User Data 2
+
+Name = Label4
+  Type = Label
+  Height = 13
+  Left = 239
+  Style = Bold
+  Top = 45
+  Width = 53
+  Caption = User Sort
+
+Name = OK
+  Type = Button
+  Height = 28
+  Left = 54
+  Top = 137
+  Width = 75
+  Taborder = 11
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 28
+  Left = 216
+  Top = 137
+  Width = 75
+  Taborder = 12
+  Caption = Cancel
+
+Name = Label5
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 32
+  Style = Bold
+  Top = 182
+  Width = 271
+  Caption = *Warning:  Existing data in this field will erased.
+
+Name = RadioButton4
+  Type = Radiobutton
+  Height = 17
+  Left = 12
+  Top = 66
+  Width = 15
+  Taborder = 13
+
+Name = Label6
+  Type = Label
+  Height = 13
+  Left = 30
+  Style = Bold
+  Top = 68
+  Width = 68
+  Caption = User Data 3
+
+Name = RadioButton5
+  Type = Radiobutton
+  Height = 17
+  Left = 114
+  Top = 66
+  Width = 15
+  Taborder = 14
+
+Name = Label7
+  Type = Label
+  Height = 13
+  Left = 132
+  Style = Bold
+  Top = 68
+  Width = 68
+  Caption = User Data 4
+
+Name = Date1
+  Type = Date
+  Height = 21
+  Left = 203
+  Top = 98
+  Width = 106
+  Taborder = 15
+
+Name = Label8
+  Type = Label
+  Color = 16711680
+  Height = 13
+  Left = 10
+  Style = Bold
+  Top = 102
+  Width = 175
+  Caption = Only count logs after this date:
+
+<enddata>
+
+
+
+<data> VarName=$UserData
+[TfmReplace]
+cbxFields.Text=User Data
+cbxWith.Text=
+edtDate.Text=/  /
+edtString.Text=
+rbtAdd.Checked=False
+rbtRemove.Checked=False
+rbtReplace.Checked=True
+rbtSwap.Checked=False
+chkClose.Checked=True
+rbtAddBefore.Checked=False
+<enddata>
+
+<data> VarName=$User2
+[TfmReplace]
+cbxFields.Text=User Data 2
+cbxWith.Text=
+edtDate.Text=/  /
+edtString.Text=
+rbtAdd.Checked=False
+rbtRemove.Checked=False
+rbtReplace.Checked=True
+rbtSwap.Checked=False
+chkClose.Checked=True
+rbtAddBefore.Checked=False
+<enddata>
+
+<data> VarName=$User3
+[TfmReplace]
+cbxFields.Text=User Data 3
+cbxWith.Text=
+edtDate.Text=/  /
+edtString.Text=
+rbtAdd.Checked=False
+rbtRemove.Checked=False
+rbtReplace.Checked=True
+rbtSwap.Checked=False
+chkClose.Checked=True
+rbtAddBefore.Checked=False
+<enddata>
+
+<data> VarName=$User4
+[TfmReplace]
+cbxFields.Text=User Data 4
+cbxWith.Text=
+edtDate.Text=/  /
+edtString.Text=
+rbtAdd.Checked=False
+rbtRemove.Checked=False
+rbtReplace.Checked=True
+rbtSwap.Checked=False
+chkClose.Checked=True
+rbtAddBefore.Checked=False
+<enddata>
+
+<data> VarName=$UserSort
+[TfmReplace]
+cbxFields.Text=User Sort
+cbxWith.Text=
+edtDate.Text=/  /
+edtString.Text=
+rbtAdd.Checked=False
+rbtRemove.Checked=False
+rbtReplace.Checked=True
+rbtSwap.Checked=False
+chkClose.Checked=True
+rbtAddBefore.Checked=False
+<enddata>
+

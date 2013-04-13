@@ -1,0 +1,110 @@
+################################################################################ 
+# Macro to filter caches that have not been updated sinds the last ? days.     
+# Default is 8 Days.                                                           
+# After that you can choose how to handel.                                     
+#                                                                              
+# For option 4 you must have to install a macro Refreshall.txt                 
+#                                                                              
+# MacDescription = Filter caches not updated ? days                            
+# MacAuthor = Jurgen & co                                                      
+# MacVersion=1.03                                                              
+################################################################################
+
+
+# Edit the below value to match your Username with Geocaching.com
+# User Setup
+  $myUserName = "Jurgen & co"
+# end User Setup
+
+DEBUG Status=Off
+
+# Get from user the last time GPX was imported/how long ago to search
+INPUT Msg="How many days ago was the last GPX import? (Yesterday = 1)" Default=8 VarName=$daysago
+$lastgpx = $_Today - Val($daysago)
+
+# Filter so that we only show caches that may be archived.
+MFILTER IF=$d_LastGPXDate <> [00000000] .AND. $d_LastGPXDate < $lastgpx .AND. $d_PlacedBy <> $myUserName .AND..NOT. $d_Archived
+
+# Do this if there are 1 or more caches in filter
+IF $_FilterCount > 0
+ SORT By="lastupdate"
+ MACROFLAG type=clear range=all
+ MACROFLAG type=set range=filter
+
+ # Make a choise wath you want to do wit the caches who are in the filter.
+ CHOOSE Msg="What do you want to do with these caches?" opt1="Stop macro" opt2="Archive caches with Global Replace" opt3="Delete caches" opt4="Update caches with RefreshallGPX.txt"
+
+ # Stop macro
+ IF $Result = 1
+  CANCELFILTER
+  CANCEL
+ ENDIF
+
+ # Set status to archived with global replace
+ IF $Result = 2    
+  MacroSet Dialog=Replace VarName=$Replace
+  Replace Settings=<macro>
+  MsgOk Msg="The caches have been archived" Caption="The caches have been archived"
+ ENDIF
+
+ # Delete caches
+ IF $Result = 3
+  # Check if you realy want to delete the caches in the view.
+  CHOOSE Msg="Do you want to delete these caches" opt1="No" opt2="Yes"
+  
+  # Delete caches
+  IF $Result = 2
+   MacroSet Dialog=Replace VarName=$Delete
+   Delete Settings=<macro>
+   MsgOk Msg="The caches have been Deleted" Caption="The caches have been Deleted"
+  ENDIF
+ 
+  # Cancel macro
+  IF $Result = 2
+   Cancel
+  ENDIF
+ ENDIF
+
+ # Update caches with RefreshAllGPX
+ IF $Result = 4
+  MACRO File="RefreshAllGPX.txt"
+  MsgOk Msg="The caches have been Refreshed" Caption="The caches have been Refreshed"
+ ENDIF
+
+ELSE
+ PAUSE Msg="No records match archiving criteria. Restoring."
+ENDIF
+
+# Global Replace Settings do not change
+
+<data> VarName=$Replace
+[TfmReplace]
+cbxFields.Text=Available Status
+cbxWith.Text=Archived
+edtDate.Text=-  -
+edtString.Text=
+rbtAdd.Checked=False
+rbtRemove.Checked=False
+rbtReplace.Checked=True
+rbtSwap.Checked=False
+<enddata>
+
+# Delete Settings
+
+<data> VarName=$Delete
+[TfmDelete]
+cbxStop.Checked=False
+rbtFilter.Checked=True
+rbtFlagged.Checked=False
+rbtOnly.Checked=False
+rbtAll.Checked=False
+<enddata>
+
+
+
+
+
+
+
+
+

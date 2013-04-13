@@ -1,0 +1,337 @@
+#*******************************************
+# MacVersion = 1.9
+# MacDescription = Copy cache links to Forums, IRC, or HTML
+# MacAuthor = Dave H. aka brdad
+# MacFileName = Copy_to_clip.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=6485
+#*******************************************
+
+ MACSETTINGS Type=R FileCheck=N
+
+ IF Sysinfo("gsakini;TfmConfig;EdtGeoName.Text")="brdad" OR Sysinfo("gsakini;TfmConfig;EdtGeoName.Text")="61905" OR Sysinfo("gsakini;TfmConfig;EdtGeoName.Text")="mainiac1957" OR Sysinfo("gsakini;TfmConfig;EdtGeoName.Text")="139598"
+     $Form = EditForm($form,"ButtonEventList","Visible","Yes")
+     $Form = EditForm($form,"ComboboxUserData","Visible","Yes")
+     $Form = EditForm($form,"Lbl4","Visible","Yes")
+ ENDIF 
+
+ $format = ""
+ $data = ""
+ $Mycode = $d_Code
+
+
+
+While True # Infinite loop to redisplay form as required
+$FormExit = form($form,"")
+
+ #IF ShowForm($form)
+ #ENDIF 
+
+# Determine number of records to copy
+ IF $CheckBoxMultiple = False
+     $numrecords = 1
+ ELSE 
+     IF Val($EditMaximum) >= 1
+         $numrecords = Val($EditMaximum)
+     ELSE 
+         $numrecords = $_Count
+     ENDIF 
+ ENDIF 
+
+#Check if we're using Miles or Kilometres
+ IF SysInfo("Distance") = "K"
+     $distunits = "km"
+ ELSE 
+     $distunits = "miles"
+ ENDIF 
+
+ IF $distunits=""
+     $msg = "Sorry, something is wrong, I couldn't read your Distance setting"
+     CANCEL MSG=$msg
+ ENDIF 
+
+ $count = 1
+ WHILE $Count <= $numrecords and Not($_Eol)
+     SHOWSTATUS Msg=Converting record $count of $numrecords Left=$_FormLeft Top=$_FormTop
+
+     IF $CheckBoxCacheType = True
+	$CacheType = "(" + CacheType($d_CacheType) + ")"
+     ELSE
+	$CacheType = ""
+     ENDIF
+
+     IF $CheckBoxContainer = True
+         $Container = "($d_Container)"
+     ELSE 
+         $Container = ""
+     ENDIF 
+
+
+     IF $CheckBoxDT = True
+         $DT = "($d_Difficulty/$d_Terrain)"
+     ELSE 
+         $DT = ""
+     ENDIF 
+
+     IF $CheckBoxDistance = True
+         $distance = NumToStr($d_Distance) + " " + $distunits + " - "
+     ELSE 
+         $distance = ""
+     ENDIF 
+
+     BEGINCASE 
+         CASE $d_Archived = True
+             $ubbleft = "[COLOR=" + $_Quote + "Red" + $_Quote + "]"
+             $ircleft = ""
+             $ircright = " (Archived)"
+             $ubbright = "[/COLOR]"
+             $htmlleft = "<del><font color=" + $_Quote + "red" + $_Quote + ">"
+             $htmlright = "</font></del>"
+         CASE $d_TempDisabled = True
+             $ubbleft = "[COLOR=" + $_Quote + "Gray" + $_Quote + "]"
+             $ubbright = "[/COLOR]"
+             $ircleft = ""
+             $ircright = " (Disabled)"
+             $htmlleft = "<font color=" + $_Quote + "red" + $_Quote + ">"
+             $htmlright = "</font>"
+         OTHERWISE 
+             $ubbleft = ""
+             $ubbright = ""
+             $ircleft = ""
+             $ircright = ""
+             $htmlleft = ""
+             $htmlright = ""
+     ENDCASE 
+
+     BEGINCASE 
+         CASE $ButtonUBB
+#This line lays out the format for forum posts
+             $format = "$distance[B][URL=$d_Url]$ubbleft $d_Name $ubbright[/url][/b]$CacheType$Container ($d_Code) by [URL=http://www.geocaching.com/profile/?id=$d_OwnerId]$d_PlacedBy[/URL] [B]$DT[/B]"
+         CASE $ButtonIRC
+#This line lays out the format for IRC, using coord.info for url
+             $Url = "http://coord.info/" + $d_Code
+             $format = "$distance($d_Code) $ircleft $d_name $ircright$CacheType$Container$DT by $d_PlacedBy $Url"
+         CASE $ButtonHTML
+#This line lays out the format for HTML
+             $format = "$distance<B><a href=$d_Url>$htmlleft $d_Name $htmlright</a></B>$CacheType$Container ($d_Code) by <a href=http://www.geocaching.com/profile/?id=$d_OwnerId>$d_PlacedBy</a>$DT<BR>"
+         CASE $ButtonEventList
+
+#Change this to indicate the column containing the town
+             #$Town = $d_UserData
+             #IF $Town = ""
+             #    $Town = "????"
+             #ENDIF 
+
+	BeginCase
+
+        Case $ComboboxUserData = "User Data"
+        	$Town = $d_UserData
+        Case $ComboboxUserData = "User Data 2" 
+        	$Town = $d_User2
+        Case $ComboboxUserData = "User Data 3"
+        	$Town = $d_User3
+        Case $ComboboxUserData = "User Data 4" 
+        	$Town = $d_User4
+	Case $ComboboxUserData = "Town" 
+		$Town = CustomGet("Town")
+      EndCase
+
+             IF $Town = ""
+                 $Town = "????"
+	     ENDIF
+
+#Change this to indicate the column containing the time
+             $TimeColumn = $d_User2
+             IF $TimeColumn = ""
+                 $TimeColumn = "????"
+             ENDIF 
+
+#make sure only events are listed
+             IF $d_CacheType = "C" OR $d_CacheType = "E" OR $d_CacheType = "X" OR $d_CacheType = "Z"
+
+#These line lays out the format for Brad's event postings. Button 4 must be enabled before it is functional.
+
+                 BEGINCASE 
+
+                     CASE $d_State = "ME" OR $d_State = "Maine"
+                         $format = "[B][URL=$d_Url][COLOR=" + $_Quote + "DarkGreen" + $_Quote + "]$d_Name[/COLOR][/url] $CacheType ($d_code)[/B]"
+                         $format = $format + "$_NewLine Location: $Town, $d_State $_NewLine Date: $d_PlacedDate $_NewLine"
+                         $format = $format + "Time: $TimeColumn $_NewLine Host: $d_PlacedBy $_NewLine"
+
+                     CASE $d_CacheType = "Z"
+                         $format = "[URL=$d_Url][COLOR=" + $_Quote + "Red" + $_Quote + "]$d_Name[/COLOR][/url] $CacheType ($d_code)"
+                         $format = $format + "$_NewLine Location: $Town, $d_State $_NewLine Date: $d_PlacedDate $_NewLine"
+                         $format = $format + "Time: $TimeColumn $_NewLine Host: $d_PlacedBy $_NewLine"
+
+                     OTHERWISE 
+                         $format = "[URL=$d_Url]$d_Name[/url] $CacheType ($d_code)"
+                         $format = $format + "$_NewLine Location: $Town, $d_State $_NewLine Date: $d_PlacedDate $_NewLine"
+                         $format = $format + "Time: $TimeColumn $_NewLine Host: $d_PlacedBy $_NewLine"
+
+                 ENDCASE 
+
+             ELSE 
+                 $format = ""
+             ENDIF 
+
+     ENDCASE 
+
+
+     IF $format <> ""
+         $data = $data + $format + $_NewLine
+     ENDIF 
+     GOTO Position=Next
+     $count = $count + 1
+ ENDWHILE 
+
+
+ IF $format <> ""
+     SHOWSTATUS Msg=Copying data to clipboard...
+     CLIP Data=$data
+     $status = Seek($Mycode)
+ ENDIF 
+ MACSETTINGS Type=S Vars=CheckBoxDistance,CheckBoxDT,CheckBoxContainer,CheckBoxCacheType,ComboboxUserData
+
+Break
+EndWhile
+
+#####################################################
+########                                     ########
+########                FORM                 ########
+########                                     ########
+#####################################################
+
+<DATA> VarName=$form
+
+
+Name = Form1
+  Type = Form
+  Caption = Copy to Clipboard
+  Height = 328
+  Width = 263
+
+Name = ButtonUBB
+  Type = Button
+  Height = 25
+  Left = 15
+  Top = 17
+  Width = 100
+  Taborder = 8
+  Caption = Copy for Forums
+
+Name = ButtonIRC
+  Type = Button
+  Height = 25
+  Left = 15
+  Top = 52
+  Width = 100
+  Taborder = 9
+  Caption = Copy for IRC
+
+Name = ButtonHTML
+  Type = Button
+  Height = 25
+  Left = 15
+  Top = 87
+  Width = 100
+  Taborder = 14
+  Caption = Copy for HTML
+
+Name = ButtonEventList
+  Type = Button
+  Height = 25
+  Left = 135
+  Top = 17
+  Visible = No
+  Width = 100
+  Taborder = 10
+  Caption = Copy Event List
+
+Name = Lbl2
+  Type = Label
+  Height = 13
+  Left = 15
+  Top = 154
+  Width = 102
+  Caption = Maximum to display:
+
+Name = Lbl3
+  Type = Label
+  Height = 13
+  Left = 15
+  Top = 176
+  Width = 123
+  Caption = (Leave blank for no limit)
+
+Name = CheckBoxMultiple
+  Type = Checkbox
+  Height = 17
+  Left = 15
+  Top = 130
+  Width = 178
+  Taborder = 11
+  Caption = Copy multiple caches
+
+Name = EditMaximum
+  Type = Edit
+  Height = 21
+  Left = 130
+  Top = 150
+  Width = 87
+  Taborder = 12
+
+Name = CheckBoxDistance
+  Type = Checkbox
+  Height = 17
+  Left = 15
+  Top = 208
+  Width = 233
+  Taborder = 13
+  Caption = Display distances from curent centerpoint
+
+Name = ComboboxUserData
+  Type = Combobox
+  Height = 21
+  Left = 135
+  Top = 70
+  Visible = No
+  Values = Town;User Data;User Data 2;User Data 3;User Data 4
+  Width = 100
+  Taborder = 2
+
+Name = Lbl4
+  Type = Label
+  Height = 13
+  Left = 135
+  Top = 50
+  Visible = No
+  Width = 96
+  Caption = Town Data Colum:
+
+Name = CheckBoxCacheType
+  Type = Checkbox
+  Height = 17
+  Left = 15
+  Top = 228
+  Width = 233
+  Taborder = 15
+  Caption = Display cache types
+
+Name = CheckBoxDT
+  Type = Checkbox
+  Height = 17
+  Left = 15
+  Top = 268
+  Width = 233
+  Taborder = 16
+  Caption = Display D/T
+
+Name = CheckBoxContainer
+  Type = Checkbox
+  Height = 17
+  Left = 15
+  Top = 248
+  Width = 233
+  Taborder = 17
+  Caption = Display Cache Container
+
+<enddata>

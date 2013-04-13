@@ -1,0 +1,65 @@
+#*******************************************************
+# The following macro iterates through your database and displays a html summary
+# at the end. The actual summary given is limited in use, but I am hoping
+# it will give you some idea of what can now be done with the macro language.
+# There are no settings or filters required to run this macro.
+#
+# You could easily change this macro to add other elements that suit your
+# requirements.
+#*******************************************************
+
+$Found = 0
+$NotFound = 0
+$TravelBugs = 0
+$LatestFind = [00000000]
+$LatestFindByMe = [00000000]
+$MRFName = ""
+$LFByMeName = ""
+$ThisRecord = 0
+$temp = GetEnvV("temp")
+Goto Position=Top
+While .not. $_eol
+  $ThisRecord = $ThisRecord + 1
+  $status = "Now processing: " + "$ThisRecord" + " of " + "$_Count"
+  ShowStatus msg="$status"  
+
+  if $d_found
+    $Found = $Found + 1
+  else
+    $NotFound = $NotFound + 1	
+  endif
+  
+  if $d_lastFoundDate > $LatestFind
+    $LatestFind = $d_LastFoundDate
+	$LFName = $d_Name
+  endif	
+  
+  if $d_FoundByMeDate > $LatestFindByMe
+    $LatestFindByMe = $d_FoundByMeDate
+	$LFByMeName = $d_Name
+  endif
+
+  If $d_HasTravelBug
+    $TravelBugs = $TravelBugs + 1
+  endif
+  
+  Goto Position=Next
+  
+EndWhile
+
+$out = "<html><body>" + $_NewLine
+$out = $out + "Database: <b>" + $_CurrentDatabase + "</b><br><br>"
+$out = $out + "<table border='1' summary=''>"
+$out = $out + "<tr><td>Total Waypoints:</td><td>" + "$_Count</td></tr>" +  $_NewLine
+$out = $out + "<tr><td>Found:</td><td>" +  "$Found</td></tr>" + $_NewLine
+$out = $out + "<tr><td>Not Found:</td><td> " + "$NotFound</td></tr>" + $_NewLine
+$out = $out + "<tr><td>Latest find:</td><td>" + DateFormat($LatestFind) + " - " + $LFName + "</td></tr>" + $_NewLine
+$out = $out + "<tr><td>Latest find by me:</td><td>" + DateFormat($LatestFindByMe) + " - " + $LFByMeName + "</td></tr>" +$_NewLine
+$out = $out + "<tr><td>Caches with travel bugs:</td><td> " + "$TravelBugs" + "</td></tr>" + $_NewLine
+$out = $out + "</table></body></html>"
+$FileName = $temp + "\summary.htm"
+$Error = PutFile($FileName,$out)
+OpenFile file="$FileName"
+
+	
+

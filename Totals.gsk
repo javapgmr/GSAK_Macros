@@ -1,0 +1,357 @@
+#*******************************************
+# MacVersion = 1.8
+# MacDescription = Total any column
+# MacAuthor = clyde
+# MacFileName = Totals.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=5610&view=findpost&p=32557
+#*******************************************
+
+Vercheck version=7.5.0.188
+$form = replace("Ver xxx","Ver 1.8",$form,true)
+
+# Declar all variables
+
+GoSub Name=Declare
+
+# Set up column descriptions
+
+$Cols = "Bearing;Cache Type;Container;County;Country;Last changed date;Difficulty;DNF Date;Elevation;Found count;Found by me date;Last found date;"
+$cols = $cols + "Last GPX update;Last log;Last user update;Latitude;Longitude;Macro sort;Number of logs;Owner name;Placed by;"
+$cols = $cols + "Data source;State;Terrain;User data;User data 2;User data 3;User data 4;User note date;User sort"
+$ColList = list("ColList","create",";")
+$ColList = list("ColList","replace",$cols)
+
+# Set up corresponding database field names
+
+$DbCols = "bearing;cachetype;container;county;country;changed;Difficulty;dnfdate;elevation;foundcount;foundbymedate;lastfounddate;"
+$DbCols = $DbCols + "lastgpxdate;lastlog;lastuserdate;latitude;Longitude;macrosort;numberoflogs;ownername;placedby;"
+$DbCols = $DbCols + "source;state;Terrain;userdata;user2;user3;user4;usernotedate;usersort"
+
+# Get saved settings if found
+$Settings = $_Install + "\macros\Totals.dat"
+If FileExists($Settings)
+  $data = GetFile($Settings)
+  $column = extract($data,";",1)
+  $SortCol = StrToBool(extract($data,";",2))
+  $Ascending = StrToBool(extract($data,";",3))
+  $RankSetting = extract($data,";",4)
+  if isEmpty($RankSetting) # set defualt to true for previous version of this macro
+    $Rank = true
+  else
+    $Rank = StrToBool($RankSetting)
+  endif
+  $SortTot = not($SortCol)
+  $Decending = not($Ascending)
+Else
+  $SortCol = true
+  $Ascending = true
+  $Rank = true
+EndIf
+
+# Set form variables and show it
+
+
+$result = Form($form,"")
+If $result = "FrmBtnOK"
+  # Save settings
+  $status = PutFile($Settings,$column + ";" + BoolToStr($SortCol,"T","F") + ";" + BoolToStr($Ascending,"T","F") + ";" + BoolToStr($Rank,"T","F"))
+else
+  cancel
+EndIf
+
+# Set up required fields for SQL
+
+$DbCol = Val(list("ColList","find",$column))
+$dbField = extract($dbcols,";",$dbcol)
+$totl = $dbfield
+$dbfield2 = $dbfield
+
+if $dbField = "cachetype"
+  $dbfield = "(select vto from gsak_static.lookup where Vfrom = CacheType) as CacheType"
+  $dbField2 = "CacheType"
+Endif
+
+if not(regex("NumberOfLogs|UserSort|FoundCount|CacheType|elevation",$dbfield))
+  $dbField2 = "g_upper($dbfield)"
+endif
+
+
+
+If $SortTot
+  $sort = "tot"
+else
+  $sort = $dbfield2
+Endif
+
+if $ascending
+  $sequence = "asc"
+else
+  $sequence = "desc"
+endif
+
+# Run SQL statements to generate the required totals
+$data = sqlite("sql","select $dbfield, count($totl) as tot from caches where $_where group by $dbField2 order by $sort $sequence")
+$count = $_SqlRows
+$list = list("sc","create",$_NewLine)
+$list = list("sc","Replace",$data)
+
+# Generate the HTML to show the totals
+
+If $Rank
+  $html = $html + "<tr class='heading'><td align='center' colspan=4 >$_Today</td></tr>" + $_Newline
+  $html = $html + "<tr class='heading'><td>$column</td><td>Count&nbsp;</td><td>Pcent&nbsp;</td><td>Rank&nbsp;</td></tr>" + $_NewLine
+else
+  $html = $html + "<tr class='heading'><td align='center' colspan=3 >$_Today</td></tr>" + $_Newline
+  $html = $html + "<tr class='heading'><td>$column</td><td>Count&nbsp;</td><td>Pcent&nbsp;</td></tr>" + $_NewLine
+EndIf
+$x = 0
+While $x < $count
+  $x = $x + 1
+  $data = list("sc","item","$x")
+  $pcent = str((val(extract($data,";",2)) / $_Count) * 100,5,1) 
+  $html = $html + "<tr class='rows'><td>" + extract($data,";",1) + "</td><td align='right'>" + extract($data,";",2) + "&nbsp;</td><td align='right'>$pcent%&nbsp;</td>"
+  If $Rank
+    $html = $html + "<td align='right'>$x&nbsp;</td>"
+  EndIf
+  $html = $html + "</tr>" + $_NewLine
+EndWhile
+
+$html = $html + "<tr class='heading'><td>Grand Total&nbsp;</td><td align='right'>$_Count&nbsp;<td>100%&nbsp;</td>"
+if $Rank
+  $html = $html + "<td>&nbsp;</td>"
+endif
+$html = $html + "</tr>" + $_Newline
+$out = replace("#TableData",$html,$out,true) 
+$file = $_Install + "\temp\Totals.htm"
+$status = Putfile($file,$out)
+FileOpen File=$file
+
+
+BeginSub Name=Declare
+#*******************************************************
+#   Variable declarations for
+#   C:\gsak\Macros\Totals.gsk
+#
+#   Generated 4/07/2007 7:58:33 PM on GSAKVariables.gsk Rev V0.20 B5
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$Ascending Type=Boolean
+Declare Var=$ColList Type=String
+Declare Var=$Cols Type=String
+Declare Var=$count Type=Numeric
+Declare Var=$data Type=String
+Declare Var=$DbCol Type=Numeric
+Declare Var=$DbCols Type=String
+Declare Var=$dbField Type=String
+Declare Var=$dbField2 Type=String
+Declare Var=$file Type=String
+Declare Var=$form Type=String
+Declare Var=$html Type=String
+Declare Var=$list Type=String
+Declare Var=$sequence Type=String
+Declare Var=$sort Type=String
+Declare Var=$SortCol Type=Boolean
+Declare Var=$status Type=String
+Declare Var=$x Type=Numeric
+Declare Var=$pcent Type=String
+Declare Var=$settings Type=String
+Declare Var=$column Type=String
+Declare Var=$SortTot Type=Boolean
+Declare Var=$Decending Type=Boolean
+Declare Var=$out Type=String
+Declare Var=$RankSetting Type=String
+Declare Var=$result Type=String
+Declare Var=$totl Type=String
+Declare Var=$Rank Type=Boolean
+EndSub
+
+<data> Varname=$out
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<!-- saved from url=(0014)about:internet -->
+<title>GSAK Totals</title>
+<style type='text/css'>                                                 
+
+
+.heading
+{
+background: #176199;
+color: #ffffff;
+font: 12px tahoma, verdana, geneva, lucida, 'lucida grande', helvetica, sans-serif;
+}
+
+.rows {
+background: #d9d9d9;
+color: #000000;
+font: 12px tahoma, verdana, geneva, lucida, 'lucida grande', helvetica, sans-serif;
+
+</style>
+</head>
+<body>
+
+
+<table cellpadding="1" cellspacing="1" border="0" align="left">
+
+#TableData
+
+</table>
+</body>
+</html>
+
+<enddata>
+
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Tue 31-Jul-2007 16:34:11
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Caption = Total Any Column (Ver xxx)
+  Height = 276
+  Width = 221
+
+Name = FrmGrp1
+  Type = Groupbox
+  Caption = Sort by
+  Height = 46
+  Left = 6
+  Top = 54
+  Width = 185
+
+Name = FrmGrp4
+  Type = Groupbox
+  Caption = Sequence
+  Height = 46
+  Left = 6
+  Top = 103
+  Width = 185
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Include ranking column
+  Height = 41
+  Left = 8
+  Top = 152
+  Width = 185
+
+Name = Heading
+  Type = Label
+  Height = 13
+  Left = 7
+  Top = 8
+  Width = 111
+  Caption = Select a column to total
+
+Name = column
+  Type = Combobox
+  Display = 15
+  Height = 21
+  Left = 7
+  Top = 24
+  Values = $cols
+  Width = 185
+
+Name = FrmBtnOK
+  Type = Button
+  Height = 25
+  Left = 11
+  Top = 208
+  Width = 75
+  Caption = OK
+
+Name = FrmBtnCancel
+  Type = Button
+  Height = 25
+  Left = 118
+  Top = 208
+  Width = 75
+  Caption = Cancel
+
+Name = FrmLbl7
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 30
+  Top = 19
+  Width = 59
+  Caption = Column data
+
+Name = FrmLbl8
+  Type = Label
+  Container = FrmGrp1
+  Height = 13
+  Left = 125
+  Top = 19
+  Width = 54
+  Caption = Total count
+
+Name = SortCol
+  Type = Radiobutton
+  Container = FrmGrp1
+  Height = 17
+  Left = 12
+  Top = 17
+  Width = 15
+
+Name = SortTot
+  Type = Radiobutton
+  Container = FrmGrp1
+  Height = 17
+  Left = 106
+  Top = 17
+  Width = 15
+
+Name = FrmLbl9
+  Type = Label
+  Container = FrmGrp4
+  Height = 13
+  Left = 29
+  Top = 20
+  Width = 50
+  Caption = Ascending
+
+Name = FrmLbl10
+  Type = Label
+  Container = FrmGrp4
+  Height = 13
+  Left = 120
+  Top = 20
+  Width = 57
+  Caption = Descending
+
+Name = Ascending
+  Type = Radiobutton
+  Container = FrmGrp4
+  Height = 17
+  Left = 11
+  Top = 19
+  Width = 15
+
+Name = Decending
+  Type = Radiobutton
+  Container = FrmGrp4
+  Height = 17
+  Left = 101
+  Top = 19
+  Width = 15
+
+Name = Rank
+  Type = Checkbox
+  Container = Groupbox1
+  Height = 17
+  Left = 80
+  Top = 16
+  Width = 15
+
+<enddata>
+
+
+

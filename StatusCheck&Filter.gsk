@@ -1,0 +1,39 @@
+#*******************************************
+# MacDescription = Update status and filter caches updated with API status check
+# MacFileName =StatusCheck&Filter.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.0
+# MacUrl=http://gsak.net/board/index.php?showtopic=19774&view=findpost&p=141404
+#*******************************************
+VERCHECK Version=8.0.0.118 (please update GSAK to version 8.8.0.118 or later to run this MACRO)
+
+$SavedFilter = SaveFilter()
+MACROFLAG Type=Clear Range=All
+
+$_sql="Create temp table IF NOT EXISTS bTable (bCode,bStatus)"
+$Status=Sqlite("sql",$_sql)
+$_sql="INSERT INTO bTable (bcode,bstatus) select code,status from caches where $_Where"
+$Status=Sqlite("sql",$_sql)
+
+$_sql="Select bcode, bstatus from btable"
+$Status=Sqlite("sql",$_sql)
+
+GCSTATUSCHECK Scope=FILTER ShowSummary=Y
+
+$_sql="SELECT code FROM Caches,bTable WHERE Caches.code = btable.bcode and caches.status<>btable.bStatus"
+$ChangedCaches=Sqlite("sql",$_sql)
+$ChangedCaches="'" + $ChangedCaches + "'"
+$ChangedCaches=Replace($_CrLf,"','",$ChangedCaches)
+
+$_sql="Update caches SET macroflag=1 where code in ($ChangedCaches)"
+$Status=Sqlite("sql",$_sql)
+
+IF $ChangedCaches<>"''"
+    MFILTER Expression=MACROFLAG
+ELSE
+    $Filter=RestoreFilter($SavedFilter,True)
+    MSGOK Msg=No cache statuses were changed.
+ENDIF
+
+$_sql="DROP TABLE IF EXISTS bTable"
+$Status=Sqlite("sql",$_sql)

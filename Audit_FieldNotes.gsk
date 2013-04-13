@@ -1,0 +1,388 @@
+#*******************************************
+# MacVersion = 1.1
+# MacDescription = Audit Field Notes Logging
+# MacAuthor = SnoWake
+# MacFileName = Audit_FieldNotes.gsk
+# MacUrl = 
+#*******************************************
+
+# v1.1 9/29/12 Updated to remove deprecated SORT command
+
+# Initialize some variables
+GOSUB name=InitVar
+
+# Save current GSAK state
+GOSUB name=SaveState
+
+# Load previous values from Settings file
+GOSUB name=loadDataFile
+  
+# Display a form to collect some basic parameters
+GOSUB name=InputForm
+
+# Persist form changes to config file
+GOSUB name=saveDataFile
+
+# Select the Found DB
+Database Name=$FoundDB
+
+# Read and Convert File to ASCII
+GOSUB name=ConvertFile
+
+# Process File
+GOSUB name=ProcessFile
+
+# Output Results
+GOSUB name=OutputResults
+
+# Restore State
+GOSUB name=RestoreState
+
+# End of Macro Logic
+
+############################################################# 
+# Subroutines
+
+# Initialize Variables
+BEGINSUB name=InitVar
+
+$FindCount=0
+$MissingCount=0
+$Codes=""
+$NotFound=""
+$dblist = SysInfo("databases")
+$DBSelect=""
+$ThisCode=""
+$FieldNotes=""
+$MissingFieldNotes=""
+$OutputFolder=""
+$ResultMemo=""
+
+ENDSUB
+
+
+# Settings file
+BEGINSUB name=loadDataFile
+
+$datafilepath = Sysinfo("MacroPath")
+$DataFile = $datafilepath + "\Audit_FieldNotes.dat"
+
+$Filepath = $datafilepath
+
+IF (FileExists($DataFile))
+  # First, slurp the contents of the file
+	$variables = GetFile($DataFile)
+
+	# Now, extract out the individual values
+	$FieldNotesFile = Extract($variables,";",1)
+	$OutputFolder = Extract($variables,";",2)
+	$FoundDB = Extract($variables,";",3)
+ENDIF
+
+ENDSUB
+
+# Render Input Form
+BEGINSUB name=InputForm
+WHILE TRUE
+ $FormExit = form($ConfigForm,"")
+ BEGINCASE 
+     CASE $FormExit = "SystemExit"
+       		GOSUB name=RestoreState
+       CANCEL Msg="Macro Cancelled - Previous State Restored"
+
+     CASE $FormExit = "ContinueButton"
+       # Excellent - let's move on.
+       BREAK
+
+     CASE $FormExit = "CancelButton"
+   		 		GOSUB name=RestoreState
+       CANCEL Msg="Macro Cancelled - Previous State Restored"
+ ENDCASE 
+ENDWHILE    
+
+ENDSUB
+
+
+# Save Data File
+BEGINSUB name=SaveDataFile
+$variables = "$FieldNotesFile;$OutputFolder;$FoundDB"
+$result = PutFile($datafile, $variables)
+IF Left($result, 7) = "*Error*"
+	# If theres any error abort the macro
+	CANCEL Msg="Unable to write to $datafile!"
+ENDIF
+ENDSUB
+
+# Read and Convert Field Notes file to ASCII
+BEGINSUB name=ConvertFile
+# Read FieldNotes file into variable
+$FieldNotes = GetFile($FieldNotesFile)
+IF Left($FieldNotes,7) = "*Error*"
+Pause Msg="$FieldNotes"
+Cancel
+ENDIF
+# Convert UTF16 into ASCII
+$FieldNotesAscii = UTF16($FieldNotes, "d")
+
+# Now write the ASCII file out to disk
+# Assign new filename
+$AsciiFieldNotesFile = $FieldNotesFile + ".asc"
+$Data = PutFile($AsciiFieldNotesFile,$FieldNotesAscii)
+IF Left($Data,7) = "*Error*"
+  Pause Msg="$Data"
+  Cancel
+ENDIF
+
+ENDSUB
+
+
+# Process Converted Input File
+BEGINSUB name=ProcessFile
+# Use FileRead to parse through the file we just created
+FileRead File=$AsciiFieldNotesFile
+
+# Combined into single pass:
+# * Iterate through file 
+# * count finds 
+# * test for log in found DB
+# * count missing caches
+# * add missing lines to field notes variable
+
+#IF RegEx("Found it", $line)
+#   $FindCount = $FindCount + 1
+#   $ThisCode=Extract($line,",",1)
+#   IF Seek($ThisCode)=FALSE
+#      GOSUB name=FoundMissing
+#   ELSE 
+#   	IF Seek($ThisCode)
+#   		IF $d_Found=FALSE
+#   			GOSUB name=FoundMissing      
+#    	ENDIF
+#    ENDIF
+#   ENDIF
+#ENDIF
+
+# Replaced core of iteration with a single sqlite command thanks to Clyde
+IF RegEx("Found it", $line)
+ $FindCount = $FindCount + 1
+ $ThisCode=Extract($line,",",1)
+ IF sqlite("sql","select found from caches where code = '$ThisCode'","") <> "1"
+    GOSUB name=FoundMissing
+ ENDIF
+ENDIF
+
+EndRead
+
+ENDSUB
+
+# Identified Cache Missing in Found DB
+BEGINSUB Name=FoundMissing
+
+$NotFound=$NotFound + $ThisCode + $_CrLf
+      $MissingFieldNotes=$MissingFieldNotes + $line + $_CrLf
+      $MissingCount = $MissingCount + 1
+
+ENDSUB
+
+# Output Results
+BEGINSUB name=OutputResults
+# Create new geocache_visits.txt file
+$MissingFieldNotesUTF = UTF16($MissingFieldNotes,"e")
+$OutputFile=$OutputFolder + "\geocache_visits_missing.txt"
+$Data = PutFile($OutputFile,$MissingFieldNotesUTF)
+IF Left($Data,7) = "*Error*"
+  Pause Msg="$Data"
+  Cancel
+ENDIF
+$Results = $NotFound
+
+# Let's set up some variables for use in the results form:
+$ResultMemo="Of " + NumToStr($FindCount) + " total finds, " + NumToStr($MissingCount) + " were not present in " + $FoundDB + " GSAK Database" + $_NewLine + "and were added to new Field Notes File:" + $_NewLine + $OutputFile + $_NewLine + "Path to this file added to clipboard" 
+$Results = $NotFound 
+
+# Display Results Form
+$FormExit = form($OutputForm,"")
+CLIP Data=$OutputFile
+
+ENDSUB
+
+
+# Save GSAK State
+BEGINSUB name=SaveState
+
+DATASAVE Data=$d_UserFlag
+#$currentsort = $_SortBy
+
+$CurrentSort = $_OrderBy
+
+$currentfilter = SAVEFILTER()
+$currentdb = $_CurrentDatabase
+
+ENDSUB
+
+
+# Restore GSAK State
+BEGINSUB name=RestoreState
+
+# Return to original database, if different
+IF $_CurrentDatabase <> $currentdb
+DATABASE Name=$currentdb Action=select
+ENDIF
+
+# Restore userflags, filter, and sort
+DATARESTORE Data=$d_UserFlag
+IF RESTOREFILTER($currentfilter, True) = 0
+PAUSE Msg="Previously-set filter would now show no records. Clearing."
+ENDIF
+
+#$sortdata = Extract($currentsort, "=",1)
+#$sequence = Extract($currentsort, "=",2)
+# SORT By=$sortdata Sequence=$sequence
+SQLSort OrderBy=$CurrentSort
+
+ENDSUB
+# End of Macro
+#
+# Begin Form Data
+
+<Data> VarName=$ConfigForm
+#********************************************************************
+# Form generated by GSAK form designer on Sun 15-Jul-2012 23:55:25
+#********************************************************************
+
+Name = ConfigForm
+  Type = Form
+  Height = 227
+  Top = 246
+  Width = 481
+
+Name = Label1
+  Type = Label
+  Height = 17
+  Left = 19
+  Top = 50
+  Width = 141
+  Caption = Select Field Notes Input FIle
+
+Name = TitleLabel
+  Type = Label
+  Height = 25
+  Left = 64
+  Size = 16
+  Style = bold;underline
+  Top = 6
+  Width = 335
+  Caption = Audit Field Notes for Find Logs
+
+Name = FoundDB
+  Type = Combobox
+  Height = 21
+  Left = 304
+  Top = 117
+  Values = $dblist
+  Width = 145
+  Taborder = 12
+
+Name = DBSelectLabel
+  Type = Label
+  Height = 17
+  Left = 19
+  Top = 119
+  Width = 138
+  Caption = Database of Found Caches
+
+Name = ContinueButton
+  Type = Button
+  Height = 29
+  Left = 115
+  Top = 157
+  Width = 86
+  Taborder = 13
+  Caption = Continue
+
+Name = FieldNotesFile
+  Type = File
+  Height = 21
+  Left = 224
+  Top = 48
+  Width = 225
+  Taborder = 10
+
+Name = OutputLabel
+  Type = Label
+  Height = 17
+  Left = 19
+  Top = 82
+  Width = 181
+  Caption = Output Folder for Missing Field Notes
+
+Name = OutputFolder
+  Type = Folder
+  Height = 21
+  Left = 224
+  Top = 80
+  Width = 225
+  Taborder = 11
+
+Name = CancelButton
+  Type = Button
+  Height = 29
+  Left = 267
+  Top = 157
+  Width = 86
+  Taborder = 14
+  Caption = Cancel
+
+<enddata>
+
+
+
+
+
+
+<Data> VarName=$OutputForm
+#********************************************************************
+# Form generated by GSAK form designer on Wed 11-Jul-2012 15:48:07
+#********************************************************************
+
+Name = OutputForm
+  Type = Form
+  Height = 277
+  Width = 406
+
+Name = Results
+  Type = Memo
+  Height = 153
+  Left = 16
+  Top = 88
+  Width = 65
+  Taborder = 10
+
+Name = Button1
+  Type = Button
+  Height = 25
+  Left = 182
+  Top = 133
+  Width = 97
+  Taborder = 11
+  Caption = Got it - Thanks!
+
+Name = ResultMemo
+  Type = Memo
+  Height = 65
+  Left = 16
+  Top = 8
+  Width = 353
+  Taborder = 12
+
+<enddata>
+
+
+
+
+
+
+
+ 
+
+

@@ -1,0 +1,21 @@
+#*******************************************
+# MacDescription = Determine maximum, average and sum both difficulty and terrain numbers of found caches.
+# MacFileName = MaxAveSum_DF.gsk
+# MacAuthor = javapgmr
+# MacVersion=1.0
+# MacUrl= 
+#*******************************************
+
+#place found database name below
+$FoundDBName="Found"
+$OldDB = $_CurrentDatabase 
+
+DATABASE Name=$FoundDBName
+$_sql="select count(*), avg(difficulty), avg(terrain), sum(difficulty), sum(terrain), sum(difficulty) + sum(terrain)  from caches where foundbymedate is not null"
+
+# get the sql data to display
+$result = sqlite("sql",$_sql,"Headings=Yes")
+
+# display the data
+$html = sqltohtml($result,"Summary by calculated difficulty/terrain","y")
+DATABASE Name=$OldDb

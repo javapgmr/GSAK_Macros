@@ -1,0 +1,62 @@
+#*******************************************
+# MacVersion = 1.0
+# MacDescription = Include code for save restore everything
+# MacAuthor = javapgmr
+# MacFileName = includeSaveRestore.gsk
+#*******************************************
+# Save everything
+
+GOSUB Name=Declare
+
+BEGINSUB Name=SaveState
+  DATASAVE Data=$d_UserFlag
+  $MMCurrentSort = $_OrderBy
+  $MMcurrentfilter = SAVEFILTER()
+  $MMcurrentdatabase = $_CurrentDatabase
+ENDSUB 
+
+#Restore everything
+BEGINSUB Name=RestoreState
+		
+		GOSUB Name=RestoreDatabase	
+		# Restore userflags, filter, and sort
+		DATARESTORE Data=$d_UserFlag
+		GOSUB Name=RestoreFilter
+		SQLSORT OrderBy=$MMCurrentSort
+
+ENDSUB
+	
+BEGINSUB Name=RestoreFilter
+	IF RESTOREFILTER($MMcurrentfilter, True) = 0
+  	PAUSE Msg="Previously-set filter would now show no records. Clearing."
+	ENDIF
+ENDSUB	
+	
+BEGINSUB Name=RestoreDatabase
+		# Return to original database, if different
+		IF $MMcurrentdatabase <> $_CurrentDatabase
+		  DATABASE Name=$MMcurrentdatabase Action=select
+		ENDIF	
+ENDSUB	
+
+
+#*******************************************************
+#   Variable declarations for
+#   includeSaveRestore.gsk
+#
+#   Generated 07/08/2007 9:24:06 PM on GSAKVariables.gsk Rev V0.20 B11
+#
+#*******************************************************
+
+
+BEGINSUB Name=Declare
+Option Explicit=Yes
+
+Declare Var=$MMcurrentdatabase Type=String
+Declare Var=$MMcurrentfilter Type=String
+Declare Var=$MMcurrentsort Type=String
+Declare Var=$MMsequence Type=String
+Declare Var=$MMsortdata Type=String
+ENDSUB
+
+

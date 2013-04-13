@@ -1,0 +1,616 @@
+##################################################################################@
+# MacFileName	   = MacroFormatter.gsk
+# MacAuthor	     = Wayne (Team Red Roo)
+# MacDescription = Provides user selectable formatting of a Gsak Macro.
+# MacVersion     = 1.3
+# MacUrl         = http://gsak.net/board/index.php?act=ST&f=15&t=5870
+###################################################################################@
+# Changes in this version...
+# 
+#    28/03/08    : Fixed the unwanted deleting of Gsak Header block comment lines.
+#                  MF preserves comment line containing a letter or * or @.
+#    07/04/08    : Option to remove all formatting added.
+#    29/11/09    : Modified to use MacSettings and added variable declarations
+#    19/01/10    : Redeveloped under v7.7.0.x but should work Ok in earlier versions
+#                : Now allows 0 Backups to be made
+#    20/01/10    : Removed indenting of lines containing "<Data>" and "<EndData>"
+#                : Added in user positionable form
+#
+##################################################################################*
+
+  OPTION Explicit=Yes
+  VERCHECK version="7.2.0.0" (Please upgrade to the latest version of Gsak)
+
+  GOSUB Name=Initialise
+
+  WHILE TRUE
+     $FormExit=Form($FormA,"")
+     BEGINCASE 
+        CASE $FormExit="RunBtn"
+           IF $MacroFile <> ""
+              GOSUB Name=ProcessTheFile
+              IF $RemovedLineCnt<>0
+                 MSGOK Msg="$RemovedLineCnt Lines have been removed"
+              ENDIF 
+           ENDIF 
+        CASE $FormExit="ExitBtn"
+           BREAK 
+        CASE $FormExit="SystemExit"
+           CANCEL 
+     ENDCASE 
+     SHOWSTATUS Msg=x Display=Off
+  ENDWHILE 
+
+  MACSETTINGS Type=S Vars=Init,Indent,NumBackups,DelBlank,RemBlankComments,IndentCmt,FileBkup,BlockFormat,SlopeFormat,RemoveAll,MacroFile,_FormTop,_FormLeft
+
+  RETURN 
+##################################################################################*
+  BEGINSUB Name=ProcessTheFile
+     $RemovedLineCnt=0
+     $Cnt=0
+     $InitStr=""
+     IF $RemoveAll
+        $Init="0"
+        $Indent="0"
+     ENDIF 
+     WHILE $Cnt < Val($Init)
+        $Cnt=$Cnt+1
+        $InitStr=$InitStr+" "
+     ENDWHILE 
+     $LCnt=1
+     $MacroStr=""
+     $CurrentIndent=0
+     FILEREAD File=$MacroFile
+        $RemoveThisLine=FALSE
+        $BlankLine=FALSE
+        $CommentLine=FALSE
+        $LCnt=$LCnt+1
+        IF Frac($Lcnt/10)=0
+           SHOWSTATUS Msg="Processing line $LCnt"                       # Width=250 Top=0
+        ENDIF 
+        $CurrentLine=AllTrim($Line)
+        IF Left($CurrentLine,1)="#"
+           $CommentLine=True
+        ENDIF 
+        IF $CommentLine And $RemBlankComments
+              $RemoveThisLine=TRUE
+              IF RegEx("[a-z@*]","$CurrentLine")
+                 $RemoveThisLine=FALSE
+              ENDIF 
+           IF $RemoveThisLine
+              $CurrentLine=""
+           ENDIF 
+        ENDIF 
+        IF $CurrentLine=""
+           $BlankLine=TRUE
+           IF $DelBlank
+              $RemoveThisLine=TRUE
+           ENDIF 
+        ENDIF 
+        $DataHdr=FALSE
+        IF RegEx("<data>",SubStr($CurrentLine,1,6))
+           $DataStmnt=TRUE
+           $DataHdr=TRUE
+        ENDIF 
+        IF RegEx("<enddata>",SubStr($CurrentLine,1,9))
+           $DataHdr=TRUE
+        ENDIF 
+        IF ($RemoveThisLine) And Not($DataStmnt)
+           $RemovedLineCnt=$RemovedLineCnt+1
+        ELSE 
+           IF ($CommentLine And Not ($IndentCmt)) Or ($BlankLine And Not($DelBlank)) OR $DataHdr
+              $MacroStr=$MacroStr+$CurrentLine+$_NewLine
+           ELSE 
+              GOSUB Name=PreProcess
+              IF $BlockFormat
+                 GOSUB Name=BlockFormatTheLine
+              ENDIF 
+              IF $SlopeFormat
+                 GOSUB Name=SlopeFormatTheLine
+              ENDIF 
+              IF $RemoveAll
+                 GOSUB Name=RemoveFormatting
+              ENDIF 
+           ENDIF 
+           IF RegEx("<enddata>",SubStr($CurrentLine,1,9))
+              $DataStmnt=FALSE
+           ENDIF 
+        ENDIF 
+     ENDREAD 
+     IF $FileBkup
+        GOSUB Name=FileBackup
+     ENDIF 
+     $Result=PutFile($MacroFile,$MacroStr)
+  ENDSUB 
+##################################################################################*
+  BEGINSUB Name=PreProcess
+     $StepForwards=False
+     $StepBackwards=False
+     $Command=Extract("$CurrentLine"," ",1)
+     IF $Command=$CurrentLine
+        $Command=Extract($CurrentLine,"(",1)
+     ENDIF 
+     $Command=" " + $Command
+     IF Left($Command,2)<>" $"
+        IF Regex(RegexEscape($Command),$ChkF)
+           $StepForwards=True
+           $SlopeCnt=0
+        ENDIF 
+        IF Regex(RegexEscape($Command),$ChkB)
+           $StepBackwards=True
+           $SlopeCnt=0
+        ENDIF 
+     ENDIF 
+     IF Regex(RegexEscape($Command)," <EndData>")
+        $DataStmnt=False
+     ENDIF 
+     IF $StepBackwards And Not($DataStmnt)
+        $CurrentIndent=$CurrentIndent-1
+        IF Regex(RegexEscape($Command),$NcDb)
+           $CurrentIndent=$CurrentIndent-1
+        ENDIF 
+     ENDIF 
+     IF Not($DataStmnt)
+        IF Left($Command,2)<>" $"
+           GOSUB Name=Capitalise
+        ENDIF 
+     ENDIF 
+     $Cnt=0
+     $Step=""
+     $StepStr=""
+  ENDSUB 
+###################################################################################*
+  BEGINSUB Name=PostProcess
+     $LineHdr=""
+     IF Not($DataStmnt)
+        $LineHdr=$InitStr+$StepStr+$SlopeStep
+        $ProcessedLine=$LineHdr+$CurrentLine
+     ELSE 
+        $ProcessedLine=$Line
+     ENDIF 
+     $MacroStr=$MacroStr+$ProcessedLine+$_NewLine
+     IF $StepForwards And Not($DataStmnt)
+        $CurrentIndent=$CurrentIndent+1
+        IF Regex(RegexEscape($Command),$NcDf)
+           $CurrentIndent=$CurrentIndent+1
+        ENDIF 
+     ENDIF 
+     IF Regex(RegexEscape($Command)," <Data>")
+        $DataStmnt=True
+     ENDIF 
+  ENDSUB 
+####################################################################################*
+  BEGINSUB Name=RemoveFormatting
+     $StepStr=""
+     $LineHdr=$InitStr+$StepStr
+     GOSUB Name=PostProcess
+  ENDSUB 
+###################################################################################*
+  BEGINSUB Name=BlockFormatTheLine
+     WHILE $Cnt < Val($Indent)
+        $Cnt=$Cnt+1
+        $Step=$Step+" "
+     ENDWHILE 
+     $Cnt=0
+     WHILE $Cnt < $CurrentIndent
+        $Cnt=$Cnt+1
+        $StepStr=$StepStr+$Step
+     ENDWHILE 
+     $LineHdr=$InitStr+$StepStr
+     GOSUB Name=PostProcess
+  ENDSUB 
+###################################################################################*
+  BEGINSUB Name=SlopeFormatTheLine
+     WHILE $Cnt < Val($Indent)
+        $Cnt=$Cnt+1
+        $Step=$Step+" "
+     ENDWHILE 
+     $Cnt=0
+     WHILE $Cnt < $CurrentIndent
+        $Cnt=$Cnt+1
+        $StepStr=$StepStr+$Step
+     ENDWHILE 
+     $SlopeCnt=$SlopeCnt+1
+     $SlopeStep=""
+     $Cnt=0
+     IF $SlopeCnt > 1
+        WHILE $Cnt < $SlopeCnt-2
+           $Cnt=$Cnt+1
+           $SlopeStep=$SlopeStep+" "
+        ENDWHILE 
+     ENDIF 
+     GOSUB Name=PostProcess
+  ENDSUB 
+###################################################################################*
+  BEGINSUB Name=Capitalise
+     $L=Upper(AllTrim($Command))
+     $X=Len($CurrentLine) - Len($Command)
+     $R=" "+Alltrim(Right($CurrentLine,$X+1))
+     $CurrentLine=$L+$R
+  ENDSUB 
+###################################################################################*
+  BEGINSUB Name=MakeDir
+     IF $DirName<> ""
+        IF Not (FolderExists($DirName))
+           $Result=PutFile("$_Install\Temp\Temp.Bat","MD "+ Quote("$DirName"))
+           FILEOPEN File="$_Install\Temp\Temp.Bat" Wait=yes
+        ENDIF 
+     ENDIF 
+  ENDSUB 
+###################################################################################*
+  BEGINSUB Name=FileBackup
+     $RegExSearch = RegExEscape("\")
+     $A=RegExCount($RegExSearch,$MacroFile)
+     $ShortName=Extract($MacroFile, "\", $A + 1)
+     $ThisDir=""
+     $B=0
+     WHILE $B < $A
+        $B=$B+1
+        $ThisDir=$ThisDir+Extract($MacroFile, "\", $B)+"\"
+     ENDWHILE 
+     $DirName=$ThisDir + "Formatter.Backups"
+     GOSUB Name=MakeDir
+     $BkupDir=$DirName
+     $BackupFileName=$BkupDir+"\"+$ShortName
+     GOSUB Name=BackupBackup
+     FILEERASE File=$NewerFile OnError=Continue
+     FILECOPY From=$MacroFile To=$NewerFile OnError=Prompt
+  ENDSUB 
+###################################################################################*
+  BEGINSUB Name=BackupBackup
+     $Cnt=Val($NumBackups)
+     IF $Cnt>1
+        WHILE $Cnt>1
+           $CntStr1=AllTrim(Str($Cnt,2,0))
+           $OlderFile="$BackupFileName"+".v-"+"$CntStr1"
+           $Cnt=$Cnt-1
+           $CntStr2=AllTrim(Str($Cnt,2,0))
+           $NewerFile="$BackupFileName"+".v-"+"$CntStr2"
+           FILEERASE File=$OlderFile OnError=Continue
+           FILECOPY From=$NewerFile To=$OlderFile OnError=Continue
+        ENDWHILE 
+     ELSE 
+        $CntStr1=AllTrim(Str($Cnt,2,0))
+        $NewerFile="$BackupFileName"+".V-"+"$CntStr1"
+     ENDIF 
+  ENDSUB 
+###################################################################################*
+  BEGINSUB Name=Initialise
+     MACSETTINGS Type=R FileCheck=N
+     $FormA=EditForm($FormA,"Form1","Top",$_FormTop)
+     $FormA=EditForm($FormA,"Form1","Left",$_FormLeft)
+     $FormA=EditForm($FormA,"Form1","Caption",Left(SysInfo("Macrofile"),AT(".",SysInfo("Macrofile"))-1)+" - "+" v"+AllTrim(RegExSub("macversion *=(.*?)(#|\r\n)",GetFile(SysInfo("MacroPath") + "\" + SysInfo("Macrofile")),1,1)))
+     $FormA=EditForm($FormA,"NumBackups","Values","0;$IndentData")
+     $DataStmnt=False
+     $SlopeCnt=0
+     $SlopeStep=""
+     $ChkF=" If While BeginSub BeginCase Case FileRead Else Otherwise "    #<Data>
+     $NcDf=" BeginCase"
+     $ChkB=" EndIf EndWhile EndSub EndCase Case EndRead Else Otherwise "   #<EndData>
+     $NcDb=" EndCase"
+  ENDSUB 
+##################################################################################*
+
+  DECLARE Var=$A Type=Numeric
+  DECLARE Var=$B Type=Numeric
+  DECLARE Var=$BackupFileName Type=String
+  DECLARE Var=$BkupDir Type=String
+  DECLARE Var=$BlankLine Type=Boolean
+  DECLARE Var=$BlockFormat Type=Boolean
+  DECLARE Var=$ChkB Type=String
+  DECLARE Var=$ChkF Type=String
+  DECLARE Var=$Cnt Type=Numeric
+  DECLARE Var=$CntStr1 Type=String
+  DECLARE Var=$CntStr2 Type=String
+  DECLARE Var=$Command Type=String
+  DECLARE Var=$CommentLine Type=Boolean
+  DECLARE Var=$CurrentIndent Type=Numeric
+  DECLARE Var=$CurrentLine Type=String
+  DECLARE Var=$DataHdr Type=Boolean
+  DECLARE Var=$DataStmnt Type=Boolean
+  DECLARE Var=$DelBlank Type=Boolean
+  DECLARE Var=$DirName Type=String
+  DECLARE Var=$FileBkup Type=Boolean
+  DECLARE Var=$FormA Type=String
+  DECLARE Var=$FormExit Type=String
+  DECLARE Var=$Indent Type=String
+  DECLARE Var=$IndentCmt Type=Boolean
+  DECLARE Var=$IndentData Type=String
+  DECLARE Var=$Init Type=String
+  DECLARE Var=$InitStr Type=String
+  DECLARE Var=$L Type=String
+  DECLARE Var=$LCnt Type=Numeric
+  DECLARE Var=$LineHdr Type=String
+  DECLARE Var=$MacroFile Type=String
+  DECLARE Var=$MacroStr Type=String
+  DECLARE Var=$NcDb Type=String
+  DECLARE Var=$NcDf Type=String
+  DECLARE Var=$NewerFile Type=String
+  DECLARE Var=$NumBackups Type=String
+  DECLARE Var=$OlderFile Type=String
+  DECLARE Var=$ProcessedLine Type=String
+  DECLARE Var=$R Type=String
+  DECLARE Var=$RegExSearch Type=String
+  DECLARE Var=$RemBlankComments Type=Boolean
+  DECLARE Var=$RemovedLineCnt Type=Numeric
+  DECLARE Var=$RemoveThisLine Type=Boolean
+  DECLARE Var=$Result Type=String
+  DECLARE Var=$ShortName Type=String
+  DECLARE Var=$SlopeCnt Type=Numeric
+  DECLARE Var=$SlopeFormat Type=Boolean
+  DECLARE Var=$SlopeStep Type=String
+  DECLARE Var=$Step Type=String
+  DECLARE Var=$StepBackwards Type=Boolean
+  DECLARE Var=$StepForwards Type=Boolean
+  DECLARE Var=$StepStr Type=String
+  DECLARE Var=$ThisDir Type=String
+  DECLARE Var=$X Type=Numeric
+
+###################################################################################
+<DATA> Varname=$IndentData
+1;2;3;4;5;6;7;8;9;10;
+<ENDDATA>
+###################################################################################*
+<DATA> VarName=$FormA
+
+#********************************************************************
+# Form generated by GSAK form designer on Mon 07-Apr-2008 09:46:54
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Color = 12244459
+  Height = 328
+  Top = 120
+  Width = 487
+
+Name = Lbl6
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 22
+  Style = bold
+  Top = 36
+  Width = 56
+  Caption = Macro file
+
+Name = Lbl7
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 22
+  Style = bold
+  Top = 140
+  Width = 66
+  Caption = Indent Step
+
+Name = MacroFile
+  Type = File
+  Height = 21
+  Left = 98
+  Top = 31
+  Width = 298
+  Taborder = 8
+
+Name = Indent
+  Type = Combobox
+  Display = 10
+  Height = 21
+  Left = 115
+  Top = 136
+  Values = $IndentData
+  Width = 44
+  Taborder = 9
+
+Name = RunBtn
+  Type = Button
+  Enter = Yes
+  Height = 25
+  Left = 67
+  Top = 241
+  Width = 138
+  Taborder = 10
+  Caption = Process
+
+Name = Lbl1
+  Type = Label
+  Color = 16711680
+  Height = 13
+  Left = 165
+  Top = 140
+  Width = 27
+  Caption = Chars
+
+Name = ExitBtn
+  Type = Button
+  Escape = Yes
+  Height = 25
+  Left = 280
+  Top = 241
+  Width = 138
+  Taborder = 11
+  Caption = Exit / Quit
+
+Name = Lbl2
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 22
+  Style = bold
+  Top = 109
+  Width = 71
+  Caption = Initial Indent
+
+Name = Lbl3
+  Type = Label
+  Color = 16711680
+  Height = 13
+  Left = 165
+  Top = 109
+  Width = 27
+  Caption = Chars
+
+Name = Init
+  Type = Combobox
+  Display = 10
+  Height = 21
+  Left = 116
+  Top = 105
+  Values = $IndentData
+  Width = 42
+  Taborder = 12
+
+Name = Lbl5
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 258
+  Style = Bold
+  Top = 105
+  Width = 116
+  Caption = Remove Blank Lines
+
+Name = DelBlank
+  Type = Checkbox
+  Height = 17
+  Left = 409
+  Top = 103
+  Width = 15
+  Taborder = 13
+
+Name = Lbl4
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 258
+  Style = Bold
+  Top = 185
+  Width = 88
+  Caption = Backup original
+
+Name = FileBkup
+  Type = Checkbox
+  Height = 17
+  Left = 409
+  Top = 183
+  Width = 15
+  Taborder = 14
+
+Name = Lbl8
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 258
+  Style = Bold
+  Top = 143
+  Width = 97
+  Caption = Indent Comments
+
+Name = IndentCmt
+  Type = Checkbox
+  Height = 17
+  Left = 409
+  Top = 141
+  Width = 15
+  Taborder = 15
+
+Name = Lbl9
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 22
+  Style = bold
+  Top = 71
+  Width = 91
+  Caption = Formatting Style
+
+Name = Lbl10
+  Type = Label
+  Color = 16711680
+  Height = 13
+  Left = 149
+  Top = 71
+  Width = 27
+  Caption = Block
+
+Name = Lbl11
+  Type = Label
+  Color = 16711680
+  Height = 13
+  Left = 231
+  Top = 72
+  Width = 27
+  Caption = Slope
+
+Name = BlockFormat
+  Type = Radiobutton
+  Height = 17
+  Left = 130
+  Top = 70
+  Width = 15
+  Taborder = 16
+
+Name = SlopeFormat
+  Type = Radiobutton
+  Height = 17
+  Left = 211
+  Top = 71
+  Width = 15
+  Taborder = 17
+
+Name = Lbl12
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 258
+  Style = Bold
+  Top = 124
+  Width = 143
+  Caption = Remove Blank Comments
+
+Name = RemBlankComments
+  Type = Checkbox
+  Height = 17
+  Left = 409
+  Top = 122
+  Width = 15
+  Taborder = 18
+
+Name = Lbl13
+  Type = Label
+  Color = 255
+  Height = 13
+  Left = 22
+  Style = bold
+  Top = 185
+  Width = 111
+  Caption = Number of Backups
+
+Name = NumBackups
+  Type = Combobox
+  Display = 10
+  Height = 21
+  Left = 142
+  Top = 181
+  Width = 44
+  Taborder = 19
+
+Name = Label1
+  Type = Label
+  Color = 16711680
+  Height = 13
+  Left = 325
+  Top = 73
+  Width = 132
+  Caption = Remove formatting
+
+Name = RemoveAll
+  Type = Radiobutton
+  Height = 17
+  Left = 296
+  Top = 72
+  Width = 15
+  Taborder = 20
+
+<ENDDATA>
+

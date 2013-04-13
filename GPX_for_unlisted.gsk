@@ -1,0 +1,601 @@
+#*******************************************
+# MacVersion = 0.2.0
+# MacDescription = Create GPX file for unlisted cache.		
+# MacAuthor = byonke
+# MacFileName = GPX_for_unlisted.gsk
+# MacUrl =
+#*******************************************
+
+
+$datafilepath = Sysinfo("MacroPath")
+$DataFile = $datafilepath + "\CreateGPX_Settings.dat"
+
+
+########## End default variable setup
+# Define SQL database
+$datafilepath = Sysinfo("MacroPath")
+$File = $datafilepath + "\GC_IDList.db3"
+# $file = ":memory:"
+
+#If SQL database exists then Open else Create database and populate.
+
+IF (FileExists($File))
+	$status = Sqlite("open",$file,"")
+ELSE
+	$status = Sqlite("Create",$file,"")
+
+#Open the SQL database ready for use
+	$status = Sqlite("Open",$file,"")
+	$_sql = "drop table if exists OwnerIDs"
+	$status = Sqlite("sql",$_sql,"")
+
+# Create OwnerID table
+
+	$Data ="OwnerName text UNIQUE, OwnerIDNumber text UNIQUE"
+	$_sql = "CREATE TABLE IF NOT EXISTS OwnerIDs ($Data)"
+	$status = Sqlite("sql",$_sql)
+
+# Import the master list of Owner IDs into the SQL table
+	$status = sqlite("import",$OwnersIDs,"table=OwnerIDs")
+   
+ENDIF
+
+
+# Open file with macro variables if it exists
+IF (FileExists($DataFile))
+  $variables = GetFile($DataFile)
+  $InputFolder = Extract($variables,$_NewLine,1)
+  $Outputfolder = Extract($variables,$_NewLine,2)
+ENDIF
+
+
+BeginSub Name=Menu_0
+#While True # Infinite loop to redisplay form as required
+
+  $FormExit = form($form0,"")
+  BeginCase
+    Case $FormExit = "SystemExit"
+      break
+    Case $FormExit = "Cancel"
+      break
+    Case $FormExit = "Start"
+	IF $Inputfolder = ""
+	   CANCEL Msg="You Must select a input folder."
+	ENDIF
+	IF $Outputfolder = ""
+	   CANCEL Msg="You Must select an output folder."
+	ENDIF
+	$SourceFile = $InputFolder + "\*.*"
+	GoSub name="SaveSettings"
+  EndCase
+
+#EndWhile
+EndSub
+
+
+GoSub Name=Menu_0
+
+
+
+# BeginSub Name=Menu_1
+
+While True # Infinite loop to redisplay form as required
+  $FormExit = form($form1,"")
+  BeginCase
+    Case $FormExit = "SystemExit"
+      break
+    Case $FormExit = "Cancel"
+      break
+    Case $FormExit = "Start"
+	IF $Inputfolder = ""
+	   CANCEL Msg="You Must select a file for input."
+	ENDIF
+     If $SourceFile=$InputFolder + "\*.*"
+	MsgOK msg="You must select a file or exit."
+     Else
+
+     GoSub Name=Main
+
+     Endif 
+  EndCase
+EndWhile
+# EndSub
+
+
+BeginSub Name=Main
+
+
+$GPX_Out= ""
+
+  $Data = GetFile($SourceFile)
+IF Left($Data,7) = "*Error*"
+  Pause Msg="$Data"
+  Cancel
+ENDIF
+
+$BlockOneStart = RegexPos("<title>",$data,1)
+$BlockOneEnd = AtStart("</title>",$Data,$BlockOneStart)
+$Line = SubStr($data,$BlockOneStart + 10, $BlockOneEnd-$BlockOneStart - 12)
+
+$WayPtName = Left($Line,At(" ",$line)-1)
+$OpenLocation=At("(",$Line)
+$CloseLocation=AtStart(")",$Line,$OpenLocation)
+
+
+$Desc = SubStr($Line,Len($WayPtName)+2,$OpenLocation - Len($WayPtName)-3)
+
+$URLName = $Desc
+$gsName = $Desc
+$CreatedByStart = At("created by ",$line) + 6
+$CreatedBy = SubStr($line,$CreatedbyStart + 5,Len($line) - $CreatedByStart + 5)
+$Desc = $Desc + Right($line,Len($line)-$CreatedByStart) + ", "
+
+$Type = SubStr($line,$OpenLocation + 1,$CloseLocation - $OpenLocation-1)
+
+$Desc = $Desc + $Type + " "
+
+
+$StateStart = AT(CHR(41) + " in ",$Line)
+$StateEnd = AtStart (", ",$Line,$StateStart)
+$CountryEnd = AtStart (" created by ",$Line,$StateEnd)
+$State = SubStr($Line,$StateStart + 5, $StateEnd - $StateStart - 5)
+$Country = SubStr($Line,$StateEnd +2, $CountryEnd - $StateEnd - 2)
+
+
+ 
+$Start1 = At("<meta name=" + $_quote + "description",$data)
+
+$AuthorStart = AtStart("created by ",$data,$Start1) + 11
+$AuthorEnd = AtStart(" on ",$data,$AuthorStart)
+$Author = SubStr($data,$AuthorStart,$AuthorEnd - $AuthorStart)
+
+
+$CreatedDateEnd = AtStart(". I",$data,$AuthorEnd+4)
+
+$BornOnDate = SubStr($data,$AuthorEnd + 4, $CreatedDateEnd-$AuthorEnd-4)
+$BornOnMonth = Right("0" + Extract($BornOnDate,"/",1),2)
+$BornOnDay = Right("0" + Extract($BornOnDate,"/",2),2)
+$WptDate = "    <time>" + Right($BornOnDate,4) + "-" + $BornOnMonth + "-" + $BornOnDay + "T07:00:00Z</time>" + $_NewLine
+$WptName = "    <name>" + $WayPtName + "</name>" + $_NewLine
+
+
+$DiffStart = At("difficulty of ",$data) + 14
+$TerrStart =AtStart("terrain of ",$data,$DiffStart) + 11
+$TerrEnd = AtStart(". It", $data,$TerrStart)-1
+$Difficulty = SubStr($data,$DiffStart,$TerrStart-$DiffStart-13)
+$Terrain = SubStr($data, $TerrStart, $TerrEnd-$TerrStart+1)
+
+$Desc = $Desc + "(" + $Difficulty + "/" + $Terrain + ")"
+$WayPtDesc = "    <desc>"+$Desc+"</desc>" + $_NewLine
+
+$SizeEnd = At("size geocache",$data)
+$SizeStart = AtStart("s a ",$data,$SizeEnd - 20)
+$Size = SubStr($data,$SizeStart+4,$SizeEnd-$SizeStart-5)
+
+GoSub Name="LookupID"
+ 
+
+
+# cache_details.aspx?guid=
+ 
+
+	$URLStart1 = AT("var dh, lat, lng, guid;",$data)	
+  $URL = SubStr($data,AtStart("guid=",$data,$URLStart1+20)+6,36)
+  $WayPtURL = "    <url>http://www.geocaching.com/seek/cache_details.aspx?guid=" + $URL + "</url>" + $_NewLine
+  $WayPtURLName = "    <urlname>" + $URLName + "</urlname>" + $_NewLine
+  $WayPtSymbol = "    <sym>Geocache</sym>" + $_NewLine
+  $WayPtType = "    <type>Geocache|" + $Type + "</type>" + $_NewLine
+
+$LatitudeStart = At("?lat=",$data)
+$LatitudeEnd = AtStart("amp;lon=",$Data,$LatitudeStart)
+  $Latitude = SubStr($data,$LatitudeStart+5,$LatitudeEnd-$LatitudeStart-6)
+$LongitudeStart = $LatitudeEnd+8
+$LongitudeEnd = AtStart("&amp;",$Data,$LongitudeStart)
+  $Longitude = SubStr($data,$LongitudeStart,$LongitudeEnd-$LongitudeStart)
+
+$ShortDescStart = At("ShortDescription",$data)
+If $ShortDescStart <> 0
+	$ShortDescEnd = AtStart("UserSuppliedContent",$data,$ShortDescStart)
+	If $ShortDescEnd - $ShortDescStart = 18
+		$ShortDescription = ""
+	Else
+		$ShortDescription = SubStr($data,$ShortDescStart+18,$ShortDescEnd-$ShortDescStart-60)
+		$ShortDescription = Replace("<","&lt;",$ShortDescription)
+		$ShortDescription = Replace(">","&gt;",$ShortDescription)
+		$ShortDescription = Replace("&nbsp;"," ",$ShortDescription)
+	EndIf
+Else
+	$LongDescription = ""
+EndIf  
+
+
+$LongDescStart = At("LongDescription",$data)
+$LongDescEnd = AtStart("ctl00_ContentBody_hints",$data,$LongDescStart)
+If $LongDescEnd - $LongDescStart = 17
+	$LongDescription = ""
+Else
+$LongDescription = SubStr($data,$LongDescStart+17,$LongDescEnd-$LongDescStart-24)
+		$LongDescription = Replace("<","&lt;",$LongDescription)
+		$LongDescription = Replace(">","&gt;",$LongDescription)
+		$LongDescription = Replace("&nbsp;"," ",$LongDescription)
+EndIf
+ 
+If At("No hints available.",$data) > 0
+	$Hint = ""
+Else
+	$HintStart = At("span-8 WrapFix",$data)
+	$HintEnd = AtStart("</div>",$data,$HintStart)
+	$Hint = SubStr($data,$HintStart+30,$HintEnd-$HintStart-30)
+EndIf
+ 
+ $StartNum =  AT("/my/watchlist.aspx?",$data)
+ $EndNum = AtStart($_Quote,$data,$StartNum)
+ $Id = SubStr($data,$StartNum + 21,$EndNum-$StartNum - 21) 
+ $GS_ID = "    <groundspeak:cache id=" + $_Quote + $ID + $_Quote + " available=" + $_Quote + "True" + $_Quote + " archived=" + $_Quote + "False" + $_Quote + " xmlns:groundspeak=" + $_Quote + "http://www.groundspeak.com/cache/1/0/1" + $_Quote + ">" + $_NewLine
+
+
+# EndRead
+
+
+$GPX_Author = "  <author>Account " + $_Quote + $Author + $_Quote + " From Geocaching.com</author>" + $_NewLine
+$GPX_Bounds = "  <bounds minlat=" + $_Quote + $Latitude + $_Quote +" minlon=" + $_Quote + $Longitude + $_Quote + " maxlat="+ $_Quote + $Latitude + $_Quote + " maxlon=" + $_Quote + $Longitude + $_Quote + " />" + $_NewLine
+$GPX_WayPoint = "  <wpt lat="+ $_Quote + $Latitude + $_Quote + " lon=" + $_Quote + $Longitude + $_Quote +">" + $_NewLine
+ 
+$Date = $_Today
+$Adjusted_Time = Val(Left($_Time,2))+6
+If $Adjusted_Time > 23
+	$Adjusted_Time=$Adjusted_Time - 24
+	$Date = $Date + 1
+EndIf
+$Current_Time = Right("0"+NumToStr($Adjusted_Time),2)+Right($_Time,6)
+$Adjusted_Date = DateToString($Date)
+$Current_Date = Left($Adjusted_Date,4) + "-" + Substr($Adjusted_Date, 5, 2) + "-" + Right($Adjusted_Date,2)
+
+$GPXTime = "  <time>" + $Current_Date + "T" + $Current_Time + "Z</time>" + $_NewLine
+
+
+$GPX_KeyWords = "  <keywords>cache, geocache</keywords>" + $_NewLine
+
+
+
+
+### Build File
+
+
+
+
+
+
+
+
+$WayPoint = $GPX_WayPoint + $WptDate + $WptName + $WayPtDesc + $WayPtURL + $WayPtURLName + $WayPtSymbol + $WayPtType
+
+
+$GS_Name = "      <groundspeak:name>" + $gsName + "</groundspeak:name>" + $_NewLine
+$GS_PlacedBy = "      <groundspeak:placed_by>" + $Author + "</groundspeak:placed_by>" + $_NewLine
+$GS_OwnerID = "      <groundspeak:owner id=" + $_Quote + $OwnerID + $_Quote + ">" + $Author + "</groundspeak:owner>" + $_NewLine
+$GS_Type = "      <groundspeak:type>Traditional Cache</groundspeak:type>" + $_NewLine
+$GS_Container = "      <groundspeak:container>" + $size + "</groundspeak:container>" + $_NewLine
+$GS_Difficulty = "      <groundspeak:difficulty>" + $Difficulty + "</groundspeak:difficulty>" + $_NewLine
+$GS_Terrain = "      <groundspeak:terrain>" + $Terrain + "</groundspeak:terrain>" + $_NewLine
+$GS_Country = "      <groundspeak:country>" + $Country + "</groundspeak:country>" + $_NewLine
+$GS_State = "      <groundspeak:state>" + $State + "</groundspeak:state>" + $_NewLine
+$GS_Short = "      <groundspeak:short_description html=" + $_Quote + "True" + $_Quote + ">" + $ShortDescription + "</groundspeak:short_description>" + $_NewLine
+$GS_Long = "      <groundspeak:long_description html=" + $_Quote + "True" + $_Quote + ">" + $LongDescription + "</groundspeak:long_description>" + $_NewLine
+$GS_Hints = "      <groundspeak:encoded_hints>" + $Hint + "</groundspeak:encoded_hints>" + $_NewLine
+$GS_LogOpen = "      <groundspeak:logs>" + $_NewLine
+$GS_LogClose = "      </groundspeak:logs>" + $_NewLine
+$GS_Bugs = "      <groundspeak:travelbugs />" + $_NewLine
+$GS_Close = "    </groundspeak:cache>" + $_NewLine
+
+$WPTClose = "  </wpt>" + $_NewLine
+
+$GPXClose = "</gpx>" + $_NewLine
+
+
+
+
+
+$GS = $GS_ID + $GS_Name + $GS_PlacedBy + $GS_OwnerID+ $GS_Type + $GS_Container + $GS_Difficulty + $GS_Terrain + $GS_Country + $GS_State  + $GS_Short + $GS_Long + $GS_Hints + $GS_LogOpen + $GS_LogClose + $GS_Bugs + $GS_Close 
+
+$GPX_Out = $GPX_Out + $GPX_Header + $GPX_Author + $GPX_Header2 + $GPXTime 
+
+$GPX_Out = $GPX_Out + $GPX_KeyWords + $GPX_Bounds 
+
+$GPX_Out = $GPX_Out + $WayPoint + $GS + $WPTClose + $GPXClose 
+
+$OutputFile = $OutputFolder + "\" + $WayPtName + ".gpx"
+
+Clip Data=$OutputFile
+$ResultingMessage = "You just created " + $Outputfile + $_Newline + "The file name and path is now in your clipboard."
+
+$Data = PutFile($OutputFile,$GPX_Out)
+
+IF Left($Data,7) = "*Error*"
+
+  Pause Msg="$Data"
+
+  Cancel
+
+ENDIF
+
+MsgOk msg=$ResultingMessage
+
+EndSub
+
+
+
+BEGINSUB Name=SaveSettings
+	# Save the values into $datafile to be reused the next time the macro is run
+
+	$variables=$InputFolder+$_NewLine+$OutputFolder+$_NewLine
+
+	$result = PutFile($datafile, $variables)
+	IF Left($result, 7) = "*Error*"
+		# If theres any error abort the macro
+		CANCEL Msg="Unable to write to $datafile!"
+	ENDIF	
+	
+ENDSUB #SaveSettings
+
+
+
+BEGINSUB Name=LookupID
+
+
+	IF $Author=""
+		EXITSUB
+	ENDIF
+
+	# Search the local list of Owner ID Numbers & retrieve from list if found
+	$_sql="SELECT OwnerIDNumber FROM OwnerIDs where OwnerName= " + SqlQuote($Author)
+	$TmpS=Sqlite("sql",$_sql)
+	If $TmpS = ""
+
+  		$OwnerProfileLink = "http://www.geocaching.com/profile/?u=" + $Author
+		Web URL=$OwnerProfileLink 
+		$Memo1 = "The User ID for " + $Author + " is not in our lookup table. To add the User ID to the gpx file, please copy the " + $_Quote + "See the Forum Posts for This User" + $_Quote + " link from " + $Author + "'s profile page and paste it in the space below." + $_Newline + $_Newline + $Author + "'s profile page has been opened in your default browser."
+
+		GoSub Name=Menu_2
+		$UserLinkStart = At("activity&mid=",$UserLink)
+		$TmpS = SubStr($UserLink,$UserLinkStart+13,8)
+
+	EndIf
+
+
+	$OwnerID=$TmpS
+ENDSUB
+
+BeginSub Name=Menu_2
+While True # Infinite loop to redisplay form as required
+
+  $FormExit = form($form2,"")
+  BeginCase
+    Case $FormExit = "SystemExit"
+      MsgOk msg="Form exit via red X button on form"
+      break
+    Case $FormExit = "Cancel"
+      MsgOk msg="Form exit from the cancel button"
+      break
+    Case $FormExit = "Start"
+	EXITSUB 
+  EndCase
+
+EndWhile
+EndSub
+
+
+<data> VarName=$GPX_Header
+<?xml version="1.0" encoding="utf-8"?>
+<gpx xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" version="1.0" creator="Groundspeak, Inc. All Rights Reserved. http://www.groundspeak.com" xsi:schemaLocation="http://www.topografix.com/GPX/1/0 http://www.topografix.com/GPX/1/0/gpx.xsd http://www.groundspeak.com/cache/1/0/1 http://www.groundspeak.com/cache/1/0/1/cache.xsd" xmlns="http://www.topografix.com/GPX/1/0">
+  <name>Cache Listing Generated from Geocaching.com</name>
+  <desc>This is an individual cache generated from Geocaching.com</desc>
+<enddata>
+
+<data> VarName=$GPX_Header2
+  <email>contact@geocaching.com</email>
+  <url>http://www.geocaching.com</url>
+  <urlname>Geocaching - High Tech Treasure Hunting</urlname>
+<enddata>
+
+
+<Data> VarName=$form0
+#********************************************************************
+# Form generated by GSAK form designer on Sun 28-Aug-2011 14:08:35
+#********************************************************************
+
+Name = Form0
+  Type = Form
+  Height = 224
+  Width = 319
+
+Name = InputFolderCaption
+  Type = Label
+  Color = 128
+  Enabled = Yes
+  Font = @Arial Unicode MS
+  Height = 25
+  Left = 18
+  Size = 14
+  Style = bold
+  Top = 10
+  Visible = Yes
+  Width = 249
+  Caption = Load source files from ....
+
+Name = Start
+  Type = Button
+  Height = 25
+  Left = 16
+  Top = 144
+  Width = 145
+  Taborder = 8
+  Caption = Continue
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 175
+  Top = 144
+  Width = 75
+  Taborder = 9
+  Caption = End Macro
+
+Name = OutputFolderCaption
+  Type = Label
+  Color = 128
+  Enabled = Yes
+  Font = @Arial Unicode MS
+  Height = 25
+  Left = 14
+  Size = 14
+  Style = bold
+  Top = 76
+  Visible = Yes
+  Width = 233
+  Caption = Save .gpx files here  ....
+
+Name = InputFolder
+  Type = Folder
+  Height = 21
+  Left = 16
+  Top = 40
+  Width = 249
+  Taborder = 12
+
+Name = OutputFolder
+  Type = Folder
+  Height = 21
+  Left = 16
+  Top = 104
+  Width = 249
+  Taborder = 13
+
+<enddata>
+
+
+<Data> VarName=$form1
+#********************************************************************
+# Form generated by GSAK form designer on Sun 28-Aug-2011 10:46:05
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 163
+  Width = 319
+
+Name = Start
+  Type = Button
+  Height = 25
+  Left = 16
+  Top = 90
+  Width = 145
+  Taborder = 8
+  Caption = Start
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 175
+  Top = 90
+  Width = 75
+  Taborder = 9
+  Caption = End Macro
+
+Name = SourceFileCaption
+  Type = Label
+  Color = 128
+  Enabled = Yes
+  Font = @Arial Unicode MS
+  Height = 25
+  Left = 16
+  Size = 14
+  Style = bold
+  Top = 14
+  Visible = Yes
+  Width = 208
+  Caption = Select source file  ....
+
+Name = SourceFile
+  Type = File
+  Height = 21
+  Left = 16
+  Top = 42
+  Width = 249
+  Taborder = 12
+
+<enddata>
+
+<Data> VarName=$form2
+#********************************************************************
+# Form generated by GSAK form designer on Wed 31-Aug-2011 07:53:35
+#********************************************************************
+
+Name = Form2
+  Type = Form
+  Height = 244
+  Width = 492
+
+Name = Memo1
+  Type = Memo
+  Color = 65408
+  Enabled = Yes
+  Font = Arial
+  Height = 121
+  Left = 54
+  Size = 10
+  Top = 12
+  Width = 385
+  Taborder = 10
+
+Name = Start
+  Type = Button
+  Height = 25
+  Left = 54
+  Top = 174
+  Width = 75
+  Taborder = 11
+  Caption = Continue
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 300
+  Top = 174
+  Width = 91
+  Taborder = 12
+  Caption = Skip for Now
+
+Name = UserLink
+  Type = Edit
+  Height = 21
+  Left = 54
+  Top = 144
+  Width = 385
+  Taborder = 13
+
+<enddata>
+
+
+<Data> VarName=$Memo1
+
+The Owner ID for this cache owner is NOT in our lookup table. To add the Owner ID to the gpx file, please copy the See the Forum Posts for This User link for this user and paste in the space below.
+
+<enddata>
+
+
+<Data> VarName=$OwnersIds
+ADVTraveler;2780415
+Atomic Falcon;1916974
+byonke;5378
+Contryguy;115507
+KC Picnic Crew;6913854
+MO Madness Couple;1559231 
+mo pirate;1340008
+motoko;1443016
+PastorChris;1695533
+tor50;1544155
+<enddata>
+
+
+

@@ -1,0 +1,3385 @@
+#*******************************************
+# MacVersion = 1.2.32
+# MacDescription = Colorado/Oregon GPX Export  - for GSAK 7.5
+# MacAuthor = SnoWake and lignumaqua
+# MacFileName = ColoradoExport.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=7745
+
+# 1.2 Version History:
+#
+# 1.2.01 11-29-08 First Beta release for GSAK 7.5 - includes POI option for Child points
+# 1.2.02 11-30-08 Data file read for POI setting, customized forms, create POI folder if needed
+# 1.2.03 12-29-08 Child POI file names are unique for each database, Option to export Found caches as POIs
+# 1.2.04 12-30-08 Added chkForce.Checked=False to GPX export
+# 1.2.05 1-2-09 Added GG Caches to conversion routine (uses same numbers as manual caches)
+# 1.2.06 2-6-09 Bug in Send child waypoints as POIs if not the current database
+#								RETURN not CANCEL, Changed main form layout, added Placed Caches POI export
+#								Added saved settings
+# 1.2.07 2-10-09 Export user created Child waypoints as first log. Added NONE Filter in manually to list for those who don't have it.
+# 1.2.08 2-11-09 Fixed NONE filter bug, Fixed Child export when 'use current filter' is checked.
+# 1.2.09 2-13-09 Escaped the settings variable correctly for SQLite
+# 1.2.10 3-09-09 Write out dummy ChildDescription macro at end of run. Use Custom Name tag option
+# 1.2.11 3-10-09 Add Database name to POI - e.g. Def_Parking Area
+# 1.2.12 3-22-09 Add further options to numbers of logs
+# 1.2.13 4-3-09  The macro will search for a macro called UserExportAddToFirstLog.gsk, If it finds it then that macro will be run as well
+#                and its results added to the existing 'ChildDescription' macro. The total string will be added to the output as the first log
+#                Child POIs cache name limited to first 15 characters. Found and Placwed - option to send child points as POIs
+# 1.2.14 4-3-09  Bug in Placed filter export
+# 1.2.15 4-7-09  Save CacheID count to global setting, fix bug with SaveFilter routine
+# 1.2.16 4-13-09 Custom Name tags apply to Child Waypoints and Child POIs if %children section is present
+# 1.2.17 4-15-09 Ensure that %code is always used for Geocache names
+# 1.2.18 5-06-09 Option for 'Big' font size. Long description only in Oregon. Long, short and logs in Colorado.
+# 1.2.19 6-12-09 Delete old POI files if there isn't a new one that will overwrite for that category
+# 1.2.20 6-26-09 Check for existence of POI bmp files
+# 1.2.21 7-12-09 Custom POI names, Attribute POIs (DNF, Corrected, Earthcache, Micro)
+# 1.2.22 7-23-09 Attribute POIs respect database and filter. Remove restoring center position. Add Parking icon top left. 550 support
+# 1.2.23 8-12-09 Support for Auto Run passing settings name in $ExportSettings
+#                Options for the sub-settings in Attribute POIs
+# 1.2.24 8-16-09 Fixed regression bug in support for Oregon 550
+# 1.2.25 8-23-09 Increased max waypoint name length to 30 characters
+# 1.2.26 8-24-09 Made %children tag case insensitive in Waypoint export, Added _Attrib to attribute POI filenames
+# 1.2.27 9-20-09 POI Attrib message fix (was only showing some times), option to export all caches in filter even if greater than 2,000
+#                Combine POI files into as few as possible to avoid hitting 20 limit.
+# 1.2.28 9-21-09 Fix to POI combine
+# 1.2.29 12-13-09 Change att category names. Stop child filter clearing/setting child flags
+# 1.2.30 1-29-10 Unavailable/Archived Attribute, GC attributes as part of first log
+# 1.2.31 1-29-10 Found-but-Disabled/Archived POI Icon
+# 1.2.32 1-31-10 Release
+
+#*******************************************
+
+$Revision = "V1.2.32"
+
+# Objective is to FIND the GPS, derive some path/file details,then
+# export a GPX file to correct location, making it a press-of-a-button operation
+
+# DEBUG Status=On
+
+# Requires at least this build or later
+VERCHECK Version=7.5.1.0 (Note: this macro requires at least  GSAK Version 7.5.1.0, found here:  http://www.gsak.net  Recommended w/ the latest "patch" - please see the 7.5.1 patch thread here http://gsak.net/board/index.php?showtopic=10591)
+
+# Initialize Variables and Form data
+GOSUB Name=Initialize
+
+# Find our Colorado Drive
+GOSUB name=AutoDetect
+
+# Display the Export Dialog
+GOSUB Name=DisplayForm
+
+# Convert the Terracaches etc where cacheid = 1
+GOSUB Name=ConvertCaches
+
+# Perform the GPX export
+GOSUB Name=GPXExport
+
+# Export Found caches as POIs
+GOSUB name=FoundPOIExport
+
+# Export Placed caches as POIs
+GOSUB name=PlacedPOIExport
+
+# Combine the POI files as much as possible
+GOSUB name=CombinePOIs
+
+# Convert any remaining caches where cacheid=1 to waypoints as appropriate
+GOSUB name=ConvertWaypoints
+
+# End Macro
+
+BEGINSUB Name=Initialize
+	$datafile = $_Install + "\macros\ColoradoExport.db3"
+	
+	# Set up the SQL table
+
+	IF NOT(FileExists($datafile))
+		$status = Sqlite("create",$datafile)
+	ENDIF
+
+	$status = Sqlite("open",$datafile)
+
+	$Data="SaveName text UNIQUE, SaveText text"
+	$_sql = "CREATE TABLE IF NOT EXISTS SavedSettings ($Data)"
+	$status = Sqlite("sql",$_sql)
+
+	$_sql = "SELECT SaveName FROM SavedSettings ORDER BY SaveName"
+	#$SaveNameValues = $PromptSaveText + ";" +  Sqlite("sql",$_sql)
+	$SaveNameValues = Sqlite("sql",$_sql)
+	$SaveNameValues = Replace($_NewLine,";",$SaveNameValues)
+	$SaveBoxList = $SaveNameValues
+	
+	$PromptSaveText = "... Last active"
+
+	#############################################################
+	# PreLoad User variables into Form
+	############################################################
+	# "Default" location of Input file on Colorado, depending
+	# on drive mapping at any given moment
+
+	$DriveStored = "Z"
+	$Drive = "Z"
+	$Database = "NotFound"
+	$Filter="Close"
+	$LocationName="Home"
+	$UseCurrent=TRUE
+	$Silent=FALSE
+	#set database dropdown values
+	$DBList=Sysinfo("Databases")
+	# $DatabasesNone="*None*"  + ";" + $Databases
+	$FilterList= "NONE;" + SysInfo("Filters")
+	$LocationList=Sysinfo("Locations")
+	$PlaceName = RegexReplace(",.*?;",$LocationList,";")
+	$ExportCount=0
+	$IncludeChild=TRUE
+	$ChildAsPoi=FALSE
+	$IncludeUserNotes = FALSE
+	$MaxCache=1975
+	$LogCount="5"
+	$MyLogs=TRUE
+	$GPXFilename="caches"
+	$Dbasfilename = FALSE
+	$BenchCache=TRUE
+	$GSAKCache=TRUE
+	$CacheIDCount = 99000000
+	$FoundDatabase = "Found"
+	$FoundFilter = "Found"
+	$FoundAsPOI = FALSE
+	$PlacedDatabase = "Placed"
+	$PlacedFilter = "Placed"
+	$PlacedAsPOI = FALSE
+	$UseCustomName = FALSE
+	$CustomName = "%" + "name"
+	$FoundChildPoi = FALSE
+
+	#############################################################
+	# Settings file
+
+	#$datafilepath = Sysinfo("MacroPath")
+	#$DataFile = $datafilepath + "\ColoradoExport.dat"
+
+	$NameSQL = "... Last active"
+	$_sql = "SELECT SaveText FROM SavedSettings WHERE SaveName='$NameSQL'"
+	$variables = Sqlite("sql",$_sql,"delim=%%")
+	
+	# Get the cacheID count from a global table
+	$_sql = "SELECT SaveText FROM SavedSettings WHERE SaveName='GSAK_IDCount' LIMIT 1"
+	$CacheIDCount = Val(Sqlite("sql",$_sql))
+
+	GOSUB name=Parse
+
+ENDSUB Name=Initialize
+
+BEGINSUB name=Parse
+
+	IF Len($variables) > 0
+
+		# Now, extract out the individual values
+		$DriveStored = Extract($variables,";",1)
+		$Database = Extract($variables,";",2)
+		$Filter = Extract($variables,";",3)
+		$LocationName = Extract($variables,";",4)
+		$UseCurrent = StrToBool(Extract($variables,";",5))
+		$Silent = StrToBool(Extract($variables,";",6))
+		$IncludeChild = StrToBool(Extract($variables,";",7))
+		$MaxCache = Val(Extract($variables,";",8))
+		$LogCount = Extract($variables,";",9)
+		$MyLogs = StrToBool(Extract($variables,";",10))
+		$GPXFilename = Extract($variables,";",11)
+
+		IF Extract($variables,";",12) = ""
+			$Dbasfilename = FALSE
+		ELSE
+			$Dbasfilename = StrToBool(Extract($variables,";",12))
+		ENDIF
+
+		IF Extract($variables,";",13) = ""
+			$BenchCache = TRUE
+		ELSE
+			$BenchCache = StrToBool(Extract($variables,";",13))
+		ENDIF
+
+		IF Extract($variables,";",14) = ""
+			$GSAKCache = TRUE
+		ELSE
+			$GSAKCache = StrToBool(Extract($variables,";",14))
+		ENDIF
+
+		# Get the cacheID count from a global table instead
+		IF $CacheIDCount = 0
+			$CacheIDCount = 99000000
+		ENDIF
+
+		IF Extract($variables,";",16) = ""
+			$IncludeUserNotes = FALSE
+		ELSE
+			$IncludeUserNotes = StrToBool(Extract($variables,";",16))
+		ENDIF
+
+		IF Extract($variables,";",17) = ""
+			$ChildAsPoi = FALSE
+		ELSE
+			$ChildAsPoi = StrToBool(Extract($variables,";",17))
+		ENDIF
+
+		IF Extract($variables,";",18) = ""
+			$FoundAsPoi = FALSE
+		ELSE
+			$FoundAsPoi = StrToBool(Extract($variables,";",18))
+		ENDIF
+
+		IF Extract($variables,";",19) = ""
+			$FoundDatabase = "Found"
+		ELSE
+			$FoundDatabase = Extract($variables,";",19)
+		ENDIF
+
+		IF Extract($variables,";",20) = ""
+			$FoundFilter = "Found"
+		ELSE
+			$FoundFilter = Extract($variables,";",20)
+		ENDIF
+
+		IF Extract($variables,";",21) = ""
+			$PlacedAsPoi = FALSE
+		ELSE
+			$PlacedAsPoi = StrToBool(Extract($variables,";",21))
+		ENDIF
+
+		IF Extract($variables,";",22) = ""
+			$PlacedDatabase = "Placed"
+		ELSE
+			$PlacedDatabase = Extract($variables,";",22)
+		ENDIF
+
+		IF Extract($variables,";",23) = ""
+			$PlacedFilter = "Placed"
+		ELSE
+			$PlacedFilter = Extract($variables,";",23)
+		ENDIF
+		
+		IF Extract($variables,";",24) = ""
+			$UseCustomName = FALSE
+		ELSE
+			$UseCustomName = StrToBool(Extract($variables,";",24))
+		ENDIF
+		
+		IF Extract($variables,";",25) = ""
+			$CustomName = "%" + "name"
+		ELSE
+			$CustomName = Extract($variables,";",25)
+		ENDIF
+		
+		IF Extract($variables,";",26) = ""
+			$FoundChildPoi = FALSE
+		ELSE
+			$FoundChildPoi = StrToBool(Extract($variables,";",26))
+		ENDIF
+		
+		IF Extract($variables,";",27) = ""
+			$PlacedChildPOI = FALSE
+		ELSE
+			$PlacedChildPOI = StrToBool(Extract($variables,";",27))
+		ENDIF
+		
+		IF Extract($variables,";",28) = ""
+			$UseBigCharacters = FALSE
+		ELSE
+			$UseBigCharacters = StrToBool(Extract($variables,";",28))
+		ENDIF
+		
+		IF Extract($variables,";",29) = ""
+			$UseCustomFoundName = FALSE
+		ELSE
+			$UseCustomFoundName = StrToBool(Extract($variables,";",29))
+		ENDIF
+		
+		IF Extract($variables,";",30) = ""
+			$CustomFoundName = "%" + "Name by " + "%" +"by " + "%" + "typ1" + "%" + "con1 (" + "%" + "Dif/" + "%" + "Ter)"
+		ELSE
+			$CustomFoundName = Extract($variables,";",30)
+		ENDIF
+		
+		IF Extract($variables,";",31) = ""
+			$UseCustomPlacedName = FALSE
+		ELSE
+			$UseCustomPlacedName = StrToBool(Extract($variables,";",31))
+		ENDIF
+		
+		IF Extract($variables,";",32) = ""
+			$CustomPlacedName = "%" + "Name by " + "%" +"by " + "%" + "typ1" + "%" + "con1 (" + "%" + "Dif/" + "%" + "Ter)"
+		ELSE
+			$CustomPlacedName = Extract($variables,";",32)
+		ENDIF
+		
+		IF Extract($variables,";",33) = ""
+			$AttributeAsPoi = FALSE
+		ELSE
+			$AttributeAsPoi = StrToBool(Extract($variables,";",33))
+		ENDIF
+		
+		IF Extract($variables,";",34) = ""
+			$AttribParking = FALSE
+		ELSE
+			$AttribParking = StrToBool(Extract($variables,";",34))
+		ENDIF
+		
+		IF Extract($variables,";",35) = ""
+			$AttribCorrected = FALSE
+		ELSE
+			$AttribCorrected = StrToBool(Extract($variables,";",35))
+		ENDIF
+		
+		IF Extract($variables,";",36) = ""
+			$AttribDNF = FALSE
+		ELSE
+			$AttribDNF = StrToBool(Extract($variables,";",36))
+		ENDIF
+		
+		IF Extract($variables,";",37) = ""
+			$AttribEarthcache = FALSE
+		ELSE
+			$AttribEarthcache = StrToBool(Extract($variables,";",37))
+		ENDIF
+		
+		IF Extract($variables,";",38) = ""
+			$AttribMicro = FALSE
+		ELSE
+			$AttribMicro = StrToBool(Extract($variables,";",38))
+		ENDIF
+				
+		IF Extract($variables,";",39) = ""
+			$AttribUnavailable = FALSE
+		ELSE
+			$AttribUnavailable = StrToBool(Extract($variables,";",39))
+		ENDIF
+		
+	ENDIF
+
+	IF $Maxcache = 0
+		$MaxCache = 1975
+	ENDIF
+
+	$MaxCacheStr = NumToStr($MaxCache)
+
+	IF $Dbasfilename
+		IF $UseCurrent
+			$GPXFilename = $_CurrentDatabase
+		ELSE
+			$GPXFilename = $Database
+		ENDIF
+	ENDIF
+
+	$BenchWay = NOT($BenchCache)
+	$GSAKWay = NOT($GSAKCache)
+
+ENDSUB #name=parse
+
+BEGINSUB Name=AutoDetect
+
+	# Searching for the Colorado
+	# Use the new GPSInfo("GarminPath") function which returns path to GarminDevice.xml
+
+	$result=GPSInfo("GarminPath")
+
+	$Model = "GPS"
+
+	IF FileExists($result)
+		$Drive = Extract($result,":",1)
+		$Model = GPSInfo("GarminModel")
+		$SWversion = GPSInfo("GarminVersion")
+		$SWver = Val($SWversion) / 100
+		IF $Silent = FALSE
+			MSGOK msg="Found $Model running software version $SWver on Drive $Drive:\"
+		ENDIF
+	ELSE
+		MSGOK msg="GPSr not detected - please check connection or enter file path manually"
+		$Drive = $Drivestored
+	ENDIF
+	
+	IF $Model = "Oregon 550" OR $Model = "Oregon 550t" OR $Model = "Oregon 450" OR $Model = "Oregon 450t"
+		$TotalMaxCaches = 5000
+	ELSE
+		$TotalMaxCaches = 2000
+	ENDIF
+
+ENDSUB Name=AutoDetect
+
+BEGINSUB Name=DisplayForm
+
+	############################################################
+	# Form to Collect / Adjust User Input
+	############################################################
+
+# Auto Run?
+
+IF $ExportSettings <> ""
+	# Load settings passed in $ExportSettings and auto run
+	$SaveBox = $ExportSettings
+	GOSUB name=SaveBox
+	
+ELSE
+
+	$Form = Editform($Form,"VersionLabel","caption","$Revision")
+	$Form = Replace("%%GPS%%",$Model,$Form)
+
+	WHILE TRUE
+		IF $UseCurrent
+			$Form = EditForm($Form,"Database","Enabled","No")
+			$Form = EditForm($Form,"Filter","Enabled","No")
+			$Form = EditForm($Form,"LocationName","Enabled","No")
+			$Form = EditForm($Form,"DatabaseLabel","Enabled","No")
+			$Form = EditForm($Form,"FilterLabel","Enabled","No")
+			$Form = EditForm($Form,"LocationLabel","Enabled","No")
+		ELSE
+			$Form = EditForm($Form,"Database","Enabled","Yes")
+			$Form = EditForm($Form,"Filter","Enabled","Yes")
+			$Form = EditForm($Form,"LocationName","Enabled","Yes")
+			$Form = EditForm($Form,"DatabaseLabel","Enabled","Yes")
+			$Form = EditForm($Form,"FilterLabel","Enabled","Yes")
+			$Form = EditForm($Form,"LocationLabel","Enabled","Yes")
+		ENDIF
+				
+		IF $AttributeAsPoi
+			$Form = EditForm($Form,"AttribParking","Enabled","Yes")
+			$Form = EditForm($Form,"AttribCorrected","Enabled","Yes")
+			$Form = EditForm($Form,"AttribDNF","Enabled","Yes")
+			$Form = EditForm($Form,"AttribEarthcache","Enabled","Yes")
+			$Form = EditForm($Form,"AttribMicro","Enabled","Yes")
+			$Form = EditForm($Form,"AttribUnavailable","Enabled","Yes")
+		ELSE
+			$Form = EditForm($Form,"AttribParking","Enabled","No")
+			$Form = EditForm($Form,"AttribCorrected","Enabled","No")
+			$Form = EditForm($Form,"AttribDNF","Enabled","No")
+			$Form = EditForm($Form,"AttribEarthcache","Enabled","No")
+			$Form = EditForm($Form,"AttribMicro","Enabled","No")
+			$Form = EditForm($Form,"AttribUnavailable","Enabled","No")
+		ENDIF
+				
+		IF $UseCustomName
+			$Form = EditForm($Form,"CustomName","Enabled","Yes")
+		ELSE
+			$Form = EditForm($Form,"CustomName","Enabled","No")
+		ENDIF
+		
+		IF $UseCustomFoundName
+			$Form = EditForm($Form,"CustomFoundName","Enabled","Yes")
+		ELSE
+			$Form = EditForm($Form,"CustomFoundName","Enabled","No")
+		ENDIF
+		
+		IF $UseCustomPlacedName
+			$Form = EditForm($Form,"CustomPlacedName","Enabled","Yes")
+		ELSE
+			$Form = EditForm($Form,"CustomPlacedName","Enabled","No")
+		ENDIF
+	
+		$result = Form($form,"")
+		# Reset the screen position of the menu form to where the user left it
+		$Form = EditForm($Form,"ColoradoExport","Top",$_FormTop)
+		$Form = EditForm($Form,"ColoradoExport","Left",$_FormLeft)
+		BEGINCASE #Buttons
+		CASE $Cancel
+			RETURN
+		CASE $Save
+			GOSUB name=Save
+		CASE $Delete
+			GOSUB name=Delete
+		CASE $result="SaveBox"
+			GOSUB name=SaveBox
+		CASE $result = "AttributeAsPoi"
+			# Toggle Sub boxes for attributes as POIs
+		CASE $result = "UseCurrent"
+			# Toggle disabling filter selection
+		CASE $result = "UseCustomName"
+			# Toggle Use Custom Name box
+		CASE $result = "UseCustomFoundName"
+			# Toggle Use Custom Found Name box
+		CASE $result = "UseCustomPlacedName"
+			# Toggle Use Custom Placed Name box
+		CASE $OK
+			BREAK
+		OTHERWISE
+			RETURN
+		ENDCASE
+
+	ENDWHILE # Form Loop
+	
+ENDIF
+
+	$MaxCache = Val($MaxCacheStr)
+	$NameSQL = "... Last active"
+	GOSUB name=UpdateDataFile
+
+	# Save current database
+	$currentdb = $_CurrentDatabase
+	$OldCenter = Sysinfo("Center")
+
+	IF $UseCurrent = FALSE
+
+		# Change database if necessary
+		IF $_CurrentDatabase <> $Database
+			DATABASE Name="$Database" Action=Select
+		ENDIF
+
+		# Apply the location
+		IF $OldCenter <> $LocationName
+			CENTRE location=$LocationName
+		ENDIF
+
+		# Apply the Filter
+		IF $Filter = "NONE"
+			MFILTER Expression=TRUE
+		ELSE
+			FILTER Name=$Filter
+		ENDIF
+
+	ENDIF
+
+	IF $Dbasfilename
+		$GPXFilename = $_CurrentDatabase
+	ENDIF
+
+	$GPXPath = $Drive + ":\Garmin\GPX\"
+
+	$GPXFile = $GPXPath + $GPXFilename + ".gpx"
+	
+	$ExportCount = $MaxCache
+
+	IF $MaxCache > $TotalMaxCaches
+		$Form2 = Replace("%%max%%","$TotalMaxCaches",$Form2)
+		WHILE True # Infinite loop to redisplay form as required
+			$FormExit = form($form2,"")
+			BEGINCASE
+			CASE $FormExit = "DelayExit"
+				#MSGOK msg="Form exit via Delay"
+				BREAK
+			CASE $FormExit = "SystemExit"
+				#MSGOK msg="Form exit via red X button on form"
+				RETURN
+			CASE $FormExit = "Cancel"
+				#MSGOK msg="Form exit from the cancel button"
+				RETURN
+			CASE $FormExit = "ExportAll"
+				BREAK
+			CASE $FormExit = "OK"
+				# Set the count = $TotalMax Caches
+				$ExportCount = $TotalMaxCaches
+				BREAK
+			ENDCASE
+		ENDWHILE
+		
+	ENDIF
+
+	# Save current Filter
+	#$SavedFilter = SaveFilter()
+	GOSUB name=SaveFilter
+
+ENDSUB Name=DisplayForm
+
+# Save values
+BEGINSUB name=Save
+	IF $SaveBox = $PromptSaveText
+		$Name = ""
+	ELSE
+		$Name = $SaveBox
+	ENDIF
+	$result = Form($form3,"")
+	IF $NameOK
+		$NameSQL = Replace("'","''",$Name)
+		GOSUB name=UpdateDataFile
+		$_sql = "SELECT SaveName FROM SavedSettings ORDER BY SaveName"
+		#$SaveNameValues = $PromptSaveText + ";" +  Sqlite("sql",$_sql)
+		$SaveNameValues = Sqlite("sql",$_sql)
+		$SaveNameValues = Replace($_NewLine,";",$SaveNameValues)
+		$SaveBoxList = $SaveNameValues
+		$SaveBox = $Name
+	ENDIF
+ENDSUB
+
+# Delete values
+BEGINSUB name=DELETE
+	IF $SaveBox = $PromptSaveText
+		EXITSUB
+	ENDIF
+	$Name = $SaveBox
+	$Form4 = EditForm($Form4,"FilterLabel","Caption",$Name)
+	$result = Form($form4,"")
+	IF $DeleteOK
+		$NameSQL = Replace("'","''",$Name)
+		$_sql = "DELETE FROM SavedSettings WHERE SaveName = '$NameSQL'"
+		$status = Sqlite("sql",$_sql)
+		$_sql = "SELECT SaveName FROM SavedSettings ORDER BY SaveName"
+		#$SaveNameValues = $PromptSaveText + ";" +  Sqlite("sql",$_sql)
+		$SaveNameValues = Sqlite("sql",$_sql)
+		$SaveNameValues = Replace($_NewLine,";",$SaveNameValues)
+		$SaveBoxList = $SaveNameValues
+		$NameSQL = "... Last active"
+		$SaveBox = $NameSQL
+		GOSUB name=SaveBox
+	ENDIF
+ENDSUB
+
+# Retrieve Saved value
+BEGINSUB Name=SaveBox
+	$SaveBoxSQL = Replace("'","''",$SaveBox)
+	$_sql = "SELECT SaveText FROM SavedSettings WHERE SaveName = '$SaveBoxSQL'"
+	$result = Sqlite("sql",$_sql,"delim=%%")
+	IF Len($result) > 0
+		$variables = $result
+		GOSUB name=parse
+	ENDIF
+ENDSUB
+
+BEGINSUB name=SaveFilter
+	$SQL = DbToSQLite("caches","code",$datafile,"")
+ENDSUB #SaveFilter
+
+BEGINSUB name=RestoreFilter
+	CANCELFILTER
+	$match = sqlite("sql","select code from caches")
+	MACROFLAG Type=Clear range=all
+	$result = CodeMatch($match,$_NewLine,"M")
+	MFILTER Expression=$d_MacroFlag
+ENDSUB #RestoreFilter
+
+#Subroutine to update datafile
+BEGINSUB name=UpdateDataFile
+	$variables = "$Drive;$Database;$Filter;$LocationName;$UseCurrent;$Silent;$IncludeChild;$MaxCacheStr;$LogCount;$MyLogs;$GPXFilename;$Dbasfilename;$BenchCache;$GSAKCache;$CacheIDCount;$IncludeUserNotes;"
+	$variables = $variables + "$ChildAsPoi;$FoundAsPOI;$FoundDatabase;$FoundFilter;$PlacedAsPOI;$PlacedDatabase;$PlacedFilter;$UseCustomName;$CustomName;$FoundChildPOI;$PlacedChildPOI;$UseBigCharacters;"
+	$variables = $variables + "$UseCustomFoundName;$CustomFoundName;$UseCustomPlacedName;$CustomPlacedName;$AttributeAsPoi;$AttribParking;$AttribCorrected;$AttribDNF;$AttribEarthcache;$AttribMicro;$AttribUnavailable"
+	$variablesSQL = Replace("'","''",$variables)
+	$_sql = "REPLACE INTO SavedSettings VALUES ('$NameSQL','$variablesSQL')"
+	$status = Sqlite("sql",$_sql)
+	
+	$_sql = "REPLACE INTO SavedSettings VALUES ('GSAK_IDCount','$CacheIDCount')"
+	$status = Sqlite("sql",$_sql)
+ENDSUB Name=UpdateDataFile
+
+BEGINSUB Name=GPXExport
+
+	# Restore Filter
+	#$dummy = RestoreFilter($SavedFilter,True)
+	GOSUB name=RestoreFilter
+
+	IF $_Count = 0
+		MSGOK msg="There are no caches in your selected combination of database and filter $_newline                                  Exiting macro"
+		RETURN
+	ENDIF
+	
+	# Open the SQLite database to allow interrogation of the child waypoints
+	$sqlinputfile = SqlQuote($_CurrentDataPath + "\sqlite.db3")
+	$_sql = "ATTACH $sqlinputfile AS gsakdb"
+	$status = Sqlite("sql",$_sql)
+	
+	# Write out Child description macro
+	$tmpS = PutFile($_Install + "\macros\ChildDescription.gsk", $ChildDescription)
+
+	# Now a MACROSET to ensure particular options on the GPX export
+	# with dynamic overrides for user-defined Settings
+	$GPXdynamic = $GPXstatic + "chkMyLogs.Checked=$MyLogs" + $_NewLine
+	$GPXdynamic = $GPXdynamic + "cbxLimit.Text=$LogCount" + $_NewLine
+	$GPXdynamic = $GPXdynamic + "chkChild.Checked=$IncludeChild" + $_NewLine
+	$GPXDynamic = $GPXdynamic + "cbxUserNotes.Checked=$IncludeUserNotes" + $_NewLine
+	
+	IF $UseCustomName
+		$GPXDynamic = $GPXdynamic + "edtFormat.Text=" + $CustomName + $_NewLine
+		# Strip off just the %children portion
+		#$tmpS = Extract($CustomName, "%" + "children",2)
+		$tmpS = RegExSub(".*?%" + "children(.*)",$CustomName,1,1)
+		IF $tmpS = ""
+			$GPXDynamic = $GPXdynamic + "edtWaypoint.Text=%" + "code" + $_NewLine
+		ELSE
+			$GPXDynamic = $GPXdynamic + "edtWaypoint.Text=%" + "code%" + "children" + $tmpS + $_NewLine
+		ENDIF
+		$GPXDynamic = $GPXdynamic + "chkApplyName.Checked=True" + $_NewLine
+	ELSE
+		$GPXDynamic = $GPXdynamic + "edtFormat.Text=%" + "Name" + $_NewLine
+		$GPXDynamic = $GPXdynamic + "edtWaypoint.Text=%" + "code" + $_NewLine
+		$GPXDynamic = $GPXdynamic + "chkApplyName.Checked=False" + $_NewLine
+	ENDIF
+	
+	MACROSET Dialog=GPX VarName=$GPXdynamic
+
+	#EXPORT type=GPX File=$GPXFile max=2000
+
+	EXPORT type=GPX File=$GPXFile Settings=<macro> From=1 To=$ExportCount
+
+	#IF $Silent = FALSE
+	# Get specific counts of geocaches and child waypoints
+	#$Data = GetFile($GPXFile)
+	#$Caches = Regexcount("<type>Geocache",$Data)
+	#$Wpts = Regexcount("<type>Waypoint",$Data)
+	#MSGOK msg="Successfully exported $Caches Geocaches and $wpts Child Waypoints to file: $GPXFilename.gpx"
+	#ENDIF
+	
+	# Write out blank Child description macro
+	$tmpS = PutFile($_Install + "\macros\ChildDescription.gsk", $ChildDescriptionBlank)
+	
+	
+	# Close SQLite database again
+	$_sql = "DETACH gsakdb"
+	$status = Sqlite("sql",$_sql)
+	
+	# Export Child points as POIs
+	GOSUB name=POIExport
+	
+	# Export attributes as POIs
+	GOSUB name=AttributePOIExport
+
+	# return to previous database
+	IF $_CurrentDatabase <> $currentdb
+		DATABASE Name="$currentdb" Action=Select
+	ENDIF
+
+#	# restore previous center position
+#	IF $OldCenter <> Sysinfo("Center")
+#		CENTRE location=$OldCenter
+#	ENDIF
+
+ENDSUB Name=GPXExport
+
+BEGINSUB name=ConvertWaypoints
+	#DEBUG status=on
+	# This checks for entries where the cache id = 1 and converts them to waypoints
+
+	$GPX = ""				# Final output
+	$Caches = 0
+	$Wpts = 0
+
+	# Get file and strip out the <groundspeak> tags
+
+	$GPX = GetFile($GPXFile)
+	IF Left($GPX,7) = "*Error*"
+		PAUSE Msg="$GPX"
+		RETURN
+	ENDIF
+	
+	# Convert to large characters if needed
+	
+	IF $UseBigCharacters
+		# Short and long descriptions
+		$tmpS = "description html=" + Quote("True") + ">"
+		$GPX = Replace($tmpS,$tmpS + "&lt;big&gt;",$GPX)
+		$tmpS = "description html=" + Quote("False") + ">"
+		$GPX = Replace($tmpS,$tmpS + "&lt;big&gt;",$GPX)
+		
+		$tmpS = "</groundspeak:short_description>"
+		$GPX = Replace($tmpS,"&lt;/big&gt;" + $tmpS,$GPX)
+		$tmpS = "</groundspeak:long_description>"
+		$GPX = Replace($tmpS,"&lt;/big&gt;" + $tmpS,$GPX)
+		
+		# Logs
+		$tmpS = "<groundspeak:text encoded=" + Quote("True") + ">"
+		$GPX = Replace($tmpS,$tmpS + "&lt;big&gt;",$GPX)
+		$tmpS = "<groundspeak:text encoded=" + Quote("False") + ">"
+		$GPX = Replace($tmpS,$tmpS + "&lt;big&gt;",$GPX)
+		
+		$tmpS = "</groundspeak:text>"
+		$GPX = Replace($tmpS,"&lt;/big&gt;" + $tmpS,$GPX)
+	ENDIF
+		
+	
+	# Main loop
+
+	# Check if we have any points with cacheid = 1, if so convert them to waypoints
+	$trigger = "cache id=" + Quote("1")
+	IF (RegExCount($trigger,$GPX)) =0
+		IF $UseBigCharacters
+			$result = PutFile($GPXFile, $GPX)
+			IF Left($result, 7) = "*Error*"
+				# If theres any error abort the macro
+			CANCEL Msg="Unable to write to $file!"
+			ENDIF
+		ENDIF
+		IF $Silent = FALSE
+			# Get specific counts of geocaches and child waypoints
+			$Wpts = RegExCount("<type>Waypoint",$GPX)
+			$Caches = Regexcount("<type>Geocache",$GPX)
+			MSGOK msg="Successfully exported $Caches Geocaches and $wpts Child Waypoints to file: $GPXFilename.gpx $_NewLine $POIMessage $FoundPOIMessage $PlacedPOIMessage $AttributePOIMessage"
+		ENDIF
+		EXITSUB
+	ENDIF
+
+	$count = At($trigger,$GPX)
+
+	WHILE $count > 0
+		$count = $count -4
+		WHILE SubStr($GPX,$count,4)<>"<wpt" AND $count >= 0
+			$count = $count - 1
+		ENDWHILE
+
+		#DEBUG status=on
+
+		IF $count <0
+			EXITSUB
+		ENDIF
+
+		$GPXHeader = SubStr($GPX,1,$count - 1)
+		$GPXFooter = SubStr($GPX,$count,0)
+		$Wpt = Extract($GPXFooter,"</wpt>",1) + "</wpt>"
+		$GPXFooter = Right( $GPXFooter,Len($GPXFooter) - Len($Wpt))
+		$Wpts = $Wpts + 1
+		GOSUB name=ParseWaypoint
+		$GPX = $GPXHeader + $Wpt + $GPXFooter
+		$count = At($trigger,$GPX)
+	ENDWHILE
+
+	$result = PutFile($GPXFile, $GPX)
+	IF Left($result, 7) = "*Error*"
+		# If theres any error abort the macro
+		CANCEL Msg="Unable to write to $file!"
+	ENDIF
+
+	$Wpts = $Wpts + Regexcount("<type>Waypoint",$GPX)
+	$Caches = Regexcount("<type>Geocache",$GPX)
+
+	IF $Silent = FALSE
+		# Get specific counts of geocaches and child waypoints
+		MSGOK msg="Successfully exported $Caches Geocaches and $wpts Child Waypoints to file: $GPXFilename.gpx $_NewLine $POIMessage $FoundPOIMessage $PlacedPOIMessage  $AttributePOIMessage"
+	ENDIF
+
+ENDSUB #name=ConvertWaypoints
+
+
+
+#######################
+
+BEGINSUB name=POIExport
+	IF NOT($ChildAsPoi)
+		$POIMessage = ""
+		EXITSUB
+	ENDIF
+
+	$POIMessage = $_NewLine + "Child points were exported as POIs"
+	
+	GOSUB name=CreatePOIBMP
+	GOSUB name=RestoreFilter
+	
+	$x = 0
+
+	WHILE $x < $NumChild # Currently we have 6 waypoint types to iterate through
+		$ChildTypeName = Extract($ChildTypes,";",$x + 1)
+		$dynamic = $ChildFilter + "cbxCtype2=$x"
+		$POIFile = $POI_StashPath + "\" + "$GPXFilename" + "_" + $ChildTypeName + ".gpi"
+		MACROSET Dialog=Filter VarName=$dynamic
+		FILTER Name=<macro> join=AND
+		SHOWSTATUS msg="Export Child type: $ChildTypeName" Width=350
+		IF $_FilterCount > 0
+			# code for POI export
+			$POIdynamic = $POIstatic + "fnmTo.Text=$POIFile" + $_NewLine
+			IF FileExists("$BMPPath" + "$ChildTypeName" + ".bmp")
+				$POIDynamic = $POIDynamic + "iconfile.Text=$BMPPath" + "$ChildTypeName" + ".bmp" + $_NewLine
+			ELSE
+				$POIDynamic = $POIDynamic + "iconfile.Text=$BMPPath" + "Reference Point.bmp" + $_NewLine
+			ENDIF
+			$POIDynamic = $POIDynamic + "edtCategory.Text=" + Left($GPXFilename,3) + "_" + "$ChildTypeName" + $_NewLine
+			IF $UseCustomName AND RegEx("children",$CustomName)
+				$POIDynamic = $POIdynamic + "edtName.Text=" + $CustomName + $_NewLine
+			ELSE
+				$POIDynamic = $POIdynamic + "edtName.Text=%" + "children %" + "shortname=15-%" + "c_Name" + $_NewLine
+			ENDIF
+
+			MACROSET Dialog=GarminPOI VarName=$POIdynamic
+
+			EXPORT type=GPI File=$POIFile Settings=<macro>
+			
+		ELSE
+			#Delete old file if there isn't a new one to overwrite
+			FILEERASE File=$POIFile OnError=Continue
+		ENDIF
+		
+		# Delete any old files left in the main POI folder
+		$POIFile = $POIPath + "\" + "$GPXFilename" + "_" + $ChildTypeName + ".gpi"
+		FILEERASE File=$POIFile OnError=Continue
+		
+		GOSUB name=RestoreFilter
+		$x = $x + 1
+	ENDWHILE
+	
+	# Clear child flags
+	
+	MACROSET Dialog=Filter VarName=$ClearChildFlagsFilter
+	FILTER Name=<macro> join=AND
+	
+	GOSUB name=RestoreFilter
+	
+	SHOWSTATUS Msg="Done" Display=off
+
+ENDSUB #POIExport
+
+BEGINSUB name=CreatePOIBMP
+# Write out BMP files for the POI icons
+	$BMPPath = $_Install + "\temp\"
+	$tmpS = PutFile($BMPPath + "Final Location.bmp", MimeDecode($FinalLocation))
+	$tmpS = PutFile($BMPPath + "Parking Area.bmp", MimeDecode($ParkingArea))
+	$tmpS = PutFile($BMPPath + "Question to Answer.bmp", MimeDecode($QuestiontoAnswer))
+	$tmpS = PutFile($BMPPath + "Reference Point.bmp", MimeDecode($ReferencePoint))
+	$tmpS = PutFile($BMPPath + "Stages of a Multicache.bmp", MimeDecode($StagesofaMulticache))
+	$tmpS = PutFile($BMPPath + "Trailhead.bmp", MimeDecode($Trailhead))
+	$tmpS = PutFile($BMPPath + "Corrected.bmp", MimeDecode($Corrected))
+	$tmpS = PutFile($BMPPath + "DNF.bmp", MimeDecode($DNF))
+	$tmpS = PutFile($BMPPath + "Earthcache.bmp", MimeDecode($Earthcache))
+	$tmpS = PutFile($BMPPath + "Micro.bmp", MimeDecode($Micro))
+	$tmpS = PutFile($BMPPath + "Parking.bmp", MimeDecode($Parking))
+	$tmpS = PutFile($BMPPath + "Unavailable.bmp", MimeDecode($Unavailable))
+		
+	$ChildTypes = ChildType("")
+	$NumChild = RegExCount(";",$ChildTypes) + 1
+
+	$POIPath = $Drive + ":\Garmin\POI"
+
+	# Create POI directory if it doesn't exist
+	IF FolderExists ($POIpath) = FALSE
+		$comspec = GetEnvV("comspec")
+		RUNPGM pgm=$comspec parms=/C md "$POIPath" wait=yes Hide=Yes
+	ENDIF
+	
+	# Create POI Stash folder
+	$POI_StashPath = $Drive + ":\Garmin\POI_Stash"
+	IF FolderExists ($POI_StashPath) = FALSE
+		$comspec = GetEnvV("comspec")
+		RUNPGM pgm=$comspec parms=/C md "$POI_StashPath" wait=yes Hide=Yes
+	ENDIF
+	
+ENDSUB #CreatePOIBMP
+
+
+BEGINSUB name=AttributePOIExport
+	IF NOT($AttributeAsPoi)
+		$AttributePOIMessage = ""
+		EXITSUB
+	ENDIF
+
+	$AttributePOIMessage = $_NewLine + "Attributes were exported as POIs"
+	
+	GOSUB name=CreatePOIBMP
+	
+	IF $AttribDNF
+		GOSUB name=RestoreFilter	
+		$AttributeTypeName = "DNF"
+		MFILTER Expression=$d_DNF Join=AND
+		GOSUB name=DoAttributePOIExport
+	ENDIF
+	
+	IF $AttribCorrected 
+		GOSUB name=RestoreFilter
+		$AttributeTypeName = "Corrected"
+		MFILTER Expression=$d_HasCorrected Join=AND
+		GOSUB name=DoAttributePOIExport
+	ENDIF
+	
+	IF $AttribEarthcache
+		GOSUB name=RestoreFilter
+		$AttributeTypeName = "Earthcache"
+		MFILTER Expression=$d_CacheType="R" Join=AND
+		GOSUB name=DoAttributePOIExport
+	ENDIF
+	
+	IF $AttribMicro
+		GOSUB name=RestoreFilter
+		$AttributeTypeName = "Micro"
+		MFILTER Expression=$d_Container="Micro" Join=AND
+		GOSUB name=DoAttributePOIExport
+	ENDIF
+	
+	IF $AttribParking
+		GOSUB name=RestoreFilter
+		$dynamic = $ChildFilter + "cbxCtype2=1"
+		$AttributeTypeName = "Parking"
+		MACROSET Dialog=Filter VarName=$dynamic
+		FILTER Name=<macro> join=AND
+		GOSUB name=DoAttributePOIExport
+	ENDIF
+	
+	IF $AttribUnavailable
+		GOSUB name=RestoreFilter
+		$AttributeTypeName = "Unavailable"
+		MFILTER Expression=$d_TempDisabled OR $d_Archived Join=AND
+		GOSUB name=DoAttributePOIExport
+	ENDIF
+	
+	# Clear child flags
+	GOSUB name=RestoreFilter
+	MACROSET Dialog=Filter VarName=$ClearChildFlagsFilter
+	FILTER Name=<macro> join=AND
+	
+	GOSUB name=RestoreFilter
+	SHOWSTATUS Msg="Done" Display=off
+
+ENDSUB #AttributePOIExport
+
+
+
+BEGINSUB name=DoAttributePOIExport
+	SHOWSTATUS msg="Export Attribute type: $AttributeTypeName" Width=350
+	$POIFile = $POI_StashPath + "\" + "$GPXFilename" + "_" + $AttributeTypeName + "_Attrib.gpi"
+	IF $_FilterCount > 0
+		# code for POI export
+		$POIdynamic = $AttributePOIstatic + "fnmTo.Text=$POIFile" + $_NewLine
+		IF FileExists("$BMPPath" + "$AttributeTypeName" + ".bmp")
+			$POIDynamic = $POIDynamic + "iconfile.Text=$BMPPath" + "$AttributeTypeName" + ".bmp" + $_NewLine
+		ELSE
+			$POIDynamic = $POIDynamic + "iconfile.Text=$BMPPath" + "Reference Point.bmp" + $_NewLine
+		ENDIF
+		$POIDynamic = $POIDynamic + "edtCategory.Text=" + Left($GPXFilename,3) + "_" + "$AttributeTypeName" + $_NewLine
+		$POIDynamic = $POIdynamic + "edtName.Text= $AttributeTypeName-%" + "shortname=15" + $_NewLine
+		MACROSET Dialog=GarminPOI VarName=$POIdynamic
+
+		EXPORT type=GPI File=$POIFile Settings=<macro>
+			
+	ELSE
+		#Delete old file if there isn't a new one to overwrite
+		FILEERASE File=$POIFile OnError=Continue
+	ENDIF
+	
+	# Delete any old files left in the main POI folder
+	$POIFile = $POIPath + "\" + "$GPXFilename" + "_" + $AttributeTypeName + "_Attrib.gpi"
+	FILEERASE File=$POIFile OnError=Continue
+	
+ENDSUB #DoAttributePOIExport
+
+
+
+BEGINSUB name=PlacedChildPOIExport
+	IF NOT($PlacedChildPOI)
+		EXITSUB
+	ENDIF
+
+	GOSUB name=CreatePOIBMP
+
+	$x = 0
+	# Apply the Filters
+	CANCELFILTER
+	IF $PlacedFilter = "NONE"
+		MFILTER Expression=TRUE
+	ELSE
+		FILTER Name=$PlacedFilter
+	ENDIF
+
+	WHILE $x < $NumChild # Currently we have 6 waypoint types to iterate through
+		$ChildTypeName = Extract($ChildTypes,";",$x + 1)
+		$dynamic = $ChildFilter + "cbxCtype2=$x"
+		$POIFile = $POI_StashPath + "\" + "Placed" + "_" + $ChildTypeName + ".gpi"
+		MACROSET Dialog=Filter VarName=$dynamic
+		FILTER Name=<macro> join=AND
+		SHOWSTATUS msg="Export Placed Child type: $ChildTypeName" Width=350
+		IF $_FilterCount > 0
+			# code for POI export
+			$POIdynamic = $POIstatic + "fnmTo.Text=$POIFile" + $_NewLine
+			IF FileExists("$BMPPath" + "$ChildTypeName" + ".bmp")
+				$POIDynamic = $POIDynamic + "iconfile.Text=$BMPPath" + "$ChildTypeName" + ".bmp" + $_NewLine
+			ELSE
+				$POIDynamic = $POIDynamic + "iconfile.Text=$BMPPath" + "Reference Point.bmp" + $_NewLine
+			ENDIF
+			$POIDynamic = $POIDynamic + "edtCategory.Text=" + "Plc" + "_" + "$ChildTypeName" + $_NewLine
+			$POIDynamic = $POIdynamic + "edtName.Text=%" + "children %" + "shortname=15-%" + "c_Name" + $_NewLine
+			
+			MACROSET Dialog=GarminPOI VarName=$POIdynamic
+
+			EXPORT type=GPI File=$POIFile Settings=<macro>
+		ELSE
+			#Delete old file if there isn't a new one to overwrite
+			FILEERASE File=$POIFile OnError=Continue
+		ENDIF
+		
+		# Delete any old files left in the main POI folder
+		$POIFile = $POIPath + "\" + "Placed" + "_" + $ChildTypeName + ".gpi"
+		FILEERASE File=$POIFile OnError=Continue
+		
+		CANCELFILTER
+		IF $PlacedFilter = "NONE"
+			MFILTER Expression=TRUE
+		ELSE
+			FILTER Name=$PlacedFilter
+		ENDIF
+		$x = $x + 1
+	ENDWHILE
+	
+	# Clear child flags
+	MACROSET Dialog=Filter VarName=$ClearChildFlagsFilter
+	FILTER Name=<macro> join=AND
+	CANCELFILTER
+	IF $PlacedFilter = "NONE"
+		MFILTER Expression=TRUE
+	ELSE
+		FILTER Name=$PlacedFilter
+	ENDIF
+	
+ENDSUB #PlacedChildPOIExport
+
+BEGINSUB name=FoundChildPOIExport
+	IF NOT($FoundChildPOI)
+		EXITSUB
+	ENDIF
+
+	GOSUB name=CreatePOIBMP
+
+	$x = 0
+	# Apply the Filters
+	CANCELFILTER
+	IF $FoundFilter = "NONE"
+		MFILTER Expression=TRUE
+	ELSE
+		FILTER Name=$FoundFilter
+	ENDIF
+
+	WHILE $x < $NumChild # Currently we have 6 waypoint types to iterate through
+		$ChildTypeName = Extract($ChildTypes,";",$x + 1)
+		$dynamic = $ChildFilter + "cbxCtype2=$x"
+		$POIFile = $POI_StashPath + "\" + "Found" + "_" + $ChildTypeName + ".gpi"
+		MACROSET Dialog=Filter VarName=$dynamic
+		FILTER Name=<macro> join=AND
+		SHOWSTATUS msg="Export Found Child type: $ChildTypeName" Width=350
+		IF $_FilterCount > 0
+			# code for POI export
+			$POIdynamic = $POIstatic + "fnmTo.Text=$POIFile" + $_NewLine
+			IF FileExists("$BMPPath" + "$ChildTypeName" + ".bmp")
+				$POIDynamic = $POIDynamic + "iconfile.Text=$BMPPath" + "$ChildTypeName" + ".bmp" + $_NewLine
+			ELSE
+				$POIDynamic = $POIDynamic + "iconfile.Text=$BMPPath" + "Reference Point.bmp" + $_NewLine
+			ENDIF
+			$POIDynamic = $POIDynamic + "edtCategory.Text=" + "Fnd" + "_" + "$ChildTypeName" + $_NewLine
+			$POIDynamic = $POIdynamic + "edtName.Text=%" + "children %" + "shortname=15-%" + "c_Name" + $_NewLine
+		
+			MACROSET Dialog=GarminPOI VarName=$POIdynamic
+
+			EXPORT type=GPI File=$POIFile Settings=<macro>
+		ELSE
+			#Delete old file if there isn't a new one to overwrite
+			FILEERASE File=$POIFile OnError=Continue
+		ENDIF
+		
+		# Delete any old files left in the main POI folder
+		$POIFile = $POIPath + "\" + "Found" + "_" + $ChildTypeName + ".gpi"
+		FILEERASE File=$POIFile OnError=Continue
+		
+		CANCELFILTER
+		IF $FoundFilter = "NONE"
+			MFILTER Expression=TRUE
+		ELSE
+			FILTER Name=$FoundFilter
+		ENDIF
+		$x = $x + 1
+	ENDWHILE
+	
+	# Clear child flags
+	MACROSET Dialog=Filter VarName=$ClearChildFlagsFilter
+	FILTER Name=<macro> join=AND
+	CANCELFILTER
+	IF $FoundFilter = "NONE"
+		MFILTER Expression=TRUE
+	ELSE
+		FILTER Name=$FoundFilter
+	ENDIF
+	
+
+ENDSUB #PlacedChildPOIExport
+
+
+
+BEGINSUB name=FoundPOIExport
+	IF NOT($FoundAsPoi)
+		$FoundPOIMessage = ""
+		EXITSUB
+	ENDIF
+
+	$FoundPOIMessage = $_NewLine + "Found caches were exported as POIs"
+
+	# Write out BMP files for the POI icon
+	$BMPPath = $_Install + "\temp\"
+	$tmpS = PutFile($BMPPath + "Found.bmp", MimeDecode($Found))
+	$tmpS = PutFile($BMPPath + "FoundDisabled.bmp", MimeDecode($FoundDisabled))
+
+	# Write out POI description macro
+	$tmpS = PutFile($_Install + "\macros\POIDescription.gsk", $POIDescription)
+
+	$POIPath = $Drive + ":\Garmin\POI"
+
+	# Create POI directory if it doesn't exist
+	IF FolderExists ($POIpath) = FALSE
+		$comspec = GetEnvV("comspec")
+		RUNPGM pgm=$comspec parms=/C md "$POIPath" wait=yes Hide=Yes
+	ENDIF
+
+	# Change database if necessary
+	IF $_CurrentDatabase <> $FoundDatabase
+		DATABASE Name="$FoundDatabase" Action=Select
+	ENDIF
+
+	# Apply the Filters for Found Disabled
+	IF $FoundFilter = "NONE"
+		MFILTER Expression=TRUE
+	ELSE
+		FILTER Name=$FoundFilter
+	ENDIF
+	IF $_FilterCount > 0
+		MFILTER Expression=$d_Found AND ($d_TempDisabled OR $d_Archived) Join=AND
+		IF $_FilterCount > 0
+			# code for POI export
+			SHOWSTATUS msg="Export Disabled/Archived Found Caches as POIs" Width=350
+			$FoundPOIFile = $POIPath + "\" + "$FoundDatabase" + "_" + "FoundDisabled.gpi"
+			$FoundPOIdynamic = $FoundPOIstatic + "fnmTo.Text=$POIFile" + $_NewLine
+			$FoundPOIDynamic = $FoundPOIDynamic + "iconfile.Text=$BMPPath" + "FoundDisabled.bmp" + $_NewLine
+			$FoundPOIDynamic = $FoundPOIDynamic + "edtCategory.Text=Found - Unavailable" + $_NewLine
+			
+			IF $UseCustomFoundName
+				$FoundPOIDynamic = $FoundPOIDynamic + "edtName.Text=" + $CustomFoundName + $_NewLine
+			ELSE
+				$FoundPOIDynamic = $FoundPOIDynamic + "edtName.Text=" +  "%" + "Name by " + "%" +"by " + "%" + "typ1" + "%" + "con1 (" + "%" + "Dif/" + "%" + "Ter)" + $_NewLine
+			ENDIF
+			
+			MACROSET Dialog=GarminPOI VarName=$FoundPOIdynamic
+			EXPORT type=GPI File=$FoundPOIFile Settings=<macro>
+
+		ENDIF
+	ENDIF
+	
+		# Apply the Filters for Found Active
+	IF $FoundFilter = "NONE"
+		MFILTER Expression=TRUE
+	ELSE
+		FILTER Name=$FoundFilter
+	ENDIF
+	IF $_FilterCount > 0
+		MFILTER Expression=$d_Found AND Not($d_TempDisabled OR $d_Archived) Join=AND
+		IF $_FilterCount > 0
+			# code for POI export
+			SHOWSTATUS msg="Export Active Found Caches as POIs" Width=350
+			$FoundPOIFile = $POIPath + "\" + "$FoundDatabase" + "_" + "Found.gpi"
+			$FoundPOIdynamic = $FoundPOIstatic + "fnmTo.Text=$POIFile" + $_NewLine
+			$FoundPOIDynamic = $FoundPOIDynamic + "iconfile.Text=$BMPPath" + "Found.bmp" + $_NewLine
+			$FoundPOIDynamic = $FoundPOIDynamic + "edtCategory.Text=Found" + $_NewLine
+			
+			IF $UseCustomFoundName
+				$FoundPOIDynamic = $FoundPOIDynamic + "edtName.Text=" + $CustomFoundName + $_NewLine
+			ELSE
+				$FoundPOIDynamic = $FoundPOIDynamic + "edtName.Text=" +  "%" + "Name by " + "%" +"by " + "%" + "typ1" + "%" + "con1 (" + "%" + "Dif/" + "%" + "Ter)" + $_NewLine
+			ENDIF
+			
+			MACROSET Dialog=GarminPOI VarName=$FoundPOIdynamic
+			EXPORT type=GPI File=$FoundPOIFile Settings=<macro>
+
+		ENDIF
+	ENDIF
+	
+	GOSUB name=FoundChildPOIExport
+	
+	# return to original database
+	IF $_CurrentDatabase <> $currentdb
+		DATABASE Name="$currentdb" Action=Select
+	ENDIF
+
+	SHOWSTATUS Msg="Done" Display=off
+
+ENDSUB #FoundPOIExport
+
+BEGINSUB name=PlacedPOIExport
+	IF NOT($PlacedAsPoi)
+		$PlacedPOIMessage = ""
+		EXITSUB
+	ENDIF
+
+	$PlacedPOIMessage = $_NewLine + "Placed caches were exported as POIs"
+
+	# Write out BMP files for the POI icon
+	$BMPPath = $_Install + "\temp\"
+	$tmpS = PutFile($BMPPath + "Placed.bmp", MimeDecode($Placed))
+
+	# Write out POI description macro
+	$tmpS = PutFile($_Install + "\macros\POIDescription.gsk", $POIDescription)
+
+	$POIPath = $Drive + ":\Garmin\POI"
+
+	# Create POI directory if it doesn't exist
+	IF FolderExists ($POIpath) = FALSE
+		$comspec = GetEnvV("comspec")
+		RUNPGM pgm=$comspec parms=/C md "$POIPath" wait=yes Hide=Yes
+	ENDIF
+
+	# Change database if necessary
+	IF $_CurrentDatabase <> $PlacedDatabase
+		DATABASE Name="$PlacedDatabase" Action=Select
+	ENDIF
+
+	# Apply the Filters
+	IF $PlacedFilter = "NONE"
+		MFILTER Expression=TRUE
+	ELSE
+		FILTER Name=$PlacedFilter
+	ENDIF
+	IF $_FilterCount > 0
+		MFILTER Expression=IsOwner() Join=AND
+		IF $_FilterCount > 0
+			# code for POI export
+			SHOWSTATUS msg="Export Placed Caches as POIs" Width=350
+			$PlacedPOIFile = $POIPath + "\" + "$PlacedDatabase" + "_" + "Placed.gpi"
+			$FoundPOIdynamic = $FoundPOIstatic + "fnmTo.Text=$POIFile" + $_NewLine
+			$FoundPOIDynamic = $FoundPOIDynamic + "iconfile.Text=$BMPPath" + "Placed.bmp" + $_NewLine
+			$FoundPOIDynamic = $FoundPOIDynamic + "edtCategory.Text=Placed" + $_NewLine
+			
+			IF $UseCustomPlacedName
+				$FoundPOIDynamic = $FoundPOIDynamic + "edtName.Text=" + $CustomPlacedName + $_NewLine
+			ELSE
+				$FoundPOIDynamic = $FoundPOIDynamic + "edtName.Text=" +  "%" + "Name by " + "%" +"by " + "%" + "typ1" + "%" + "con1 (" + "%" + "Dif/" + "%" + "Ter)" + $_NewLine
+			ENDIF
+			
+			MACROSET Dialog=GarminPOI VarName=$FoundPOIdynamic
+			EXPORT type=GPI File=$PlacedPOIFile Settings=<macro>
+
+		ENDIF
+	ENDIF
+	
+	GOSUB name=PlacedChildPOIExport
+	
+	# return to original database
+	IF $_CurrentDatabase <> $currentdb
+		DATABASE Name="$currentdb" Action=Select
+	ENDIF
+
+	SHOWSTATUS Msg="Done" Display=off
+
+ENDSUB #PlacedPOIExport
+
+
+<data> VarName=$CombinePOIStatic
+[TfmBabel2]
+chkDebug.Checked=False
+chkYes.Checked=False
+cbxGPX.Text=<macro>
+<enddata>
+
+<data> VarName=$ChildFilter
+cbxcCode=0
+edtcCode=
+cbxctype=2
+edtctype=
+cbxcDate=6
+edtcDateDuring=
+cbxcDateDuring=0
+cbxcDateComp2=0
+cbxcDateComp=0
+cbxcDescription=0
+edtcDescription=
+cbxcComments=0
+edtcComments=
+edtcCount1=
+cbxcCount=0
+edtcCount2=
+chkcClearFlag=True
+chkcSetFlag=True
+chkcByUserYes=True
+chkcByUserNo=True
+<enddata>
+
+
+<data> VarName=$ClearChildFlagsFilter
+cbxcCode=2
+edtcCode=.
+cbxctype=0
+edtctype=
+cbxcDate=6
+edtcDate1=     40160
+edtcDate2=     40160
+edtcDateDuring=
+cbxcDateDuring=0
+cbxcDateComp2=0
+cbxcDateComp=0
+cbxcDescription=0
+edtcDescription=
+cbxcComments=0
+edtcComments=
+edtcCount1=
+cbxcCount=0
+edtcCount2=
+cbxCtype2=0
+chkcClearFlag=True
+chkcSetFlag=False
+chkcByUserYes=True
+chkcByUserNo=True
+<enddata>
+
+
+<data> VarName=$POIStatic
+[TfmGarminPOI]
+chkChild.Checked=True
+chkDefault.Checked=False
+edtMax.Text=
+chkOnlyChild.Checked=True
+rbtAllChildren.Checked=False
+rbtOnlyFlagged.Checked=True
+rbtOnlyUnFlagged.Checked=False
+cbxProximity.Text=Meters
+edtDescription.Text= %c_Code
+edtExtra.Text=%c_Comments
+edtProximity.Text=
+rbtTelephone.Checked=True
+rbtAddress.Checked=False
+<enddata>
+
+<data> VarName=$AttributePOIStatic
+[TfmGarminPOI]
+chkChild.Checked=False
+chkDefault.Checked=False
+edtMax.Text=
+chkOnlyChild.Checked=True
+rbtAllChildren.Checked=False
+rbtOnlyFlagged.Checked=True
+rbtOnlyUnFlagged.Checked=False
+cbxProximity.Text=Meters
+edtDescription.Text=
+edtExtra.Text=
+edtProximity.Text=
+rbtTelephone.Checked=True
+rbtAddress.Checked=False
+<enddata>
+
+<data> VarName=$FoundPOIStatic
+[TfmGarminPOI]
+chkChild.Checked=False
+chkDefault.Checked=False
+edtMax.Text=
+chkOnlyChild.Checked=False
+rbtAllChildren.Checked=True
+rbtOnlyFlagged.Checked=False
+rbtOnlyUnFlagged.Checked=False
+cbxProximity.Text=Meters
+edtDescription.Text=%UserNote
+edtExtra.Text=%macro="POIDescription"
+edtProximity.Text=
+rbtTelephone.Checked=True
+rbtAddress.Checked=False
+<enddata>
+
+<data> VarName=$POIDescription
+$_Special = "Hint: " + $d_Hints + $_NewLine + $_NewLine + "Description:" + $_NewLine + $d_ShortDescription + $_NewLine + $_NewLine + $d_LongDescription
+#Replace <br> with newline
+$_Special = Replace("<br>",$_NewLine,$_Special)
+#Replace nbsp with a space
+$_Special = Replace("&nbsp;"," ",$_Special)
+#Strip out html tags
+$regex = "</?[a-z][a-z0-9]*[^<>]*>"
+$_Special = RegExReplace($regex,$_Special,"")
+<enddata>
+
+<data> VarName=$ChildDescription
+$_Special = ""
+$_Sql = "SELECT cCode, cName, cType, cComment FROM WayAll WHERE cByuser = 1 AND cParent='$d_code'"
+$status = Sqlite("sql",$_sql)
+IF Len($status) > 0
+   $countchild = 1
+   $line = Extract($status,$_Newline,$countchild)
+   WHILE Len($line) > 0
+      $cCode = Extract($line,";",1)
+      $cName = Extract($line,";",2)
+      $cType = Extract($line,";",3)
+      $cComment = Extract($line,";",4)
+      IF Len($cName)>0
+      	$cName = $cName + "<br />"
+      ENDIF
+      IF Len($cComment)>0
+      	$cComment = $cComment + "<br />"
+      ENDIF
+      $_Special = $_Special + "Child point: $cCode, $cType" + "<br />" + $cName + $cComment + "<br />"
+      $countchild = $countchild + 1
+      $line = Extract($status,$_Newline,$countchild)
+   ENDWHILE
+ENDIF
+
+# Attributes
+$_sql = "SELECT CASE WHEN aInc THEN 'Yes ' ELSE 'No ' END, aName FROM AttName WHERE aCode = '$d_Code'"
+$line = Sqlite("sql",$_sql,"delim=: ")
+$line = Replace($_NewLine,"<br />",$line)
+$_Special = $_Special + "<br />" + $line + "<br />"
+
+# User Macro
+IF FileExists($_Install + "\macros\UserExportAddToFirstLog.gsk")
+	$SaveSpecial = $_Special
+	$MacroFile = $_Install + "\macros\UserExportAddToFirstLog.gsk" 
+	MACRO File=$MacroFile
+	$_Special = $SaveSpecial + $_Special
+ENDIF
+<enddata>
+
+<data> VarName=$ChildDescriptionBlank
+$_Special = ""
+<enddata>
+
+BEGINSUB name=Parsewaypoint
+	# Data is in $Wpt
+
+	$Wpt = RegExReplace(" *?<groundspeak.*\r?\n?",$Wpt,"")
+	$Wpt = RegExReplace(" *?</groundspeak.*\r?\n?",$Wpt,"")
+	$Wpt = RegExReplace(" *?<type>.*\r?\n?",$Wpt,"")
+
+	IF (RegExCount("<desc>",$wpt))>0
+		$linetemp = RegExData("<desc>.*?</desc>",$wpt,1)
+		$wpt = RegExReplace("<desc>",$wpt,"<cmt>")
+		$wpt = RegExReplace("</desc>",$wpt,"</cmt>")
+		$wpt = RegExReplace("</cmt>",$wpt,"</cmt>" + $_NewLine + $linetemp)
+	ENDIF
+
+	IF (RegExCount("<name>",$wpt)) >0
+		$name = RegExSub("<name>(.*?)</name>",$wpt,1,1)
+		SHOWSTATUS msg="Converting waypoint #: $wpts, $name" Width=350
+	ENDIF
+
+	IF (RegExCount("</wpt>",$wpt))>0
+		$wpt = RegExReplace("</wpt>",$wpt,$wptfooter + "</wpt>" + $_NewLine)
+	ENDIF
+
+ENDSUB #name=parsewaypoint
+
+BEGINSUB name=ConvertCaches
+
+	# Terracaches start at 90,000,000. Benchmarks start at 80,000,000. Manual and GG caches start at 99,000,001. GA caches start at 98,000,001
+
+	#Initialize variables
+	$NChar=0
+	#Set up strings to check characters
+	$Numbers="0123456789"
+	$Letters="ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	#Filter for Terracache Prefixes where cache id =1
+	MFILTER Expression=(Left($d_code,2)="TC" OR Left($d_code,2)="LC") AND (Trim($d_CacheID)="1" OR IsEmpty($d_CacheID))
+	IF $_FilterCount > 0
+		#Iterate through the filter
+		GOTO Position=Top
+		WHILE NOT($_EOL)
+			$NewCode=0
+			#Check the length of the code
+			$Length=Len($d_Code)
+			#Strip off the TC or LC and convert to upper case
+			$DropCode=Upper(Right($d_code, $Length-2))
+			# For Terracaches where of same form as GC cache codes
+			#Parse each character and convert alphas to base 36
+			$Length=$Length-2
+			$Pass=1
+			WHILE $Pass<=$Length
+				$Character=SubStr($DropCode,$Pass,1)
+				IF At($Character, $Numbers)=0
+					$NChar=At($Character, $Letters) + 9
+				ELSE
+					$NChar=Val($Character)
+				ENDIF
+				$NewCode=(36*$NewCode)+$NChar
+				$Pass=$Pass+1
+			ENDWHILE
+			$NewCode=90000000 + $NewCode
+			$d_CacheID = "$NewCode"
+			GOTO Position=Next
+		ENDWHILE
+	ENDIF
+
+	#Filter for GA Prefixes where cache id =99999998
+	# GA caches start at 98,000,001
+	MFILTER Expression=Left($d_code,2)="GA" AND (Trim($d_CacheID)="99999998" OR IsEmpty($d_CacheID))
+	IF $_FilterCount > 0
+		#Iterate through the filter
+		GOTO Position=Top
+		WHILE NOT($_EOL)
+			$NewCode=0
+			#Check the length of the code
+			$Length=Len($d_Code)
+			#Strip off the GA
+			$DropCode=Right($d_code, $Length-2)
+			# For GA caches just add 98000000
+			$NewCode=98000000 + Int(Val($DropCode))
+			$d_CacheID = "$NewCode"
+			GOTO Position=Next
+		ENDWHILE
+	ENDIF
+
+	#Filter for GG Prefixes where cache id =99999999
+	MFILTER Expression=Trim($d_CacheID)="99999999"
+	IF $_FilterCount > 0
+		#Iterate through the filter
+		GOTO Position=Top
+		WHILE NOT($_EOL)
+			# For GG caches allocate numbers sequentially starting with 99,000,001
+			$CacheIDCount = $CacheIDCount + 1
+			$d_CacheID = "$CacheIDCount"
+			GOTO Position=Next
+		ENDWHILE
+		$NameSQL = "... Last active"
+		GOSUB name=UpdateDataFile
+	ENDIF
+
+	IF $BenchCache
+		#Filter for Benchmarks where cache id =1 and give them dummy unique id#s so they can load as Geocaches
+		MFILTER Expression= $d_CacheType="G" AND (Trim($d_CacheID)="1" OR IsEmpty($d_CacheID))
+		IF $_FilterCount > 0
+			#Iterate through the filter
+			GOTO Position=Top
+			WHILE NOT($_EOL)
+				# For Benchmarks where code is of the form ZZ9999
+				$NewCode = 0
+				$Pass=1
+				WHILE $Pass<=2
+					$Character=SubStr($d_Code,$Pass,1)
+					$NChar=At($Character, $Letters) - 1
+					$NewCode=(26*$NewCode)+$NChar
+					$Pass=$Pass+1
+				ENDWHILE
+				$NewCode = (10000 * $NewCode) + Val(SubStr($d_Code,3,4))
+				$NewCode=80000000 + $NewCode
+				$d_CacheID = "$NewCode"
+				GOTO Position=Next
+			ENDWHILE
+		ENDIF
+	ENDIF
+
+	IF $GSAKCache
+		#Filter for non-benchmark caches where cache id =1 and give them dummy unique id#s so they can load as Geocaches
+		MFILTER Expression=NOT($d_CacheType="G") AND (Trim($d_CacheID)="1" OR IsEmpty($d_CacheID))
+
+		IF $_FilterCount > 0
+			#Iterate through the filter
+			GOTO Position=Top
+			WHILE NOT($_EOL)
+				# For GSAK created caches allocate numbers sequentially starting with 99,000,001
+				$CacheIDCount = $CacheIDCount + 1
+				$d_CacheId = "$CacheIDCount"
+				GOTO Position=Next
+			ENDWHILE
+			$NameSQL = "... Last active"
+			GOSUB name=UpdateDataFile
+		ENDIF
+	ENDIF
+
+ENDSUB  #name=ConvertCaches
+
+
+BEGINSUB name=CombinePOIs
+	$x = 0
+	WHILE $x < $NumChild # Currently we have 6 waypoint types to iterate through
+		$ChildTypeName = Extract($ChildTypes,";",$x + 1)
+		$CategoryName = $ChildTypeName
+		$POIFiles = Dir($POI_StashPath + "\*_" + "$ChildTypeName.*","F")
+		GOSUB name=CreateBabelLine
+		DELAY MS=1000	
+		$x = $x + 1
+	ENDWHILE
+	
+	$ChildTypeName = "DNF"
+	$CategoryName = "Att-" + $ChildTypeName
+	$POIFiles = Dir($POI_StashPath + "\*_" + "$ChildTypeName" + "_Attrib.*","F")
+	GOSUB name=CreateBabelLine	
+	DELAY MS=1000
+	$ChildTypeName = "Corrected"
+	$CategoryName = "Att-" + $ChildTypeName
+	$POIFiles = Dir($POI_StashPath + "\*_" + "$ChildTypeName" + "_Attrib.*","F")
+	GOSUB name=CreateBabelLine	
+	DELAY MS=1000
+	$ChildTypeName = "Earthcache"
+	$CategoryName = "Att-" + $ChildTypeName
+	$POIFiles = Dir($POI_StashPath + "\*_" + "$ChildTypeName" + "_Attrib.*","F")
+	GOSUB name=CreateBabelLine	
+	DELAY MS=1000
+	$ChildTypeName = "Micro"
+	$CategoryName = "Att-" + $ChildTypeName
+	$POIFiles = Dir($POI_StashPath + "\*_" + "$ChildTypeName" + "_Attrib.*","F")
+	GOSUB name=CreateBabelLine	
+	DELAY MS=1000
+	$ChildTypeName = "Parking"
+	$CategoryName = "Att-" + $ChildTypeName
+	$POIFiles = Dir($POI_StashPath + "\*_" + "$ChildTypeName" + "_Attrib.*","F")
+	GOSUB name=CreateBabelLine	
+	DELAY MS=1000
+	$ChildTypeName = "Unavailable"
+	$CategoryName = "Att-" + $ChildTypeName
+	$POIFiles = Dir($POI_StashPath + "\*_" + "$ChildTypeName" + "_Attrib.*","F")
+	GOSUB name=CreateBabelLine	
+ENDSUB
+
+BEGINSUB name=CreateBabelLine
+	IF Extract($POIFiles,$_NewLine,1) <> ""
+		SHOWSTATUS msg="Combining POI Files: $ChildTypeName" Width=350
+		$BabelLine = Quote($_ExePath + "\gpsbabel.exe") + " -w -i garmin_gpi"
+		$y = 1
+		WHILE Extract($POIFiles,$_NewLine,$y) <> ""
+			$BabelLine = $BabelLine + " -f " + Quote($POI_StashPath + "\" + Extract($POIFiles,$_NewLine,$y))
+			$y = $y + 1
+		ENDWHILE
+
+		$BabelLine = $BabelLine + " -o garmin_gpi,category=" + Quote($CategoryName)
+
+		IF FileExists("$BMPPath" + "$ChildTypeName" + ".bmp")
+			$BabelLine = $BabelLine + ",bitmap=" + Quote($BMPPath + $ChildTypeName + ".bmp")
+		ELSE
+			$BabelLine = $BabelLine + ",bitmap=" + Quote($BMPPath + "Reference Point.bmp")
+		ENDIF
+
+		$BabelLine = $BabelLine + " -F " + Quote($POIPath + "\" + $ChildTypeName + ".gpi")
+		#$BabelLine = $BabelLine + " 2> " + Quote(#_Install + "\result.txt")
+
+		$CombinePOIDynamic = $CombinePOIStatic + "edtBabelOut.Text=" + $BabelLine + $_NewLine
+
+		MACROSET Dialog=Custom VarName=$CombinePOIDynamic
+
+		EXPORT type=CUS Settings=<macro>
+	ENDIF
+ENDSUB
+
+
+
+#  End of Subroutines - begin Data and Form Definitions
+
+<Data> VarName=$wptfooter
+<extensions>
+<gpxx:WaypointExtension xmlns:gpxx="http://www.garmin.com/xmlschemas/GpxExtensions/v3">
+<gpxx:DisplayMode>SymbolAndName</gpxx:DisplayMode>
+</gpxx:WaypointExtension>
+</extensions>
+<enddata>
+
+# A MacroSet config for the GPX Export Settings
+
+<data> VarName=$GPXstatic
+[TfmExportGpx]
+chkActual.Checked=False
+chkDefault.Checked=False
+chkExtra.Checked=False
+chkSymbol.Checked=False
+edtMax.Text=
+edtMaxGps.Text=30
+rbtGpx.Checked=True
+rbtLoc.Checked=False
+chkOnlyChild.Checked=False
+rbtAllChildren.Checked=True
+rbtOnlyFlagged.Checked=False
+rbtOnlyUnFlagged.Checked=False
+chkForce.Checked=False
+cbxVersion.Text=Ver 1.0
+edtExtra.Text=%macro="ChildDescription"
+<enddata>
+
+# Form definition
+# Main Form
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Tue 22-Dec-2009 21:55:14
+#********************************************************************
+
+Name = ColoradoExport
+  Type = Form
+  Caption = Garmin %%GPS%% Export
+  Height = 567
+  Width = 842
+
+Name = Groupbox6
+  Type = Groupbox
+  Height = 241
+  Left = 6
+  Top = 85
+  Width = 321
+  Taborder = 2
+
+Name = Groupbox7
+  Type = Groupbox
+  Height = 241
+  Left = 329
+  Top = 85
+  Width = 204
+  Taborder = 3
+
+Name = Groupbox8
+  Type = Groupbox
+  Height = 241
+  Left = 536
+  Top = 85
+  Width = 291
+  Taborder = 4
+
+Name = SelectionGroupbox
+  Type = Groupbox
+  Caption = Export Selection
+  Container = Groupbox6
+  Height = 139
+  Left = 13
+  Top = 84
+  Width = 293
+  Taborder = 1
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = GPX Options
+  Container = Groupbox7
+  Height = 149
+  Left = 9
+  Top = 26
+  Width = 185
+  Taborder = 0
+
+Name = Groupbox2
+  Type = Groupbox
+  Height = 48
+  Left = 6
+  Top = 33
+  Width = 820
+  Taborder = 6
+
+Name = Groupbox3
+  Type = Groupbox
+  Caption = Conversions
+  Container = Groupbox8
+  Height = 65
+  Left = 5
+  Top = 104
+  Width = 280
+  Taborder = 2
+
+Name = Groupbox5
+  Type = Groupbox
+  Caption = Child Options
+  Container = Groupbox8
+  Height = 65
+  Left = 5
+  Top = 34
+  Width = 280
+  Taborder = 1
+
+Name = Groupbox4
+  Type = Groupbox
+  Caption = Found Caches Export
+  Height = 60
+  Left = 6
+  Top = 328
+  Width = 820
+  Taborder = 1
+
+Name = GroupBox9
+  Type = Groupbox
+  Caption = Placed Caches Export
+  Height = 60
+  Left = 6
+  Top = 387
+  Width = 820
+  Taborder = 5
+
+Name = GroupBox10
+  Type = Groupbox
+  Caption = Saved Settings
+  Height = 53
+  Left = 182
+  Top = 446
+  Width = 470
+  Taborder = 8
+
+Name = Groupbox11
+  Type = Groupbox
+  Container = Groupbox7
+  Height = 60
+  Left = 9
+  Top = 175
+  Width = 185
+  Taborder = 1
+
+Name = Groupbox12
+  Type = Groupbox
+  Caption = Attribute POIs
+  Container = Groupbox8
+  Height = 57
+  Left = 5
+  Top = 175
+  Width = 280
+  Taborder = 3
+
+Name = SaveBox
+  Type = Combobox
+  Container = GroupBox10
+  Exitonchange = Yes
+  Height = 21
+  Left = 10
+  Top = 18
+  Values = $SaveBoxList
+  Width = 220
+  Taborder = 2
+
+Name = Save
+  Type = Button
+  Container = GroupBox10
+  Height = 25
+  Left = 266
+  Top = 16
+  Width = 75
+  Taborder = 0
+
+Name = Delete
+  Type = Button
+  Container = GroupBox10
+  Height = 25
+  Left = 369
+  Top = 16
+  Width = 75
+  Taborder = 1
+
+Name = TitleLabel
+  Type = Label
+  Color = 16744448
+  Height = 20
+  Left = 308
+  Size = 12
+  Style = bold
+  Top = 4
+  Width = 217
+  Caption = Garmin %%GPS%% Export
+
+Name = DriveLabel
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 8
+  Top = 18
+  Width = 112
+  Caption = %%GPS%% Drive Letter
+
+Name = Database
+  Type = Combobox
+  Container = SelectionGroupbox
+  Height = 21
+  Left = 107
+  Top = 22
+  Values = $DBList
+  Width = 174
+  Taborder = 1
+
+Name = DatabaseLabel
+  Type = Label
+  Container = SelectionGroupbox
+  Height = 13
+  Left = 9
+  Top = 26
+  Width = 79
+  Caption = Select Database
+
+Name = Filter
+  Type = Combobox
+  Container = SelectionGroupbox
+  Height = 21
+  Left = 107
+  Top = 102
+  Values = $FilterList
+  Width = 174
+  Taborder = 2
+
+Name = FilterLabel
+  Type = Label
+  Container = SelectionGroupbox
+  Height = 13
+  Left = 9
+  Top = 106
+  Width = 88
+  Caption = Select Export Filter
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 308
+  Top = 506
+  Width = 75
+  Taborder = 0
+  Caption = OK
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 451
+  Top = 506
+  Width = 75
+  Taborder = 7
+  Caption = Cancel
+
+Name = LocationName
+  Type = Combobox
+  Container = SelectionGroupbox
+  Height = 21
+  Left = 107
+  Top = 62
+  Values = $PlaceName
+  Width = 174
+  Taborder = 0
+
+Name = LocationLabel
+  Type = Label
+  Container = SelectionGroupbox
+  Height = 13
+  Left = 9
+  Top = 66
+  Width = 74
+  Caption = Select Location
+
+Name = UseCurrent
+  Type = Checkbox
+  Container = Groupbox6
+  Exitonchange = Yes
+  Height = 17
+  Left = 209
+  Top = 10
+  Width = 15
+  Taborder = 0
+
+Name = UseCurrentLabel
+  Type = Label
+  Container = Groupbox6
+  Height = 13
+  Left = 97
+  Top = 12
+  Width = 85
+  Caption = Use Current Filter*
+
+Name = UseCurrentDescriptionLabel
+  Type = Label
+  Container = Groupbox6
+  Height = 13
+  Left = 4
+  Top = 37
+  Width = 310
+  Caption = *Checking the option above exports all caches in the current filter.
+
+Name = UseCurrentDescription2
+  Type = Label
+  Container = Groupbox6
+  Height = 13
+  Left = 4
+  Top = 50
+  Width = 314
+  Caption = Otherwise, selections below control which caches will be exported.
+
+Name = drive
+  Type = Edit
+  Container = Groupbox2
+  Height = 21
+  Left = 135
+  Top = 15
+  Width = 15
+  Taborder = 2
+
+Name = Silent
+  Type = Checkbox
+  Container = Groupbox8
+  Height = 17
+  Left = 204
+  Top = 14
+  Width = 15
+  Taborder = 0
+
+Name = SilentLabel
+  Type = Label
+  Container = Groupbox8
+  Height = 13
+  Left = 42
+  Top = 16
+  Width = 111
+  Caption = Suppress Status Msgs?
+
+Name = IncludeChild
+  Type = Checkbox
+  Container = Groupbox5
+  Enabled = Yes
+  Height = 17
+  Left = 185
+  Top = 16
+  Width = 15
+  Taborder = 0
+
+Name = ChildLabel
+  Type = Label
+  Container = Groupbox5
+  Height = 13
+  Left = 8
+  Top = 18
+  Width = 150
+  Caption = Include Child Waypoints in GPX
+
+Name = MaxLabel
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 8
+  Top = 26
+  Width = 87
+  Caption = Number of caches
+
+Name = MaxCacheStr
+  Type = Edit
+  Container = Groupbox1
+  Height = 21
+  Left = 122
+  Top = 24
+  Width = 49
+  Taborder = 0
+
+Name = LogCountLabel
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 8
+  Top = 57
+  Width = 75
+  Caption = Number of Logs
+
+Name = LogCount
+  Type = Combobox
+  Container = Groupbox1
+  Height = 21
+  Left = 122
+  Top = 53
+  Values = 0;1;2;3;4;5;6;7;8;9;10;15;20;No Limit
+  Width = 50
+  Taborder = 1
+
+Name = MyLogs
+  Type = Checkbox
+  Container = Groupbox1
+  Height = 17
+  Left = 156
+  Top = 83
+  Width = 15
+  Taborder = 2
+
+Name = MyLogsLabel
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 8
+  Top = 85
+  Width = 114
+  Caption = Always Include My Logs
+
+Name = FileNameLabel
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 218
+  Top = 20
+  Width = 145
+  Caption = Enter GPX FileName to Export:
+
+Name = GPXFilename
+  Type = Edit
+  Container = Groupbox2
+  Height = 21
+  Left = 371
+  Top = 16
+  Width = 145
+  Taborder = 0
+
+Name = GPXOptionsLabel
+  Type = Label
+  Container = Groupbox7
+  Height = 13
+  Left = 17
+  Style = underline
+  Top = 8
+  Width = 151
+  Caption = GPX Options apply to all exports
+
+Name = Dbasfilename
+  Type = Checkbox
+  Container = Groupbox2
+  Height = 17
+  Left = 754
+  Top = 18
+  Width = 15
+  Taborder = 1
+
+Name = Label1
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 574
+  Top = 12
+  Width = 160
+  Caption = Use database name as file name?
+
+Name = Label2
+  Type = Label
+  Container = Groupbox2
+  Height = 13
+  Left = 574
+  Top = 25
+  Width = 113
+  Caption = (Overrides above name)
+
+Name = Label3
+  Type = Label
+  Container = Groupbox3
+  Height = 13
+  Left = 8
+  Top = 18
+  Width = 178
+  Caption = Convert Benchmarks to Geocaches?:
+
+Name = Label6
+  Type = Label
+  Container = Groupbox3
+  Height = 13
+  Left = 8
+  Top = 43
+  Width = 237
+  Caption = Convert GSAK created waypoints to Geocaches?:
+
+Name = BenchCache
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 260
+  Top = 16
+  Width = 15
+  Taborder = 0
+
+Name = GSAKCache
+  Type = Checkbox
+  Container = Groupbox3
+  Height = 17
+  Left = 260
+  Top = 40
+  Width = 15
+  Taborder = 1
+
+Name = UserNotesLabel
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 8
+  Top = 105
+  Width = 91
+  Caption = Include User Notes
+
+Name = IncludeUserNotes
+  Type = Checkbox
+  Container = Groupbox1
+  Height = 17
+  Left = 156
+  Top = 103
+  Width = 15
+  Taborder = 3
+
+Name = VersionLabel
+  Type = Label
+  Height = 9
+  Left = 785
+  Size = 6
+  Top = 514
+  Width = 5
+  Caption = V
+
+Name = Label4
+  Type = Label
+  Container = Groupbox5
+  Height = 13
+  Left = 8
+  Top = 43
+  Width = 144
+  Caption = Send Child Waypoints as POIs
+
+Name = ChildAsPOI
+  Type = Checkbox
+  Container = Groupbox5
+  Height = 17
+  Left = 185
+  Top = 40
+  Width = 15
+  Taborder = 1
+
+Name = FoundDatabase
+  Type = Combobox
+  Container = Groupbox4
+  Height = 21
+  Left = 325
+  Top = 27
+  Values = $DBList
+  Width = 150
+  Taborder = 0
+
+Name = Label5
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 325
+  Top = 12
+  Width = 79
+  Caption = Found Database
+
+Name = FoundFilter
+  Type = Combobox
+  Container = Groupbox4
+  Height = 21
+  Left = 500
+  Top = 27
+  Values = $FilterList
+  Width = 150
+  Taborder = 1
+
+Name = Label7
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 500
+  Top = 12
+  Width = 55
+  Caption = Export Filter
+
+Name = Label8
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 10
+  Top = 31
+  Width = 141
+  Caption = Export Found caches as POIs
+
+Name = FoundAsPOI
+  Type = Checkbox
+  Container = Groupbox4
+  Height = 17
+  Left = 157
+  Top = 29
+  Width = 15
+  Taborder = 2
+
+Name = Label9
+  Type = Label
+  Container = GroupBox9
+  Height = 13
+  Left = 325
+  Top = 12
+  Width = 82
+  Caption = Placed Database
+
+Name = Label10
+  Type = Label
+  Container = GroupBox9
+  Height = 13
+  Left = 500
+  Top = 12
+  Width = 55
+  Caption = Export Filter
+
+Name = Label11
+  Type = Label
+  Container = GroupBox9
+  Height = 13
+  Left = 10
+  Top = 31
+  Width = 144
+  Caption = Export Placed caches as POIs
+
+Name = PlacedDatabase
+  Type = Combobox
+  Container = GroupBox9
+  Height = 21
+  Left = 325
+  Top = 27
+  Values = $DBList
+  Width = 150
+  Taborder = 0
+
+Name = PlacedFilter
+  Type = Combobox
+  Container = GroupBox9
+  Height = 21
+  Left = 500
+  Top = 27
+  Values = $FilterList
+  Width = 150
+  Taborder = 1
+
+Name = PlacedAsPOI
+  Type = Checkbox
+  Container = GroupBox9
+  Height = 17
+  Left = 157
+  Top = 28
+  Width = 15
+  Taborder = 2
+
+Name = Label12
+  Type = Label
+  Container = Groupbox11
+  Height = 13
+  Left = 10
+  Top = 10
+  Width = 122
+  Caption = Use Custom Cache Name
+
+Name = UseCustomName
+  Type = Checkbox
+  Container = Groupbox11
+  Exitonchange = Yes
+  Height = 17
+  Left = 156
+  Top = 8
+  Width = 15
+  Taborder = 0
+
+Name = CustomName
+  Type = Edit
+  Container = Groupbox11
+  Height = 21
+  Left = 10
+  Top = 28
+  Width = 161
+  Taborder = 1
+
+Name = Label13
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 189
+  Top = 31
+  Width = 93
+  Caption = Include Child Points
+
+Name = FoundChildPOI
+  Type = Checkbox
+  Container = Groupbox4
+  Height = 17
+  Left = 287
+  Top = 29
+  Width = 15
+  Taborder = 3
+
+Name = Label14
+  Type = Label
+  Container = GroupBox9
+  Height = 13
+  Left = 189
+  Top = 31
+  Width = 93
+  Caption = Include Child Points
+
+Name = PlacedChildPOI
+  Type = Checkbox
+  Container = GroupBox9
+  Height = 17
+  Left = 287
+  Top = 29
+  Width = 15
+  Taborder = 3
+
+Name = UseBigCharacters
+  Type = Checkbox
+  Container = Groupbox1
+  Height = 17
+  Left = 156
+  Top = 123
+  Width = 15
+  Taborder = 4
+
+Name = Label15
+  Type = Label
+  Container = Groupbox1
+  Height = 13
+  Left = 8
+  Top = 125
+  Width = 73
+  Caption = Use Large Font
+
+Name = CustomFoundName
+  Type = Edit
+  Container = Groupbox4
+  Height = 21
+  Left = 675
+  Top = 27
+  Width = 130
+  Taborder = 4
+
+Name = Label16
+  Type = Label
+  Container = Groupbox4
+  Height = 13
+  Left = 675
+  Top = 10
+  Width = 109
+  Caption = Use Custom POI Name
+
+Name = UseCustomFoundName
+  Type = Checkbox
+  Container = Groupbox4
+  Exitonchange = Yes
+  Height = 17
+  Left = 791
+  Top = 8
+  Width = 15
+  Taborder = 5
+
+Name = CustomPlacedName
+  Type = Edit
+  Container = GroupBox9
+  Height = 21
+  Left = 675
+  Top = 27
+  Width = 130
+  Taborder = 4
+
+Name = Label17
+  Type = Label
+  Container = GroupBox9
+  Height = 13
+  Left = 675
+  Top = 10
+  Width = 109
+  Caption = Use Custom POI Name
+
+Name = UseCustomPlacedName
+  Type = Checkbox
+  Container = GroupBox9
+  Exitonchange = Yes
+  Height = 17
+  Left = 791
+  Top = 8
+  Width = 15
+  Taborder = 5
+
+Name = Label18
+  Type = Label
+  Container = Groupbox12
+  Height = 13
+  Left = 8
+  Top = 23
+  Width = 103
+  Caption = Include Attribute POIs
+
+Name = AttributeAsPoi
+  Type = Checkbox
+  Container = Groupbox12
+  Exitonchange = Yes
+  Height = 17
+  Left = 117
+  Top = 21
+  Width = 15
+  Taborder = 0
+
+Name = AttribEarthcache
+  Type = Checkbox
+  Container = Groupbox12
+  Fontsize = 7
+  Fontstyle = italic
+  Height = 10
+  Left = 210
+  Top = 26
+  Width = 65
+  Taborder = 1
+  Caption = Earthcache
+
+Name = AttribCorrected
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox12
+  Fontsize = 7
+  Fontstyle = italic
+  Height = 10
+  Left = 146
+  Top = 26
+  Width = 61
+  Taborder = 2
+  Caption = Corrected
+
+Name = AttribParking
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox12
+  Fontsize = 7
+  Fontstyle = italic
+  Height = 10
+  Left = 156
+  Top = 11
+  Width = 51
+  Taborder = 3
+  Caption = Parking
+
+Name = AttribDNF
+  Type = Checkbox
+  Container = Groupbox12
+  Fontsize = 7
+  Fontstyle = italic
+  Height = 10
+  Left = 210
+  Top = 11
+  Width = 45
+  Taborder = 4
+  Caption = DNF
+
+Name = AttribMicro
+  Type = Checkbox
+  Container = Groupbox12
+  Fontsize = 7
+  Fontstyle = italic
+  Height = 10
+  Left = 210
+  Top = 41
+  Width = 65
+  Taborder = 6
+  Caption = Micro
+
+Name = AttribUnavailable
+  Type = Checkbox
+  Captionposition = Left
+  Container = Groupbox12
+  Fontsize = 7
+  Fontstyle = italic
+  Height = 10
+  Left = 139
+  Top = 41
+  Width = 68
+  Taborder = 5
+  Caption = Unavailable
+
+<enddata>
+
+
+
+
+
+
+
+
+
+
+<Data> VarName=$form2
+Name = ExportDialog
+  Type = Form
+  Height = 165
+  Width = 382
+
+Name = OK
+  Type = Button
+  Height = 25
+  Left = 16
+  Top = 86
+  Width = 100
+  Taborder = 8
+  Caption = Export %%max%%
+
+Name = Cancel
+  Type = Button
+  Height = 25
+  Left = 250
+  Top = 86
+  Width = 100
+  Taborder = 9
+  Caption = Cancel
+
+Name = ExportLabel
+  Type = Label
+  Height = 13
+  Left = 99
+  Top = 16
+  Width = 194
+  Caption = Current filter exceeds %%max%% caches.
+
+Name = ExportLabel2
+  Type = Label
+  Height = 13
+  Left = 122
+  Top = 45
+  Width = 147
+  Caption = Export first %%max%% caches?
+
+Name = ExportAll
+  Type = Button
+  Height = 25
+  Left = 133
+  Top = 86
+  Width = 100
+  Taborder = 10
+  Caption = Export All in Filter
+
+<enddata>
+
+
+
+
+<Data> VarName=$form3
+#********************************************************************
+# Form generated by GSAK form designer on Fri 26-Dec-2008 17:07:47
+#********************************************************************
+
+Name = Form3
+Type = Form
+Caption = Settings Name to Save ...
+Height = 163
+Width = 300
+
+Name = Name
+Type = Edit
+Height = 21
+Left = 16
+Top = 28
+Width = 260
+Taborder = 8
+
+Name = NameOK
+Type = Button
+Height = 30
+Left = 33
+Top = 80
+Width = 75
+Taborder = 9
+Caption = OK
+
+Name = Cancel
+Type = Button
+Height = 30
+Left = 183
+Top = 80
+Width = 75
+Taborder = 10
+Caption = Cancel
+
+<enddata>
+
+<Data> VarName=$form4
+Name = form4
+  Type = Form
+  Caption = Confirm deletion
+  Height = 166
+  Width = 311
+
+Name = DeleteOK
+  Type = Button
+  Height = 30
+  Left = 33
+  Top = 80
+  Width = 75
+  Taborder = 8
+  Caption = Delete
+
+Name = Cancel
+  Type = Button
+  Height = 30
+  Left = 183
+  Top = 80
+  Width = 75
+  Taborder = 9
+  Caption = Cancel
+
+Name = Label1
+  Type = Label
+  Height = 16
+  Left = 5
+  Size = 10
+  Top = 10
+  Width = 292
+  Caption = Confirm that you wish to delete the saved settings:
+
+Name = FilterLabel
+  Type = Label
+  Color = 255
+  Height = 16
+  Left = 20
+  Size = 10
+  Top = 40
+  Width = 58
+  Caption = %name%
+
+<enddata>
+
+<data> VarName=$FinalLocation
+Qk04BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAAAAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39m/39/f39/f39/f39/f39m6P9/f39/f39/f39/f39/Zmj/f39/f39/f39/f39/eSa9f39/f39/f39
+/f39/f2jmvf9/f39/f39/f39/f0ImuP3r/39/f39/f39/f3995qkbmZmB/39/f39/f39/eSZrCcfFlX9
+/f39/f39/f3amqUnHhYNZv39/f39/f0HmaNuJx4OHmcmZa/9/f397ZmkbicWDicnHxcWpv39/eSarS8f
+FhYnZ2au/f39/f2bmm4nHxVm/f39/f39/f39ouOvbq7v/f39/f39/f39/fUH/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f0AAA==
+<enddata>
+
+<data> VarName=$ParkingArea
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/Pz8/Pz8/Pz8/Pz8/f39/Pz//////////////Pz9/fz//Pz8/Pz8/Pz8/P/8/f38//z8/Pz8/Pz8/Pz/
+/P39/P/8/P///Pz8/Pz8//z9/fz//Pz///z8/Pz8/P/8/f38//z8///8/Pz8/Pz//P39/P/8/P//////
+//z8//z9/fz//Pz////////8/P/8/f38//z8//8EBP///Pz//P39/P/8/P////////z8//z9/fz//Pz/
+///////8/P/8/f38//z8/Pz8/Pz8/Pz//P39/P/8/Pz8/Pz8/Pz8//z9/fz8//////////////z8/f39
+/Pz8/Pz8/Pz8/Pz8/f0=
+<enddata>
+
+<data> VarName=$QuestiontoAnswer
+Qk04BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAAAAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP3/
+//////39/////f39/f3/AAAAAAD//wAAAP/9/f39/wAAAAD//f3/AAD//f39/f8AAAAAAP//AAAA//39
+/f3/AAAAAAAAAAAAAP////39/wD//wAAAAAAAAD/AAD//f3//f3/AAAAAAAAAAAAAP/9//39/wAAAAAA
+AAAAAAD//wD//wAAAAAAAAD/AAD//f8AAAAAAAAAAAAA/////f3/AAAAAAAAAAAAAP/9/f39/f//////
+AAD//////f39/f39/f3/AAAAAP/9/f39/f39/f39/wAAAAD//f39/f39/f39/f//AAD///39/f39/f39
+/f39//////39/f39/f0AAA==
+<enddata>
+
+<data> VarName=$ReferencePoint
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAA
+AABBAAAAagAAAIsAAAC0AAAA1QAAAP8AAAAAMAAAIDAAAEEwAABqMAAAizAAALQwAADVMAAA/zAAAABl
+AAAgZQAAQWUAAGplAACLZQAAtGUAANVlAAD/ZQAAAJUAACCVAABBlQAAapUAAIuVAAC0lQAA1ZUAAP+V
+AAAAygAAIMoAAEHKAABqygAAi8oAALTKAADVygAA/8oAAAD/AAAg/wAAQf8AAGr/AACL/wAAtP8AANX/
+AAD//wAAAAA5ACAAOQBBADkAagA5AIsAOQC0ADkA1QA5AP8AOQAAMDkAIDA5AEEwOQBqMDkAizA5ALQw
+OQDVMDkA/zA5AABlOQAgZTkAQWU5AGplOQCLZTkAtGU5ANVlOQD/ZTkAAJU5ACCVOQBBlTkAapU5AIuV
+OQC0lTkA1ZU5AP+VOQAAyjkAIMo5AEHKOQBqyjkAi8o5ALTKOQDVyjkA/8o5AAD/OQAg/zkAQf85AGr/
+OQCL/zkAtP85ANX/OQD//zkAAAB7ACAAewBBAHsAagB7AIsAewC0AHsA1QB7AP8AewAAMHsAIDB7AEEw
+ewBqMHsAizB7ALQwewDVMHsA/zB7AABlewAgZXsAQWV7AGplewCLZXsAtGV7ANVlewD/ZXsAAJV7ACCV
+ewBBlXsAapV7AIuVewC0lXsA1ZV7AP+VewAAynsAIMp7AEHKewBqynsAi8p7ALTKewDVynsA/8p7AAD/
+ewAg/3sAQf97AGr/ewCL/3sAtP97ANX/ewD//3sAAAC9ACAAvQBBAL0AagC9AIsAvQC0AL0A1QC9AP8A
+vQAAML0AIDC9AEEwvQBqML0AizC9ALQwvQDVML0A/zC9AABlvQAgZb0AQWW9AGplvQCLZb0AtGW9ANVl
+vQD/Zb0AAJW9ACCVvQBBlb0AapW9AIuVvQC0lb0A1ZW9AP+VvQAAyr0AIMq9AEHKvQBqyr0Ai8q9ALTK
+vQDVyr0A/8q9AAD/vQAg/70AQf+9AGr/vQCL/70AtP+9ANX/vQD//70AAAD/ACAA/wBBAP8AagD/AIsA
+/wC0AP8A1QD/AP8A/wAAMP8AIDD/AEEw/wBqMP8AizD/ALQw/wDVMP8A/zD/AABl/wAgZf8AQWX/AGpl
+/wCLZf8AtGX/ANVl/wD/Zf8AAJX/ACCV/wBBlf8AapX/AIuV/wC0lf8A1ZX/AP+V/wAAyv8AIMr/AEHK
+/wBqyv8Ai8r/ALTK/wDVyv8A/8r/AAD//wAg//8AQf//AGr//wCL//8AtP//ANX//wD///8A////AObm
+5gDV1dUAxcXFALS0tACkpKQAlJSUAIODgwBzc3MAYmJiAFJSUgBBQUEAMTExACAgIAAQEBAAAAAAAMfH
+x8fHx8fHx8fHx8fHx8fHx8fHx7b09Ib0tsfHx8fHx8fHx32FtvHxtoV9x8fHx8fHx3227+/v7+/vtnzH
+x8fHx3227+/x8e/v7++2fcfHx7aF7+/ytn198u/v8YW2x8eGtu/utkQUFEzx7++2hsfH9PHv8X0TFEQT
+hu/v8rbHx4bx7/F9FEQUFLbv7/KGx8f0tu/vtkwUE03x7/G2tsfHtoXv7+/xhrbx7+/xffLHx8d9tu/v
+7+/v7/HxtsfHx8fHx3227/Hv8e/xtn3Hx8fHx8fHfYW2t/LzhX3Hx8fHx8fHx8e2tvSGtvLHx8fHx8fH
+x8fHx8fHx8fHx8fHx8c=
+<enddata>
+
+<data> VarName=$StagesofaMulticache
+Qk04BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAAAAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AAAA
+AAAAAAAAAAAAAAAAAAAA//////////b29gj29v8AAP/////////2B2Vdrv//AAD////2/////+5UVKT2
+/wAA////9vb29v/29vb/9v8AAP////alZq729mZmZq/2AAD2//8HVBRd/whdHRRe9gAA//8Itvb27vYH
+FBQVFAcAAP/2Zl1mrvb2rgwMFBQHAAD/rhQVXV32//cMFAwMBwAA9lwMFRRl//b2XQwMXPYAAAcUDBQM
+Zf///wiupQf/AAAHFAwUDKb/9v////b//wAA9l0MDF0I//////////8AAP8H9672//////b///b/AAAA
+AAAAAAAAAAAAAAAAAAAAAA==
+<enddata>
+
+<data> VarName=$Trailhead
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP1J
+AAAAAAAAAAAAAAAASf1RiYqJiYkEBATJiQQEQIlJAIqB5OTSCe3JysDbCe1AQACJwAkJie3/ycDb9gnb
+iQAAyfwJB4jS/+0EB//t/MkAANHICfWI0gn/5AkI5PzAAAqRyAkHkpKR9vb/o0DJiQAAiNEJ//8Ikfb2
+/6SJydIAAInRCe2a/////+ORicAEAADa0QkIkeP///+a7O3JyQAA0tLj5Mma///b5P8J/AQAANLa0srb
+B//k5PYH0vzJAADS29LSCf//ifb22gTJyQAA0tvb09sHB9IJ28nKycEASdrS29OJSUmJiYmJysmBSf1R
+AAAAAAAAABAAAAAAUf0=
+<enddata>
+
+<data> VarName=$Found
+Qk04BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAAAAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39AAAAAAD9/f39/f39/f0AAC8vbzdvAAD9/f39/f0ALy8BDQEBAS93AP39/f0AN28BF+/vtxcBLzcA
+/f39AL8BFw8XDxcPFwG/AP39AL+/AQEBAQEBAQEBv78A/QC/Pz8///////8/P3+/AP0Av/t/////////
+/38/vwD9AL+/+wcAUv8HAFL7v78A/QA3v78A+///APv/v78vAP39AC+/WwAH/1MAB783AP39/QAvd7+/
+v7+/v783bwD9/f39AC9vL3/7fy93LwD9/f39/f0AADcvbzcvAAD9/f39/f39/f0AAAAAAP39/f39/f39
+/f39/f39/f39/f39/f0AAA==
+<enddata>
+
+<data> VarName=$FoundDisabled
+Qk02BQAAAAAAADYEAAAoAAAAEAAAABAAAAABAAgAAAAAAAABAAATCwAAEwsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39AAAAAAD9/f39/f39/f0AAC8vbzdvAAD9/f39/f0ALy8BDQEBAS93AP39/f0AN28BF+/vtxcBLzcA
+/f39AL8BFw8XDxcPFwG/AP39AL+/AQEBAQEBAQEBv78A/QC/Pz8///////8/P3+/AP0AAAAA/wAAAP//
+/38/vwD9APn5AAAA+fkAAFL7v78A/QD5+fkA+fn5APv/v78vAP0AAPn5+fn5AAAAB783AP39/QAA+fn5
+AAC/v783bwD9/QAA+fn5+fkAAC93LwD9/f0A+fn5APn5+QAvAAD9/f39APn5AP0A+fkAAP39/f39/f0A
+AP39/QAA/f39/f39/f0=
+<enddata>
+
+
+<data> VarName=$placed
+Qk1oAQAAAAAAAGYAAAAoAAAAEAAAABAAAAABAAgAAAAAAAIBAAASCwAAEgsAAAwAAAAMAAAA/wD/ALKy
+AACZmQAAZmYAAIyyAACfzAYAzP+ZAPf39wDn5+cACAgIAAAAAAD///8AAAAAAAAKCgoKCgoAAAAAAAAA
+AAAKBwcHBwcHCgAAAAAAAAoKBwMCAgIDAgcKCgAAAAAKBwMFBAIDAgMCBwoAAAAKBwUFBQUFBQUCAwEH
+CgAKBwUFBQUFBQUFBQIDBwoKCgcFBQUFBQUFBQUEAgMHCgoHBQUFBQUFBQUFBQMCBwoKBwUFBQUFBQUF
+BQUCAgcKCgcGBQUFBQUFBQUFAwIHCgoHBgUFBQUFBQUFBQIHCQoACQcGBQUFBQUFBQUDBwkAAAAKBwYF
+BQUFBQUDBwkAAAAACgkIBgYFBQUFBwkKAAAAAAAACgcHBwcHBwoAAAAAAAAAAAAJCQkJCQkAAAAAAAAA
+<enddata>
+
+<data> VarName=$Corrected
+Qk12BgAAAAAAADYEAAAoAAAAGAAAABgAAAABAAgAAAAAAEACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AKSk
+pKSkpKSkpKT9/f39/f39/f39/f39/fv7+/sA+/v7+6T9/f39/f39/f39/f39/fv7+/v7+/v7+6T9/f39
+/f39/f39/f39/f37+/sA+/v7pP39/f39/f39/f39/f39/f37+/sA+/v7pP39/f39/f39/f39/f39/f39
++/sA+/uk/f39/f39/f39/f39/f39/f39+/sA+/uk/f39/f39/f39/f39/f39/f39/fsA+6T9/f39/f39
+/f39/f39/f39/f39/fv7+6T9/f39/f39/f39/f39/f39/f39/f37pP39/f39/f39/f39/f39/f39/f39
+/f37pP39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/Q==
+<enddata>
+
+<data> VarName=$DNF
+Qk12BgAAAAAAADYEAAAoAAAAGAAAABgAAAABAAgAAAAAAEACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/fn5+fn5/f39/f39/f39/f39/f39/f39+fn5+fn5+f39/f39/f39/f39/f39/f39+fn5+fn5+f39
+/f39/f39/f39/f39/f39+fv7+/v7+f39/f39/f39/f39/f39/f39+fn5+fn5+f39/f39/f39/f39/f39
+/f39+fn5+fn5+f39/f39/f39/f39/f39/f39/fn5+fn5/Q==
+<enddata>
+
+<data> VarName=$Earthcache
+Qk12BgAAAAAAADYEAAAoAAAAGAAAABgAAAABAAgAAAAAAEACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/f39/f39/f39/QAAAAD9/f39/f39/f39/f39/f39/f39AOD8/OAA/f39/f39/f39/f39/f39
+/f2k4Pr64PrgAP39/f39/f39/f39/f39/f2k4L+/+vr6AP39/f39/f39/f39/f39/f2k4Pr6+r/gAP39
+/f39/f39/f39/f39/f2k4OD6+uDgAP39/f39/f39/f39/f39/f39pOD8/OAA/f39/f39/f39/f39/f39
+/f39/aSkpKT9/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/Q==
+<enddata>
+
+<data> VarName=$Micro
+Qk12BgAAAAAAADYEAAAoAAAAGAAAABgAAAABAAgAAAAAAEACAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/f39/f39/f39/WRkZGQB/f39/f39/f39/f39/f39/f39/VKkUokB/f39/f39/f39/f39/f39
+/f39/VKkUokB/f39/f39/f39/f39/f39/f39/VKkUokB/f39/f39/f39/f39/f39/f39/VKkUokB/f39
+/f39/f39/f39/f39/f39/VKkUokB/f39/f39/f39/f39/f39/f39/VKkUokF/f39/f39/f39/f39/f39
+/f39APekpACkAP39/f39/f39/f39/f39/f39pAAAAAAAAP39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/Q==
+<enddata>
+
+<data> VarName=$Parking
+Qk14BgAAAAAAADYEAAAoAAAAGAAAABgAAAABAAgAAAAAAEICAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/QAAAAAA/f39/f39/f39
+/f39/f39/f39/QD/AAAA/f39/f39/f39/f39/f39/f39/QD/AAAA/f39/f39/f39/f39/f39/f39/QD/
+//8A/f39/f39/f39/f39/f39/f39/QD/AP8A/f39/f39/f39/f39/f39/f39/QD///8A/f39/f39/f39
+/f39/f39/f39/QAAAAAA/f39/f39/f39/f39/f39/f39/QAA
+<enddata>
+
+
+<data> VarName=$Unavailable
+Qk3IBQAAAAAAADYEAAAoAAAAFAAAABQAAAABAAgAAAAAAJIBAAASCwAAEgsAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AA4O
+Dg4ODg4ODg4ODg4ODg4ODg4O+fn5+fkPDw8PDw8PDw8PD/n5+fn9/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/fn5
++fn5+fn5+fn5+fn5+fn5+fn5Dg4ODg4ODg4ODg4ODg4ODg4ODg4AAA==
+<enddata>
+
+<data> VarName=$CacheAttribute
+Qk12BgAAAAAAADYEAAAoAAAAGAAAABgAAAABAAgAAAAAAEACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAMDAwADA3MAA8MqmAAAgQAAAIGAAACCAAAAgoAAAIMAAACDgAABA
+AAAAQCAAAEBAAABAYAAAQIAAAECgAABAwAAAQOAAAGAAAABgIAAAYEAAAGBgAABggAAAYKAAAGDAAABg
+4AAAgAAAAIAgAACAQAAAgGAAAICAAACAoAAAgMAAAIDgAACgAAAAoCAAAKBAAACgYAAAoIAAAKCgAACg
+wAAAoOAAAMAAAADAIAAAwEAAAMBgAADAgAAAwKAAAMDAAADA4AAA4AAAAOAgAADgQAAA4GAAAOCAAADg
+oAAA4MAAAODgAEAAAABAACAAQABAAEAAYABAAIAAQACgAEAAwABAAOAAQCAAAEAgIABAIEAAQCBgAEAg
+gABAIKAAQCDAAEAg4ABAQAAAQEAgAEBAQABAQGAAQECAAEBAoABAQMAAQEDgAEBgAABAYCAAQGBAAEBg
+YABAYIAAQGCgAEBgwABAYOAAQIAAAECAIABAgEAAQIBgAECAgABAgKAAQIDAAECA4ABAoAAAQKAgAECg
+QABAoGAAQKCAAECgoABAoMAAQKDgAEDAAABAwCAAQMBAAEDAYABAwIAAQMCgAEDAwABAwOAAQOAAAEDg
+IABA4EAAQOBgAEDggABA4KAAQODAAEDg4ACAAAAAgAAgAIAAQACAAGAAgACAAIAAoACAAMAAgADgAIAg
+AACAICAAgCBAAIAgYACAIIAAgCCgAIAgwACAIOAAgEAAAIBAIACAQEAAgEBgAIBAgACAQKAAgEDAAIBA
+4ACAYAAAgGAgAIBgQACAYGAAgGCAAIBgoACAYMAAgGDgAICAAACAgCAAgIBAAICAYACAgIAAgICgAICA
+wACAgOAAgKAAAICgIACAoEAAgKBgAICggACAoKAAgKDAAICg4ACAwAAAgMAgAIDAQACAwGAAgMCAAIDA
+oACAwMAAgMDgAIDgAACA4CAAgOBAAIDgYACA4IAAgOCgAIDgwACA4OAAwAAAAMAAIADAAEAAwABgAMAA
+gADAAKAAwADAAMAA4ADAIAAAwCAgAMAgQADAIGAAwCCAAMAgoADAIMAAwCDgAMBAAADAQCAAwEBAAMBA
+YADAQIAAwECgAMBAwADAQOAAwGAAAMBgIADAYEAAwGBgAMBggADAYKAAwGDAAMBg4ADAgAAAwIAgAMCA
+QADAgGAAwICAAMCAoADAgMAAwIDgAMCgAADAoCAAwKBAAMCgYADAoIAAwKCgAMCgwADAoOAAwMAAAMDA
+IADAwEAAwMBgAMDAgADAwKAA8Pv/AKSgoACAgIAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AP39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f0AAAAAAP39/f39/f39/f39/f39/f39/f0A/wD/AP39/f39/f39/f39/f39
+/f39/f0A////AP39/f39/f39/f39/f39/f39/f0A/wD/AP39/f39/f39/f39/f39/f39/f0AAP8AAP39
+/f39/f39/f39/f39/f39/f0AAAAAAP39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39
+/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/Q==
+<enddata>
+
+
+
+#*******************************************************
+#   Variable declarations for
+#   C:\Users\Mike\AppData\Roaming\gsak\Macros\ColoradoExportBeta.gsk
+#
+#   Generated 9/20/2009 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$AttribCorrected Type=Boolean
+Declare Var=$AttribDNF Type=Boolean
+Declare Var=$AttribEarthcache Type=Boolean
+Declare Var=$AttribMicro Type=Boolean
+Declare Var=$AttribParking Type=Boolean
+Declare Var=$AttribUnavailable Type=Boolean
+Declare Var=$AttributeAsPoi Type=Boolean
+Declare Var=$AttributePOIMessage Type=String
+Declare Var=$AttributePOIStatic Type=String
+Declare Var=$AttributeTypeName Type=String
+Declare Var=$BabelLine Type=String
+Declare Var=$BenchCache Type=Boolean
+Declare Var=$BenchWay Type=Boolean
+Declare Var=$BMPPath Type=String
+Declare Var=$CacheAttribute Type=String
+Declare Var=$CacheIDCount Type=Numeric
+Declare Var=$Caches Type=Numeric
+Declare Var=$CategoryName Type=String
+Declare Var=$cCode Type=String
+Declare Var=$cComment Type=String
+Declare Var=$Character Type=String
+Declare Var=$ChildAsPoi Type=Boolean
+Declare Var=$ChildDescription Type=String
+Declare Var=$ChildDescriptionBlank Type=String
+Declare Var=$ChildFilter Type=String
+Declare Var=$ChildTypeName Type=String
+Declare Var=$ChildTypes Type=String
+Declare Var=$cName Type=String
+Declare Var=$ClearChildFlagsFilter Type=String
+DECLARE Var=$CombinePOIDynamic Type=String
+Declare Var=$CombinePOIStatic Type=String
+Declare Var=$comspec Type=String
+Declare Var=$Corrected Type=String
+Declare Var=$count Type=Numeric
+Declare Var=$countchild Type=Numeric
+Declare Var=$cType Type=String
+Declare Var=$currentdb Type=String
+Declare Var=$CustomFoundName Type=String
+Declare Var=$CustomName Type=String
+Declare Var=$CustomPlacedName Type=String
+Declare Var=$Data Type=String
+Declare Var=$Database Type=String
+Declare Var=$datafile Type=String
+Declare Var=$Dbasfilename Type=Boolean
+Declare Var=$DBList Type=String
+Declare Var=$DNF Type=String
+Declare Var=$Drive Type=String
+Declare Var=$DriveStored Type=String
+Declare Var=$DropCode Type=String
+Declare Var=$dynamic Type=String
+Declare Var=$Earthcache Type=String
+Declare Var=$ExportCount Type=Numeric
+Declare Var=$ExportSettings Type=String
+Declare Var=$Filter Type=String
+Declare Var=$FilterList Type=String
+Declare Var=$FinalLocation Type=String
+Declare Var=$Form Type=String
+Declare Var=$Form2 Type=String
+Declare Var=$form3 Type=String
+Declare Var=$Form4 Type=String
+Declare Var=$FormExit Type=String
+Declare Var=$Found Type=String
+Declare Var=$FoundAsPOI Type=Boolean
+Declare Var=$FoundChildPoi Type=Boolean
+Declare Var=$FoundDatabase Type=String
+Declare Var=$FoundDisabled Type=String
+Declare Var=$FoundFilter Type=String
+Declare Var=$FoundPOIdynamic Type=String
+Declare Var=$FoundPOIFile Type=String
+Declare Var=$FoundPOIMessage Type=String
+Declare Var=$FoundPOIStatic Type=String
+Declare Var=$GPX Type=String
+Declare Var=$GPXdynamic Type=String
+Declare Var=$GPXFile Type=String
+Declare Var=$GPXFilename Type=String
+Declare Var=$GPXFooter Type=String
+Declare Var=$GPXHeader Type=String
+Declare Var=$GPXPath Type=String
+Declare Var=$GPXstatic Type=String
+Declare Var=$GSAKCache Type=Boolean
+Declare Var=$GSAKWay Type=Boolean
+Declare Var=$IncludeChild Type=Boolean
+Declare Var=$IncludeUserNotes Type=Boolean
+Declare Var=$Length Type=Numeric
+Declare Var=$Letters Type=String
+Declare Var=$line Type=String
+Declare Var=$linetemp Type=String
+Declare Var=$LocationList Type=String
+Declare Var=$LocationName Type=String
+Declare Var=$LogCount Type=String
+Declare Var=$MacroFile Type=String
+Declare Var=$match Type=String
+Declare Var=$MaxCache Type=Numeric
+Declare Var=$MaxCacheStr Type=String
+Declare Var=$Micro Type=String
+Declare Var=$Model Type=String
+Declare Var=$MyLogs Type=Boolean
+Declare Var=$Name Type=String
+Declare Var=$NameSQL Type=String
+Declare Var=$NChar Type=Numeric
+Declare Var=$NewCode Type=Numeric
+Declare Var=$Numbers Type=String
+Declare Var=$NumChild Type=Numeric
+Declare Var=$OldCenter Type=String
+Declare Var=$Parking Type=String
+Declare Var=$ParkingArea Type=String
+Declare Var=$Pass Type=Numeric
+Declare Var=$placed Type=String
+Declare Var=$PlacedAsPOI Type=Boolean
+Declare Var=$PlacedChildPOI Type=Boolean
+Declare Var=$PlacedDatabase Type=String
+Declare Var=$PlacedFilter Type=String
+Declare Var=$PlacedPOIFile Type=String
+Declare Var=$PlacedPOIMessage Type=String
+Declare Var=$PlaceName Type=String
+Declare Var=$POI_StashPath Type=String
+Declare Var=$POIDescription Type=String
+Declare Var=$POIdynamic Type=String
+Declare Var=$POIFile Type=String
+Declare Var=$POIFiles Type=String
+Declare Var=$POIMessage Type=String
+Declare Var=$POIPath Type=String
+Declare Var=$POIStatic Type=String
+Declare Var=$PromptSaveText Type=String
+Declare Var=$QuestiontoAnswer Type=String
+Declare Var=$ReferencePoint Type=String
+Declare Var=$regex Type=String
+Declare Var=$result Type=String
+Declare Var=$Revision Type=String
+Declare Var=$SaveBox Type=String
+Declare Var=$SaveBoxList Type=String
+Declare Var=$SaveBoxSQL Type=String
+Declare Var=$SaveNameValues Type=String
+Declare Var=$SaveSpecial Type=String
+Declare Var=$Silent Type=Boolean
+Declare Var=$SQL Type=String
+Declare Var=$sqlinputfile Type=String
+Declare Var=$StagesofaMulticache Type=String
+Declare Var=$status Type=String
+Declare Var=$SWver Type=Numeric
+Declare Var=$SWversion Type=String
+Declare Var=$tmpS Type=String
+Declare Var=$TotalMaxCaches Type=Numeric
+Declare Var=$Trailhead Type=String
+Declare Var=$trigger Type=String
+Declare Var=$Unavailable Type=String
+Declare Var=$UseBigCharacters Type=Boolean
+Declare Var=$UseCurrent Type=Boolean
+Declare Var=$UseCustomFoundName Type=Boolean
+Declare Var=$UseCustomName Type=Boolean
+Declare Var=$UseCustomPlacedName Type=Boolean
+Declare Var=$variables Type=String
+Declare Var=$variablesSQL Type=String
+Declare Var=$Wpt Type=String
+Declare Var=$wptfooter Type=String
+Declare Var=$Wpts Type=Numeric
+Declare Var=$x Type=Numeric
+Declare Var=$y Type=Numeric
+
+
+##################################################################
+

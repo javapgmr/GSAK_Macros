@@ -1,0 +1,30 @@
+#*******************************************
+# MacDescription =Create a bounding box around the current waypoints
+# MacFileName =WaypointsBoundingBox.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.1
+# MacUrl=
+#*******************************************
+
+$_sql="SELECT Max(latitude + 0) FROM Caches WHERE $_Where"
+$MaxLat=Sqlite("sql",$_sql)
+
+$_sql="SELECT Max(longitude + 0) FROM Caches WHERE $_Where"
+$MaxLon=Sqlite("sql",$_sql)
+
+$_sql="SELECT Min(latitude + 0) FROM Caches WHERE $_Where"
+$MinLat=Sqlite("sql",$_sql)
+
+$_sql="SELECT Min(longitude + 0) FROM Caches WHERE $_Where"
+$MinLon=Sqlite("sql",$_sql)
+
+$PointA=$MaxLat + "," + $MaxLon + $_CrLf
+$PointB=$MaxLat + "," + $MinLon + $_CrLf
+$PointC=$MinLat + "," + $MaxLon + $_CrLf
+$PointD=$MinLat + "," + $MinLon + $_CrLf
+
+$Out=$PointA + $PointB + $PointD + $PointC + $PointA
+
+CLIP Data=$Out
+
+MSGOK Msg=Bounding box coordinates copied to Windows Clipboard

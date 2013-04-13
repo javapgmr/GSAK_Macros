@@ -1,0 +1,67 @@
+#*******************************************
+# MacDescription = Fills the User sort field with the "Find Log" number 
+# MacFileName = FillUSortWithFoundLogsId.gsk
+# MacAuthor = javapgmr
+# MacVersion=1.0
+# MacUrl=
+#*******************************************
+
+#*******************************************************
+#   Variable declarations for
+#   C:\Users\Owner\AppData\Roaming\gsak\Macros\FillUSortWithFoundLogsId.gsk
+#
+#   Generated 09/12/2011 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$Code Type=String
+Declare Var=$Count Type=Numeric
+Declare Var=$Data Type=String
+Declare Var=$DataBase Type=String
+Declare Var=$Edit1 Type=String
+Declare Var=$FoundDb Type=String
+Declare Var=$logNo Type=Numeric
+Declare Var=$SeqNo Type=Numeric
+Declare Var=$Sequence Type=Numeric
+Declare Var=$Status Type=String
+Declare Var=$TotalCount Type=Numeric
+
+
+$FoundDb = "Found"
+$Edit1="301976"
+
+#MFILTER Where=UserSort=0 
+#IF $_FilterCount > 0
+ GOSUB Name=fillUSort
+ SQLSORT Orderby=UserSort
+#ENDIF 
+
+BEGINSUB Name=FillUSort
+    $Sequence=0
+    DATABASE Name=$FoundDb Action=Select
+    $DataBase=$_CurrentDataPath + "\sqlite.db3"
+    $Status=Sqlite("open",$DataBase)
+    $_sql="SELECT lParent,lLogid from Logs WHERE lOwnerID='$Edit1' and (ltype='Found it' or ltype='Attended' or ltype='Webcam Photo Taken') and lParent in (select code from caches where UserSort = 0) ORDER BY ldate,lLogid ASC"
+    $Data=Sqlite("sql",$_sql)
+    $Data=Replace($_NewLine,";",$Data)
+    $Count=RegExCount(";",$Data) + 1
+    $TotalCount=$Count/2
+    $SeqNo=1
+
+    IF $Data<>""     
+        SQLSort Orderby=rowid
+        WHILE $Sequence<$Count
+            $Code=Extract($Data,";",$Sequence + 1)
+            $logNo=Val(Extract($Data,";",$Sequence + 2))
+            IF Seek($Code)
+                    $Sequence=$Sequence + 2
+                    SHOWSTATUS Msg=Processing find $SeqNo of $TotalCount total finds
+                    $d_UserSort=$logNo
+                    $SeqNo = $SeqNo + 1
+            ENDIF
+        ENDWHILE
+    ENDIF
+ENDSUB

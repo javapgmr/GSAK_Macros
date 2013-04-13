@@ -1,0 +1,2366 @@
+#================================================================================================# 
+# MacVersion = 1.4.2
+# MacDescription = View your caches and waypoints with CACH'EYE mapping service. Based on Bing Maps. 
+# MacAuthor = Kreizweh, cbba
+# MacFileName = myCachEye.gsk
+# MacUrl = http://www.cacheye.org/download/myCachEye.gsk
+#================================================================================================#
+#================================================================================================#
+# This macro exports data entered into GSAK in GeoRSS-Format                                     #
+# The files may be uploaded to *.cacheye.org to visualize caches and waypoints                   #
+# This macro is based on the work of HulmGulm, Bert Geenen and markp99                           #
+#================================================================================================#
+# History of changes:                                                                            #
+#================================================================================================#
+# 31/03/09 - v0.14: Initial Release                                                              #
+# 26/06/09 - v0.16: New XML-structure, upload with HTTP/PHP                                      #
+# 08/08/09 - v0.17: Updated Date in header / Internat.?? / Output UTF8                           #
+# 11/08/09 - v0.18: Check filesize before upload, show founds same/different                     #
+# 21/08/09 - v0.21: do upload in Chunks                                                          #
+# 24/08/09 - v0.22: Changeable Username Password via Button/Mask                                 #
+#                   hidden RunSilent option                                                      #
+# 24/08/09 - v0.23: Deliver GCVotes with XML                                                     #
+# 01/09/09 - v0.24: Configuration stored in XML                                                  #
+#                   Checking Version in advance                                                  #
+# 04/09/09 - v0.25: a lot of Bugfixes                                                            #
+# 17/09/09 - v0.1.30: a lot of Bugfixes for Beta 2                                               #
+# 21/09/09 - v0.1.31: Issue 242, 240, 250                                                        #
+# 07/10/09 - v0.2.0: Issue 285, 286, 289, 292                                                    #
+# 20/10/09 - v0.2.0: Issue 324, rebranding to CachEye                                            #
+# 23/10/09 - v0.2.0: Issue 333,                                                                  #
+# 29/10/09 - v0.2.0: Issue 348,                                                                  #
+# 03/11/09 - v0.2.0: Issue 362,                                                                  #
+# 04/11/09 - v0.2.0: Issue 383, 387                                                              #
+# 06/11/09 - v0.3.0: Issue 406, 321                                                              #
+# 09/11/09 - v0.3.0: Issue 414,                                                                  #
+# 10/11/09 - v0.3.0: Issue 429,                                                                  #
+# 20/11/09 - v1.0.0: Issue 468,                                                                  #
+# 24/11/09 - v1.0.0: Issue 473,                                                                  #
+# 29/11/09 - v1.0.0: Issue 499,                                                                  #
+# 01/12/09 - v1.0.0: Issue 519,                                                                  #
+# 04/12/09 - v1.0.0: Issue 541,     line 573                                                     #
+# 04/12/09 - v1.0.0: Issue 562,                                                                  #
+# 09/12/09 - v1.0.1: Issue 579,                                                                  #
+# 15/01/10 - v1.0.1: Issue 627,                                                                  #
+# 18/02/10 - v1.0.2: Issue 659,660,                                                              #
+# 28/02/10 - v1.0.3: Issue 669,                                                                  #
+# 13/05/10 - v1.1.0: Issue 604,605,616,646,695,729,747,748,776                                   #
+# 11/06/10 - v1.1.0: Issue 948,953,960                                                           #
+# 14/06/10 - v1.1.0: Issue 968,                                                                  #
+# 29/06/10 - v1.1.0: Issue 1030,       line  844                                                 #
+# 11/01/11 - v1.1.1: Issue 1365,                                                                 #
+# 11/05/11 - v1.3.0b: Issue 1460,1469                                                            #
+# 20/09/11 - v1.3.0b: Issue 1514,1513 Texte, Vorausfuellen bei ToDo-Liste                        #
+# 26/09/11 - v1.3.0b: Issue 1524                                                                 #
+# 27/03/12 - v1.4.0: Issue 1640                                                                  #
+# 25/05/12 - v1.4.0: Issue 1686                                                                  #
+# 01/06/12 - v1.4.0: Issue 1715                                                                  #
+# 14/09/12 - v1.4.1: Issue 1784,1785                                                                  #
+# 05/10/12 - v1.4.1: Issue 1790                                                                       #
+#================================================================================================#
+# Lines2 uncomment!!!:   !!!!
+# Lines2 change: 
+#================================================================================================#
+
+# DEBUG status="on" height=800
+
+SPEEDMODE Status=On
+VERCHECK Version=8.2.0.00 
+Deprecated Warning=No
+GOSUB Name=DeclareVariables
+
+GOSUB Name=SetDefaults
+
+GOSUB Name=GetOption
+If .not. folderExists($MacroDir) or .not. FileExists($configFileS)
+    GOSUB Name=CreateDirectory
+EndIf
+
+MacSettings Type=R File=$configFileS
+MacSettings Type=R FileCheck=N
+GOSUB Name=CheckLogin
+
+IF ($my_gcnick = "" and $my_vc_pw = "") or .not. $myLogin 
+   GOSUB Name=VCUsernamePW
+   #GOSUB Name=ReadUserPWVars
+   #MacSettings Type=S Vars=my_gcnick,my_vc_pw,my_use_corrected,my_upload_vc,my_launch_vc,my_view,my_view_lat,my_view_long,my_view_zoom,my_use_altbrowser,my_alt_browser,my_founds_different,my_get_votes,my_use_corr_filtered
+ENDIF
+
+IF .not. $my_user_interaction or .not. (FileExists($configFile))
+   GOSUB Name=DisplayOptionsForm
+   GOSUB Name=ReadFormVars
+   #If $change_user_pw
+   #   GOSUB Name=VCUsernamePW
+   #   GOSUB Name=ReadUserPWVars
+   #EndIf
+   MacSettings Type=S Vars=my_reg_version,my_gcnick,my_vc_pw,my_use_corrected,my_upload_vc,my_launch_vc,my_view,my_view_lat,my_view_long,my_view_zoom,my_use_altbrowser,my_alt_browser,my_founds_different,my_get_votes,my_skip_unsupported_types,my_suppress_gc_warn,my_use_corr_filtered,my_merge_files #,my_populate_todo
+ENDIF 
+
+GOSUB Name=CheckVersion
+GOSUB Name=SetLock
+GOSUB Name=ProcessCollection
+
+IF $my_upload_vc
+    GOSUB Name=HTTPUpload
+ENDIF
+
+IF $GCVoteCntError and .not. $my_suppress_gc_warn
+    msgOK msg="Field(s) given by GCVoteGrabber.xml did not contain a valid count(s)! These values were replaced by 0!"
+ENDIF
+
+IF $my_launch_vc
+    GOSUB Name=LaunchmyCachEye
+ENDIF
+
+GOSUB Name=ReleaseLock
+
+################################################################################
+BEGINSUB Name=CheckVersion
+
+     If $my_reg_version <> $myVersion
+        $PostData = "'version','register','reg_version','" + $myVersion + "','user','" + $my_gcnick + "'"
+        $result = PostUrl($UploadUrl,$PostData)
+        $my_reg_version = $myVersion
+        MacSettings Type=S Vars=my_reg_version,my_gcnick,my_vc_pw,my_use_corrected,my_upload_vc,my_launch_vc,my_view,my_view_lat,my_view_long,my_view_zoom,my_use_altbrowser,my_alt_browser,my_founds_different,my_get_votes,my_skip_unsupported_types,my_suppress_gc_warn,my_use_corr_filtered,my_merge_files #,my_populate_todo
+        #msgOK msg=Register: $result #required version
+     EndIf
+#     GoSub Name=CheckGenuineness
+     $PostData = "'version','Version','user','" + $my_gcnick + "'"
+     $result = PostUrl($UploadUrl,$PostData)
+     # msgOK msg="Required version = "$result #required version
+     If $myVersion <> $result #Substr($result,Len($result)-4,4)
+        $result = "Required Mac Version = " + $result + "!" + $_NewLine
+        $result = $result + "Please download this new Version from: " + $_NewLine + $_NewLine
+        $result = $result + $UrlDomain + "/download/myCachEye.gsk " + $_NewLine + $_NewLine
+        msgOK msg=$result
+        WEB URL=$UrlDomain/download/myCachEye.gsk
+        CANCEL msg=Macro cancelled for installing the new Version of myCachEye.gsk 
+     EndIf
+
+ENDSUB #CheckVersion
+################################################################################
+BEGINSUB Name=CheckLogin
+    $PostData = "'gsak_user','" + $my_gcnick + "','gsak_pass','" + $my_vc_pw + "'"
+    $result = PostUrl($UploadUrl,$PostData)
+
+    IF $result="user checked"
+       $myLogin=True
+    ELSE
+       $myLogin=False
+    ENDIF
+
+ENDSUB #CheckLogin
+################################################################################
+BEGINSUB Name=SetDefaults
+
+$myVersion = "1.4.2"
+
+$MacroDir = $_AppData + "\Macros\myCachEye_Library\"
+$configFileS = $MacroDir + "RunSilent.xml"
+$configFile = $_AppData + "\Macros\myCachEye.xml"
+
+$CountGC=0
+$CountGCNA=0
+$CountWP=0
+$CountWPNA=0
+
+$MinLat=9999.0
+$MaxLat=-9999.0
+$MinLon=9999.0
+$MaxLon=-9999.0
+$MapCenter=0
+$MapZoom=0
+
+$GCVoteCntError=False
+
+$DomainName = "cacheye.org" # Single Point of change for the domainname!!
+$UrlDomain = "http://www." + $DomainName
+$UrlContent = $UrlDomain + "/drupal"
+$UrlContent = $UrlDomain
+$UploadPoint="/users/upload_gsak.php"
+$UploadUrl = $UrlDomain + $UploadPoint 
+$DataSet = "default"
+$ChunkSize = 60000
+
+ENDSUB #SetDefaults
+################################################################################
+BEGINSUB Name=GetOption
+    $out_folder = $MacroDir
+    $filename_gc =   $out_folder + "geogc.xml"
+    $filename_gcna = $out_folder + "geogcna.xml"
+    $filename_wp =   $out_folder + "geowp.xml"
+    $filename_wpna = $out_folder + "geowpna.xml"
+    $filename_lu =   $out_folder + "datasetInfo.xml"
+    $filename_todo = $out_folder + "gsak_todo.xml"
+ENDSUB #GetOption
+
+################################################################################
+BEGINSUB Name=CreateDirectory
+    $batFile = $_AppData + "\vcbabel.cmd"
+    $Data = PutFile($batFile,"cd "+ $_AppData +"\Macros" + chr(13) + chr(10) + "md " + $MacroDir)
+
+    IF .not. folderExists($MacroDir)
+       RUNPGM pgm=$batFile Wait=Yes Hide=No
+    ENDIF 
+
+    IF .not. folderExists($MacroDir)
+        CANCEL msg=myCachEye could not create the required directory. $_newLine $_newLine "$MacroDir" $_newLine $_newLine Macro cancelled
+    ENDIF 
+
+    IF .not. (FileExists($configFileS))
+        $image  = MimeDecode($RunSilent)
+        $res = PutFile($configFileS,$image)
+    ENDIF 
+
+ENDSUB  #CreateDirectory
+
+################################################################################
+BEGINSUB Name=VCUsernamePW
+
+$FrmGCNick=$my_gcnick
+#$FrmMyVersion=$myVersion
+#$FrmVCPass=$my_vc_pw
+
+$username_pw = editform($username_pw,"lblInstallVersion","Caption","myCachEye Version: " + $myVersion)
+
+While True
+
+  $FormExit = form($username_pw,"")
+  
+  BeginCase
+
+    Case $FormExit = "SystemExit"
+      CANCEL msg ="Macro cancelled" 
+
+    Case $FormExit = "btnCancelInstall"
+      #CANCEL msg ="Macro cancelled" #299 back to options
+      MacSettings Type=R File=$configFileS
+      break
+
+    Case $FormExit = "btnVerify"
+      IF $FrmGCNick = "" 
+         msgOk msg="Please enter Your CACH'EYE Nickname"
+      ELSE
+         IF $FrmVCPass = ""
+            msgOk msg="Please enter Your CACH'EYE Password"
+         ELSE
+            $PostData = "'gsak_user','" + $FrmGCNick + "','gsak_pass','" + $FrmVCPass + "'"
+            $result = PostUrl($UploadUrl,$PostData)
+            IF $result="user checked"
+               #$my_vc_pw=$FrmVCPass
+               GOSUB Name=ReadUserPWVars
+               MacSettings Type=S Vars=my_reg_version,my_gcnick,my_vc_pw,my_use_corrected,my_upload_vc,my_launch_vc,my_view,my_view_lat,my_view_long,my_view_zoom,my_use_altbrowser,my_alt_browser,my_founds_different,my_get_votes,my_skip_unsupported_types,my_suppress_gc_warn,my_use_corr_filtered,my_merge_files #,my_populate_todo
+               break
+            ELSE
+               msgOk msg=$result
+            ENDIF
+         ENDIF
+      ENDIF
+  EndCase
+
+EndWhile
+
+ENDSUB # VCUsernamePW
+
+
+################################################################################
+BEGINSUB Name=HTTPUpload
+ 
+  IF $my_upload_vc
+     $UplErrorCnt = 0
+     $Count = 1
+
+     $PostData = "'version','" + $myVersion + "','user','" + $my_gcnick + "','pw','" + $my_vc_pw + "','size','Size','datasetname','" + $DataSet + "'"
+     #msgOk msg=$PostData
+     #msgOk msg=$UploadUrl
+     $result=PostUrl($UploadUrl,$PostData)
+     #msgOk msg=$result
+     If $result = "Invalid Login credentials!"
+       CANCEL msg=Macro cancelled because of invalid Login credentials! 
+     Else
+       #$MaxUploadSize = Val($result) # From V1.1.0 on the number of caches is limited!
+       $MaxUploadSize = 2500000
+     EndIf
+
+     WHILE $Count <= 5
+     BeginCase
+        Case $Count=1
+            $filename=$filename_gc
+            $filename_short="geogc.xml.zip"
+        Case $Count=2
+            $filename=$filename_gcna
+            $filename_short="geogcna.xml.zip"
+        Case $Count=3
+            $filename=$filename_wp
+            $filename_short="geowp.xml.zip"
+        Case $Count=4
+            $filename=$filename_wpna
+            $filename_short="geowpna.xml.zip"
+        Case $Count=5
+            $filename=$filename_lu
+            $filename_short="datasetInfo.xml"
+     EndCase
+     If .not. $my_merge_files and $filename_short="datasetInfo.xml"
+       $UploadMsg="Add/Update caches in progress...  This may take some minutes!!"
+     Else
+       $UploadMsg="Exporting File " + $filename_short
+     EndIf
+     SHOWSTATUS msg=$UploadMsg Width=350
+     
+     if $Count < 5
+        $result =ZipFile("zip",$filename + ".zip",$filename)
+        $FileData = GetFile($filename + ".zip")
+        $ZipFileLength = Len($FileData)
+        #msgOk msg="Original Zipfile Length: "$ZipFileLength" Bytes"
+        $FileData = MimeEncode($FileData)
+     Else
+        $FileData = MimeEncode(GetFile($filename))
+     EndIf
+     If Len($FileData) > $MaxUploadSize
+        $UploadMsg= "Filesize " + $filename_short + " " +NumToStr(Len($FileData))+ " > " + NumToStr($MaxUploadSize) # 5051173
+        SHOWSTATUS msg=$UploadMsg  Width=350
+        $result = "ERROR: 294 " + $UploadMsg
+        #msgOk msg=$result
+     ELSE
+        $part = 1
+        WHILE Len($FileData) > 0
+           #msgOk msg="Teil: "$part
+           $UploadData = $FileData
+           If Len($FileData) > $ChunkSize
+              #msgOk msg="Mehrere Teile!"
+              $UploadData = Substr($FileData,1,$ChunkSize)
+              $FileData = Substr($FileData,$ChunkSize+1,0)
+              #$result = PutFile($filename + "_" + NumToStr($part),$UploadData)
+              #$result = "Datalegth to send = " + NumToStr(Len($UploadData))
+              #msgOk msg=$result
+           Else
+              $FileData = ""
+           EndIf
+           $BytesSent=Len($UploadData)
+           If $BytesSent < $ChunkSize
+              $part = $part*(-1)
+           EndIf
+#           msgOk msg="Part="$part"!"
+           If $my_merge_files    # 1715 clearMap reverse logic to mergeFiles
+              $additionalParameters = ",'mergeFiles','FALSE',"
+           Else
+              $additionalParameters = ",'mergeFiles','TRUE',"
+           EndIf
+           If $my_auto_wipe
+              $additionalParameters = $additionalParameters + "'autoWipe','TRUE',"
+           Else
+              $additionalParameters = $additionalParameters + "'autoWipe','FALSE',"
+           EndIf
+#           msgOk msg="additionalParameters"$additionalParameters
+
+           $PostData = "'version','" + $myVersion + "','user','" + $my_gcnick + "','pw','" + $my_vc_pw + "','size','No','datasetname','" + $DataSet + "','filename','" + $filename_short + "','filedata','" + $UploadData + "','part'," +NumToStr($part) + $additionalParameters + "'"
+           $result = PostUrl($UploadUrl,$PostData,"",120)
+#           msgOk msg=$result     # Server's response!!!      
+           $UploadedSize=Val($result)
+           If $UploadedSize <> $BytesSent
+              BeginCase
+                  Case Substr($result,1,10) = "ERROR 666:"
+                     msgOk msg=$result
+                     break
+                  Case Substr($result,1,14) = "Error UPL-0019"
+                     GOSUB Name=ReleaseLock
+                     Cancel msg="The current operation 'Add/Update' exceeds your cache limit! $_newLine Please use the 'Delete old caches' option!"
+                     break
+                  OtherWise
+                     #msgOk msg="BytesSent:"$BytesSent"!"
+                     #msgOk msg="UploadedSize:"$UploadedSize"!"
+                     GOSUB Name=ReleaseLock
+                     Cancel msg=Severe Error in Dataexport! $_newLine Data being exported is corrupted during transfer $_newLine Please rerun export macro!
+              EndCase
+           EndIf
+           IF $result = "ERROR: The user's password is invalid "
+              msgOk msg=$result
+              Break
+           ENDIF
+           $part = $part + 1
+        ENDWHILE
+     ENDIF
+
+     IF $UplErrorCnt = 0 and $Count = 5 and .not. $my_user_interaction
+        #msgOk msg="All Files uploaded correctly!"
+     ELSE
+        IF $Count = 5 and Substr($result,1,5) = "ERROR"# Error in last File
+           $result = "ERROR: " + Substr($result,6,0)
+        ELSE
+           IF Substr($result,1,2) = "OK"
+              $result = Substr($result,3,0)
+           ELSE # Error in one of files 1 to 4
+              $result = "ERROR: " + $filename_short + $result #Substr($result,7,0)
+              $UplErrorCnt = $UplErrorCnt + 1
+           ENDIF
+        ENDIF
+        #msgOk msg=$result
+     ENDIF
+     $Count = $Count + 1
+     ENDWHILE
+
+     If $my_populate_todo
+         $filename_short = "gsak_todo.xml"
+         $FileData = GetFile($filename_todo)
+         $FileData = Replace("atom:","",$FileData)
+         $FileData = MimeEncode($FileData)
+         $PostData = "'version','" + $myVersion + "','user','" + $my_gcnick + "','pw','" + $my_vc_pw + "','size','No','datasetname','" + $DataSet + "','filename','" + $filename_short + "','filedata','" + $FileData + "','part'," +NumToStr($part) + "'"
+         $result = PostUrl($UploadUrl,$PostData)
+#         msgOk msg=$result
+     EndIf
+
+  
+  ENDIF
+ENDSUB # HTTPUpload
+
+################################################################################
+BEGINSUB Name=DisplayOptionsForm
+
+    IF FileExists($configFile)
+        BeginCase
+            Case $my_use_corrected and .not. $my_use_corr_filtered
+               $FrmRdbUseCorr = true
+               $FrmRdbUseOrig = false
+               $FrmRdbUseCorrFiltered = false
+               $useroptions = EditForm($useroptions,"FrmRdbUseCorrFiltered","Visible","Yes")
+            Case .not. $my_use_corrected and .not. $my_use_corr_filtered
+               $FrmRdbUseCorr = false
+               $FrmRdbUseOrig = true
+               $FrmRdbUseCorrFiltered = false
+            Case $my_use_corrected and $my_use_corr_filtered
+               $FrmRdbUseCorr = true
+               $FrmRdbUseOrig = false
+               $FrmRdbUseCorrFiltered = true
+        EndCase
+        
+        $FrmChkUploadVC=$my_upload_vc
+        $FrmChkLaunchVC=$my_launch_vc
+        
+        BeginCase
+            Case $my_view = "dynamic"
+               $FrmRdbUseDyn = True
+               $FrmRdbUseFixed = false
+               $FrmRdbUseDefault = false
+            Case $my_view = "fixed"
+
+               $FrmRdbUseFixed = True
+               $FrmRdbUseDyn = false
+               $FrmRdbUseDefault = false
+               $FrmLat = $my_view_lat
+               $FrmLong = $my_view_long
+               $FrmCmbZl = $my_view_zoom
+            Case $my_view = "default"
+               $FrmRdbUseDefault = True
+               $FrmRdbUseDyn = false
+               $FrmRdbUseFixed = false
+        EndCase
+
+        IF $my_founds_different
+           $FrmFoundSame = false
+           $FrmFoundDifferent = true
+        ELSE
+           $FrmFoundSame = true
+           $FrmFoundDifferent = false
+        ENDIF
+
+        BeginCase
+            Case $my_get_votes="GCVoteGrabber"
+               $FrmUseGrabber = True
+            Case $my_get_votes="GCVoteGrabberSilent"
+               $FrmUseGrabberSilent = True
+            Case $my_get_votes="GetOnline"
+               $FrmGetVotes = True
+            Case $my_get_votes="NoVotes"
+               $FrmNoVotes = True
+        EndCase
+
+        $FrmChkAltBrowser = $my_use_altbrowser
+        $FrmAltBrowser = $my_alt_browser
+        $FrmChkSkipUnsupported = $my_skip_unsupported_types
+        $FrmChkSuppressGCWarn = $my_suppress_gc_warn
+        $FrmChkMergeFiles = $my_merge_files
+        #$FrmChkPopulateToDo = $my_populate_todo
+    ELSE
+        $FrmRdbUseCorr = false
+        $FrmRdbUseOrig = true
+        $FrmChkUploadVC= true
+        $FrmChkLaunchVC= true
+        $FrmRdbUseDyn = true
+        $FrmRdbUseFixed = false
+        $FrmRdbUseDefault = false
+        $FrmFoundSame = false
+        $FrmFoundDifferent = true
+        $FrmUseGrabber = false
+        $FrmGetVotes = false
+        $FrmNoVotes = true
+        $FrmChkAltBrowser = false
+        $FrmChkSkipUnsupported = false
+        $FrmChkSuppressGCWarn = false
+        $FrmChkMergeFiles = false
+        $FrmChkPopulateToDo = false
+    ENDIF
+
+$useroptions = editform($useroptions,"lblInstallVersion","Caption","Vers: " + $myVersion)
+$useroptions = editform($useroptions,"title","Caption","Export - User Options for " + $my_gcnick)
+If $FrmRdbUseCorrFiltered
+   $useroptions = EditForm($useroptions,"FrmRdbUseCorrFiltered","Visible","Yes")
+Else
+   
+EndIf
+
+While True
+
+  $FormExit = form($useroptions,"")
+  
+  BeginCase
+    Case $FormExit = "FrmRdbUseCorr"
+      $useroptions = EditForm($useroptions,"FrmRdbUseCorrFiltered","Visible","Yes")
+
+    Case $FormExit = "FrmRdbUseOrig"
+      $useroptions = EditForm($useroptions,"FrmRdbUseCorrFiltered","Visible","No")
+
+    Case $FormExit = "FrmChkPopulateToDo"
+      $FrmCntCaches = "30"
+      $useroptions = EditForm($useroptions,"lblInstallVersion","Caption","Vers: " + $myVersion)
+
+    Case $FormExit = "SystemExit"
+      CANCEL msg ="Macro cancelled"
+
+    Case $FormExit = "btnCancel"
+      CANCEL msg ="Macro cancelled"
+
+    Case $FormExit = "btnRun"
+
+        IF $FrmChkAltBrowser AND IsEmpty($FrmAltBrowser)
+           msgOK msg="Please enter the location of the alternate browser executable (.EXE)"
+        ELSE
+           IF $FrmChkAltBrowser AND .not. IsEmpty($FrmAltBrowser) AND .not. fileExists($FrmAltBrowser)
+              msgOK msg="Alternate Browser executable (.EXE) not found"
+           ELSE
+              If .not. $FrmRdbUseCorr and .not. $FrmRdbUseOrig and .not. $FrmRdbUseCorrFiltered
+                 msgOK msg="Please enter which kind of Coordinates should be used"
+              Else
+                 If .not. $FrmRdbUseDyn and .not. $FrmRdbUseFixed and .not. $FrmRdbUseDefault
+                    msgOK msg="Please enter which kind of view (Dynamic / Fixed) should be used"
+                 Else
+                    If .not. $FrmFoundSame and .not. $FrmFoundDifferent
+                       msgOK msg="Please enter how to show founds"
+                    Else
+                       If .not. $FrmUseGrabber and .not. $FrmUseGrabberSilent and .not. $FrmNoVotes and .not. $FrmGetVotes
+                           msgOK msg="Please enter how to deal with GCVotes"
+                       Else
+                          If $FrmRdbUseFixed and ($FrmLat = "" or $FrmLong = "")
+                             msgOK msg="Please enter Lat and Long Coordinates"
+                          Else
+                             If $FrmChkPopulateToDo and Val($FrmCntCaches) > 30 and .not. IsEmpty($FrmCntCaches)
+                                msgOK msg="30 Caches maximum for popuplating ToDo List"
+                             Else
+                                break
+                             EndIf
+                          EndIf
+                       EndIf
+                    EndIf
+                 EndIf
+              EndIf
+           ENDIF
+        ENDIF
+        
+
+    Case $FormExit = "btnUserPW"
+        $change_user_pw = True
+        #break
+        GOSUB Name=VCUsernamePW
+        #GOSUB Name=ReadUserPWVars
+
+    Case $FormExit = "btnHelp"
+        GOSUB Name=ShowHelp
+
+    Case $FormExit = "btnCacheyeLink"
+        WEB URL=$UrlContent
+
+    EndCase
+EndWhile
+
+ENDSUB # DisplayOptionsForm
+
+################################################################################
+#-----READ the variables from the form-----#
+BEGINSUB Name=ReadFormVars
+
+    $my_use_corrected=$FrmRdbUseCorr
+    $my_use_corr_filtered=$FrmRdbUseCorrFiltered
+    $my_skip_unsupported_types=$FrmChkSkipUnsupported
+    $my_suppress_gc_warn=$FrmChkSuppressGCWarn
+    $my_merge_files = $FrmChkMergeFiles
+    $my_populate_todo = $FrmChkPopulateToDo
+    $my_auto_wipe = $FrmChkAutoWipe
+    $my_filter_cnt = Val($FrmCntCaches)
+
+    $my_upload_vc = $FrmChkUploadVC
+    $my_launch_vc = $FrmChkLaunchVC
+    
+    BeginCase
+        Case $FrmRdbUseDyn = True
+           $my_view = "dynamic"
+        Case $FrmRdbUseFixed = True
+           $my_view = "fixed"
+           $my_view_lat = $FrmLat
+           $my_view_long = $FrmLong
+           $my_view_zoom = $FrmCmbZl
+        Case $FrmRdbUseDefault = True
+           $my_view = "default"
+    EndCase
+
+    IF $FrmFoundSame = true and $FrmFoundDifferent = false
+       $my_founds_different = False
+    ELSE
+       $my_founds_different = True
+    ENDIF
+
+    BeginCase
+        Case $FrmUseGrabber = True
+           $my_get_votes="GCVoteGrabber"
+        Case $FrmUseGrabberSilent = True
+           $my_get_votes="GCVoteGrabberSilent"
+        Case $FrmGetVotes = True
+           $my_get_votes="GetOnline"
+        Case $FrmNoVotes = True
+           $my_get_votes="NoVotes"
+    EndCase
+
+    $my_use_altbrowser = $FrmChkAltBrowser
+    $my_alt_browser = $FrmAltBrowser
+
+ENDSUB #ReadFormVars
+
+################################################################################
+#-----READ the variables from the form-----#
+BEGINSUB Name=ReadUserPWVars
+    $my_gcnick = $FrmGcNick
+    $my_vc_pw = $FrmVCPass
+ENDSUB #ReadUserPWVars
+
+################################################################################
+BEGINSUB Name=LaunchmyCachEye
+
+    IF $my_launch_vc = true
+    
+       BeginCase
+           Case $my_view = "dynamic"
+              $UrlParm="?minlat=" + replace(",",".",NumToStr($MinLat)) + "&maxlat=" + replace(",",".",NumToStr($MaxLat)) + "&minlong=" + replace(",",".",NumToStr($Minlon)) + "&maxlong=" + replace(",",".",NumToStr($Maxlon))
+           Case $my_view = "fixed"
+              $UrlParm="?lat=" + replace(",",".",$my_view_lat) + "&long=" + replace(",",".",$my_view_long) + "&zl=" + $my_view_zoom
+       EndCase
+
+       $UrlSubDomain = "http://" + $my_gcnick + "." + $DomainName + "/ll.php"
+       $VCUrl = $UrlSubDomain + $UrlParm
+       IF $my_use_altbrowser
+          SHOWSTATUS msg="Launching " + $VCURL Width=350
+          $runcmdline = $my_alt_browser
+          RUNPGM pgm=$runcmdline parms=$VCUrl Wait=No Hide=No
+       ELSE
+          SHOWSTATUS msg="Launching " + $VCURL Width=350
+          WEB URL=$VCURL
+       ENDIF
+    ENDIF
+ENDSUB # LaunchmyCachEye
+
+################################################################################
+BEGINSUB Name=ProcessCollection
+
+    $PostData = "'version','" + $myVersion + "','user','" + $my_gcnick + "','pw','" + $my_vc_pw + "','size','Size','datasetname','" + $DataSet + "'"
+#    msgOK msg=$PostData
+    $result=PostUrl($UploadUrl,$PostData)
+#    msgOK msg=$result
+    $MaxCacheCnt=Val($result)
+
+    If $my_filter_cnt = 0
+        $totalRecordCount   = $_Count
+    Else
+        $totalRecordCount   = $my_filter_cnt
+    EndIf
+    
+    If $totalRecordCount > $MaxCacheCnt and $my_filter_cnt = 0
+       CANCEL msg="Maximum number of $MaxCacheCnt caches exceeded! Please refine your Filter!"
+    EndIf
+
+    BeginCase
+        Case $my_get_votes = "GCVoteGrabber"
+           If MacHeader("MacVersion","GCVoteGrabber.gsk")="3.0.2"
+               $GCVoteVersion=3
+           Else
+               $GCVoteVersion=2
+               MacSettings Type=R Vars=cmbStoreAvgVote,cmbStoreMedianVote,cmbStoreVoteCount,cmbStoreUserVote,cmbStoreVoteDistribution,cmbElementDelimiter File=GCVoteGrabber.xml
+           EndIf
+        Case $my_get_votes = "GCVoteGrabberSilent"
+           $GrabberConfigFile=$_AppData + "\Macros\GCVoteGrabber.gsk?grab"
+           Macro File=$GrabberConfigFile
+           SPEEDMODE Status=On
+    EndCase
+        
+    $validchars = "[°€{}\w\s\x21-\x25\x27-\x2E\xBA-\xFF]*"
+    SQLSort OrderBy="distance"
+    GOTO position=top
+    GOSUB Name=WriteHeader
+    $currentRecordCount = 1
+    GOSUB Name=WaypointLoop
+    SHOWSTATUS msg="Finished processing $totalRecordCount records."  Width=350
+    GOSUB Name=WriteFooter
+
+ENDSUB #ProcessCollection
+
+################################################################################
+BEGINSUB Name=WriteFooter
+
+    $res = AppendFile($filename_gc,UTF8($footer,"e"))
+    $res = AppendFile($filename_gcna,UTF8($footer,"e"))
+    $res = AppendFile($filename_wp,UTF8($footer,"e"))
+    $res = AppendFile($filename_wpna,UTF8($footer,"e"))
+    $res = AppendFile($filename_todo,UTF8($footer,"e"))
+
+    $res = PutFile($filename_lu,UTF8($header_lu,"e"))
+
+    $body_lu = "<dataset-name>default</dataset-name>" + $_newLine
+    $body_lu = $body_lu + "<loading-date>"+Substr(DateToString($_Today),1,4) + "-" + Substr(DateToString($_Today),5,2) + "-" + Substr(DateToString($_Today),7,2) + "T" + Time()+"</loading-date>" + $_newLine
+    $body_lu = $body_lu + "<active-cache>[ACTIVE_CNT]</active-cache>" + $_newLine
+    $body_lu = $body_lu + "<unavailable-cache>[UNAVAILABLE_CNT]</unavailable-cache>" + $_newLine
+    $body_lu = $body_lu + "<active-waypoint>[ACTIVE_WP_CNT]</active-waypoint>" + $_newLine
+    $body_lu = $body_lu + "<unavailable-waypoint>[UNAVAILABLE_WP_CNT]</unavailable-waypoint>" + $_newLine
+    $body_lu = $body_lu + "<caches-sum>[CACHES_SUM]</caches-sum>" + $_newLine
+    $body_lu = $body_lu + "</content>" + $_newLine
+    $body_lu = $body_lu + "</entry>" + $_newLine
+
+    $body_lu = replace("[ACTIVE_CNT]",           NumToStr($countGC),       $body_lu, true)
+    $body_lu = replace("[UNAVAILABLE_CNT]",      NumToStr($CountGCNA),     $body_lu, true)
+    $body_lu = replace("[ACTIVE_WP_CNT]",        NumToStr($CountWP),       $body_lu, true)
+    $body_lu = replace("[UNAVAILABLE_WP_CNT]",   NumToStr($CountWPNA),     $body_lu, true)
+    $body_lu = replace("[CACHES_SUM]",  NumToStr($countGC+$CountGCNA),     $body_lu, true)
+
+    $res = AppendFile($filename_lu,UTF8($body_lu,"e"))
+    $res = AppendFile($filename_lu,UTF8($footer_lu,"e"))
+    
+
+
+ENDSUB #WriteFooter
+
+################################################################################
+BEGINSUB Name=WriteHeader
+
+    $headerdate = Substr(DateToString($_Today),1,4) + "-" + Substr(DateToString($_Today),5,2) + "-" + Substr(DateToString($_Today),7,2) + "T" + Time()
+    $header = replace("[DATUM]", $headerdate, $header, true)
+    $res = PutFile($filename_gc,UTF8(replace("[TITLE]", "Caches available", $header, true),"e"))
+    $res = PutFile($filename_gcna,UTF8(replace("[TITLE]", "Caches unavailable", $header, true),"e"))
+    $res = PutFile($filename_wp,UTF8(replace("[TITLE]", "Additional Waypoints available", $header, true),"e"))
+    $res = PutFile($filename_wpna,UTF8(replace("[TITLE]", "Additional Waypoints unavailable", $header, true),"e"))
+    $res = PutFile($filename_todo,UTF8(replace("[TITLE]", "ToDo-List for basket", $header, true),"e"))
+    
+ENDSUB #WriteHeader
+
+################################################################################
+BEGINSUB Name=WaypointLoop
+    $res = addstr(1,"clear")
+    $res = addstr(2,"clear")
+    $res = addstr(3,"clear")
+    $res = addstr(4,"clear")
+    $res = addstr(5,"clear")
+
+    if $my_populate_todo
+         $MaxCacheCnt = 30
+    endif
+    if $my_filter_cnt > 0 and $MaxCacheCnt > $my_filter_cnt
+       $MaxCacheCnt = $my_filter_cnt
+    endif
+
+    WHILE (.not. $_EOL) and $currentRecordCount  <= $MaxCacheCnt
+      If ($d_HasCorrected and $FrmRdbUseCorrFiltered or $d_CacheType<>"U") or .not. $FrmRdbUseCorrFiltered or ( $d_Found and $my_founds_different )
+        BeginCase
+           Case SubStr($d_Code,1,2) = "GC"
+              #$strLink="http://www.geocaching.com/seek/cache_details.aspx?wp="
+              $strLink=$d_Url
+              $WP_Context="Geocache"
+              GOSUB Name=CollectWaypointData
+           Case SubStr($d_Code,1,2) = "WM"
+              $strLink="http://www.waymarking.com/waymarks/"
+              $WP_Context="Waymark"
+              #http://www.waymarking.com/waymarks/WM7V50_Antiquariat_Schaden_Vienna_Austria
+           Case SubStr($d_Code,1,2) = "OC"
+              $strLink=$d_Url
+              $WP_Context="Opencache"
+              #$strLink="http://www.opencaching.de/viewcache.php?cacheid="
+              #http://www.opencaching.de/viewcache.php?cacheid=115076
+              If .not. $my_skip_unsupported_types
+                 CANCEL msg=CACH'EYE currently does not support Caches from Opencache.$_newLine Please refine your filter to exclude $d_Code!
+              EndIf
+           Case SubStr($d_Code,1,2) = "NC"
+              $strLink=d_Url
+              $WP_Context="Navicache"
+              #http://www.navicache.com/cgi-bin/db/displaycache2.pl?CacheID=
+              If .not. $my_skip_unsupported_types
+                CANCEL msg=CACH'EYE currently does not support Caches from Navicache.$_newLine Please refine your filter to exclude $d_Code!
+              EndIf
+           Case SubStr($d_Code,1,2) = "TC"
+              #$strLink=d_Url
+              $WP_Context="Terracache"
+              #http://www.TerraCaching.com/viewcache.cgi?C=
+              If .not. $my_skip_unsupported_types
+                 CANCEL msg=CACH'EYE currently does not support Caches from TerraCache.$_newLine Please refine your filter to exclude $d_Code!
+              EndIf
+           Case SubStr($d_Code,1,2) <> "GC"
+              If .not. $my_skip_unsupported_types
+                CANCEL msg=CACH'EYE currently only supports groundspeak caches. $_newLine Please refine your filter to exclude $d_Code!
+              EndIf
+        EndCase
+        $msg = "Processing record $currentRecordCount of $totalRecordCount..."
+        SHOWSTATUS msg=$msg Width=350
+      ENDIF          
+      GOTO position="next"
+    ENDWHILE 
+    $res = AppendFile($filename_gc,UTF8(addstr(1,"get"),"e"))
+    $res = AppendFile($filename_gcna,UTF8(addstr(2,"get"),"e"))
+    $res = AppendFile($filename_wp,UTF8(addstr(3,"get"),"e"))
+    $res = AppendFile($filename_wpna,UTF8(addstr(4,"get"),"e"))
+    if $my_populate_todo
+        $res = AppendFile($filename_todo,UTF8(addstr(5,"get"),"e"))
+    endif
+    $res = addstr(1,"clear")
+    $res = addstr(2,"clear")
+    $res = addstr(3,"clear")
+    $res = addstr(4,"clear")
+    if $my_populate_todo
+        $res = addstr(5,"clear")
+    endif
+ENDSUB # WaypointLoop
+
+################################################################################
+BEGINSUB Name=CollectWaypointData
+    $currentRecordCount = $currentRecordCount + 1
+
+    $cacheType     = $d_CacheType
+    $cacheTypeKeys = "BCEGLMORTUVWIZ"
+#    $cacheTypeDecs = "Unknown Cache Type;Letterbox;Cache in Trash Out;Event;Benchmark;Locationless;Multi;Other;Earth;Traditional;Unknown/Mystery;Virtual;Webcam;WhereIGo;MegaEvent"
+    $cacheTypeDecs = "Other;Letterbox;Cache in Trash Out;Event;Benchmark;Locationless;Multi;Other;Earth;Traditional;Unknown/Mystery;Virtual;Webcam;WhereIGo;MegaEvent"
+    $int = at($cacheType, $cacheTypeKeys) + 1
+    $currentCacheType = Extract($cacheTypeDecs, ";", $int)
+
+    $cacheTypeIcon = $d_CacheType
+
+    IF $d_Found and $my_founds_different
+        $cacheTypeIcon = $cacheTypeIcon + "F"
+    ELSE 
+        $cacheTypeIcon = $cacheTypeIcon + "N"
+    ENDIF 
+
+    IF $d_Archived or $d_TempDisabled
+       $cacheTypeIcon = $cacheTypeIcon + "U"
+    ELSE 
+       $cacheTypeIcon = $cacheTypeIcon + "A"
+    ENDIF 
+
+    $ident = $d_name
+    $count = RegExCount($validChars, $ident)
+    $cleaned = ""
+    $int = 1
+    WHILE $int <= $count
+          $good = RegExData($validChars,$ident,$int)
+          $cleaned = $cleaned + $good
+          $int = $int + 1
+    ENDWHILE 
+    $ident = $cleaned
+
+    $cacheName = $d_Name
+    $placedBy  = $d_PlacedBy
+
+    $diff =    replace(",",".",str($d_difficulty,3,1))
+    $terrain = replace(",",".",str($d_terrain,3,1))
+
+    $count = RegExCount($validChars, $cacheName)
+    $cleaned = ""
+    $int = 1
+    WHILE $int <= $count
+          $good = RegExData($validChars,$cacheName,$int)
+          $cleaned = $cleaned + $good
+          $int = $int + 1
+    ENDWHILE 
+    $cacheName = $cleaned
+
+    $count = RegExCount($validChars, $placedBy)
+    $cleaned = ""
+    $int = 1
+    WHILE $int <= $count
+          $good = RegExData($validChars,$placedBy,$int)
+          $cleaned = $cleaned + $good
+          $int = $int + 1
+    ENDWHILE 
+    $placedBy = $cleaned
+
+    $Lat = $d_LatOriginal
+    $Lon = $d_LonOriginal
+
+    IF $my_use_corrected
+       IF $d_HasCorrected
+          $Lat = $d_Latitude
+          $Lon = $d_Longitude
+       ENDIF
+    ENDIF        
+
+    IF Val($Lat) < $MinLat
+       $MinLat = Val($Lat)
+    ENDIF
+
+    IF Val($Lat) > $MaxLat
+       $MaxLat = Val($Lat)
+    ENDIF
+
+    IF Val($Lon) < $MinLon
+       $MinLon = Val($Lon)
+    ENDIF
+
+    IF Val($Lon) > $MaxLon
+       $MaxLon = Val($Lon)
+    ENDIF
+
+    $LatLon = replace(";"," ",GCalc(($Lat + " " + $Lon),"FormatDegrees"),true)
+
+    BeginCase
+       Case $my_get_votes="GCVoteGrabber" or $my_get_votes="GCVoteGrabberSilent"
+					gosub name="ExtractVoteElements"
+          $GCVoteAvg=numtostr($nVoteAvg)
+          $GCVoteCnt=numtostr($nVoteCnt)
+       Case $my_get_votes="GetOnline"
+          GOSUB Name=GetGCVotes
+       Case $my_get_votes="NoVotes"
+          $GCVoteAvg="0"
+          
+    EndCase
+    If .not. RegEx("[\d]",$GCVoteAvg)
+       $GCVoteAvg="0"
+       $GCVoteCntError=True
+       #CANCEL msg="The Field given by GCVoteGrabber.xml does not contain a valid average! Please rerun GCVoteGrabber! The Macro is being cancelled!"
+    EndIf
+    If .not. RegEx("[\d]",$GCVoteCnt)
+       $GCVoteCnt="0"
+       $GCVoteCntError=True
+       #CANCEL msg="The Field given by GCVoteGrabber.xml does not contain a valid count! Please rerun GCVoteGrabber!"
+    EndIf
+
+    GOSUB Name=ExportWP
+
+    $body = ""
+    $strCode ="Code"
+    $strHtml ="html"
+    $strContext="Context"
+    $strOrigin="Origin"
+    $strType ="Type"
+    $strDiff ="Diff"
+    $strTerrain ="Terrain"
+    $strSize ="Size"
+    $strFound ="Found"
+    $strCorrected ="Corrected"
+    $strRefresh ="LastRefresh"
+    #$LastGPXDate =DateFormat($d_LastGPXDate)
+    $LastGPXDate = Substr(DateToString($d_PlacedDate),1,4) + "-" + Substr(DateToString($d_PlacedDate),5,2) + "-" + Substr(DateToString($d_PlacedDate),7,2) + "T00:00:00Z"
+    $strGCVoteAvg ="GCVoteAverage"
+    $strGCVoteCnt ="GCVoteCount"
+    $strNoGCVote = "NoGCVote"
+
+    $body = "<atom:entry>" + $_newLine
+    $body = $body + "<atom:title>[IDENT]</atom:title>" + $_newLine
+    $body = $body + "<atom:placed>[PLACEDBY]</atom:placed>" + $_newLine
+    #$body = $body + "<atom:link href='http://www.geocaching.com/seek/cache_details.aspx?wp=[GCCODE]'/>" + $_newLine
+    $body = $body + "<atom:link href='"+$strLink+"'/>" + $_newLine
+    If $WP_Context = "Geocache"
+         $body = $body + "<atom:link rel='log' href='http://www.geocaching.com/seek/log.aspx?wp=[GCCODE]'/>" + $_newLine
+    EndIf
+    $body = $body + "<atom:icon>[CACHETYPE_[CACHETYPE]]</atom:icon>" + $_newLine
+    $body = $body + "<atom:description type="+Quote($strHtml)+">" + $_newLine
+    $body = $body + " &lt;span class="+Quote($strOrigin)+"&gt;GSAK&lt;/span&gt;" + $_newLine
+    $body = $body + " &lt;span class="+Quote($strContext)+"&gt;[GCCONTEXT]&lt;/span&gt;" + $_newLine
+    $body = $body + " &lt;span class="+Quote($strCode)+"&gt;[GCCODE]&lt;/span&gt;" + $_newLine
+    If $WP_Context = "Geocache"
+        $body = $body + " &lt;span class="+Quote($strType)+"&gt;[CACHETYPEDECS]&lt;/span&gt;" + $_newLine
+    EndIf
+    If $WP_Context <> "Waymark"
+        $body = $body + " &lt;span class="+Quote($strDiff)+"&gt;[DIFF]&lt;/span&gt;" + $_newLine
+        $body = $body + " &lt;span class="+Quote($strTerrain)+"&gt;[TERRAIN]&lt;/span&gt;" + $_newLine
+        $body = $body + " &lt;span class="+Quote($strSize)+"&gt;[SIZE]&lt;/span&gt;" + $_newLine
+    EndIf
+    $body = $body + " &lt;span class="+Quote($strFound)+"&gt;[FOUND]&lt;/span&gt;" + $_newLine
+    $body = $body + " &lt;span class="+Quote($strRefresh)+"&gt;[LASTGPXDATE]&lt;/span&gt;" + $_newLine
+    If $WP_Context <> "Geocache"
+        $body = $body + " &lt;span class="+Quote($strNoGCVote)+"&gt;TRUE&lt;/span&gt;" + $_newLine
+    Else
+        $body = $body + " &lt;span class="+Quote($strCorrected)+"&gt;[CORRECTED]&lt;/span&gt;" + $_newLine
+        $body = $body + " &lt;span class="+Quote($strGCVoteAvg)+"&gt;[GCVOTEAVERAGE]&lt;/span&gt;" + $_newLine
+        $body = $body + " &lt;span class="+Quote($strGCVoteCnt)+"&gt;[GCVOTECOUNT]&lt;/span&gt;" + $_newLine
+    EndIf
+#    $body = $body + "</atom:description>" + $_newLine
+    $body = $body + "[END_DESCRIPTION]" + $_newLine
+    $body = $body + "<georss:point>[COORDS]</georss:point>" + $_newLine
+    $body = $body + "</atom:entry>" + $_newLine
+
+    $body = replace("[IDENT]",           $ident,                 $body, true)
+    $body = replace("[PLACEDBY]",        $placedby,              $body, true)
+    $body = replace("[GCCONTEXT]",       $WP_Context,            $body, true)
+    $body = replace("[GCCODE]",          $d_Code,                $body, true)
+    $body = replace("[CACHETYPEDECS]",   $CurrentCacheType,      $body, true)
+    $body = replace("[CACHETYPE]",       $CacheTypeIcon,         $Body, true)
+    $body = replace("[DIFF]",            $diff,                  $body, true)
+    $body = replace("[TERRAIN]",         $terrain,               $body, true)
+    $body = replace("[SIZE]",            $d_container,           $body, true)
+    $body = replace("[COORDS]",          $LatLon,                $Body, true)
+    IF $my_use_corrected AND $d_HasCorrected AND ( $d_CacheType = "M" OR $d_CacheType = "U" ) AND .not. $d_Archived AND .not. $d_TempDisabled
+       $body = replace("[CORRECTED]","TRUE",$body, true)
+    ELSE
+       $body = replace("[CORRECTED]","FALSE",$body, true)
+    ENDIF
+
+    IF $my_founds_different and $d_Found
+       $body = replace("[FOUND]","TRUE",$body, true)
+    ELSE
+       $body = replace("[FOUND]","FALSE",$body, true)
+    ENDIF
+    $body = replace("[LASTGPXDATE]",     $LastGPXDate,           $Body, true)
+    $body = replace("[GCVOTEAVERAGE]",   $GCVoteAvg,             $Body, true)
+    $body = replace("[GCVOTECOUNT]",     $GCVoteCnt,             $Body, true)
+
+    IF $d_Archived or $d_TempDisabled
+       $CountGCNA = $CountGCNA + 1
+       $body = replace("[CACHETYPE_TNU]","/trd.png",$body, true)
+       $body = replace("[CACHETYPE_MNU]","/mud.png",$body, true)
+       $body = replace("[CACHETYPE_BNU]","/lbd.png",$body, true)
+       $body = replace("[CACHETYPE_LNU]","/lld.png",$body, true)
+       $body = replace("[CACHETYPE_VNU]","/vtd.png",$body, true)
+       $body = replace("[CACHETYPE_CNU]","/cid.png",$body, true)
+       $body = replace("[CACHETYPE_ONU]","/otd.png",$body, true)
+       $body = replace("[CACHETYPE_UNU]","/und.png",$body, true)
+       $body = replace("[CACHETYPE_WNU]","/wcd.png",$body, true)
+       $body = replace("[CACHETYPE_ENU]","/evd.png",$body, true)
+       $body = replace("[CACHETYPE_ZNU]","/med.png",$body, true)
+       $body = replace("[CACHETYPE_RNU]","/ead.png",$body, true)
+       $body = replace("[CACHETYPE_ANU]","/apd.png",$body, true)
+       $body = replace("[CACHETYPE_GNU]","/bmd.png",$body, true)
+       $body = replace("[CACHETYPE_INU]","/wid.png",$body, true)
+
+       $body = replace("[CACHETYPE_TFU]","/trfd.png",$body, true)
+       $body = replace("[CACHETYPE_MFU]","/mufd.png",$body, true)
+       $body = replace("[CACHETYPE_BFU]","/lbfd.png",$body, true)
+       $body = replace("[CACHETYPE_LFU]","/llfd.png",$body, true)
+       $body = replace("[CACHETYPE_VFU]","/vtfd.png",$body, true)
+       $body = replace("[CACHETYPE_CFU]","/cifd.png",$body, true)
+       $body = replace("[CACHETYPE_OFU]","/otfd.png",$body, true)
+       $body = replace("[CACHETYPE_UFU]","/unfd.png",$body, true)
+       $body = replace("[CACHETYPE_WFU]","/wcfd.png",$body, true)
+       $body = replace("[CACHETYPE_EFU]","/evfd.png",$body, true)
+       $body = replace("[CACHETYPE_ZFU]","/mefd.png",$body, true)
+       $body = replace("[CACHETYPE_RFU]","/eafd.png",$body, true)
+       $body = replace("[CACHETYPE_AFU]","/apfd.png",$body, true)
+       $body = replace("[CACHETYPE_GFU]","/bmfd.png",$body, true)
+       $body = replace("[CACHETYPE_IFU]","/wifd.png",$body, true)
+
+$strEndDescTag = "</atom:description>"
+       $body       = replace("[END_DESCRIPTION]",$strEndDescTag,$body, true)
+
+       $res = addstr(2,"add",$body)
+    ELSE
+       $countGC = $countGC + 1
+       $body = replace("[CACHETYPE_TNA]","/tr.png",$body, true)
+       IF $my_use_corrected AND $d_HasCorrected
+          $body = replace("[CACHETYPE_MNA]","/muc.png",$body, true)
+       ELSE
+          $body = replace("[CACHETYPE_MNA]","/mu.png",$body, true)
+       ENDIF
+       $body = replace("[CACHETYPE_BNA]","/lb.png",$body, true)
+       $body = replace("[CACHETYPE_LNA]","/ll.png",$body, true)
+       $body = replace("[CACHETYPE_VNA]","/vt.png",$body, true)
+       $body = replace("[CACHETYPE_CNA]","/ci.png",$body, true)
+       $body = replace("[CACHETYPE_ONA]","/ot.png",$body, true)
+       IF $my_use_corrected AND $d_HasCorrected
+          $body = replace("[CACHETYPE_UNA]","/unc.png",$body, true)
+       ELSE
+          $body = replace("[CACHETYPE_UNA]","/un.png",$body, true)
+       ENDIF
+       $body = replace("[CACHETYPE_WNA]","/wc.png",$body, true)
+       $body = replace("[CACHETYPE_ENA]","/ev.png",$body, true)
+       $body = replace("[CACHETYPE_ZNA]","/me.png",$body, true)
+       $body = replace("[CACHETYPE_RNA]","/ea.png",$body, true)
+       $body = replace("[CACHETYPE_ANA]","/ap.png",$body, true)
+       $body = replace("[CACHETYPE_GNA]","/bm.png",$body, true)
+       $body = replace("[CACHETYPE_INA]","/wi.png",$body, true)
+       $body = replace("[CACHETYPE_YNA]","/wm.png",$body, true)
+
+
+       $body = replace("[CACHETYPE_TFA]","/trf.png",$body, true)
+       IF $my_use_corrected AND $d_HasCorrected
+          $body = replace("[CACHETYPE_MFA]","/mufc.png",$body, true)
+       ELSE
+          $body = replace("[CACHETYPE_MFA]","/muf.png",$body, true)
+       ENDIF
+       $body = replace("[CACHETYPE_BFA]","/lbf.png",$body, true)
+       $body = replace("[CACHETYPE_LFA]","/llf.png",$body, true)
+       $body = replace("[CACHETYPE_VFA]","/vtf.png",$body, true)
+       $body = replace("[CACHETYPE_CFA]","/cif.png",$body, true)
+       $body = replace("[CACHETYPE_OFA]","/otf.png",$body, true)
+       IF $my_use_corrected AND $d_HasCorrected
+          $body = replace("[CACHETYPE_UFA]","/unfc.png",$body, true)
+       ELSE
+          $body = replace("[CACHETYPE_UFA]","/unf.png",$body, true)
+       ENDIF
+       $body = replace("[CACHETYPE_WFA]","/wcf.png",$body, true)
+       $body = replace("[CACHETYPE_EFA]","/evf.png",$body, true)
+       $body = replace("[CACHETYPE_ZFA]","/mef.png",$body, true)
+       $body = replace("[CACHETYPE_RFA]","/eaf.png",$body, true)
+       $body = replace("[CACHETYPE_AFA]","/apf.png",$body, true)
+       $body = replace("[CACHETYPE_GFA]","/bmf.png",$body, true)
+       $body = replace("[CACHETYPE_IFA]","/wif.png",$body, true)
+       $body = replace("[CACHETYPE_YFA]","/wmf.png",$body, true)
+$strEndDescTag = "</atom:description>"
+$strBasketName="BasketName"
+$strEndDescBasketTag = " &lt;span class="+Quote($strBasketName)+"&gt;GSAK&lt;/span&gt;" + $_newLine + "</atom:description>"
+
+       $basketbody = replace("[END_DESCRIPTION]",$strEndDescBasketTag,$body, true)
+       $body       = replace("[END_DESCRIPTION]",$strEndDescTag,$body, true)
+       $res = addstr(1,"add",$body)
+       $res = addstr(5,"add",$basketbody)
+    ENDIF 
+ENDSUB # CollectWaypointData
+
+################################################################################
+BEGINSUB Name=ExportWP
+
+    TABLE Active=Waypoints Scope=Parent
+    GOTO Position=Top
+    
+    WHILE .not. $_EOL
+
+        $cBody = ""
+
+        IF $d_cType = "Final Location"
+            $cCacheType = "F"
+        ELSE 
+            IF $d_cType = "Parking Area"
+                $cCacheType = "P"
+            ELSE 
+                IF $d_cType = "Question to Answer"
+                    $cCacheType = "Q"
+                ELSE 
+                    IF $d_cType = "Stages of a Multicache"
+                        $cCacheType = "M"
+                    ELSE 
+                        IF $d_cType = "Trailhead"
+                            $cCacheType = "T"
+                        ELSE 
+                            IF $d_cType = "Reference Point"
+                                $cCacheType = "R"
+                            ELSE 
+                                $cCacheType = "U"
+                            ENDIF 
+                        ENDIF 
+                    ENDIF 
+                ENDIF 
+            ENDIF 
+        ENDIF 
+
+        $cCacheTypeIcon = "WP" + $cCacheType
+        
+        IF $d_Archived or $d_TempDisabled
+           $ccacheTypeIcon = $ccacheTypeIcon + "U"
+        ELSE 
+           $ccacheTypeIcon = $ccacheTypeIcon + "A"
+        ENDIF 
+
+        $cIdent = $d_cCode
+
+        $cLat = $d_cLat
+        $cLon = $d_cLon
+
+        # $cLatLon = replace(";"," ",GCalc(($cLat + " " + $cLon),"FormatDegrees"),true)
+        $cLatLon = $d_cLat + " " + $d_cLon
+
+        $cCacheName = $d_cName
+        $count = RegExCount($validChars, $cCacheName)
+        $cleaned = ""
+        $int = 1
+        WHILE $int <= $count
+            $good = RegExData($validChars,$cCacheName,$int)
+            $cleaned = $cleaned + $good
+            $int = $int + 1
+        ENDWHILE
+        
+        $strHtml ="html"
+        $strCode ="ParentCode" 
+        $strContext="ParentTitle"
+        $cCacheName = $cleaned
+
+        $cbody = $cbody + "<atom:entry>"  + $_newLine
+        $cbody = $cbody + "<atom:title>[CIDENT]</atom:title>" + $_newLine
+        $cbody = $cbody + "<atom:link href='http://www.geocaching.com/seek/cache_details.aspx?wp=[GCCODE]'/>" + $_newLine
+        $cbody = $cbody + "<atom:icon>[CACHETYPE_[CACHETYPE]]</atom:icon>" + $_newLine
+        $cbody = $cbody + "<atom:description type="+Quote($strHtml)+">" + $_newLine
+        $cbody = $cbody + " &lt;span class="+Quote($strContext)+"&gt;[IDENT] - [GCCODE] - [WP_TYPE] - [WP_DESCRIPTION]&lt;/span&gt;" + $_newLine
+        $cbody = $cbody + " &lt;span class="+Quote($strCode)+"&gt;[GCCODE]&lt;/span&gt;" + $_newLine
+        $cbody = $cbody + "</atom:description>" + $_newLine
+        $cbody = $cbody + "<georss:point>[COORDS]</georss:point>" + $_newLine
+        $cBody = $cBody + "</atom:entry>" + $_newLine
+
+        $cBody = replace("[CIDENT]",      $cIdent,                 $cBody, true)
+        $cBody = replace("[CACHETYPE]",   $cCacheTypeIcon,         $cBody, true)
+        $cBody = replace("[WP_DESCRIPTION]", $cCacheName,          $cBody, true)
+        $cBody = replace("[WP_TYPE]",     $d_cType,                $cBody, true)
+        $cBody = replace("[COORDS]",      $cLatLon,                $cBody, true)
+        $cbody = replace("[IDENT]",       $ident,                  $cbody, true)
+        $cbody = replace("[GCCODE]",      $d_Code,                 $cbody, true)
+
+        IF $d_Archived or $d_TempDisabled
+           $CountWPNA = $CountWPNA + 1
+           $cbody = replace("[CACHETYPE_WPFU]","/fid.png",$cbody, true)
+           $cbody = replace("[CACHETYPE_WPMU]","/msd.png",$cbody, true)
+           $cbody = replace("[CACHETYPE_WPPU]","/pkd.png",$cbody, true)
+           $cbody = replace("[CACHETYPE_WPQU]","/qud.png",$cbody, true)
+           $cbody = replace("[CACHETYPE_WPRU]","/red.png",$cbody, true)
+           $cbody = replace("[CACHETYPE_WPTU]","/thd.png",$cbody, true)
+           $cbody = replace("[CACHETYPE_WPUU]","/red.png",$cbody, true)
+           $res = addstr(4,"add",$cbody)
+       ELSE 
+           $CountWP = $CountWP + 1
+           $cbody = replace("[CACHETYPE_WPFA]","/fi.png",$cbody, true)
+           $cbody = replace("[CACHETYPE_WPMA]","/ms.png",$cbody, true)
+           $cbody = replace("[CACHETYPE_WPPA]","/pk.png",$cbody, true)
+           $cbody = replace("[CACHETYPE_WPQA]","/qu.png",$cbody, true)
+           $cbody = replace("[CACHETYPE_WPRA]","/re.png",$cbody, true)
+           $cbody = replace("[CACHETYPE_WPTA]","/th.png",$cbody, true)
+           $cbody = replace("[CACHETYPE_WPUA]","/re.png",$cbody, true)
+           $res = addstr(3,"add",$cbody)
+       ENDIF 
+
+       GOTO Position=Next
+    ENDWHILE 
+
+    TABLE Active=Caches
+
+ENDSUB # ExportWP
+################################################################################
+# Get GCVotes Average and Count directly from the Web
+BEGINSUB Name=GetGCVotes
+      $guid=RegExSub("\?guid=(.*)", $d_Url, 1, 1)
+      #Send request
+      #$urlVotes="http://dosensuche.de/GCVote/getVotes.php?version=1.5g&userName="+$sUser+"&password="+$dfPassword+"&cacheIds="+$guidList
+      #$urlVotes="http://dosensuche.de/GCVote/getVotes.php?&cacheIds="+$guid
+      $urlVotes="http://gcvote.de/getVotes.php?&cacheIds="+$guid
+      $votes = GetUrl($urlVotes)
+      $vote = regexsub("\<vote (.+?)\/\>", $votes,1,1)
+
+      #Check number of delivered votes    
+      $VotesInResult = RegExCount("\<vote (.+?)\/\>", $votes) 
+      if $VotesInResult = 0
+#         msgok msg="Request for votes did not return any votes"
+         $GCVoteAvg = "0"
+         $GCVoteCnt = "0"
+      else
+         $GCVoteAvg = regexsub("voteAvg\=\'(.+?)\'", $vote,1,1)
+         $GCVoteCnt = regexsub("voteCnt\=\'(.+?)\'", $vote,1,1)
+      endif
+
+ENDSUB # GetGCVotes
+################################################################################
+#Show help window
+beginsub name=ShowHelp
+
+msgOK msg=This opens the CACH'EYE tutorial in your browser window!
+WEB URL=$UrlDomain/node/52
+
+#  #Set title of form
+#  $frmHelp=EditForm($frmHelp, "frmHelp", "Caption", "Help")
+#  $HelpText=MimeDecode($HelpText)
+#  #Show Help Window    
+#  $FormExit = form($frmHelp,"")
+endsub
+################################################################################
+
+##############################################################################
+#Extract voting element from user field
+##############################################################################
+beginsub name=ExtractVoteElement
+	BeginCase
+		Case $sExtractVoteWhere = "UserData"
+      $sExtractVoteWhat = extract($d_UserData, $cmbElementDelimiter, $nExtractVoteUD1)
+      $nExtractVoteUD1 = $nExtractVoteUD1 + 1
+		Case $sExtractVoteWhere = "UserData2"
+      $sExtractVoteWhat = extract($d_User2, $cmbElementDelimiter, $nExtractVoteUD2)
+      $nExtractVoteUD2 = $nExtractVoteUD2 + 1
+		Case $sExtractVoteWhere = "UserData3"
+      $sExtractVoteWhat = extract($d_User3, $cmbElementDelimiter, $nExtractVoteUD3)
+      $nExtractVoteUD3 = $nExtractVoteUD3 + 1
+		Case $sExtractVoteWhere = "UserData4"
+      $sExtractVoteWhat = extract($d_User4, $cmbElementDelimiter, $nExtractVoteUD4)
+      $nExtractVoteUD4 = $nExtractVoteUD4 + 1
+	endcase
+endsub
+
+##############################################################################
+#Extract voting from user fields
+##############################################################################
+beginsub name=ExtractVoteElements
+  If $GCVoteVersion=2
+      $nExtractVoteUD1 = 1
+      $nExtractVoteUD2 = 1
+      $nExtractVoteUD3 = 1
+      $nExtractVoteUD4 = 1
+    
+    	#Extract AverageVote
+      $sExtractVoteWhere = $cmbStoreAvgVote
+      gosub name="ExtractVoteElement"
+      $sVoteAvg = $sExtractVoteWhat
+      $nVoteAvg = val($sVoteAvg)
+    
+    	#Extract MedianVote
+      $sExtractVoteWhere = $cmbStoreMedianVote
+      gosub name="ExtractVoteElement"
+      $sVoteMedian = $sExtractVoteWhat
+      $nVoteMedian = val($sVoteMedian)
+    
+    	#Extract VoteCount
+      $sExtractVoteWhere = $cmbStoreVoteCount
+      gosub name="ExtractVoteElement"
+      $sVoteCnt = $sExtractVoteWhat
+      $nVoteCnt = val($sVoteCnt)
+    
+    	#Extract UserVote
+      $sExtractVoteWhere = $cmbStoreUserVote
+      gosub name="ExtractVoteElement"
+      $sVoteUser = $sExtractVoteWhat
+      $nVoteUser = val($sVoteUser)
+    
+    	#Extract VoteDistribution
+      $sExtractVoteWhere = $cmbStoreVoteDistribution
+      gosub name="ExtractVoteElement"
+      $sVoteDistribution = $sExtractVoteWhat
+  Else
+      $nVoteAvg=Val(CustomGet("GCV_AverageVote"))
+      $nVoteCnt=Val(CustomGet("GCV_VoteCount"))
+  EndIf
+
+endsub
+################################################################################
+BEGINSUB Name=SetLock
+  $PostData = "'gsak_user','" + $my_gcnick + "','locking','get_status'"
+  $result = PostUrl($UploadUrl,$PostData)
+  If $result <> "No lock"
+     If $result <> "Error UPL-0016 Query lock "
+         CANCEL msg=There is an upload currently running!
+     EndIf
+  EndIf
+
+
+  $PostData = "'gsak_user','" + $my_gcnick + "','locking','set_lock'"
+  $result = PostUrl($UploadUrl,$PostData)
+  If Substr($result,0,14) = "Error UPL-0016" 
+     CANCEL msg=There is an upload currently running!
+  EndIf
+
+ENDSUB
+################################################################################
+BEGINSUB Name=ReleaseLock
+  $PostData = "'gsak_user','" + $my_gcnick + "','locking','release_lock'"
+  $result = PostUrl($UploadUrl,$PostData)
+  If Substr($result,0,14) = "Error UPL-0016" 
+     msgOK msg=Cannot release lock!
+  EndIf
+ENDSUB
+################################################################################
+#BEGINSUB Name=CheckGenuineness
+#  $command=GetEnvV("comspec")+" parms=/C type "+ $_AppData+"\Macros\myVirtualCache_CC.gsk > "+GetEnvV("TEMP")+"\xyz.txt"
+#  runpgm pgm=$command Wait=Yes
+#  $testing=GetFile(GetEnvV("TEMP")+"\xyz.txt")
+#  $testing=ROT13($testing)
+#  $testing=MimeEncode($testing)
+#  $int=Len($testing)
+#  msgOk msg=$int
+#  $command=GetEnvV("comspec")+" parms=/C erase "+GetEnvV("TEMP")+"\xyz.txt"
+#  runpgm pgm=$command
+#  If $int <> 111111  
+#      $testing="Broken seal!" + $_NewLine + "Please download and reinstall myCachEye.gsk!"
+#      CANCEL msg=$testing
+#  EndIf
+#ENDSUB
+################################################################################
+
+# ======================================================
+# D A T A   V A R I A B L E S
+# ======================================================
+#            xmlns="http://www.w3.org/2005/Atom" xmlns:atom="http://purl.org/atom/ns#"
+<DATA> varname=$header
+<?xml version="1.0" encoding="UTF-8"?>
+     <atom:feed cacheye:version="1.1"
+           xmlns:cacheye="http://www.cacheye.org/1/1"
+           xmlns:atom="http://www.w3.org/2005/Atom"
+           xmlns:georss="http://www.georss.org/georss">
+     <atom:title>[TITLE]</atom:title>
+     <atom:link/>
+     <atom:description>
+     Caches
+     </atom:description>
+    <atom:mappointIntlCode>cht</atom:mappointIntlCode>
+    <atom:updated>[DATUM]</atom:updated>
+<ENDDATA> 
+
+<DATA> varname=$header_lu
+<?xml version="1.0" encoding="UTF-8"?>
+       <feed xmlns="http://www.w3.org/2005/Atom" 
+             xmlns:cacheye="http://www.cacheye.org/1/1" cacheye:version="1.1">
+       <entry>
+        <content type="application/xml" xml:base="http://iqsoft.at/">
+<ENDDATA> 
+
+<DATA> varname=$footer
+    </atom:feed>
+<ENDDATA> 
+<DATA> varname=$footer_lu
+    </feed>
+<ENDDATA> 
+
+<data> VarName=$RunSilent
+PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4NCjxTZXR0aW5ncz4NCiAgPFZhcj4N
+CiAgICA8TmFtZT5teV91c2VyX2ludGVyYWN0aW9uPC9OYW1lPg0KICAgIDxUeXBlPkJvb2xlYW48L1R5
+cGU+DQogICAgPERhdGE+RmFsc2U8L0RhdGE+DQogIDwvVmFyPg0KPC9TZXR0aW5ncz4NCg==
+<enddata>
+
+<data> VarName=$HelpText
+KiBDb29yZGluYXRlcyB0byB1c2UNCiAgICAgIENvcnJlY3RlZDogRGllIGltIEdTQUsgZWluZ2VnZWJl
+bmVuIGtvcnJpZ2llcnRlbiBLb29yZGluYXRlbiB3ZXJkZW4gYW5nZXplaWd0DQogICAgICBPcmlnaW5h
+bDogRGllIG9yaWdpbmFsZW4gS29vcmRpbmF0ZW4gd2VyZGVuIGFuZ2V6ZWlndA0KKiBVcGxvYWQgdG8g
+Y2FjaGV5ZS5hdDogU29sbHRlIGVpZ2VudGxpY2ggaW1tZXIgbWFya2llcnQgc2Vpbiwgc29uc3Qgd2Vy
+ZGVuIGRpZSBEYXRlbiBuaWNodCB6dW0gU2VydmVyIA0KICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICD8YmVydHJhZ2VuIQ0KKiBMYXVuY2ggQ2FjaEV5ZSBhZnRlciBVcGxvYWQ6IFNvbGwgc29mb3J0IG5h
+Y2ggZGVtIEhvY2hsYWRlbiBkZXIgRGF0ZW4gZWluIEJyb3dzZXIgZ2VzdGFydGV0IA0KICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgd2VyZGVuPyBXZW5uIG1hcmtpZXJ0LCB3aXJrZW4gZGll
+IGZvbGdlbmRlbiBQdW5rdGUNCiogQ2FjaEV5ZSBWaWV3DQogICAgICBVc2UgZHluYW1pYyB2aWV3OiBC
+ZWltIFN0YXJ0ZW4gZGVzIEJyb3dzZXJzIHdlcmRlbiBGZW5zdGVycG9zaXRpb24vWm9vbWxldmVsIHNv
+IGdld+RobHQsIGRhc3MgYWxsZSANCiAgICAgICAgICAgICAgICAgICAgICAgIENhY2hlcyBhbmdlemVp
+Z3Qgd2VyZGVuDQogICAgICBVc2UgZGVmYXVsdCB2aWV3OiBCZWltIFN0YXJ0ZW4gZGVzIEJyb3dzZXJz
+IHdlcmRlbiBkaWUgbWl0ICJHb1RvL1NldCBEZWZhdWx0IFZpZXciIGdld+RobHRlbiANCiAgICAgICAg
+ICAgICAgICAgICAgICAgIEVpbnN0ZWxsdW5nZW4g/GJlcm5vbW1lbg0KICAgICAgVXNlIGZpeGVkIHZp
+ZXcgYXQgY2VudGVyOiBOYWNoIGRlbSBTdGFydCB3aXJkIGRhcyBGZW5zdGVyIGZpeCBhdWYgZGllIGVp
+bmdlZ2VnZWJlbmVuIFdlcnRlIA0KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBwb3NpdGlv
+bmllcnQNCiogSG93IHRvIHNob3cgZm91bmRzDQogICAgICBTaG93IGZvdW5kcyB3aXRoIGNoZWNrbWFy
+a2VkIGljb246IERpZSBnZWZ1bmRlbmVuIENhY2hlcyB3ZXJkZW4gbWl0IGVpbmVtIEjka2NoZW4gaW0g
+SWNvbiANCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgYW5nZXplaWd0DQog
+ICAgICAgICAgICAgICAgICB3aXRob3V0IGNoZWNrbWFya2VkIGljb246IEVzIHdlcmRlbiBkaWUgZ2xl
+aWNoZW4gSWNvbnMgd2llIGb8ciBkaWUgbmljaHQgZ2VmdW5kZW5lbiB2ZXJ3ZW5kZXQNCiogSG93IHRv
+IGRlYWwgd2l0aCBHQ1ZvdGVzIGZvciBmaWx0ZXJpbmcNCiAgICAgIFZvdGVzIGFscmVhZHkgc3RvcmVk
+IGluIEdTQUsgd2l0aCBHQ1ZvdGVHcmFiYmVyLmdzazogRXMgd2VyZGVuIGRpZSBtaXQgZGVtIE1ha3Jv
+IA0KICAgICAgICAgICAgICAgICAgICAgICAgICAgR0NWb3RlR3JhYmJlci5nc2sgaW0gR1NBSyBnZXNw
+ZWljaGVydGVuIFZvdGVzIChBdmcvQ250KSB6dW0gU2VydmVyIGhvY2hnZWxhZGVuLiANCiAgICAgICAg
+ICAgICAgICAgICAgICAgICAgIFdlbm4gbnVyIEF2ZyB6dXIgVmVyZvxndW5nIHN0ZWh0LCB3aXJkIGRl
+ciBDb3VudCBhdWYgMCBnZXNldHp0IHVuZCBlaW5lIFdhcm5tZWxkdW5nIA0KICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgYXVzZ2VnZWJlbi4NCiAgICAgIFJldHJpZXZlIEdDVm90ZXMgZnJvbSBkb3NlbnN1
+Y2hlLmRlIGR1cmluZyB1cGxvYWQgKHNsb3chKTogQmVpbSBMYXVmIGRlcyBNYWtyb3Mgd2VyZGVuIGRp
+ZSBWb3RlcyB2b24gDQogICAgICAgICAgICAgICAgICAgICAgICAgICBkb3NlbnN1Y2hlLmRlIGdlaG9s
+dC4gRGFzIGlzdCBsYW5nc2FtZXIgYWxzIGRlciBHcmFiYmVyLg0KICAgICAgRG9uJ3QgdXNlIEdDVm90
+ZXMgZm9yIGZpbHRlcmluZzogRGllIFdlcnRlIHdlcmRlbiBhdWYgMCBnZXNldHp0IHVuZCBzb2xsdGVu
+IG5pY2h0IHp1bSBGaWx0ZXJuIGRlciBDYWNoZXMgDQogICAgICAgICAgICAgICAgICAgICAgICAgICBi
+ZWkgZGVyIEFuemVpZ2UgdmVyd2VuZGV0IHdlcmRlbiENCiogVXNlIGFsdGVybmF0ZSBCcm93c2VyOiBl
+aW4gYW5kZXJlciBCcm93c2VyIGFscyBkZXIgaW0gU3lzdGVtIGhpbnRlcmxlZ3RlIFN0YW5kYXJkYnJv
+d3NlciBzb2xsIGdlc3RhcnRldCB3ZXJkZW4u
+<enddata>
+
+<data> VarName=$cacheye
+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
+cePP/9k=
+<enddata>
+
+
+<DATA> VarName=$UserOptions
+Name = UserOptions
+  Type = Form
+  Height = 510
+  Width = 700
+#- Outside outer Frame Top 
+Name = cacheye
+  Type = Image
+  File = cacheye.jpg
+  Height = 40
+  Left = 8
+  Source = Macro
+  Top = 3
+  Width = 110
+
+Name = title
+  Type = Label
+  Color = 9790731
+  Font = Tahoma
+  Height = 23
+  Left = 250
+  Size = 14
+  Style = normal
+  Top = 10
+  Width = 268
+  Caption = Export - User Options for 
+
+Name = lblInstallVersion
+  Type = Label
+  Height = 13
+  Left = 635
+  Top = 18
+  Width = 24
+  Caption = Vers:
+#- Outer Frame
+Name = tab1
+  Type = Groupbox
+  Height = 430
+  Left = 8
+  Top = 40
+  Visible = Yes
+  Width = 680
+  Taborder = 0
+
+Name = FrmChkSkipUnsupported
+  Type = Checkbox
+  Container = tab1
+  Height = 17
+  Left = 220
+  Top = 23
+  Width = 220
+  Taborder = 0
+  Caption = Skip unsupported caches without warning
+
+Name = FrmChkSuppressGCWarn
+  Type = Checkbox
+  Container = tab1
+  Height = 17
+  Left = 220
+  Top = 43
+  Width = 220
+  Taborder = 0
+  Caption = Suppress GCVote warnings
+
+Name = FrmChkMergeFiles
+  Type = Checkbox
+  Container = tab1
+  Height = 17
+  Left = 220
+  Top = 63
+  Width = 220
+  Taborder = 0
+  Caption = Clear map before export
+
+Name = FrmChkAutoWipe
+  Type = Checkbox
+  Container = tab1
+  Height = 17
+  Left = 220
+  Top = 83
+  Width = 220
+  Taborder = 0
+  Caption = Delete old caches when limit is exceeded
+
+Name = FrmChkPopulateToDo
+  Type = Checkbox
+  Container = tab1
+  Height = 17
+  Left = 480
+  Top = 35
+  Width = 150
+  Taborder = 0
+  Caption = Populate ToDo list "GSAK"
+  Exitonchange = Yes
+
+Name = LabelCachesNumber1
+  Type = Label
+  Container = tab1
+  Height = 13
+  Left = 480
+  Top = 70
+  Width = 150
+  Caption = Only export first:
+
+Name = FrmCntCaches
+  Type = Edit
+  Container = tab1
+  Height = 21
+  Left = 560
+  Top = 67
+  Width = 40
+  Taborder = 1
+
+Name = LabelCachesNumber2
+  Type = Label
+  Container = tab1
+  Height = 13
+  Left = 610
+  Top = 70
+  Width = 60
+  Caption = caches
+
+#-- Coordinates to use Frame
+Name = grpCorrected
+  Type = Groupbox
+  Caption = Coordinates to use
+  Container = tab1
+  Height = 80
+  Left = 10
+  Top = 19
+  Width = 200
+  Taborder = 0
+
+Name = FrmRdbUseCorr
+  Type = Radiobutton
+  Container = grpCorrected
+  Height = 17
+  Left = 10
+  Top = 15
+  Width = 70
+  Taborder = 0
+  Caption = Corrected
+  Exitonchange = Yes
+
+Name = FrmRdbUseOrig
+  Type = Radiobutton
+  Container = grpCorrected
+  Height = 17
+  Left = 10
+  Top = 55
+  Width = 60
+  Taborder = 1
+  Caption = Original
+  Exitonchange = Yes
+
+Name = FrmRdbUseCorrFiltered
+  Type = Checkbox
+  Container = grpCorrected
+  Height = 17
+  Left = 25
+  Top = 35 
+  Width = 165
+  Taborder = 0
+  Caption = Export only corrected Mysteries
+  Visible = No
+#-- Coordinates to use Frame End
+#-- CACH'EYE Frame
+Name = groupVC
+  Type = Groupbox
+  Caption = CACH'EYE
+  Container = tab1
+  Height = 280
+  Left = 10
+  Top = 100
+  Width = 660
+  Taborder = 1
+
+#--- CACH'EYE View Frame
+Name = GCView
+  Type = Groupbox
+  Caption = CACH'EYE View
+  Container = groupVC
+  Height = 200
+  Left = 10
+  Top = 20
+  Width = 245
+  Taborder = 5
+
+Name = FrmRdbUseDyn
+  Type = Radiobutton
+  Container = GCView
+  Height = 17
+  Left = 14
+  Top = 20
+  Width = 110
+  Taborder = 1
+  Caption = Use dynamic view
+
+Name = FrmRdbUseFixed
+  Type = Radiobutton
+  Container = GCView
+  Height = 17
+  Left = 14
+  Top = 58
+  Width = 140
+  Taborder = 2
+  Caption = Use fixed view at center:
+
+Name = FrmRdbUseDefault
+  Type = Radiobutton
+  Container = GCView
+  Height = 17
+  Left = 14
+  Top = 39
+  Width = 113
+  Taborder = 3
+  Caption = Use default view
+
+#---- Fixed View Properties
+Name = GCFixedView
+  Type = Groupbox
+  Caption = Fixed View Properties
+  Container = GCView
+  Height = 107
+  Left = 10
+  Top = 75
+  Width = 225
+  Taborder = 0
+
+Name = Label8
+  Type = Label
+  Container = GCFixedView
+  Height = 13
+  Left = 104
+  Top = 15
+  Width = 60
+  Caption = DecDegrees
+
+Name = FrmLat
+  Type = Edit
+  Container = GCFixedView
+  Height = 21
+  Left = 85
+  Top = 29
+  Width = 120
+  Taborder = 0
+
+Name = Label3
+  Type = Label
+  Container = GCFixedView
+  Height = 13
+  Left = 15
+  Top = 33
+  Width = 41
+  Caption = Latitude:
+
+Name = FrmLong
+  Type = Edit
+  Container = GCFixedView
+  Height = 21
+  Left = 85
+  Top = 53
+  Width = 120
+  Taborder = 1
+
+Name = Label4
+  Type = Label
+  Container = GCFixedView
+  Height = 13
+  Left = 15
+  Top = 58
+  Width = 50
+  Caption = Longitude:
+
+Name = FrmCmbZl
+  Type = Combobox
+  Container = GCFixedView
+  Directinput = No
+  Height = 21
+  Left = 85
+  Top = 77
+  Values = 8;9;10;11;12;13;14;15;16;17;18;19
+  Width = 72
+  Taborder = 2
+
+Name = Label5
+  Type = Label
+  Container = GCFixedView
+  Height = 13
+  Left = 15
+  Top = 83
+  Width = 52
+  Caption = Zoomlevel:
+#---- Fixed View Properties END
+
+#--- How to show founds Frame
+Name = FoundsVC
+  Type = Groupbox
+  Caption = How to display founds
+  Container = groupVC
+  Height = 70
+  Left = 265
+  Top = 20
+  Width = 380
+  Taborder = 3
+
+Name = Label1
+  Type = Label
+  Container = FoundsVC
+  Height = 13
+  Left = 20
+  Top = 18
+  Width = 62
+  Caption = Display founds
+
+Name = FrmFoundDifferent
+  Type = Radiobutton
+  Container = FoundsVC
+  Enabled = Yes
+  Height = 17
+  Left = 97
+  Top = 18
+  Width = 130
+  Taborder = 1
+  Caption = with checkmarked icon
+
+Name = FrmFoundSame
+  Type = Radiobutton
+  Container = FoundsVC
+  Height = 17
+  Left = 97
+  Top = 40
+  Width = 160
+  Taborder = 0
+  Caption = without checkmarked icon
+#--- How to show founds Frame END
+
+#--- How to deal with GCVotes for filtering
+Name = GCVotes
+  Type = Groupbox
+  Caption = How to deal with GCVotes for filtering
+  Container = groupVC
+  Height = 110
+  Left = 265
+  Top = 110
+  Width = 380
+  Taborder = 4
+
+Name = FrmUseGrabber
+  Type = Radiobutton
+  Container = GCVotes
+  Height = 17
+  Left = 20
+  Top = 18
+  Width = 300
+  Taborder = 0
+  Caption = Votes already stored in GSAK with GCVoteGrabber.gsk
+
+Name = FrmUseGrabberSilent
+  Type = Radiobutton
+  Container = GCVotes
+  Height = 17
+  Left = 20
+  Top = 38
+  Width = 330
+  Taborder = 1
+  Caption = Invoke GCVoteGrabber in myCachEye
+
+Name = FrmGetVotes
+  Type = Radiobutton
+  Container = GCVotes
+  Height = 17
+  Left = 20
+  Top = 58
+  Width = 330
+  Taborder = 2
+  Caption = Retrieve GCVotes from gcvote.de during export (slow!)
+
+Name = FrmNoVotes
+  Type = Radiobutton
+  Container = GCVotes
+  Enabled = Yes
+  Height = 17
+  Left = 20
+  Top = 78
+  Width = 200
+  Taborder = 3
+  Caption = Don't use GCVotes for filtering
+#--- How to deal with GCVotes for filtering END
+
+Name = FrmChkUploadVC
+  Type = Checkbox
+  Container = groupVC
+  Height = 17
+  Left = 10
+  Top = 230
+  Width = 140
+  Taborder = 0
+  Caption = Export to CACH'EYE
+
+Name = FrmChkLaunchVC
+  Type = Checkbox
+  Container = groupVC
+  Height = 17
+  Left = 200
+  Top = 230
+  Width = 180
+  Taborder = 1
+  Caption = Launch CACH'EYE after Export
+
+Name = FrmChkAltBrowser
+  Type = Checkbox
+  Container = groupVC
+  Height = 17
+  Left = 10
+  Top = 250
+  Width = 130
+  Taborder = 2
+  Caption = Use alternate Browser:
+
+Name = FrmAltBrowser
+  Type = File
+  Container = groupVC
+  Height = 21
+  Left = 200
+  Top = 250
+  Width = 262
+  Taborder = 3
+#-- CACH'EYE Frame END
+
+#- Outer Frame END
+
+# Outside outer Frame Buttom
+Name = btnRun
+  Type = Button
+  Container = tab1
+  Height = 25
+  Left = 10
+  Top = 390
+  Width = 100
+  Taborder = 1
+  Caption = Run
+
+Name = btnCancel
+  Type = Button
+  Container = tab1
+  Height = 25
+  Left = 120
+  Top = 390
+  Width = 100
+  Taborder = 2
+  Caption = Cancel
+
+Name = btnUserPW
+  Type = Button
+  Container = tab1
+  Height = 25
+  Left = 240
+  Top = 390
+  Width = 100
+  Taborder = 4
+  Caption = Change User/PW
+
+Name = btnCacheyeLink
+  Type = Button
+  Container = tab1
+  Height = 25
+  Left = 360
+  Top = 390
+  Width = 210
+  Taborder = 6
+  Caption = View CACH'EYE Webpage
+
+Name = btnHelp
+  Type = Button
+  Container = tab1
+  Height = 25
+  Left = 590
+  Top = 390
+  Width = 80
+  Taborder = 5
+  Caption = Help
+
+<enddata>
+
+
+
+############################################################# 
+ 
+
+<DATA> VarName=$username_pw
+
+    
+Name = username_pw
+  Type = Form
+  Height = 220
+  Width = 510
+
+Name = InstallTab
+  Type = Groupbox
+  Height = 90
+  Left = 8
+  Top = 40
+  Visible = Yes
+  Width = 489
+  Taborder = 0
+
+Name = InstallTitle
+  Type = Label
+  Color = 9790731
+  Font = Tahoma
+  Height = 23
+  Left = 120
+  Size = 14
+  Style = normal
+  Top = 10
+  Width = 199
+  Caption = My CACH'EYE - Account
+
+Name = btnVerify
+  Type = Button
+  Height = 25
+  Left = 17
+  Top = 147
+  Width = 95
+  Taborder = 1
+  Caption = Verify
+
+Name = btnCancelInstall
+  Type = Button
+  Height = 25
+  Left = 116
+  Top = 147
+  Width = 95
+  Taborder = 2
+  Caption = Cancel
+
+Name = lblInstallVersion
+  Type = Label
+  Height = 13
+  Left = 330
+  Top = 150
+  Width = 97
+  Caption = myCachEye Version:
+
+Name = FrmGCNick
+  Type = Edit
+  Container = InstallTab
+  Height = 21
+  Left = 215
+  Top = 20
+  Width = 257
+  Taborder = 0
+
+Name = Installlbl2
+  Type = Label
+  Container = InstallTab
+  Height = 13
+  Left = 29
+  Top = 20
+  Width = 159
+  Caption = Enter Your CACH'EYE Nickname:
+
+Name = Label1
+  Type = Label
+  Container = InstallTab
+  Height = 13
+  Left = 29
+  Top = 60
+  Width = 157
+  Caption = Enter Your CACH'EYE Password:
+
+Name = FrmVCPass
+  Type = Edit
+  Container = InstallTab
+  Height = 21
+  Left = 215
+  Top = 60
+  Width = 257
+  Taborder = 1
+
+<enddata>
+
+
+
+<Data> VarName=$frmHelp
+Name = frmHelp
+  Type = Form
+  Height = 490
+  Width = 560
+
+Name = HelpText
+  Type = Memo
+  Enabled = Yes
+  Font = Tahoma
+  Height = 417
+  Left = 0
+  Readonly = Yes
+  Scrollbars = Vertical
+  Top = 0
+  Width = 550
+  Wrap = Yes
+  Taborder = 2
+
+Name = pbExit
+  Type = Button
+  Enter = Yes
+  Escape = Yes
+  Height = 35
+  Left = 170
+  Top = 420
+  Width = 200
+  Taborder = 1
+  Caption = Close
+
+<enddata>
+
+############################################################# 
+
+BEGINSUB Name=DeclareVariables
+    OPTION Explicit=Yes
+
+    DECLARE Var=$additionalParameters Type=String
+    DECLARE Var=$body Type=String
+    DECLARE Var=$basketbody Type=String
+    DECLARE Var=$body_lu Type=String
+    DECLARE Var=$cacheName Type=String
+    DECLARE Var=$cacheType Type=String
+    DECLARE Var=$cacheTypeDecs Type=String
+    DECLARE Var=$cacheTypeIcon Type=String
+    DECLARE Var=$cacheTypeKeys Type=String
+    DECLARE Var=$cBody Type=String
+    DECLARE Var=$cCacheName Type=String
+    DECLARE Var=$cCacheType Type=String
+    DECLARE Var=$cCacheTypeIcon Type=String
+    DECLARE Var=$cIdent Type=String
+    DECLARE Var=$cLat Type=String
+    DECLARE Var=$cLatLon Type=String
+    DECLARE Var=$cleaned Type=String
+    DECLARE Var=$cLon Type=String
+    DECLARE Var=$container Type=String
+    DECLARE Var=$count Type=Numeric
+    DECLARE Var=$currentCacheType Type=String
+    DECLARE Var=$currentRecordCount Type=Numeric
+    DECLARE Var=$cmbStoreAvgVote Type=String
+    DECLARE Var=$cmbStoreVoteCount Type=String
+    DECLARE Var=$diff Type=String
+    DECLARE Var=$eyepic Type=String
+    DECLARE Var=$footer Type=String
+    DECLARE Var=$footer_lu Type=String
+    DECLARE Var=$filename_gc Type=String
+    DECLARE Var=$filename_gcna Type=String
+    DECLARE Var=$filename_wp Type=String
+    DECLARE Var=$filename_wpna Type=String
+    DECLARE Var=$filename_lu Type=String
+    DECLARE Var=$filename_todo Type=String
+    DECLARE Var=$GCVoteVersion Type=Numeric
+    DECLARE Var=$GCVoteAvg Type=String
+    DECLARE Var=$GCVoteCnt Type=String
+    DECLARE Var=$GCVoteCntError Type=Boolean
+    DECLARE Var=$good Type=String
+    DECLARE Var=$guid Type=String
+    DECLARE Var=$header Type=String
+    DECLARE Var=$header_lu Type=String
+    DECLARE Var=$HelpText Type=String
+    DECLARE Var=$ident Type=String
+    DECLARE Var=$int Type=Numeric
+    DECLARE Var=$Lat Type=String
+    DECLARE Var=$LatLon Type=String
+    DECLARE Var=$Lon Type=String
+    DECLARE Var=$msg Type=String
+    DECLARE Var=$MacroDir Type=String
+    DECLARE Var=$out_folder Type=String
+    DECLARE Var=$placedBy Type=String
+    DECLARE Var=$res Type=String
+    DECLARE Var=$terrain Type=String
+    DECLARE Var=$totalRecordCount Type=Numeric
+    DECLARE Var=$validchars Type=String
+    DECLARE Var=$votes Type=String
+    DECLARE Var=$vote Type=String
+    DECLARE Var=$VotesInResult Type=Numeric
+
+    DECLARE Var=$myVersion Type=String
+    DECLARE Var=$my_reg_version Type=String
+    DECLARE Var=$my_gcnick Type=String
+    DECLARE Var=$my_vc_pw Type=String
+    DECLARE Var=$my_user_interaction Type=Boolean
+    DECLARE Var=$my_use_corrected Type=Boolean
+    DECLARE Var=$my_use_corr_filtered Type=Boolean
+    DECLARE Var=$my_upload_vc Type=Boolean
+    DECLARE Var=$my_launch_vc Type=Boolean
+    DECLARE Var=$myLogin Type=Boolean
+    DECLARE Var=$my_view Type=String
+    DECLARE Var=$my_view_lat Type=String
+    DECLARE Var=$my_view_long Type=String
+    DECLARE Var=$my_view_zoom Type=String
+    DECLARE Var=$my_founds_different Type=Boolean
+    DECLARE Var=$my_use_altbrowser Type=Boolean
+    DECLARE Var=$my_alt_browser Type=String
+    DECLARE Var=$my_get_votes Type=String
+    DECLARE Var=$my_skip_unsupported_types Type=Boolean
+    DECLARE Var=$my_suppress_gc_warn Type=Boolean
+    DECLARE Var=$my_suppress_gc_warn Type=Boolean
+    DECLARE Var=$my_populate_todo Type=Boolean
+    DECLARE Var=$my_auto_wipe Type=Boolean
+    DECLARE Var=$my_merge_files Type=Boolean
+    DECLARE Var=$my_filter_cnt Type=Numeric
+
+    DECLARE Var=$batFile Type=String
+    DECLARE Var=$configFile Type=String
+    DECLARE Var=$configFileS Type=String
+    DECLARE Var=$GrabberConfigFile Type=String
+
+    DECLARE Var=$len Type=Numeric
+    DECLARE Var=$str Type=String
+    DECLARE Var=$Data Type=String
+    DECLARE Var=$image Type=String
+
+    DECLARE Var=$FrmRdbUseCorr Type=Boolean
+    DECLARE Var=$FrmRdbUseCorrFiltered Type=Boolean    
+    DECLARE Var=$FrmRdbUseOrig Type=Boolean
+    DECLARE Var=$FrmChkLaunchVC Type=Boolean
+    DECLARE Var=$FrmChkUploadVC Type=Boolean
+    DECLARE Var=$FrmFoundSame Type=Boolean
+    DECLARE Var=$FrmFoundDifferent Type=Boolean
+    DECLARE Var=$FrmHelp Type=String
+    DECLARE Var=$FrmRdbUseDyn Type=Boolean
+    DECLARE Var=$FrmRdbUseFixed Type=Boolean
+    DECLARE Var=$FrmRdbUseDefault Type=Boolean
+    DECLARE Var=$FrmLat Type=String
+    DECLARE Var=$FrmLong Type=String
+    DECLARE Var=$FrmCmbZl Type=String
+    DECLARE Var=$FrmChkAltBrowser Type=Boolean
+    DECLARE Var=$FrmAltBrowser Type=String
+    DECLARE Var=$FrmUseGrabber Type=Boolean
+    DECLARE Var=$FrmUseGrabberSilent Type=Boolean
+    DECLARE Var=$FrmGetVotes Type=Boolean
+    DECLARE Var=$FrmNoVotes Type=Boolean
+    DECLARE Var=$FrmGCNick Type=String
+    DECLARE Var=$FrmVCPass Type=String
+    DECLARE Var=$FrmMyVersion Type=String
+    DECLARE Var=$FrmChkSkipUnsupported Type=Boolean
+    DECLARE Var=$FrmChkSuppressGCWarn Type=Boolean
+    DECLARE Var=$FrmChkMergeFiles Type=Boolean
+    DECLARE Var=$FrmChkPopulateToDo Type=Boolean
+    DECLARE Var=$FrmCntCaches Type=String
+    DECLARE Var=$FrmChkAutoWipe Type=Boolean
+    
+    DECLARE Var=$runcmdline Type=String
+    DECLARE Var=$runcmdparms Type=String
+    DECLARE Var=$formexit Type=String
+    DECLARE Var=$VCUrl Type=String
+    DECLARE Var=$UrlParm Type=String
+
+    DECLARE Var=$CountGC Type=Numeric
+    DECLARE Var=$CountGCNA Type=Numeric
+    DECLARE Var=$CountWP Type=Numeric
+    DECLARE Var=$CountWPNA Type=Numeric
+    DECLARE Var=$MaxCacheCnt Type=Numeric
+
+    DECLARE Var=$MinLat Type=Numeric
+    DECLARE Var=$MaxLat Type=Numeric
+    DECLARE Var=$MinLon Type=Numeric
+    DECLARE Var=$MaxLon Type=Numeric
+    DECLARE Var=$MapCenter Type=Numeric
+    DECLARE Var=$MapZoom Type=Numeric
+
+    DECLARE Var=$change_user_pw Type=Boolean
+
+    DECLARE Var=$WP_Context Type=String
+    DECLARE Var=$strCode Type=String
+    DECLARE Var=$strContext Type=String
+    DECLARE Var=$strOrigin Type=String
+    DECLARE Var=$strType Type=String
+    DECLARE Var=$strDiff Type=String
+    DECLARE Var=$strTerrain Type=String
+    DECLARE Var=$strSize Type=String
+    DECLARE Var=$strFound Type=String
+    DECLARE Var=$strCorrected Type=String
+    DECLARE Var=$strHtml Type=String
+    DECLARE Var=$strRefresh Type=String
+    DECLARE Var=$LastGPXDate Type=String
+    DECLARE Var=$strGCVoteAvg Type=String
+    DECLARE Var=$strGCVoteCnt Type=String
+    DECLARE Var=$strNoGCVote Type=String
+    DECLARE Var=$strLink Type=String
+    DECLARE Var=$strEndDescTag Type=String
+    DECLARE Var=$strEndDescBasketTag Type=String
+    DECLARE Var=$strBasketName Type=String
+    
+    DECLARE Var=$command Type=String
+    DECLARE Var=$testing Type=String
+    DECLARE Var=$UploadUrl Type=String
+    DECLARE Var=$UploadPoint Type=String
+    DECLARE Var=$UrlDomain Type=String
+    DECLARE Var=$UrlContent Type=String
+    DECLARE Var=$DomainName Type=String
+    DECLARE Var=$UrlSubDomain Type=String
+    DECLARE Var=$urlVotes Type=String
+    DECLARE Var=$FileData Type=String
+    DECLARE Var=$UploadData Type=String
+    DECLARE Var=$UploadedSize Type=Numeric
+    DECLARE Var=$BytesSent Type=Numeric
+    DECLARE Var=$TagEndPosition Type=Numeric
+    DECLARE Var=$part Type=Numeric
+    DECLARE Var=$ChunkSize Type=Numeric
+    DECLARE Var=$ZipFileLength Type=Numeric
+    DECLARE Var=$PostData Type=String
+    DECLARE Var=$result Type=String
+    DECLARE Var=$UploadMsg Type=String
+    DECLARE Var=$filename Type=String
+    DECLARE Var=$filename_short Type=String
+    DECLARE Var=$UplErrorCnt Type=Numeric
+    DECLARE Var=$MaxUploadSize Type=Numeric
+    DECLARE Var=$DataSet Type=String
+    DECLARE Var=$headerdate Type=String
+
+  	DECLARE var=$cmbStoreAvgVote type=string
+  	DECLARE var=$cmbStoreMedianVote type=string
+  	DECLARE var=$cmbStoreVoteCount type=string
+  	DECLARE var=$cmbStoreUserVote type=string
+  	DECLARE var=$cmbStoreVoteDistribution type=string
+  	DECLARE var=$cmbMinimumVoteCount type=string
+  	DECLARE var=$cmbElementDelimiter type=string
+  	DECLARE var=$nExtractVoteUD1 type=numeric
+  	DECLARE var=$nExtractVoteUD2 type=numeric
+  	DECLARE var=$nExtractVoteUD3 type=numeric
+  	DECLARE var=$nExtractVoteUD4 type=numeric
+  	DECLARE var=$sExtractVoteWhere type=string
+  	DECLARE var=$sExtractVoteWhat type=string
+  	DECLARE var=$sVoteAvg type=string
+  	DECLARE var=$sVoteMedian type=string
+  	DECLARE var=$sVoteCnt type=string
+  	DECLARE var=$sVoteUser type=string
+  	DECLARE var=$sVoteDistribution type=string
+  	DECLARE var=$nVoteAvg type=numeric
+  	DECLARE var=$nVoteMedian type=numeric
+  	DECLARE var=$nVoteCnt type=numeric
+  	DECLARE var=$nVoteUser type=numeric
+
+ENDSUB 

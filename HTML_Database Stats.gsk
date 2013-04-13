@@ -1,0 +1,83 @@
+#***************************************
+# HTMLName=Database Stats
+# SplitScreen=Yes
+# Export=No
+# Offline=No
+# Condensed=No
+#***************************************
+
+#*******************************************
+# MacDescription = Display Database Stats in Split Screen
+# MacFileName = HTML_Database Stats.gsk
+# MacAuthor = Kai Team & lignumaqua
+# MacVersion=1.4
+# MacUrl=http://gsak.net/board/index.php?showtopic=7231&view=findpost&p=43980
+#*******************************************
+
+$SQLfile = "$_Install\macros\DatabaseStats.txt"
+
+#Cache Types
+$Status = DbToSql("caches","CacheType,Container,Difficulty,Terrain",$SQLfile,"")
+
+#Replace Cache Type Letter with Cache Type Name
+$Result = Sql("UPDATE DatabaseStats SET CacheType='Project Ape' WHERE CacheType='A'","H")
+$Result = Sql("UPDATE DatabaseStats SET CacheType='Letterbox' WHERE CacheType='B'","H")
+$Result = Sql("UPDATE DatabaseStats SET CacheType='CITO' WHERE CacheType='C'","H")
+$Result = Sql("UPDATE DatabaseStats SET CacheType='Event' WHERE CacheType='E'","H")
+$Result = Sql("UPDATE DatabaseStats SET CacheType='Benchmark' WHERE CacheType='G'","H")
+$Result = Sql("UPDATE DatabaseStats SET CacheType='Locationless' WHERE CacheType='L'","H")
+$Result = Sql("UPDATE DatabaseStats SET CacheType='Multi' WHERE CacheType='M'","H")
+$Result = Sql("UPDATE DatabaseStats SET CacheType='Other' WHERE CacheType='O'","H")
+$Result = Sql("UPDATE DatabaseStats SET CacheType='Earth' WHERE CacheType='R'","H")
+$Result = Sql("UPDATE DatabaseStats SET CacheType='Traditional' WHERE CacheType='T'","H")
+$Result = Sql("UPDATE DatabaseStats SET CacheType='Unknown\Mystery' WHERE CacheType='U'","H")
+$Result = Sql("UPDATE DatabaseStats SET CacheType='Virtual' WHERE CacheType='V'","H")
+$Result = Sql("UPDATE DatabaseStats SET CacheType='Webcam' WHERE CacheType='W'","H")
+$Result = Sql("UPDATE DatabaseStats SET CacheType='Maze Exhibit' WHERE CacheType='X'","H")
+$Result = Sql("UPDATE DatabaseStats SET CacheType='Mega Event' WHERE CacheType='Z'","H")
+$Result = Sql("UPDATE DatabaseStats SET CacheType='Wherigo' WHERE CacheType='I'","H")
+
+$Count = Val(Sql("Select count(CacheType) from DatabaseStats",""))
+
+#Generate cache type count table
+$Result = Sql("RELEASE TABLE temptable","")
+$Type = Sql("ASSIGN TO temptable Select CacheType as Type, count(cacheType) as Number, CacheType as Percent from DatabaseStats GROUP by Type ORDER by #Number DESC","")
+$Type = Sql("UPDATE temptable SET Percent=(100*Number/$Count)","")
+$Type = Sql("UPDATE temptable SET Percent=replace(percent,',','.')","")
+$Type = Sql("UPDATE temptable SET Percent=fix(percent,2)","")
+$Type = Sql("Select Type, Number, Percent from temptable ORDER by #Number DESC","H")
+
+#Generate container type count table
+$Result = Sql("RELEASE TABLE temptable","")
+$Container=Sql("ASSIGN TO temptable Select Container as Container, count(Container) as Number, CacheType as Percent from DatabaseStats GROUP by Container ORDER by #Number DESC","H")
+$Container = Sql("UPDATE temptable SET Percent=(100*Number/$Count)","")
+$Container = Sql("UPDATE temptable SET Percent=replace(percent,',','.')","")
+$Container = Sql("UPDATE temptable SET Percent=fix(percent,2)","")
+$Container=Sql("Select Container, Number, Percent from temptable ORDER by #Number DESC","H")
+
+#Generate Difficulty
+$Result = Sql("RELEASE TABLE temptable","")
+$Dif=Sql("ASSIGN TO temptable Select Difficulty as Difficulty, count(Difficulty) as Number, CacheType as Percent from DatabaseStats GROUP by Difficulty ORDER by Difficulty","H")
+$Dif = Sql("UPDATE temptable SET Percent=(100*Number/$Count)","")
+$Dif = Sql("UPDATE temptable SET Percent=replace(percent,',','.')","")
+$Dif = Sql("UPDATE temptable SET Percent=fix(percent,2)","")
+$Dif=Sql("Select Difficulty, Number, Percent from temptable ORDER by Difficulty","H")
+
+#Generate Terrain
+$Result = Sql("RELEASE TABLE temptable","")
+$Ter=Sql("ASSIGN TO temptable Select Terrain as Terrain, count(Terrain) as Number, CacheType as Percent from DatabaseStats GROUP by Terrain ORDER by Terrain","H")
+$Ter = Sql("UPDATE temptable SET Percent=(100*Number/$Count)","")
+$Ter = Sql("UPDATE temptable SET Percent=replace(percent,',','.')","")
+$Ter = Sql("UPDATE temptable SET Percent=fix(percent,2)","")
+$Ter=Sql("Select Terrain, Number, Percent from temptable ORDER by Terrain","H")
+
+#Combine Tables for output
+$h=sqltohtml($Type,"Database Statistics","")
+$h=$h + sqltohtml($Container,"","")
+$h=$h + sqltohtml($Dif,"","")
+$h=$h + sqltohtml($Ter,"","")
+
+#Generate HTML to view in split screen
+$_HTML = $h
+
+

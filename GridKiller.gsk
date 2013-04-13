@@ -1,0 +1,74 @@
+#*******************************************
+# MacVersion = 1.5
+# MacDescription = A macro to kill that Difficulty/Terrain grid, one cache a time.  It will filter your caches and only show the caches that are not filled on your grid.
+# MacAuthor = CaptainCueball
+# MacFileName = GridKiller.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=11948
+#*******************************************
+
+#***** Version History ******
+# 1.1 - Added something to create the database if it didn't exist
+# 1.2 - Added quotes around the select statement for people who use commas instead of periods to seperate decimals
+# 1.3 - Changed SQL statement to use $_SQL system variable
+# 1.4 - Removed a ; that was causing an error
+# 1.5 - Added a second question to ask which database to use for found caches
+# 1.6 - Fixed an error in line 43 with the code breaking.
+
+## Set a stop button
+SHOWSTOP
+
+## Set database
+$database = "$_install\macros\GridKiller.db3"
+$data = DbToSQLite("caches","Difficulty,Terrain",$database,"$d_Found")
+$data = sqlite("sql","create table if not exists grid (difficulty text, terrain text)")
+$data = sqlite("sql","delete from grid")
+
+# Macro to select a number of caches that are closest to a location
+INPUT Msg="Choose database that your FOUND caches are in" Default="Default"
+$found_db = $Result
+DATABASE Name=$found_db Action=Select
+
+## Move to the top of our list
+GOTO Position=Top
+
+## Clear all macro flags
+MacroFlag Type=Clear Range=All
+
+## Generate the database of found difficulty/terrain pairs
+WHILE NOT($_EOL)
+	$_SQL = "select difficulty from grid where difficulty=$d_difficulty and terrain=$d_terrain"
+	$count = sqlite("sql",$_SQL)
+
+	if not(Val($count) > 0)
+		IF $d_Found = True
+			$_SQL = "insert into grid values($d_difficulty,$d_terrain)"
+			$data = sqlite("sql",$_SQL)
+		endif
+	endif
+	goto position=Next
+ENDWHILE
+
+## Go back to top
+INPUT Msg="Choose database that you want to FIND GridKiller caches from" Default="Default"
+$cache_db = $Result
+DATABASE Name=$cache_db Action=Select
+
+goto position=Top
+
+## Generate list of caches we HAVE NOT found diffulty/terrain pairs for
+WHILE NOT($_EOL)
+	$_SQL = "select difficulty from grid where difficulty=$d_difficulty and terrain=$d_terrain"
+	$count = sqlite("sql",$_SQL)
+
+	if not(Val($count) > 0)
+		IF $d_Found = False
+			MACROFLAG Type=Set Range=1
+		endif
+	endif
+	goto position=Next
+ENDWHILE
+
+## Set filter for caches marked with the macro flag.
+MFILTER If=$d_MacroFlag
+
+

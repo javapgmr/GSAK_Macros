@@ -1,0 +1,17 @@
+#*******************************************
+# MacDescription =Check for and drop the CachesTemp table if it exists
+# MacFileName =CheckForCachesTemp.gsk
+# MacAuthor = Kai Team
+# MacVersion=1.0
+#*******************************************
+
+$_sql="PRAGMA table_info(CachesTemp)"
+$Status=Sqlite("sql",$_sql)
+
+IF $Status=""
+    MSGOK msg=The CachesTemp table does not exist in this database.  Click OK to end the macro.
+ELSE
+    MSGOK msg=CachesTemp table found. Click OK to drop the table and end the macro.
+    $_sql="DROP Table IF Exists CachesTemp"
+    $Status=Sqlite("sql",$_sql)
+ENDIF

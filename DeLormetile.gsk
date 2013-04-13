@@ -1,0 +1,2673 @@
+#*******************************************
+# MacVersion = 1.24
+# MacDescription = Breaking a regional database into subregions for geocaching
+# MacAuthor = Heiner Lieth (Hynr)
+# MacFileName = DeLormetile.gsk
+# MacUrl =
+#*******************************************
+VerCheck Version=7.7.2.56
+Gosub Name=VariableDeclarations
+$Version="1.24"
+########################## Version History
+#
+# todo: automate having the macro generate just one tile
+#       show total waypoints (including children) on the form
+# 1.24 fix lingering Macro status dialog
+#      fix problem with static GSAK database in version 8 it is attached by default
+# 1.23 overrides for puzzles
+# 1.21 fixed things so the macro can be called reliably from another macro
+# 1.2  display found caches with smiley icon and found with My Cache icon in DeLorme gpx files
+#      replaced DbToSQLite() approach with creating table from native GSAK SQL table CachesAll
+#
+# 1.09 fixed so that non-DeLorme exports do not misspell Wherigo
+#
+# 1.08 fixed bugs: save form settings only if user has been to export form to avoid unexpected errors
+#      enhancements: wrapped SQL processing into Begin/End transactions for speed increases
+#      added other exports for the tiles
+#      installed a few SQLquote() functions
+# 1.07 first release
+
+$PauseForm=Replace("DeLormetile.gsk","DeLormetile.gsk ver $Version",$PauseForm)
+$MainForm=Replace("DeLormetile.gsk","DeLormetile.gsk ver=$Version",$MainForm)
+#Preamble - warn user that some time consuming calculations are coming up and give 
+# opportunity to cancel out if this macro was started in error
+
+<data> Varname=$GTpreamble
+#This macro groups the caches in the GSAK display grid into regions shaped as rectangles (tiles). This is likely to be time consuming (2-4 minutes), especially if you have a large database displaying without any filters.
+# 
+Running this macro involves 2 steps: first the data are grouped into the groups I call "Tiles"; then you export these tiles in various format, particularly for the DeLorme PN GPSr. One of the exports allows you to create a map in the GPSr showing where the tile boundaries are. Note that loading multiple DeLorme-specific GPX files requires that the PN-34 or 40 have firmware 2.7 installed. (This last feature is not suppored on the DeLorme PN-20).
+<enddata>
+
+  IF $_Count<3
+    $PauseForm_Prompt ="Macro will terminate - please click Stop button"
+    $TmpStr="It makes no sense to run this macro on a set of only $_Count geocaches. Macro will terminate."
+    $PauseForm_Response = "NO,NO,NO,YES"  #configures buttons
+    $PauseForm_Memo=$TmpStr+$_NewLine+$GTpreamble
+  else
+# remove Yes and No buttons from pauseform since it will confuse the user
+    $PauseForm_Prompt ="Click Continue to run a preliminary analysis using the $_Count records"
+    $TmpStr="Click Continue to run a preliminary analysis using the $_Count records in the current display grid. "
+    $PauseForm_Response = "No,No,YES,YES"  #configures buttons
+    $PauseForm_Memo=$GTpreamble+$_NewLine+$TmpStr
+  endif
+  gosub Name=PauseForm
+
+<data> VarName=$GTinstructions
+
+# ============ Operating Instructions for this Macro: =================
+
+# Note that the fields on the form contain data which you can adjust.
+# Then click "Tile" button and consider the results. You can then change the numbers and recalculate. 
+# After the tiles have been created, several actions and options will appear on the form. 
+# Once the tiles are layed out to your satisfaction, create the export.
+# For PN-30/40 GPSrs running firmware 2.7 you may load the DeLorme gpx files directly to the unit by
+# putting it in "Trasfer to SD card" mode (under "Device Setup", "Connect to Computer")
+# and having the files end up directly in the gpx folder on the SD card in the unit.
+
+# ============ Description of Macro:  =================================
+
+# This macro creates regionional subdatabases out of a large database by "tiling" the geographic
+# region so that each "Tile" is
+
+# - rectangular
+
+# - respects a user-specificed number of geocaches as well as a max total number (caches+other waypoints)
+
+# - if child waypoints are included, then tiles are adjusted to not exceed hard maximum number of waypoints
+
+# You may wonder why the method used by this macro is so complex. Note that the motivation is as follows. 
+# The GPSr holding these files will be used for geocaching so that you will be traveling from one 
+# rectangular area into the other. It will be important to have a clue as to which tile you need
+# to select as you move from one Tile to the next.
+# But you cannot simply make all the tiles the same size (regular grid) because some tiles will 
+# exceed the maximum number allowed (e.g in urban areas). 
+
+# It is assumed that there is some number of caches that cannot be exceeded
+# due to hardware restrictions (e.g. 1000 waypoints). And that the user would 
+# prefer to stay below that for some other reasons (slow operation, keep room 
+# available for setting waypoints in the field or for child waypoints). 
+
+# The design of the macro is for databases where the number of caches is significantly
+# greater than 10 times the MaximumNumber
+
+# It is worthwhile visualizing the data as in the figure:
+# Let us assume that there are many thousands of
+# geocaches; note there is a regional center and rectangular "bounding box" around this region.
+# Displaying the database on a map would appear as a big blob. 
+# So now envision just the data in the bounding box.
+
+# Envision a North-south line through the bounding box, bisecting it into
+# two rectangles: an East side and a West side. (each with a different numnber of caches)
+# Further envision deviding each of these rectangles into bands running parallel to the latitudes.
+# The method here goes through each band and selects
+# as many rectangles as are needed for each to include all the geocaches in that band.
+# These rectangles "tile" the bounding box; gaps between the tiles contain no geocaches;
+# The north-south dimension of each tile is the same; east-west dimension varies.
+
+<enddata>
+###################### USER DATA SECTION ################################################
+
+  $GT_MaximumNumber = 1000  #the absolute maximum number of caches in any one region
+			    # (hardware max) 1000 for DeLorme PN-40
+  $GT_MagicNumber = 650     #the maximum number of geocaches desired (soft max)
+
+########### INITIALIZATION (users should not need to modify anything in this section #####
+
+  $StatusMessage="Setting things up - Please wait, this will take a minute or two [SQLinit]"
+  Gosub Name=StatusDisplay
+
+# Set up all the needed SQL tables
+  $TMPstr = sqlite("sql","pragma database_list")
+  if Not(RegEx("static\.db3",$TMPstr))
+    $SQLresult = sqlite("sql","attach '$_exepath\static.db3' as static")
+    $AttachedStaticManually=True
+  Else
+    $AttachedStaticManually=false
+  EndIf
+
+  # The primary table that is used in this macro is called: DeLtileCaches
+  # It does not need to persist between runs of the macro so we start by removing it if it is left over from before
+  $_SQL= "Drop Table if Exists DeLtileCaches;"
+  $SQLresult=sqlite("sql",$_SQL,"")
+  # Carefully crafting this table allows us to do everything we ultimately need to do 
+  # one problem is that there are variances in the exact names of the cachetypes which are
+  # recognized by the PN-40 firmware (e.g. Whereigo is misspelled)
+  # also we want to manipulate the symbols to maximize utility of the result
+  $SQLfields=           " Code, Cast(Latitude as Real) as NrLatitude,  "
+  $SQLfields=$SQLfields+" Cast(Longitude as Real) as NrLongitude,"  
+  $SQLfields=$SQLfields+" Symbol as FullType, Symbol as DeSym,"  # Symbol is generally Geocache, blank or some other word
+  $SQLfields=$SQLfields+" '' as TileName,"   # this later holds the tile to which the record is assigned
+  $SQLfields=$SQLfields+"Found, IsOwner, "   # include the fields that are needed to calculate symbols
+  $SQLfields=$SQLfields+"HasCorrected, "     # even for overrides
+  $SQLfields=$SQLfields+"PlacedDate,Name,PlacedBy,container,Difficulty, Terrain, Hints, Longdescription, Shortdescription,"
+  $SQLfields=$SQLfields+" CacheType"  # needed to assign correct symbol
+  # Fill the table with the data that is currently in the display grid
+  $_SQL= "Create Table DeLtileCaches as Select $SQLfields from ($_SqlGrid);"
+  $SQLresult=sqlite("sql",$_SQL,"")
+
+  # The above step set up the FullType field in the table; at this point contains default text 
+  #  The following changes the default text where that is needed
+  IF $AttachedStaticManually
+     #this worked before GSAK version 8.0.1.34
+     $_SQL= "UPDATE DeLtileCaches SET FullType = (SELECT d2 FROM static.lookup WHERE type='CacheTypes' AND vfrom = CacheType)"
+   Else
+     # if a static.lookup is attached some other way (by default as gsak_static.lookup after version 8.0.1.34)
+     $_SQL= "UPDATE DeLtileCaches SET FullType = (SELECT d2 FROM lookup WHERE type='CacheTypes' AND vfrom = CacheType)"
+  EndIF
+  $SQLresult=sqlite("sql",$_SQL,"")
+  $_SQL= "UPDATE DeLtileCaches SET DeSym = FullType"
+  $SQLresult=sqlite("sql",$_SQL,"")
+
+  # also use Geocache Found symbol to mark those where Found status is "true"
+  $_SQL= "UPDATE DeLtileCaches SET DeSym = 'Geocache Found' WHERE Found"
+  $SQLresult=sqlite("sql",$_SQL,"")
+
+  # also use the DeLorme specific "My Cache" symbol to mark those which have been found
+  $_SQL= "UPDATE DeLtileCaches SET DeSym = 'My Cache' WHERE IsOwner"
+  $SQLresult=sqlite("sql",$_SQL,"")
+
+  # also replace puzzles with corrected coordinates to use the Waymark symbol
+  $_SQL= "UPDATE DeLtileCaches SET DeSym = 'Waymark' WHERE HasCorrected and CacheType='U'"
+  $SQLresult=sqlite("sql",$_SQL,"")
+
+  # Setup sql table for the tiles that will result from this macro run
+  $_SQL= "Drop Table if Exists DeLtiles; "
+  $SQLfields="TileName text, CacheCount integer, ChildCount integer, MinLat real, MaxLat real, MinLon real, MaxLon real"
+  $_SQL= $_SQL+"Create Table DeLtiles ( $SQLfields ) ;"
+  $SQLresult=sqlite("sql",$_SQL,"")
+
+  $_SQL= "Select count(*) From DeLtileCaches"
+  $TotalCacheCountStr=sqlite("sql",$_SQL)
+  $MainForm = EditForm($MainForm,"TotalCacheCountEdit","Caption","$TotalCacheCountStr")
+  $TotalCacheCount=val($TotalCacheCountStr)
+  $StatusMessage="Note there are $TotalCacheCount geocaches that will be processed"
+  Gosub Name=StatusDisplay
+
+  $LineFeed=chr(10)  # PN40 seems to use just linefeed to mark new lines
+  macroflag type=clear range=all
+
+# Initialize various form elements and variables
+  $MaxLogNrEdit = "9"
+  $IncludeAddtnl= true
+
+  #  Initialize variables needed to do the DeLorme file generation
+  $DeLormeGPX_Folder="$_AppData\macros\gpx"
+  $DeLormeDraw_Folder="$_AppData\macros\gpx"
+  $RegularGPX_Folder="$_AppData\macros\gpx"
+  $OtherExport_Folder="$_AppData\macros\gpx"
+  $KMLFolder="$_AppData\macros\gpx"
+  $SetNameEdit="Tmp"
+
+  # initialize the form elements:
+  $HardMaxEdit="$GT_MaximumNumber"  # this is the maximum which cannot be exceeded EVER (firmware dependent)
+  $SoftMaxEdit="$GT_MagicNumber"    # this is the maximum that the user prefers - it could be exceeded slightly
+  # note: soft maximum is used so we can be flexible with regard to child waypoints
+  # because the $SoftMaxEdit+(number of child waypoints) must stay under $HardMaxEdit
+  $MaxLogNr = val($MaxLogNrEdit)
+  $memo2=Replace($_NewLine+"# "+$_NewLine,"@LF@",$GTinstructions)
+  $memo2=Replace($_NewLine+"# "," ",$memo2)
+  $memo2=Replace("@LF@",$_NewLine+$_NewLine+"     ",$memo2)
+
+  $MainForm = EditForm($MainForm,"ExportButton","Visible","No")
+
+  $LabelColor="Black:0"
+
+  $ExportForm = EditForm($ExportForm,"GPXSavedSettings","Values","... Last Active;"+SysInfo("S_GPX"))
+  $ExportForm = editForm($ExportForm,"OtherExportComboBox","Values",Replace($_NewLine,";",$GSAKexportlist))
+  $OtherExportSavedSettings=" "
+  $OtherExportCheckbox= false
+
+# Restore settings to replace the defaults with values that were used the last time
+  Macsettings Type=R FileCheck=N
+
+  Gosub Name=CalculateBoundingBox
+
+# Approximate the ideal number of bands
+  $BandNumber=Round(1+sqrt($TotalCacheCount/$GT_MagicNumber)/2 , 0)
+  IF $BandNumber<1
+    # if this is less than 1, then the program will have problems
+    $BandNumber=1
+  Endif
+  $BandNumberEdit="$BandNumber"
+  $TMPkml=""
+
+  $StatusMessage="Setting things up - Please wait, this will take a minute or two [BMPinit]" 
+  Gosub Name=StatusDisplay
+
+#  The BMP image is generally 600 x 600 although the canvas is a bit bigger (620x620) so that
+#  we can be lazy and not check for overflow of the canvas at every possible instance (eg edges
+#  of symbols or orther graphic elements. The image seen on the form consists of two BMP layers,
+#  one the back layer (on which the background, grid lines, etc), the other is the Front layer
+#  for displaying objects that should always be seen over anything that is on the back layer.
+#  Never call any of the BMP routines unless you have done the following to set colors, sizes etc
+  Gosub Name=BMPinitialization
+  Gosub Name=CalculateBoundingBox
+  $BMP_BB_N=Round(val($BB_Nedit),2)
+  $BMP_BB_S=Round(val($BB_Sedit),2)
+  $BMP_BB_E=Round(val($BB_Eedit),2)
+  $BMP_BB_W=Round(val($BB_Wedit),2)
+# note that the Center point is initiallized to be the center of the data culster
+# user may change this pivotal point later
+  $BMP_Y=$CenterLat
+  $BMP_X=$CenterLon
+
+# Calculate the relative reference to the BMP image canvas
+  Gosub Name=BMPSetRelative 
+
+# Draw all the caches in the current filter onto the front canvas
+  $BMP_Array=$BMP_ArrayFront
+  $BMP_ColorNr=$BMP_ColorNrBlue
+  Gosub Name=BMPDrawDisplayGrid
+
+# Here we draw the bounding box the same way any rectangle would be drawn:
+# Drawing Bounding box (thin) and reference line (thick), both on the back
+  $BMP_Array=$BMP_ArrayBack
+  Gosub Name=DrawBBandReferenceLon
+
+#now draw into the Form so that it can show the graphic when it is displayed
+#  use the provided MimeEncoded BMP header
+  $BMP620square=MimeDecode($BMP620HeadMime)
+
+# Save the background image so it can be restored during experimental tiling
+  $BMP_icnt=1
+  While $BMP_icnt<=$BMP_PixMax
+    Array($BMP_ArrayBack2,$BMP_icnt)=Array($BMP_ArrayBack,$BMP_icnt)
+  $BMP_icnt=$BMP_icnt+1
+  endwhile
+  $BMP_CacheNames=$BMP_labels
+  $BMP_labels=""
+
+# Display Form and stay inside this while loop for the duration of the macro execution
+#  
+  $GT_KeepRunning = true
+
+  While $GT_KeepRunning # Infinite loop to redisplay form as required
+    $StatusMessage="Displaying the form" 
+    Gosub Name=StatusDisplay
+
+    # Assemble the front image layer
+    $BMP_TMPstr= $BMP620square + Array($BMP_ArrayFront,-1)
+    $GraphAreaFront=MimeEncode($BMP_TMPstr)
+    # Assemble the back image layer
+    $BMP_TMPstr= $BMP620square + Array($BMP_ArrayBack,-1)
+    $GraphAreaBack=MimeEncode($BMP_TMPstr)
+
+   # Process some of the form checkboxes and comboboxes which are set to exit the form when changed
+   IF $BMP_DisplayBackCheck
+	$MainForm=EditForm($MainForm,"GraphAreaBack","Visible","Yes")
+     else
+	$MainForm=EditForm($MainForm,"GraphAreaBack","Visible","No")
+   endif
+   IF $BMP_DisplayFrontCheck
+	$MainForm=EditForm($MainForm,"GraphAreaFront","Visible","Yes")
+     else
+	$MainForm=EditForm($MainForm,"GraphAreaFront","Visible","No")
+   endif
+   # Insert the comments between the front and back image
+   #####################  AND DISPLAY THE FORM ########################
+   $TMPstr=Replace("$_NewLine  Type = Label","$_NewLine  Type = Label $_NewLine  Style = Bold$_NewLine   Color = "+extract($LabelColor,":",2),$BMP_labels)
+   IF $BMP_DisplayLabels
+	$MainFormWithLabels=replace("Name=GraphAreaFront","$BMP_CacheNames $TMPstr Name=GraphAreaFront",$MainForm)
+	$FormExit = form($MainFormWithLabels,"")
+    Else
+	$MainFormWithLabels=replace("Name=GraphAreaFront","$TMPstr Name=GraphAreaFront",$MainForm)
+	$FormExit = form($MainFormWithLabels,"")
+   Endif
+   # Now process the exit codes: which button was pressed and how should GSAK react
+   BeginCase
+     Case $FormExit = "BBbutton"
+	# User expects BBbutton click to result in recalcuation of bounding box
+#	Gosub Name=CalculateBoundingBox
+	# this also recalculates the reference longitude (the user might not be expecting that)
+	$BMP_BB_N=Round(val($BB_Nedit),2)
+	$BMP_BB_S=Round(val($BB_Sedit),2)
+	$BMP_BB_E=Round(val($BB_Eedit),2)
+	$BMP_BB_W=Round(val($BB_Wedit),2)
+	#Clear the two background images
+	  $BMP_icnt=1
+	  $BMP_TmpStr=""
+	  $BMP_TMPStrBack=""
+	  While $BMP_icnt<=$BMP_PixMax
+	   $BMP_TMPstr=$BMP_TMPstr+chr($BMP_ColorTransparent)
+	   if $BMP_ShowGridLines and (frac($BMP_iCnt/20)=0)
+	     $BMP_TMPstrBack=$BMP_TMPstrBack+chr($BMP_ColorGridLine)
+	   else 
+	     $BMP_TMPstrBack=$BMP_TMPstrBack+chr($BMP_ColorBackground)
+	   endif
+	   $BMP_icnt=$BMP_icnt+1
+	  endwhile
+	# set up the data structures for the BMP back layer
+	  Array($BMP_ArrayBack,-1)=$BMP_TMPstrBack
+	# we need the following so we can reset the canvas without recalculating all this
+	  Array($BMP_ArrayBack2,-1)=$BMP_TMPstrBack
+	#horizontal grid lines every 20 rows on the backdrop but only
+	  if $BMP_ShowGridLines
+	    $BMP_GridLine=Replace(chr($BMP_ColorTransparent),chr($BMP_ColorGridLine),$BMP_TMPstr)
+	    $BMP_icnt=20
+	    While $BMP_icnt<=$BMP_PixMax
+	     Array($BMP_ArrayBack,$BMP_icnt)=$BMP_GridLine
+	     Array($BMP_ArrayBack2,$BMP_icnt)=$BMP_GridLine
+	     $BMP_icnt=$BMP_icnt+20
+	    endwhile
+	  endif
+	$BMP_Array=$BMP_ArrayBack
+	Gosub Name=DrawBBandReferenceLon
+	# Save the background image so it can be restored during experimental tiling
+	$BMP_icnt=1
+	While $BMP_icnt<=$BMP_PixMax
+	  Array($BMP_ArrayBack2,$BMP_icnt)=Array($BMP_ArrayBack,$BMP_icnt)
+	$BMP_icnt=$BMP_icnt+1
+    	endwhile
+	$BMP_labels=""
+ 
+     Case $FormExit = "TileButton"
+        # The user has requested to tile the region.
+	# we need to restore the background to remove any previously calculated tiles
+	$BMP_icnt=1
+	While $BMP_icnt<=$BMP_PixMax
+	  Array($BMP_ArrayBack,$BMP_icnt)=Array($BMP_ArrayBack2,$BMP_icnt)
+	$BMP_icnt=$BMP_icnt+1
+    	endwhile
+	# also clear the tile labels
+	$BMP_labels=""
+	# Note that ProcessBands does all the area; 
+	Gosub Name=ProcessBands
+	# now that this is done, we need to change the form to show the result and to 
+	# get things ready so that the user could take approriate action
+	# make instruction box invisible and display options
+        $MainForm = EditForm($MainForm,"ExportButton","Visible","Yes")
+
+     Case $FormExit = "ExportButton"
+        Gosub Name=Do_Exports
+
+    Case $FormExit = "SystemExit"
+	$GT_KeepRunning=false
+	Break
+
+    Case $FormExit = "QuitButton"
+	# Form exit from the Exit button
+	if $_CtrlKey 
+	# If Control is held as Exit button is pressed and released: loads the form into the clipboard for editing
+	  $TmpStr="<Data> VarName=$"+"MainForm $_NewLine" + $MainForm + $_NewLine + "<enddata>"
+	  Clip data="$TmpStr"
+	  Pause msg="Data loaded into clipboard:$_NewLine$TmpStr"
+	endif
+	$GT_KeepRunning=false
+
+    Case $FormExit = "DelayExit"
+	MsgOk msg="Form exit via Delay"
+	$GT_KeepRunning=false
+
+   EndCase
+  EndWhile	# $GT_KeepRunning
+
+# Clean-up
+  ShowStatus Display=Off
+
+  IF $AttachedStaticManually
+   $_SQL= "Drop Table if Exists DeLtileCaches; DETACH static; "
+  Else
+   $_SQL= "Drop Table if Exists DeLtileCaches"
+  ENDIF
+  $SQLresult=sqlite("sql",$_SQL,"")
+
+#the following line is the end of the macro; return is used so the macro can be called from other macros     
+Return
+
+Cancel
+
+############################################################ Subroutines ##########
+
+Beginsub Name=CalculateBoundingBox
+# Recalculate bounding box and reference line for display grid
+  $_SQL= "Select max(NrLatitude) from DeLtileCaches"
+  $BB_Nedit=sqlite("sql",$_SQL)
+  $_SQL= "Select min(NrLatitude) from DeLtileCaches"
+  $BB_Sedit=sqlite("sql",$_SQL)
+  $_SQL= "Select max(NrLongitude) from DeLtileCaches"
+  $BB_Eedit=sqlite("sql",$_SQL)
+  $_SQL= "Select min(NRLongitude) from DeLtileCaches"
+  $BB_Wedit=sqlite("sql",$_SQL)
+  $CenterLon = (val($BB_Eedit)+val($BB_Wedit))/2
+  $Referencelon="$CenterLon"
+  $CenterLat = (val($BB_Nedit)+val($BB_Sedit))/2
+endsub
+
+Beginsub Name=ProcessBands
+# The collection of items is bounded by a bounding box and a 
+  $RefLongitude=val($Referencelon)
+  $BB_N=val($BB_Nedit)
+  $BB_S=val($BB_Sedit)
+  $BB_E=val($BB_Eedit)
+  $BB_W=val($BB_Wedit)
+# trap condition where reference line is not in the bounding box
+  if $RefLongitude < $BB_W
+    $RefLongitude=$BB_W
+    $Referencelon = "$RefLongitude"
+  endif
+  if $RefLongitude > $BB_E
+    $RefLongitude = $BB_E
+    $Referencelon = "$RefLongitude"
+  endif
+  $BandNumber=val($BandNumberEdit)
+  if $BandNumber<1 
+    $BandNumber=4  #if invalid data caused this to be zero, then set it to 4
+    $BandNumberEdit="$BandNumber"
+  endif
+  $GT_MaximumNumber=val($HardMaxEdit)
+  $GT_MagicNumber=val($SoftMaxEdit)
+  $iCacheGroup=1
+# empty the DeLtiles table
+  $_SQL= "DELETE FROM DeLtiles; "
+  $_SQL= $_SQL+"Select count(*) from DeLtileCaches"
+  $SQLresstr=sqlite("sql",$_SQL)
+  $TotalNrCaches=val($SQLresstr)
+
+  $SIDE="E"
+  Gosub Name=ProcessBand
+  $SIDE="W"
+  Gosub Name=ProcessBand
+
+# Go ahead and draw the tiles
+# Now draw the tiles on this back image
+    # Process every row in the DeLtiles table
+    # How many tiles are there in the list
+    $BMP_Array=$BMP_ArrayBack
+
+    $_SQL= "Select count(*) from DeLtiles;" 
+    $TotalNrTiles=val(sqlite("sql",$_SQL))
+    $RowNr=1
+    $BMP_ColorNr=9
+#  $BMP_LineThick=false
+    $SQLfields="TileName, CacheCount, ChildCount, MinLat, MaxLat, MinLon, MaxLon"
+    While $RowNr<=$TotalNrTiles
+      $_SQL= "Select $SQLfields FROM DeLtiles WHERE ROWID=$RowNr ;"
+      $TmpStr=sqlite("sql",$_SQL,"")
+      ShowStatus msg="$RowNr: Processing Tile $TmpStr"
+      $BMP_BBrectLabel=extract($TmpStr,";",1)
+      $BMP_BBrectS=val(extract($TmpStr,";",4))
+      $BMP_BBrectN=val(extract($TmpStr,";",5))
+      $BMP_BBrectW=val(extract($TmpStr,";",6))
+      $BMP_BBrectE=val(extract($TmpStr,";",7))
+      $BMP_BBrectFill=false
+      $BMP_ColorNr=$BMP_ColorNr+1
+      Gosub Name=BMPDrawBBRectangle
+      $RowNr=$RowNr+1
+      if $BMP_ColorNr=15
+        $BMP_ColorNr=3
+      endif
+      if $BMP_ColorNr=6
+	#skip the grey colors because they don't contrast
+        $BMP_ColorNr=9
+      endif
+    endwhile
+endsub
+
+Beginsub Name=ProcessBand
+# Note that this subroutine has a very similar name to the one that calls it (above)
+# the following handles either the East side or the west side of the region depending on
+# the value of $SIDE
+
+  # start by creating a new view in the SQL database 
+  $_SQL= "Drop View IF EXISTS $SIDE; "
+  $_SQL= $_SQL+"Create View IF NOT EXISTS $SIDE as Select * "
+  # Sorting the content of the view is imporant because we want the progression of tiles within
+  # a band to start at the reference longitude and go out from there:
+  if $SIDE="E"
+    $WhichWay="ASC"
+    $_SQL= $_SQL+"from DeLtileCaches Where NrLongitude >= $RefLongitude and NrLongitude <= $BB_E; "
+  else
+    $WhichWay="DESC"
+    $_SQL= $_SQL+"from DeLtileCaches Where NrLongitude <= $RefLongitude and NrLongitude >= $BB_W; "
+  Endif
+  $SQLresstr=sqlite("sql",$_SQL)
+
+  # Note that on this side of the bounding box we may not have data all
+  # the way to the northern and southern ends. So let's make the 
+  # rectangle to tile smaller if that is the case.
+  $_SQL= "Select max(NrLatitude) from $SIDE"
+  $MaxLat=val(sqlite("sql",$_SQL))
+  if $BB_N<$MaxLat
+   $MaxLat=$BB_N
+  endif
+  $_SQL= "Select min(NrLatitude) from $SIDE"
+  $MinLat=val(sqlite("sql",$_SQL))
+  if $BB_S>$MinLat
+   $MinLat=$BB_S
+  endif
+
+  # Now calculate the widths of the bands:
+  $DeltaOnThisSide=($MaxLat-$MinLat)/$BandNumber
+  $SQLresult=sqlite("sql","Begin Transaction","")
+  
+  # Let's crank through the various bands and identify tiles that cover each
+  # note that there will be east-west gaps between the times, but not between the bands
+  $iBand=1
+  $BandBot=$MinLat
+  $BandTop=$BandBot+$DeltaOnThisSide
+  While $iBand<=$BandNumber
+    # Create a new SQL view for just the data in this band
+    $_SQL= "Drop View IF EXISTS EWBand; "
+    $_SQL= $_SQL+"Create View IF NOT EXISTS EWBand as "
+    $_SQL= $_SQL+"Select * from $SIDE "
+    $_SQL= $_SQL+"Where NrLatitude>=$BandBot And NrLatitude<=$BandTop "
+    $_SQL= $_SQL+"Order by NrLongitude $WhichWay; "
+    $_SQL= $_SQL+"Select count(*) from EWBand;" 
+    $SQLresstr=sqlite("sql",$_SQL)
+    # We are not going to count down and as each tile is selected, those GCcodes are stored
+    # the remaining ones will then be processed, until none remain. So we need to know 
+    # how many remain at any point:
+    $Remaining=val($SQLresstr)
+    $Limit=$GT_MagicNumber
+    $Offset=0
+    $CurrentCount=0
+
+    # the following is set up to set up at most this many
+    #$GT_MaxNrTilesPerBand=9
+    # tiles per band. This is an arbitrary decision to avoid nearly infinite loops
+
+    While ($Remaining > 0) # and ($CurrentCount <= $GT_MaxNrTilesPerBand)
+      $CurrentCount = $CurrentCount+1
+      ShowStatus msg="$CurrentCount: Processing Tile $CurrentCount in band $iBand$SIDE"
+
+      # subset a region within the current band using the most nr caches the user wants
+      $_SQL= "Drop View If Exists Current; Create View Current as "
+      $_SQL= $_SQL+"Select * from EWBand Limit $Limit Offset $Offset "
+      $SQLresstr=sqlite("sql",$_SQL)
+
+      # The method here is to first try to do things as the user wants
+      # but this can result in exceding the absolute (hard) maximum 
+      # so we need to modify the tile when that happens
+      # Count the number of caches in Current
+      $_SQL= "Select count(*) from Current "
+      $SQLresstr=sqlite("sql",$_SQL)
+      $CacheCount=val($SQLresstr)
+
+      # Count the number of additional waypoints in this set
+      $_SQL= "Select code from Current "
+      $_SQL= "Select count(*) FROM Waypoints where cParent in ($_SQL)"
+      $AddntCount=val(sqlite("sql",$_SQL))
+      IF ($Remaining-$CacheCount)<(0.1*$GT_MagicNumber)
+        # if there are less than 10% of the desired number per tile remaining for the next tile
+        # then go ahead and try to consolidate it into the current tile.
+        $_SQL= "Drop View If Exists Current; Create View Current as "
+        $_SQL= $_SQL+"Select * from EWBand Limit $GT_MaximumNumber Offset $Offset "
+        $SQLresstr=sqlite("sql",$_SQL)
+	# Count the numer of caches
+	$_SQL= "Select count(*) from Current "
+	$SQLresstr=sqlite("sql",$_SQL)
+	$CacheCount=val($SQLresstr)
+
+        $_SQL= "Select code from Current "
+        $_SQL= "Select count(*) FROM WayAll where cParent in ($_SQL)"
+        $AddntCount=val(sqlite("sql",$_SQL))
+        $TotalCurrent=$CacheCount+$AddntCount
+      endif
+
+      IF $TotalCurrent>$GT_MaximumNumber  # if so then recalculate as follows
+	# reduce the $Limit to be so that it WILL work for sure
+	# and recalculate the region
+	$Limit=$Limit-($TotalCurrent-$GT_MaximumNumber)
+	$_SQL= "Drop View IF EXISTS Current; CREATE VIEW Current AS "
+	$_SQL= $_SQL+"SELECT * FROM EWBand LIMIT $Limit OFFSET $Offset "
+	$SQLresstr=sqlite("sql",$_SQL)
+	# Count the numer of caches
+	$_SQL= "Select count(*) from Current "
+	$SQLresstr=sqlite("sql",$_SQL)
+	$CacheCount=val($SQLresstr)
+	# Count the number of additional waypoints in this set
+	$_SQL= "Select code from Current "
+	$_SQL= "Select count(*) FROM WayAll where cParent in ($_SQL)"
+	$AddntCount=val(sqlite("sql",$_SQL))
+	$TotalCurrent=$CacheCount+$AddntCount  # so this should be smaller than $GT_MaximumNumber
+	# Current view now holds the caches in this set
+      Endif
+
+      # Get the list of codes of the current view and store it for later use in a LIST
+      $_SQL= "Select code from Current "
+      $SQLresstr=sqlite("sql",$_SQL)
+
+      $_SQL= "Select min(NrLongitude) from Current "
+      $TmpLonMin=sqlite("sql",$_SQL)
+      $_SQL= "Select max(NrLongitude) from Current "
+      $TmpLonMax=sqlite("sql",$_SQL)
+      $RegionName="$iBand$SIDE$CurrentCount"
+      $SQLfields="TileName, CacheCount, ChildCount, MinLat, MaxLat, MinLon, MaxLon"
+      $_SQL=       "INSERT INTO DeLtiles ($SQLfields) "
+      $_SQL= $_SQL+"VALUES ("+SQLquote($RegionName)+", $CacheCount,$AddntCount,$BandBot, $BandTop, $TmpLonMin,$TmpLonMax );"
+      $SQLresult=sqlite("sql",$_SQL,"")
+      $Remaining=$Remaining-$CacheCount
+      $Offset=$Offset+$Cachecount
+      $Limit=$GT_MagicNumber
+    endwhile
+    $iBand=$iBand+1
+    $BandBot=$BandTop
+    $BandTop=$BandBot+$DeltaOnThisSide
+  Endwhile
+  # Time for a little clean-up
+  $_SQL= "Drop View IF EXISTS $SIDE; Drop View IF EXISTS EWBand; Drop View IF EXISTS Current;"
+  $SQLresstr=sqlite("sql",$_SQL)
+  $SQLresult=sqlite("sql","End Transaction","")
+Endsub
+
+Beginsub Name=Sanitize
+  # sanitize string in $SaniString
+  $SaniString=Replace("&",    "&amp;", $SaniString)         # deal with cachersnames with ampersands
+  $SaniString=Replace("&amp;amp;",    "&amp;", $SaniString) # switch all oversantized amp tags back
+  $SaniString=Replace("'",    "&apos;",$SaniString)
+  $SaniString=Replace($_Quote,"&quot;",$SaniString)
+  $SaniString=Replace("<",    "&lt;",  $SaniString)
+  $SaniString=Replace(">",    "&gt;",  $SaniString)
+endsub
+      
+Beginsub Name=Do_Exports
+  # $StatusMessage always starts with "Export" anytime we are in this section
+  $StatusMessage="Export"
+
+  $_SQL= "Select code from DeLtileCaches "
+  $SavedFilter = sqlite("sql",$_SQL,"")
+
+  $SQLfields="TileName, CacheCount, ChildCount, MinLat, MaxLat, MinLon, MaxLon"
+  $_SQL= "Select $SQLfields from DeLtiles"
+  $memo2="Resulting tiles:"+ $_NewLine+sqlite("sql",$_SQL,"Headings=Yes")
+
+  While true
+   $ExportForm = EditForm($ExportForm,"OtherExportSavedSettings","Values","... Last Active;"+SysINFO("S_"+extract($OtherExportComboBox," ",1)))
+   $FormExit = form($ExportForm,"")
+ 
+   # Now process the exit codes: which button was pressed and how should GSAK react
+   BeginCase
+     Case $FormExit = "DeLormeButton"
+	Gosub Name=Do_DeLormeGPX
+
+     Case $FormExit = "RegularGPXbutton"
+	Gosub Name=Do_RegularGPX
+	# Restore the display grid
+	macroflag type=clear range=all
+	$TMPstr=codematch($SavedFilter,$_NewLine,"M")
+	Mfilter expression=$d_Macroflag
+
+     Case $FormExit = "OtherExportButton"
+	 GOsub Name=Do_OtherExport
+	# Restore the display grid
+	macroflag type=clear range=all
+	$TMPstr=codematch($SavedFilter,$_NewLine,"M")
+	Mfilter expression=$d_Macroflag
+
+     Case $FormExit = "DeLormeDrawButton"
+	Gosub Name=Do_DeLormeDrawExport
+
+     Case $FormExit = "KMLButton"
+	#do the exports that have been programmed (other than special DeLorme gpx export)
+	Gosub name=Do_KMLexport
+
+     Case $FormExit = "DoAllButton"
+	if $KMLcheckbox
+	  Gosub name=Do_KMLexport
+	endif
+	if $DrawLayerCreate
+	  Gosub Name=Do_DeLormeDrawExport
+	endif
+	if $DeLormeGPXcheckbox
+	  Gosub Name=Do_DeLormeGPX
+	endif
+	if $RegularGPXcheckbox
+	  Gosub Name=Do_RegularGPX
+	endif
+	if $OtherExportcheckbox
+	  GOsub Name=Do_OtherExport
+	endif
+	# Restore the display grid
+	macroflag type=clear range=all
+	$TMPstr=codematch($SavedFilter,$_NewLine,"M")
+	Mfilter expression=$d_Macroflag
+
+     Case ($FormExit = "ExitButton") or ($FormExit = "SystemExit")
+	Break
+
+   EndCase
+  ShowStatus Display=Off
+  EndWhile
+  $GT_KeepRunning=false
+  $StatusMessage="Export: saving form variables"
+  $TMPstr="SetNameEdit,HardMaxEdit,SoftMaxEdit,MaxLogNrEdit,"
+  $TMPstr=  $TMPstr+"DrawLayerCreate,DeLormeDraw_Folder,"
+  $TMPstr=  $TMPstr+"KMLCheckbox,KMLfolder,"
+  $TMPstr=  $TMPstr+"DeLormeGPXcheckbox,DeLormeGPX_Folder,"
+  $TMPstr=  $TMPstr+"RegularGPXcheckbox,RegularGPX_Folder,GPXSavedSettings,"
+  $TMPstr=  $TMPstr+"OtherExportcheckbox,OtherExport_Folder,OtherExportComboBox,OtherExportSavedSettings,"
+  $TMPstr=  $TMPstr+"LabelColor"
+  MacSettings Type=S Vars=$TMPstr
+endsub
+
+Beginsub Name=Do_OtherExport
+# for each tile select the caches in the display grid and export them as specified on the "other" line
+# If the user's folder does not exist, then try to create it
+  IF Not(FolderExists($OtherExport_Folder))
+   $TMPstr = PutFile("$_Install\babel.bat", "MD " + quote($OtherExport_Folder))
+   IF Left($TMPstr,7) = "*Error*"
+     Pause Msg="Cancelling: Could not create folder $OtherExport_Folder"
+     Cancel
+   ENDIF
+   FileOpen File="$_Install\babel.bat" Wait=yes
+  ELSE
+   # If the folder was already there, see if we need to delete some files
+   $TMPstr=trim($SetNameEdit)
+   $TmpStr=$OtherExport_Folder+"\$TMPstr*.*"
+   IF FileExists($TmpStr)
+	$PauseForm_Memo="$SetNameEdit*." +RegExSub("\.(.*) <",$OtherExportComboBox,1,1)+ $_Newline +"already files exist in $_Newline $OtherExport_Folder$_Newline Would you like to delete them?"
+        $PauseForm_Response = "YES,YES,NO,YES"
+	gosub Name=PauseForm
+	if $PauseForm_YesNo
+	  #delete exisiting files that match the wildcard
+	  FileErase file=$TMPstr OnError=Prompt
+	endif
+   endif
+  ENDIF
+# interrogate DeLtiles table and create files in accordance
+  $iTile=1
+  $_SQL= "Select count(*) from DeLtiles;" 
+  $iTileMax=val(sqlite("sql",$_SQL))
+  $SQLfields="TileName, CacheCount, ChildCount, MinLat, MaxLat, MinLon, MaxLon"
+  While $iTile<=$iTileMax
+     $_SQL= "Select $SQLfields from DeLtiles where ROWID=$iTile"
+     $SQLresult=sqlite("sql",$_SQL,"")
+     $TileSpecs=extract($SQLresult,";",1)
+     $MinLat=val(extract($SQLresult,";",4))
+     $MaxLat=val(extract($SQLresult,";",5))
+     $MinLon=val(extract($SQLresult,";",6))
+     $MaxLon=val(extract($SQLresult,";",7))
+     $_SQL= "Select code from DeLtileCaches where (NrLatitude>=$MinLat) and (NrLatitude<=$MaxLat)"
+     $_SQL=$_SQL+ " and (NrLongitude>=$MinLon) and (NrLongitude<=$MaxLon)"
+     $TileGCcodes=sqlite("sql",$_SQL,"")
+     macroflag type=clear range=all
+     $TileGCcodesNR=val(codematch($TileGCcodes,$_NewLine,"M"))
+     Mfilter expression=$d_Macroflag
+     $OtherExport_Filename="$SetNameEdit $TileSpecs("+extract($SQLresult,";",2)+")." +RegExSub("\.(.*) <",$OtherExportComboBox,1,1)
+     $StatusMessage="Exporting $OtherExport_Filename" 
+     Gosub Name=StatusDisplay
+     $FileOut="$OtherExport_Folder\$OtherExport_Filename"
+     $OtherExportType=RegExSub("<(.*)>",$OtherExportComboBox,1,1)
+     if $OtherExportSavedSettings="... Last Active"
+        EXPORT Type="$OtherExportType" File="$FileOut"
+     else
+        EXPORT Type="$OtherExportType"  Settings="$OtherExportSavedSettings" File="$FileOut"
+     endif
+     $iTile=$iTile+1
+  endwhile
+  #reset the display grid
+endsub
+
+Beginsub Name=Do_RegularGPX
+# for each tile select the caches in the display grid and export them as regular gpx files
+# If the user's folder does not exist, then try to create it
+  IF Not(FolderExists($RegularGPX_Folder))
+   $TMPstr = PutFile("$_Install\babel.bat", "MD " + quote($RegularGPX_Folder))
+   IF Left($TMPstr,7) = "*Error*"
+     Pause Msg="Cancelling: Could not create folder $RegularGPX_Folder"
+     Cancel
+   ENDIF
+   FileOpen File="$_Install\babel.bat" Wait=yes
+  ELSE
+   # If the folder was already there, see if we need to delete some files
+   $TMPstr=trim($SetNameEdit)
+   $TmpStr=$RegularGPX_Folder+"\$TMPstr*Reg.gpx"
+   IF FileExists($TmpStr)
+	$PauseForm_Memo="$SetNameEdit*Reg.gpx $_Newline already files exist in $_Newline $RegularGPX_Folder$_Newline Would you like to delete them?"
+        $PauseForm_Response = "YES,YES,NO,YES"
+	gosub Name=PauseForm
+	if $PauseForm_YesNo
+	  #delete exisiting files that match the wildcard
+	  FileErase file=$TMPstr OnError=Prompt
+	endif
+   endif
+  ENDIF
+# interrogate DeLtiles table and create files in accordance
+  $iTile=1
+  $_SQL= "Select count(*) from DeLtiles;" 
+  $iTileMax=val(sqlite("sql",$_SQL))
+  $SQLfields="TileName, CacheCount, ChildCount, MinLat, MaxLat, MinLon, MaxLon"
+  While $iTile<=$iTileMax
+     $_SQL= "Select $SQLfields from DeLtiles where ROWID=$iTile"
+     $SQLresult=sqlite("sql",$_SQL,"")
+     $TileSpecs=extract($SQLresult,";",1)
+     $MinLat=val(extract($SQLresult,";",4))
+     $MaxLat=val(extract($SQLresult,";",5))
+     $MinLon=val(extract($SQLresult,";",6))
+     $MaxLon=val(extract($SQLresult,";",7))
+     $_SQL= "Select code from DeLtileCaches where (NrLatitude>=$MinLat) and (NrLatitude<=$MaxLat)"
+     $_SQL=$_SQL+ " and (NrLongitude>=$MinLon) and (NrLongitude<=$MaxLon)"
+     $TileGCcodes=sqlite("sql",$_SQL,"")
+     macroflag type=clear range=all
+     $TileGCcodesNR=val(codematch($TileGCcodes,$_NewLine,"M"))
+     Mfilter expression=$d_Macroflag
+     $RegularGPX_Filename="$SetNameEdit $TileSpecs("+extract($SQLresult,";",2)+")Reg.gpx" 
+     $StatusMessage="Exporting $RegularGPX_Filename" 
+     Gosub Name=StatusDisplay
+     $FileOut="$RegularGPX_Folder\$RegularGPX_Filename"
+     if $GPXSavedSettings="... Last Active"
+       EXPORT Type=GPX  File="$FileOut"
+     else
+      EXPORT Type=GPX  Settings="$GPXSavedSettings" File="$FileOut"
+     endif
+     $iTile=$iTile+1
+  endwhile
+  #reset the display grid
+
+endsub
+
+Beginsub Name=Do_DeLormeGPX
+# If the user's folder does not exist, then try to create it
+  IF Not(FolderExists($DeLormeGPX_Folder))
+   $TMPstr = PutFile("$_Install\babel.bat", "MD " + quote($DeLormeGPX_Folder))
+   IF Left($TMPstr,7) = "*Error*"
+     Pause Msg="Cancelling: Could not create folder $DeLormeGPX_Folder"
+     Cancel
+   ENDIF
+   FileOpen File="$_Install\babel.bat" Wait=yes
+  ELSE
+   # If the folder was already there, see if we need to delete some files
+   $TMPstr=trim($SetNameEdit)
+   $TmpStr=$DeLormeGPX_Folder+"\$TMPstr*PN.gpx"
+   IF FileExists($TmpStr)
+	$PauseForm_Memo="$TmpStr $_Newline files exist - would you like to delete them?"
+        $PauseForm_Response = "YES,YES,NO,YES"
+	gosub Name=PauseForm
+	if $PauseForm_YesNo
+	  #delete exisiting files that match the wildcard
+	  FileErase file=$TMPstr OnError=Prompt
+	endif
+   endif
+  ENDIF
+
+  # since DeLorme does not know how to spell "Wherigo" we need to make this adjustment:
+  $_SQL= "UPDATE DeLtileCaches SET FullType = 'Whereigo Cache' WHERE CacheType='I'"
+  $SQLresult=sqlite("sql",$_SQL,"")
+
+# interrogate DeLtiles table and create files in accordance
+  $PauseForm_Response = ""
+  $PauseForm_Memo=""
+  $iTile=1
+  $_SQL= "Select count(*) from DeLtiles;" 
+  $iTileMax=val(sqlite("sql",$_SQL))
+  While $iTile<=$iTileMax
+     $SQLfields="TileName, CacheCount, ChildCount, MinLat, MaxLat, MinLon, MaxLon"
+     $_SQL= "Select $SQLfields from DeLtiles where ROWID=$iTile"
+     $SQLresult=sqlite("sql",$_SQL,"")
+     $TileSpecs=extract($SQLresult,";",1)
+     $MinLat=val(extract($SQLresult,";",4))
+     $MaxLat=val(extract($SQLresult,";",5))
+     $MinLon=val(extract($SQLresult,";",6))
+     $MaxLon=val(extract($SQLresult,";",7))
+     $_SQL= "Select code from DeLtileCaches where (NrLatitude>=$MinLat) and (NrLatitude<=$MaxLat)"
+     $_SQL=$_SQL+ " and (NrLongitude>=$MinLon) and (NrLongitude<=$MaxLon)"
+     $TileGCcodes=sqlite("sql",$_SQL,"")
+     $TileGCcodesNR=1+RegExCount($_NewLine,$TileGCcodes)
+#    pause msg="$iTile tile of $iTileMax spec: $TileSpecs ($TileGCcodesNR)$_NewLine$TileGCcodes"
+     $DeLormeGPX_Filename=$TileSpecs 
+     Gosub Name=CreateDeLormeGPX
+     $iTile=$iTile+1
+  endwhile
+  if $PauseForm_Response = "NO,NO,YES,YES"
+  # There was a problem with file saving
+    $PauseForm_Memo="ERROR: THESE WERE NOT SAVED:"+$_NewLine+$PauseForm_Memo
+    $PauseForm_Response = "NO,NO,YES,YES"
+    gosub name=Pauseform
+  endif
+
+  # since DeLorme does not know how to spell "Wherigo" we fixed it and now need to set it back
+  # this is needed to so that other (non DeLorme) exports can be done
+  $_SQL= "UPDATE DeLtileCaches SET FullType = 'Wherigo Cache' WHERE CacheType='I'"
+  $SQLresult=sqlite("sql",$_SQL,"")
+endsub
+
+Beginsub Name=CreateDeLormeGPX
+  ShowStatus msg="$iTile tile of $iTileMax: $DeLormeGPX_Filename"
+  $DeLormeGPX_String="<name>$DeLormeGPX_Filename</name>"
+  $bigStr = addstr(1,"clear")
+  $bigStr = addstr(1,"add",$DeLormeGPX_Header)
+  $bigStr = addstr(1,"add",$DeLormeGPX_String)
+  #Compose the SQL queries (no need to do this within the loop:
+  # Create mashup for this cache where we later replace 
+  # semicolons with LineFeeds, @Qt@ are double quotes
+  # at end: convert "&nbsp;" to " "
+  $_SQL= "SELECT '@lt@wpt lat=@Qt@' || NrLatitude || '@Qt@ lon=@Qt@' || NrLongitude || '@Qt@@gt@@LF@'"
+  $_SQL= $_SQL+ " || ' @lt@ele@gt@-2000000.000000@lt@/ele@gt@'"
+  $_SQL= $_SQL+ " || '@LF@ @lt@time@gt@' || strftime('%Y-%m-%d',PlacedDate) || 'T08:00:00Z@lt@/time@gt@'"
+  $_SQL= $_SQL+ " || '@LF@ @lt@name@gt@' || name || '@lt@/name@gt@'"
+  $_SQL= $_SQL+ " || '@LF@ @lt@sym@gt@' || DeSym || '@lt@/sym@gt@'"
+  $_SQL= $_SQL+ " || '@LF@ @lt@desc@gt@' || Name || ' by ' || PlacedBy"
+  $_SQL= $_SQL+ " || '@LF@Cache ID: ' || code"
+  $_SQL= $_SQL+ " || '@LF@' || DeSym "
+  $_SQL= $_SQL+ " || '@LF@SIZE: ' || container"
+  $_SQL= $_SQL+ " || '@LF@D' || Difficulty || '/T' || Terrain || '@LF@DESC: '"
+  $_SQL= $_SQL+ " || g_RegexReplace('(?s:<.*?>)', shortdescription ||'@LF@' || longdescription ||'@LF@Hint: ' || hints, '')"
+  $_SQL= $_SQL+ " || '@LF@Placed: ' || PlacedDate"
+  $_SQL= $_SQL+ " || '@LF@LOG: @LF@' "
+  $SQLqueryA= $_SQL+ " from DeLtileCaches "
+  # and do first part of SQL query for the logs:
+  $_SQL="SELECT lType, '@1', "
+  $_SQL= $_SQL+"strftime('%Y-%m-%d',lDate), '@2', lBy, '@3', lText "
+  $SQLqueryB= $_SQL+"FROM LogsAll "
+  $iCount=1
+  While $iCount<=$TileGCcodesNR
+    IF frac($iCount/20) = 0
+     ShowStatus msg="$iTile tile of $iTileMax: $DeLormeGPX_Filename record $iCount of $TileGCcodesNR"
+    endIf
+    $GCcode=Extract($TileGCcodes,$_NewLine,$iCount)
+    $_SQL= $SQLqueryA + " WHERE code = '$GCCode' "
+    $SQLresult=sqlite("sql",$_SQL,"delimcvt=@!@ crlfcvt=@LF@")
+    $_SQL= $SQLqueryB+"WHERE lParent = '$GCCode' ORDER BY lDate DESC, lLogId DESC LIMIT $MaxLogNr"
+    $TheLogs=sqlite("sql",$_SQL,"delimcvt=@!@ crlfcvt=@LF@")
+    $SaniString="$SQLresult$TheLogs@LF@"
+    Gosub Name=Sanitize
+    $bigStr = addstr(1,"add","$SaniString</desc></wpt>$LineFeed")
+    $iCount=$iCount+1
+  endwhile
+  If $IncludeAddtnl
+   # do all additional waypoints at once
+    gosub Name=DeLormeGPX_additional
+    $bigStr = addstr(1,"add",$Addnt)
+  Endif
+  $bigStr = addstr(1,"add",$DeLormeGPX_Footer)
+  $bigStr = addstr(1,"get")
+  $bigStr = Replace(";@1;",$LineFeed,$bigStr)
+  $bigStr = Replace(";@2;"," ",$bigStr)
+  $bigStr = Replace(";@3;",", ",$bigStr)
+  $bigStr = Replace("@!@",";",$bigStr)
+  $bigStr = Replace("@gt@",">",$bigStr)
+  $bigStr = Replace("@lt@","<",$bigStr)
+  $bigStr = Replace("@Qt@",$_Quote,$bigStr)
+  $bigStr = Replace($_NewLine,$LineFeed,$bigStr)
+  $bigStr = Replace("@LF@",$LineFeed,$bigStr)
+  $FileOut="$SetNameEdit $DeLormeGPX_Filename($TileGCcodesNR)PN.gpx"
+  $StatusMessage="Exporting $Fileout" 
+  Gosub Name=StatusDisplay
+  $FileOut="$DeLormeGPX_Folder\$Fileout"
+  $TMPstr=Putfile($FileOut,UTF8($bigStr,"e"))
+  IF Left($TMPstr,7) = "*Error*"
+    $PauseForm_Memo=$PauseForm_Memo+"NOT SAVED: "+$FileOut+$_NewLine
+    $PauseForm_Response = "NO,NO,YES,YES"
+  Endif
+endsub
+
+beginsub Name=DeLormeGPX_additional
+  $FromStr=" FROM WayAll where cParent in ('"+Replace($_NewLine,"','",$TileGCcodes)+"')"
+  $_SQL= "Select count(*) "+$FromStr
+  $AddntCount=val(sqlite("sql",$_SQL))
+  If $AddntCount>0
+    $_SQL= "SELECT '@1@', clat,'@2@', clon, '@3@',date(cDate)||'T08:00:00Z', "
+    $_SQL= $_SQL+"'@4@', cName, '@5@', cType, '@6@',"
+    $_SQL= $_SQL+" cComment||' {'||cCode||' for:'||cParent||'}','@7@'"+$FromStr
+    $SaniString=sqlite("sql",$_SQL,"delimcvt=@!@ crlfcvt=@LF@")
+    Gosub Name=Sanitize
+    # Now turn the SQL returned text into xml:
+    $Addnt=Replace("@1@;" ,"<wpt lat=$_Quote",$SaniString)
+    $Addnt=Replace(";@2@;","$_Quote lon=$_Quote",$Addnt)
+    $Addnt=Replace(";@3@;","$_Quote>$_NewLine <ele>-2000000.000000</ele>$_NewLine <time>",$Addnt)
+    $Addnt=Replace(";@4@;","</time>$_NewLine <name>",$Addnt)
+    $Addnt=Replace(";@5@;","</name>$_NewLine <sym>",$Addnt)
+    $Addnt=Replace(";@6@;","</sym>$_NewLine <desc>",$Addnt)
+    $Addnt=Replace(";@7@" ,"</desc>$_NewLine</wpt>",$Addnt)
+  else
+    $Addnt=""
+  Endif
+endsub
+
+<data> VarName=$DeLormeGPX_Header
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<gpx version="1.1"
+ creator="DeLorme Earthmate PN-Series GPS - http://www.delorme.com"
+ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xmlns="http://www.topografix.com/GPX/1/1"
+ xmlns:delorme="http://www.delorme.com/schema/gpx_extension"
+ xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd
+ http://www.delorme.com/schema/gpx_extension http://www.delorme.com/schema/gpx_extension/DeLormeGPXSchema1_1.xsd">
+<enddata>
+
+<data> Varname=$TopoDrawLayerInstruction
+A Draw file was created for you. Here are instructions on how to use
+DeLorme Topo to create a map of the tiles in the PN30/40 GPSr:
+
+1. Open Topo 
+2. Create new project
+3. Draw a set of lines to get the line color and style to your 
+liking. Draw a polygon and set the polygon colors to "Blended" 
+yellow (or other very light color). Now delete whatever you drew; 
+this will leave the line style setting as you need it. Try to 
+pick a color that will work either with day or night setting on 
+the GPSr.
+4. Click Draw, file button and delete anything that might be there; 
+now save this empty project so you don't have to go through all 
+this set up the next time.
+5. Click on "Handheld Export"; then click the Select/Edit button
+6. Click on the Options button in the Handheld Export pane;
+Set the checkboxes so only the Drawlayer is selected (be sure 
+to scroll down to unselect everything else). For the Zoom Range 
+of the Drawlayer select 9 to 13
+7. In the edit box under "Save your Map" type in some text 
+(e.g. DeLtile9-13 Dec27).  Now click Save button.
+8. Repeat to create the same map for zoomed-out viewing; use 
+zoom ranges 4-8 or 5 to 8 (whichever it allows).
+9. Attach GPSr to the computer, turn it on and use the Exchange 
+feature to move these maps to the SD card in the GPSr
+
+While the GPSr is attached, you might as well also put it in 
+removable drive mode and let the macro write the files directly 
+to the gpx folder on the SD card in the GPSr.
+<enddata>
+
+Beginsub name=Do_DeLormeDrawExport
+    $_SQL=    "Select 'BEGIN Polygon', MinLat || ',' || MinLon, "
+    $_SQL= $_SQL+ "MinLat || ',' || MaxLon, "
+    $_SQL= $_SQL+ "MaxLat || ',' || MaxLon, "
+    $_SQL= $_SQL+ "MaxLat || ',' || MinLon, "
+    $_SQL= $_SQL+ "MinLat || ',' || MinLon || ',' || TileName, 'END' "
+    $_SQL= $_SQL+ "FROM DeLtiles ;"
+    $SQLresult=sqlite("sql",$_SQL,"")
+    $DeLormeDrawCode=Replace(";",$_NewLine,$SQLresult)
+    IF $DeLormeDraw_folder=""
+	$DeLormeDraw_folder=$DeLormeGPX_Folder
+    endif
+    # the DeLorme text output is ready to be saved and displayed
+    $FileOut=$DeLormeDraw_folder + "\$SetNameEdit.txt"
+    $TMPstr=Putfile($FileOut,$DeLormeDrawCode)
+    IF Left($TMPstr,7) = "*Error*"
+      $PauseForm_Memo=$TMPstr+$_NewLine+"FILE WAS NOT SAVED - continue or quit"
+      $PauseForm_Response = "NO,NO,YES,YES"
+    Else
+      $PauseForm_Memo=$TopoDrawLayerInstruction+$_NewLine+$_NewLine+"The text below was saved to $FileOut $_NewLine$DeLormeDrawCode"
+    Endif
+    $PauseForm_Response = "NO,NO,YES,YES"
+    gosub name=Pauseform
+endsub
+
+Beginsub name=Do_KMLExport
+    $KMLStr = addstr(2,"clear")
+    $TMPkml=replace("[KMLRUN]",$SetNameEdit,$KMLpolygonsHead)
+    $KMLStr = addstr(2,"add",$TMPkml)
+    # Process every row in the DeLtiles table
+    # Now many tiles are there
+    $_SQL= "Select count(*) from DeLtiles;" 
+    $TotalNrTiles=val(sqlite("sql",$_SQL))
+    $RowNr=1
+    While $RowNr<=$TotalNrTiles
+      $_SQL="Select  Tilename "
+      $_SQL= $_SQL+ "FROM DeLtiles WHERE ROWID=$RowNr ;"
+      $SQLresult=sqlite("sql",$_SQL,"")
+      $TMPkml=replace("[TILENAME]",$SQLresult,$KMLtilePrefix)     
+      # generate kml coordinates for each tile
+      $_SQL=    "Select  MinLon || ',' || MinLat || ',0.00 '"
+      $_SQL= $_SQL+ "|| MaxLon || ',' || MinLat || ',0.00 '"
+      $_SQL= $_SQL+ "|| MaxLon || ',' || MaxLat || ',0.00 '"
+      $_SQL= $_SQL+ "|| MinLon || ',' || MaxLat || ',0.00 '"
+      $_SQL= $_SQL+ "|| MinLon || ',' || MinLat || ',0.00 '"
+      $_SQL= $_SQL+ "FROM DeLtiles WHERE ROWID=$RowNr ;"
+      $SQLresult=sqlite("sql",$_SQL,"")
+      $KMLStr =$TMPkml+$SQLresult+$_NewLine+$KMLtileSuffix
+      $KMLStr = addstr(2,"add",$KMLStr)
+      $RowNr=$RowNr+1
+    endwhile
+    $KMLStr = addstr(2,"add",$KMLpolygonsFoot)
+    $KMLStr = addstr(2,"get")
+    IF $KMLfolder=""
+	$KMLFolder=$DeLormeDraw_Folder
+    endif
+    # the KML output is ready to be saved and displayed
+    $FileOut=$KMLFolder + "\$SetNameEdit.kml"
+    $TMPstr=Putfile($FileOut,$KMLStr)
+    IF Left($TMPstr,7) = "*Error*"
+      $PauseForm_Memo=$TMPstr+$_NewLine+"FILE WAS NOT SAVED - continue or quit"
+      $PauseForm_Response = "NO,NO,YES,YES"
+    Else
+      $PauseForm_Prompt="Do you want to view this in Google Earth?"
+      $PauseForm_Memo="KML text (see below) was created successfully"+$_NewLine+"and saved to $FileOut $_NewLine"
+      $PauseForm_Memo= $PauseForm_Memo+ "Do you want to view this in Google Earth?$_NewLine"+$KMLStr
+      $PauseForm_Response = "YES,YES,NO,YES"
+    Endif
+    gosub name=Pauseform
+    if $PauseForm_YesNo
+      FILEOPEN File=$FileOut
+    endif
+endsub
+
+<data> VarName=$KMLpolygonsHead
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document>
+  <name>DeLtile Output</name>
+  <StyleMap id="msn_ylw-pushpin">
+	<Pair><key>normal</key><styleUrl>#sn_ylw-pushpin</styleUrl></Pair>
+	<Pair><key>highlight</key><styleUrl>#sh_ylw-pushpin</styleUrl></Pair>
+  </StyleMap>
+  <Style id="sh_ylw-pushpin">
+	<IconStyle><scale>1.2</scale></IconStyle>
+	<LineStyle><color>ff00ffff</color><width>3</width></LineStyle>
+	<PolyStyle><color>997fffff</color></PolyStyle>
+  </Style>
+  <Style id="sn_ylw-pushpin">
+	<LineStyle><color>ff00ffff</color><width>3</width></LineStyle>
+	<PolyStyle><color>997fffff</color></PolyStyle>
+  </Style>
+  <Folder>
+	<name>[KMLRUN]</name>
+	<open>1</open>
+	<Folder>
+		<name>Tiles</name>
+		<open>1</open>
+<enddata>
+
+
+<data> VarName=$KMLtilePrefix
+		<Placemark>
+			<name>[TILENAME]</name>
+			<description>Band-Side-Number:[TILENAME]</description>
+			<styleUrl>#msn_ylw-pushpin</styleUrl>
+			<Polygon>
+				<tessellate>1</tessellate>
+				<outerBoundaryIs>
+					<LinearRing><coordinates>
+<enddata>
+
+
+<data> VarName=$KMLtileSuffix
+					</coordinates></LinearRing>
+				</outerBoundaryIs>
+			</Polygon>
+		</Placemark>
+<enddata>
+
+<data> VarName=$KMLpolygonsFoot
+	</Folder>
+  </Folder>
+</Document>
+</kml>
+
+<enddata>
+
+<data> VarName=$DeLormeGPX_Footer
+
+</gpx>
+<enddata>
+
+
+# Note the list below needs to be specifically delimited as follows:
+# The first word is the dialog name as found with the Macroset command
+# the asterisk marks the start of the file extension that will be give exported files
+# this extension is followed by a space and the code name use by the Export command wrapped in <>
+<data> VarName=$GSAKexportlist
+MagellanSD card *.gs <MAGSD>
+OziExplorer *.wpt <OZI>
+Html *.html <HTML>
+GPX (regular) export *.gpx <GPX>
+TomTom POI file *.csv <POI>
+Maptech eXchange format .mxf <MXF>
+S&T Microsoft Streets & Trips .CSV <SNT> 
+CacheMate .pdb <CMT>
+MapSource .gdb <MSP>
+StreetAtlas by DeLorme .txt <SAT>
+MapSend .wpt <WPT>
+PocketStreets (Microsoft) .psp <PSP>
+DeLorme Topo USA, Street Atlas Plus .txt <DEL>
+MemoryMap .csv <MEM>
+CSV or TXT file .csv <CSV>
+GarminPOI file .gpi <GPI>
+<enddata>
+
+########################################### PAUSE FORM #############################
+# The PauseForm subroutine variables: 
+#  $PauseForm_YesNo is boolean: true: Yes and Continue all other buttons: False
+#  $PauseForm_Response = Uppercase button text space removed (YES, NO, CONTINUE,...)
+#  $PauseForm_Prompt = text acting as prompt; if blank then the default is used
+#  $PauseForm_Memo = text acting as prompt; if blank then the default is used
+
+#  also, as usual: $FormExit = name of the control (button) that caused the form to exit
+Beginsub Name=PauseForm
+# entering the subroutine, $PauseForm_Response signals how the buttons are set
+# on exit it holds the status on which of button was clicked "Yes" for Yes or continue button, "No" else
+  if RegExCount(",",$PauseForm_Response)<3 
+    # User has not set the buttons up a particular way, so use the default (all showing)
+    $PauseForm_Response = "YES,YES,YES,YES"     # signals button visibility on form
+  endif
+  $PauseForm = EditForm($PauseForm,"PauseFormYesButton","Visible",extract($PauseForm_Response,",",1))
+  $PauseForm = EditForm($PauseForm,"PauseFormNoButton","Visible",extract($PauseForm_Response,",",2))
+  $PauseForm = EditForm($PauseForm,"PauseFormContinueButton","Visible",extract($PauseForm_Response,",",3))
+  $PauseForm = EditForm($PauseForm,"PauseFormStopMacroButton","Visible",extract($PauseForm_Response,",",4))
+  if $PauseForm_Prompt =""
+    # none was provided so use the default
+    $PauseForm_Prompt = "Click one of these buttons to indicate how you would like to proceed"
+  endif
+  $PauseForm = EditForm($PauseForm,"PauseFormPromptText","Caption",$PauseForm_Prompt)
+
+  # Now that configuration is complete, get the Response variable ready for use
+  $PauseForm_Response=""        # this is the response variable; display form until something is in this variable
+  While $PauseForm_Response="" 
+   If $PauseForm_Memo=""
+     # make the form smaller to hide the memo box if there is nothing in the memo box text
+     $PauseForm = EditForm($PauseForm,"PauseForm","Height","100")
+   ELSE
+     $PauseForm = EditForm($PauseForm,"PauseForm","Height","363")
+     Gosub Name=PauseFormMemoMassage # make text flow if first character is #
+   Endif
+# Display the pause form until one of the bottons is clicked
+  $FormExit = form($PauseForm,"")
+    BeginCase
+    Case $FormExit = "PauseFormYesButton"
+	$PauseForm_YesNo = true
+	$PauseForm_Response = "YES"
+	Break
+    Case $FormExit = "PauseFormNoButton"
+	$PauseForm_YesNo = false
+	$PauseForm_Response = "NO"
+	Break
+    Case $FormExit = "DelayExit"
+# Un-comment the next line to force a delayed exit message requiring a user button click
+#	MsgOk msg="PauseForm exit via Delay"
+	Break
+    Case $FormExit = "SystemExit"
+	$PauseForm_YesNo = false
+	Return
+	break           # note this cancels the pause, not the macro
+
+    Case $FormExit = "PauseFormStopMacroButton"
+      # user want to stop the macro completely
+	$PauseForm_YesNo = false
+	$PauseForm_Response = "STOPMACRO"
+	Return
+    Case $FormExit = "PauseFormContinueButton"
+      # user want to simply move on without stopping the macro
+	$PauseForm_YesNo = true          # note that default here is to let Continue act same as Yes
+	$PauseForm_Response = "CONTINUE" # macro programmer can decide if action needs to be different
+	if $_CtrlKey 
+	    # If user clicks CONTINUE while holding down the control key then this code will run
+	    # this example just loads the code for the form 
+	    $PauseForm_Memo="<Data> VarName=$"+"PauseForm $_NewLine" +$PauseForm + $_NewLine + "<enddata>"
+	    Clip data=$PauseForm_Memo
+	else
+	    Break
+	endif
+    EndCase
+  EndWhile
+  $PauseForm_Prompt = ""
+  $PauseForm = EditForm($PauseForm,"PauseForm_Memo","Scrollbars","Both")
+endsub
+
+Beginsub Name=PauseFormMemoMassage
+# use this call to display text that needs to be wrapped (without horizontal scrollbars
+# this also modifies the text depending on the first character in the memo
+# if that is a # symbol, then all "# " will be removed 
+  IF substr($PauseForm_Memo,1,1)="#"
+    $PauseForm_Memo=substr($PauseForm_Memo,2,100000)
+    #This is useful if the text doubles as macro code comment wraped in a <data> structure
+    # note on a line by iteself, # itself gets stripped; follwed by space converts to linefeed
+    $PauseForm_Memo=Replace($_NewLine+"# "+$_NewLine,"@LF@",$PauseForm_Memo)
+    $PauseForm_Memo=Replace($_NewLine+"# "," ",$PauseForm_Memo)
+    $PauseForm_Memo=Replace("@LF@",$_NewLine+$_NewLine,$PauseForm_Memo)
+    $PauseForm = EditForm($PauseForm,"PauseForm_Memo","Scrollbars","Vertical")
+  ENDIF
+endsub
+
+<Data> VarName=$PauseForm
+#********************************************************************
+# Form generated by GSAK form designer on Sun 27-Dec-2009 09:22:59
+#********************************************************************
+
+Name = PauseForm
+  Type = Form
+  Caption = seconds of PAUSE for this GSAK macro (DeLtile.gsk by Hynr)
+  Delay = 86400
+  Height = 363
+  Width = 584
+
+Name = PauseFormPromptText
+  Type = Label
+  Font = Arial
+  Height = 19
+  Left = 8
+  Size = 12
+  Style = bold
+  Top = 8
+  Width = 519
+  Caption = [PauseFormPromptText]
+
+Name = PauseForm_Memo
+  Type = Memo
+  Font = Courier New
+  Height = 250
+  Left = 8
+  Scrollbars = Both
+  Size = 10
+  Top = 72
+  Width = 561
+  Wrap = Yes
+  Taborder = 10
+
+Name = PauseFormYesButton
+  Type = Button
+  Height = 33
+  Left = 8
+  Top = 32
+  Width = 121
+  Taborder = 11
+  Caption = YES
+
+Name = PauseFormNoButton
+  Type = Button
+  Height = 33
+  Left = 136
+  Top = 32
+  Width = 113
+  Taborder = 12
+  Caption = NO
+
+Name = PauseFormStopMacroButton
+  Type = Button
+  Height = 33
+  Left = 440
+  Top = 32
+  Width = 129
+  Taborder = 5
+  Caption = Stop Macro
+
+Name = PauseFormContinueButton
+  Type = Button
+  Height = 33
+  Left = 256
+  Top = 32
+  Width = 177
+  Taborder = 4
+  Caption = Continue
+
+<enddata>
+########################################### END OF PAUSE FORM ######################
+
+Beginsub Name=BMPDrawDisplayGrid
+  $SQLresult=sqlite("sql","Begin Transaction","")
+# all the records in the current display grid are drawn as small square dots into 
+# the front layer 
+  $_SQL= "Select count(*) From DeLtileCaches"
+  $TotalCacheCount=val(sqlite("sql",$_SQL))
+  $RowNr=1
+  While $RowNr<=$TotalCacheCount
+    $_SQL= "Select code, NrLatitude, NrLongitude FROM DeLtileCaches WHERE ROWID=$RowNr ;"
+    $TmpStr=sqlite("sql",$_SQL,"")
+    $BMP_LabelText=extract($TmpStr,";",1)
+    $BMP_lat=val(extract($TmpStr,";",2))
+    $BMP_lon=val(extract($TmpStr,";",3))
+    Gosub Name=BMPDrawPoint3
+    Gosub Name=BMP_CreateLabel
+    $RowNr=$RowNr+1
+  EndWhile
+  $SQLresult=sqlite("sql","End Transaction","")
+endsub
+
+Beginsub Name=BMPinitialization
+# This sets values for all the graphics variable so they can
+# be used in the rest of the subroutines
+# to be able to draw we neet to map the 600 pixels side to side to longitudes
+# and 600 pixels top to bottom to latitudes
+# these are should be the extremes 
+  $BMP_NrPixels=600  
+  $BMP_PixMax=620  #This is locked in by the BMP header; do not change this
+  if $BMP_NrPixels=$BMP_PixMax
+    $BMP_NrPixels=$BMP_PixMax-4 #we cannot tolerate it if user has modifed this incorrectly
+  endif
+  $BMP_bias=Int(($BMP_PixMax-$BMP_NrPixels)/2)
+
+# now all the colors in the pallette (even though 256 colors are in the pallette
+# there really are only 16 colors defined; To increase this require modifying the 
+# BMPheader)
+  $BMP_ColorNrWhite=15
+  $BMP_ColorNrCyan=14
+  $BMP_ColorNrLightViolet=13
+  $BMP_ColorNrLightBlue=12
+  $BMP_ColorNrYellow=11
+  $BMP_ColorNrLightGreen=10
+  $BMP_ColorNrOrange=9
+  $BMP_ColorNrGrey=8
+  $BMP_ColorNrDarkGrey=7
+  $BMP_ColorNrDarkCyan=6
+  $BMP_ColorNrViolet=5
+  $BMP_ColorNrBlue=4
+  $BMP_ColorNrDarkYellow=3
+  $BMP_ColorNrGreen=2
+  $BMP_ColorNrRed=1
+  $BMP_ColorNrBlack=0
+
+  # various specific-purpose color variables
+  # default color
+  $BMP_ColorNr=$BMP_ColorNrCyan
+
+  $BMP_ColorTransparent=0
+  $BMP_ColorBackground=$BMP_ColorNrGrey
+
+  $BMP_ColorGridLine=$BMP_ColorNrBlack
+  $BMP_ColorSymbol=$BMP_ColorNrViolet
+  $BMP_ColorLine=$BMP_ColorNrOrange
+  $BMP_LineThick=false
+
+# build 2 backgrounds: front layer transparent, 
+# rear layer with gridlines subject to the following
+  $BMP_ShowGridLines=False
+  $BMP_icnt=1
+  $BMP_TmpStr=""
+  $BMP_TMPStrBack=""
+  While $BMP_icnt<=$BMP_PixMax
+   $BMP_TMPstr=$BMP_TMPstr+chr($BMP_ColorTransparent)
+   if $BMP_ShowGridLines and (frac($BMP_iCnt/20)=0)
+     $BMP_TMPstrBack=$BMP_TMPstrBack+chr($BMP_ColorGridLine)
+   else 
+     $BMP_TMPstrBack=$BMP_TMPstrBack+chr($BMP_ColorBackground)
+   endif
+   $BMP_icnt=$BMP_icnt+1
+  endwhile
+
+#initialize the graphic area so every pixel is the background color
+# in case array number ever needs to be changed due to conflicts, make it variable:
+  $BMP_ArrayFront =11
+  $BMP_ArrayBack  =12
+  $BMP_ArrayFront2=21
+  $BMP_ArrayBack2 =22
+# set up the data structures for the BMP front and back layers
+  Array($BMP_ArrayFront,0)="$BMP_PixMax"
+  Array($BMP_ArrayFront,-1)=$BMP_TMPstr
+  Array($BMP_ArrayBack,0)="$BMP_PixMax"
+  Array($BMP_ArrayBack,-1)=$BMP_TMPstrBack
+# we need the following so we can reset the canvas without recalculating all this
+  Array($BMP_ArrayFront2,0)="$BMP_PixMax"
+  Array($BMP_ArrayFront2,-1)=$BMP_TMPstr
+  Array($BMP_ArrayBack2,0)="$BMP_PixMax"
+  Array($BMP_ArrayBack2,-1)=$BMP_TMPstrBack
+
+#horizontal grid lines every 20 rows on the backdrop but only
+  if $BMP_ShowGridLines
+    $BMP_GridLine=Replace(chr($BMP_ColorTransparent),chr($BMP_ColorGridLine),$BMP_TMPstr)
+    $BMP_icnt=20
+    While $BMP_icnt<=$BMP_PixMax
+     Array($BMP_ArrayBack,$BMP_icnt)=$BMP_GridLine
+     Array($BMP_ArrayBack2,$BMP_icnt)=$BMP_GridLine
+     $BMP_icnt=$BMP_icnt+20
+    endwhile
+  endif
+
+# activate the selections to see back and front; set up labeling
+  $BMP_DisplayFrontCheck=true
+  $BMP_DisplayBackCheck=true
+
+  $BMP_LabelCount=1000  # start at 1000 for formatting and sorting convenience
+  $BMP_Labels=""
+  $BMP_DisplayLabels=false
+
+  $BMP_BBrectLabel=""
+
+  $BMPkeeprunning=true
+endsub
+
+Beginsub Name=BMPSetRelative 
+# Build the coordinate system and how it is related to pixels in the window.
+# Determine which of the two extents is longer
+  $BMP_DeltaLat = $BMP_BB_N - $BMP_BB_S
+  $BMP_DeltaLon = $BMP_BB_E - $BMP_BB_W
+# Whichever is bigger wins because we want to keep the graph square
+  if $BMP_DeltaLat> $BMP_DeltaLon
+    $BMP_DeltaLatLon=$BMP_DeltaLat
+    # safety: if the increment is very small, then don't accept that because it will cause problems
+    if $BMP_DeltaLatLon<0.001
+     $BMP_DeltaLatLon=0.001
+    endif
+    # The resulting extremes (shift the cluster laterally into the middle)
+    $BMP_MinLatDraw=$BMP_BB_S
+    $BMP_MinLonDraw=$BMP_BB_W - ($BMP_DeltaLatLon-$BMP_DeltaLon)/2
+  Else 
+    $BMP_DeltaLatLon=$BMP_DeltaLon
+    # safety: if the increment is very small, then don't accept that because it will cause problems
+     if $BMP_DeltaLatLon<0.001
+      $BMP_DeltaLatLon=0.001
+     endif
+    # The resulting extremes (shift the cluster vertically into the middle)
+    $BMP_MinLatDraw=$BMP_BB_S - ($BMP_DeltaLatLon-$BMP_DeltaLat)/2
+    $BMP_MinLonDraw=$BMP_BB_W 
+  endif
+  $BMP_MaxLatDraw=$BMP_MinLatDraw+$BMP_DeltaLatLon
+  $BMP_MaxLonDraw=$BMP_MinLonDraw+$BMP_DeltaLatLon
+  $BMP_PixDelta=$BMP_DeltaLatLon/$BMP_NrPixels
+  # label the graph
+  $BMPlabelNW="$BMP_MaxLatDraw,$BMP_MinLonDraw"
+  $Mainform=Editform($Mainform,"BMPlabelNW","Caption",$BMPlabelNW)
+  $BMPlabelNE="$BMP_MaxLatDraw,$BMP_MaxLonDraw"
+  $Mainform=Editform($Mainform,"BMPlabelNE","Caption",$BMPlabelNE)
+  $BMPlabelSW="$BMP_MinLatDraw,$BMP_MinLonDraw"
+  $Mainform=Editform($Mainform,"BMPlabelSW","Caption",$BMPlabelSW)
+  $BMPlabelSE="$BMP_MinLatDraw,$BMP_MaxLonDraw"
+  $Mainform=Editform($Mainform,"BMPlabelSE","Caption",$BMPlabelSE)
+endsub 
+
+Beginsub Name=BMPDrawPoint3
+# draw 3-pixel by 3-pixel point for current lat and lon
+# obtain pixel locations of current point
+  Gosub Name=BMPDrawPointLoc
+# stay within the graphic image 
+  if $BMP_Y<=2 or $BMP_Y>=$BMP_PixMax-2 or $BMP_x<=2 or $BMP_x>=$BMP_PixMax-2
+   # Cropping issues would be addressed here
+  else
+   $BMP_DrawSymb=Chr($BMP_ColorNr)+Chr($BMP_ColorNr)+Chr($BMP_ColorNr)
+   $BMP_TMPstr=Array($BMP_Array,$BMP_y-1)
+   Array($BMP_Array,$BMP_y-1)=substr($BMP_TMPstr,1,$BMP_x-2) + $BMP_DrawSymb + substr($BMP_TMPstr,$BMP_x+2,$BMP_PixMax)
+   $BMP_TMPstr=Array($BMP_Array,$BMP_y)
+   Array($BMP_Array,$BMP_y)=substr($BMP_TMPstr,1,$BMP_x-2) + $BMP_DrawSymb + substr($BMP_TMPstr,$BMP_x+2,$BMP_PixMax)
+   $BMP_TMPstr=Array($BMP_Array,$BMP_y+1)
+   Array($BMP_Array,$BMP_y+1)=substr($BMP_TMPstr,1,$BMP_x-2) + $BMP_DrawSymb + substr($BMP_TMPstr,$BMP_x+2,$BMP_PixMax)
+  endif
+endsub
+
+Beginsub Name=BMPDrawPoint1
+# draw 1-pixel by 1-pixel point for current lat and lon (BMP_lat and BMP_lon)
+# obtain pixel locations of current point
+  Gosub Name=BMPDrawPointLoc
+  if $BMP_Y<=1 or $BMP_Y>=$BMP_PixMax-1 or $BMP_x<=1 or $BMP_x>=$BMP_PixMax-1
+   # code to be added later?: to deal with cropped stuff if/when that is needed
+  else
+   $BMP_DrawSymb=Chr($BMP_ColorNr)
+   $BMP_TMPstr=Array($BMP_Array,$BMP_y)
+   Array($BMP_Array,$BMP_y)=substr($BMP_TMPstr,1,$BMP_x-1) + $BMP_DrawSymb + substr($BMP_TMPstr,$BMP_x+1,$BMP_PixMax)
+  endif
+endsub
+
+Beginsub Name=BMPDrawPointLoc
+# draw point at ($BMP_Lat, $BMP_Lon) for current lat and long 
+# $bias shifts the image up and right to avoid out-of-bounds 
+  $BMP_y=$BMP_bias+round(($BMP_lat -$BMP_MinLatDraw)/$BMP_PixDelta,0)
+  $BMP_x=$BMP_bias+round(($BMP_lon -$BMP_MinLonDraw)/$BMP_PixDelta,0)
+endsub
+
+
+Beginsub Name=BMPDrawLine
+# Connect two coordinates ($BMP_Lat1, $BMP_Lon1) and ($BMP_Lat2, $BMP_Lon2)
+# with 1-pixel thick line of color $BMP_ColorLine
+# if $BMP_LineThick is true then the line will be 3-pixels thick
+  $BMP_lat=$BMP_lat2
+  $BMP_lon=$BMP_lon2
+  gosub Name=BMPDrawPoint1
+  #save pixel info
+  $xold=$BMP_x
+  $yold=$BMP_y
+  $BMP_lat=$BMP_lat1
+  $BMP_lon=$BMP_lon1
+  gosub Name=BMPDrawPoint1
+  $BMP_pixdifx=abs($xold-$BMP_x)
+  $BMP_pixdify=abs($yold-$BMP_y)
+# use whichever is the longest distance to identify which pixels need calculating
+  if $BMP_pixdifx<$BMP_pixdify
+    $BMP_pixdifx=$BMP_pixdify
+  endif
+  If $BMP_pixdifx<1  #Trap situations where the line has no length - make it one pixel long
+    $BMP_pixdifx=1
+    # No need to draw anything else since that pixel is already drawn
+  else
+    $BMP_deltaLat=($BMP_lat2-$BMP_lat1)/$BMP_pixdifx
+    $BMP_deltaLon=($BMP_lon2-$BMP_lon1)/$BMP_pixdifx
+    $BMP_icnt=1
+    while $BMP_icnt < $BMP_pixdifx
+      $BMP_lat=$BMP_lat+$BMP_deltaLat
+      $BMP_lon=$BMP_lon+$BMP_deltaLon
+      if $BMP_LineThick
+        gosub Name=BMPDrawPoint3
+      Else
+        gosub Name=BMPDrawPoint1
+      endif
+      $BMP_icnt=$BMP_icnt+1
+    endwhile
+   endif
+endsub
+
+Beginsub Name=BMPDrawBBRectangle
+# Draw any bounding box rectangle using the following extremes $BMP_BBrectN, $BMP_BBrectS, $BMP_BBrectW, $BMP_BBrectE
+# If a centered label is to be used then place that text into $BMP_BBrectLabel
+  $BMP_lat1=$BMP_BBrectN
+  $BMP_lon1=$BMP_BBrectE
+  $BMP_lat2=$BMP_BBrectN
+  $BMP_lon2=$BMP_BBrectW
+  gosub Name=BMPDrawline
+  IF $BMP_BBrectFill
+    #just do the fill and include the edges
+    $BMP_ArrayRow=$BMP_y
+    $BMP_LinePos1=$BMP_x
+    $BMP_LinePos2=$BMP_LinePos1 + $BMP_pixdifx
+    $BMP_Lat=$BMP_BBrectS
+    $BMP_Lon=$BMP_BBrectW
+    gosub Name=BMPDrawPointLoc
+    $BMP_TMPstr=Array($BMP_Array,$BMP_ArrayRow)
+    $BMP_Segment=substr($BMP_TMPstr,$BMP_LinePos1,$BMP_pixdifx)
+    While $BMP_ArrayRow>$BMP_y
+     if $BMP_ArrayRow>0 and $BMP_ArrayRow<$BMP_PixMax
+       $BMP_TMPstr=Array($BMP_Array,$BMP_ArrayRow)
+       Array($BMP_Array,$BMP_ArrayRow)=substr($BMP_TMPstr,1,$BMP_LinePos1-1) + $BMP_Segment + substr($BMP_TMPstr,$BMP_LinePos2,$BMP_PixMax)
+     endif
+     $BMP_ArrayRow = $BMP_ArrayRow - 1
+    endwhile
+  Else
+    # no fill, so just draw the edges
+    $BMP_lat1=$BMP_BBrectS
+    $BMP_lon1=$BMP_BBrectW
+    gosub Name=BMPDrawline
+    $BMP_lat2=$BMP_BBrectS
+    $BMP_lon2=$BMP_BBrectE
+    gosub Name=BMPDrawline
+    $BMP_lat1=$BMP_BBrectN
+    $BMP_lon1=$BMP_BBrectE
+    gosub Name=BMPDrawline
+  Endif
+  if not($BMP_BBrectLabel="")
+    $BMP_Lat=($BMP_BBrectN+$BMP_BBrectS)/2
+    $BMP_Lon=($BMP_BBrectW+$BMP_BBrectE)/2
+    gosub Name=BMPDrawPointLoc
+    $BMP_LabelText=$BMP_BBrectLabel
+    Gosub Name=BMP_CreateLabel
+    $BMP_BBrectLabel=""
+  endif
+endsub
+
+Beginsub Name=BMP_CreateLabel
+# Labels are placed between the front and back layer as labels on the form
+# coordinates are with respect to the BMPgroup container, 
+# All labels created this way are simply appended to $BMP_labels
+# each is at the current $BMP_x,$BMP_y pixel location; text is in $BMP_LabelText
+#(we probably should trap linefeeds here)
+# Label counter starts at 1000
+  $BMP_LabelCount=$BMP_LabelCount+1
+  $BMP_TmpStr="Name = BMPLabel$BMP_LabelCount"
+  $BMP_TmpStr= $BMP_TmpStr+"$_NewLine  Type = Label $_NewLine  Container = BMPgroup$_NewLine  Height = 13"
+  $BMP_TMPint=$BMP_PixMax-$BMP_y+1
+  if $BMP_TMPint<10
+     $BMP_TMPint=10
+  endif
+  $BMP_TmpStr= $BMP_TmpStr + $_NewLine +"  Caption = $BMP_LabelText"
+  $BMP_TmpStr= $BMP_TmpStr + $_NewLine +"  Top =$BMP_TMPint"+$_NewLine 
+  $BMP_TMPint=$BMP_x+30
+  if $BMP_TMPint<1
+     $BMP_TMPint=1
+  endif
+  $BMP_TmpStr= $BMP_TmpStr+"  Left =$BMP_TMPint"+$_NewLine+$_NewLine
+  $BMP_labels=$BMP_labels+$BMP_TmpStr
+endsub
+
+Beginsub Name=DrawBBandReferenceLon
+# set the extremes using the variables that BMPDrawBBRectangle expects
+  $BMP_BBrectN=$BMP_BB_N 
+  $BMP_BBrectS=$BMP_BB_S
+  $BMP_BBrectW=$BMP_BB_W
+  $BMP_BBrectE=$BMP_BB_E 
+# chose to fill in this rectangle (or not); normally this is set to false
+  $BMP_BBrectFill=false
+  $BMP_ColorNr=$BMP_ColorNrOrange
+  Gosub Name=BMPDrawBBRectangle
+# Draw the reference line
+  $BMP_LineThick=True
+  $BMP_Lat1=$BMP_BB_N     # draw to 10% beyond top edge of BBox
+  $BMP_Lon1=val($Referencelon)  # use the number that is on the form for this
+  $BMP_Lat2=$BMP_BB_S  # draw to bottom edge of BBox and a bit further
+  $BMP_Lon2=$BMP_Lon1
+  Gosub Name=BMPDrawLine
+Endsub
+
+Beginsub Name=StatusDisplay
+# assumes the message to be displayed is in $StatusMessage
+# advantage of this approach is that it automatically includes code pointer in the error log
+  ShowStatus msg=$StatusMessage width=600 
+endsub
+
+<data> Varname=$BMP620HeadMime
+Qk1a3wUAAAAAADYEAAAoAAAAawIAAGsCAAABAAgAAAAAACTbBQAAAAAACgAAAAABAAAAAQAAAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADAwMAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AAAA
+AAAAAIAAAIAAAACAgACAAAAAgACAAICAAACAgIAAwMDAAAAA/wAA/wAAAP//AP8AAAD/AP8A//8AAP//
+/wAAAAAAAACAAACAAAAAgIAAgAAAAIAAgACAgAAAgICAAMDAwAAAAP8AAP8AAAD//wD/AAAA/wD/AP//
+AAD///8AAAAAAAAAgAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADAwMAAAAD/AAD/AAAA//8A/wAAAP8A
+/wD//wAA////AAAAAAAAAIAAAIAAAACAgACAAAAAgACAAICAAACAgIAAwMDAAAAA/wAA/wAAAP//AP8A
+AAD/AP8A//8AAP///wAAAAAAAACAAACAAAAAgIAAgAAAAIAAgACAgAAAgICAAMDAwAAAAP8AAP8AAAD/
+/wD/AAAA/wD/AP//AAD///8AAAAAAAAAgAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADAwMAAAAD/AAD/
+AAAA//8A/wAAAP8A/wD//wAA////AAAAAAAAAIAAAIAAAACAgACAAAAAgACAAICAAACAgIAAwMDAAAAA
+/wAA/wAAAP//AP8AAAD/AP8A//8AAP///wAAAAAAAACAAACAAAAAgIAAgAAAAIAAgACAgAAAgICAAMDA
+wAAAAP8AAP8AAAD//wD/AAAA/wD/AP//AAD///8AAAAAAAAAgAAAgAAAAICAAIAAAACAAIAAgIAAAICA
+gADAwMAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AAAAAAAAAIAAAIAAAACAgACAAAAAgACAAICA
+AACAgIAAwMDAAAAA/wAA/wAAAP//AP8AAAD/AP8A//8AAP///wAAAAAAAACAAACAAAAAgIAAgAAAAIAA
+gACAgAAAgICAAMDAwAAAAP8AAP8AAAD//wD/AAAA/wD/AP//AAD///8AAAAAAAAAgAAAgAAAAICAAIAA
+AACAAIAAgIAAAICAgADAwMAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AAAAAAAAAIAAAIAAAACA
+gACAAAAAgACAAICAAACAgIAAwMDAAAAA/wAA/wAAAP//AP8AAAD/AP8A//8AAP///wAAAAAAAACAAACA
+AAAAgIAAgAAAAIAAgACAgAAAgICAAMDAwAAAAP8AAP8AAAD//wD/AAAA/wD/AP//AAD///8AAAAAAAAA
+gAAAgAAAAICAAIAAAACAAIAAgIAAAICAgADAwMAAAAD/AAD/AAAA//8A/wAAAP8A/wD//wAA////AA==
+<enddata>
+
+
+<Data> VarName=$Mainform 
+#********************************************************************
+# Form generated by GSAK form designer on Sun 31-Jan-2010 18:52:28
+#********************************************************************
+
+Name = MainForm
+  Type = Form
+  Caption = DeLormeTile.gsk by Hynr
+  Height = 791
+  Width = 978
+
+Name = MainGroup
+  Type = Groupbox
+  Caption = DeLtile
+  Height = 641
+  Left = -8
+  Top = 0
+  Width = 969
+  Taborder = 0
+
+Name = TileGroup
+  Type = Groupbox
+  Caption = Tile specifications
+  Container = MainGroup
+  Height = 105
+  Left = 16
+  Top = 136
+  Width = 273
+  Taborder = 2
+
+Name = BBox
+  Type = Groupbox
+  Caption = Bounding Box
+  Container = MainGroup
+  Height = 119
+  Left = 16
+  Top = 18
+  Visible = Yes
+  Width = 273
+  Taborder = 3
+
+Name = BMPgroup
+  Type = Groupbox
+  Caption = Visualization of Current Display Grid Data
+  Container = MainGroup
+  Height = 641
+  Left = 294
+  Top = -2
+  Width = 673
+  Taborder = 4
+
+Name = GraphAreaBack
+  Type = Image
+  Container = BMPgroup
+  File = BMP2FILE.bmp
+  Height = 620
+  Left = 32
+  Resize = Yes
+  Source = macro
+  Top = 13
+  Transparent = Yes
+  Width = 620
+
+Name = GraphAreaFront
+  Type = Image
+  Container = BMPgroup
+  File = BMPFILE.bmp
+  Height = 620
+  Left = 32
+  Resize = Yes
+  Source = macro
+  Top = 13
+  Transparent = Yes
+  Width = 620
+
+Name = BMPLabelNW
+  Type = Label
+  Container = BMPgroup
+  Height = 13
+  Left = 8
+  Top = 13
+  Width = 140
+
+Name = BMPLabelNE
+  Type = Label
+  Container = BMPgroup
+  Height = 13
+  Left = 600
+  Top = 13
+  Width = 73
+
+Name = BMPLabelSW
+  Type = Label
+  Container = BMPgroup
+  Height = 13
+  Left = 16
+  Top = 616
+  Width = 89
+
+Name = BMPLabelSE
+  Type = Label
+  Color = 0
+  Container = BMPgroup
+  Height = 13
+  Left = 590
+  Top = 616
+  Width = 63
+
+Name = BMP_DisplayFrontCheck
+  Type = Checkbox
+  Container = BMPgroup
+  Exitonchange = Yes
+  Height = 17
+  Left = 86
+  Top = 621
+  Width = 91
+  Taborder = 0
+  Caption = Show Caches
+
+Name = BMP_DisplayBackCheck
+  Type = Checkbox
+  Container = BMPgroup
+  Exitonchange = Yes
+  Height = 17
+  Left = 179
+  Top = 621
+  Width = 190
+  Taborder = 1
+  Caption = Show BBox,Tiles with Label Color:
+
+Name = BMP_DisplayLabels
+  Type = Checkbox
+  Container = BMPgroup
+  Exitonchange = Yes
+  Height = 17
+  Left = 442
+  Top = 621
+  Width = 139
+  Taborder = 2
+  Caption = Display geocache labels
+
+Name = BandNumberEdit
+  Type = Edit
+  Container = MainGroup
+  Height = 21
+  Left = 64
+  Top = 453
+  Width = 65
+  Taborder = 1
+
+Name = QuitButton
+  Type = Button
+  Height = 89
+  Left = 746
+  Top = 655
+  Width = 81
+  Taborder = 1
+  Caption = Exit
+
+Name = Memo2
+  Type = Memo
+  Height = 113
+  Left = -8
+  Readonly = Yes
+  Scrollbars = Vertical
+  Size = 10
+  Top = 640
+  Visible = Yes
+  Width = 745
+  Wrap = Yes
+  Taborder = 2
+
+Name = HardMaxEdit
+  Type = Edit
+  Container = TileGroup
+  Height = 21
+  Left = 193
+  Top = 27
+  Width = 56
+  Taborder = 0
+
+Name = Label1
+  Type = Label
+  Container = TileGroup
+  Height = 13
+  Left = 11
+  Top = 33
+  Width = 156
+  Caption = Hard Maximum including Children
+
+Name = Label2
+  Type = Label
+  Container = TileGroup
+  Height = 13
+  Left = 10
+  Top = 57
+  Width = 172
+  Caption = Soft Maximum number of geocaches
+
+Name = SoftMaxEdit
+  Type = Edit
+  Container = TileGroup
+  Height = 21
+  Left = 191
+  Top = 53
+  Width = 58
+  Taborder = 1
+
+Name = Label8
+  Type = Label
+  Container = TileGroup
+  Height = 13
+  Left = 8
+  Top = 16
+  Width = 89
+  Caption = Geocaches per tile
+
+Name = IncludeAddtnl
+  Type = Checkbox
+  Container = TileGroup
+  Height = 17
+  Left = 14
+  Top = 77
+  Width = 242
+  Taborder = 2
+  Caption = Include Child  Waypoints in calculations
+
+Name = TileButton
+  Type = Button
+  Container = MainGroup
+  Height = 38
+  Left = 17
+  Top = 560
+  Width = 138
+  Taborder = 0
+  Caption = TILE the DATA
+
+Name = TotalCacheCountEdit
+  Type = Label
+  Container = MainGroup
+  Height = 20
+  Left = 128
+  Size = 12
+  Top = 251
+  Width = 153
+  Caption = 150
+
+Name = Label9
+  Type = Label
+  Container = MainGroup
+  Height = 13
+  Left = 18
+  Top = 254
+  Width = 106
+  Caption = Display-grid # Caches:
+
+Name = Label10
+  Type = Label
+  Container = BBox
+  Height = 13
+  Left = 16
+  Top = 18
+  Width = 26
+  Caption = North
+
+Name = Label11
+  Type = Label
+  Container = BBox
+  Height = 13
+  Left = 16
+  Top = 82
+  Width = 28
+  Caption = South
+
+Name = Label12
+  Type = Label
+  Container = BBox
+  Height = 13
+  Left = 4
+  Top = 39
+  Width = 25
+  Caption = West
+
+Name = Label13
+  Type = Label
+  Container = BBox
+  Height = 13
+  Left = 194
+  Top = 39
+  Width = 21
+  Caption = East
+
+Name = BB_Nedit
+  Type = Edit
+  Container = BBox
+  Height = 21
+  Left = 48
+  Top = 16
+  Width = 81
+  Taborder = 0
+
+Name = BB_Eedit
+  Type = Edit
+  Container = BBox
+  Height = 21
+  Left = 192
+  Top = 53
+  Width = 76
+  Taborder = 1
+
+Name = BB_Wedit
+  Type = Edit
+  Container = BBox
+  Height = 21
+  Left = 2
+  Top = 53
+  Width = 73
+  Taborder = 2
+
+Name = BB_Sedit
+  Type = Edit
+  Container = BBox
+  Height = 21
+  Left = 48
+  Top = 80
+  Width = 81
+  Taborder = 3
+
+Name = BBbutton
+  Type = Button
+  Container = BBox
+  Height = 23
+  Left = 146
+  Top = 82
+  Width = 103
+  Taborder = 4
+  Caption = Redisplay
+
+Name = Label16
+  Type = Label
+  Container = MainGroup
+  Height = 13
+  Left = 16
+  Top = 437
+  Width = 118
+  Caption = Desired number of bands
+
+Name = ReferenceLon
+  Type = Edit
+  Container = BBox
+  Height = 21
+  Left = 79
+  Top = 53
+  Width = 106
+  Taborder = 5
+
+Name = Label15
+  Type = Label
+  Container = BBox
+  Height = 13
+  Left = 80
+  Top = 37
+  Width = 100
+  Caption = Reference Longitude
+
+Name = ExportButton
+  Type = Button
+  Container = MainGroup
+  Height = 33
+  Left = 17
+  Top = 600
+  Width = 138
+  Taborder = 5
+  Caption = Export Tiles
+
+Name = LabelColor
+  Type = Combobox
+  Container = BMPgroup
+  Exitonchange = Yes
+  Height = 21
+  Left = 360
+  Top = 618
+  Values = Black:0;Yellow:8454143;Green:8453888;DarkGreen:4227072;Blue:16744448;DarkBlue:8388672;Magenta:12615935;Red:255;Brown:16512;White:16777215
+  Width = 76
+  Taborder = 3
+
+Name = Button1
+  Type = Button
+  Container = MainGroup
+  Height = 25
+  Left = 16
+  Top = 488
+  Width = 137
+  Taborder = 6
+  Caption = Save These Settings
+
+Name = SettingsCombobox
+  Type = Combobox
+  Container = MainGroup
+  Height = 21
+  Left = 16
+  Top = 536
+  Values = Default;One Tile
+  Width = 137
+  Taborder = 7
+
+Name = Label3
+  Type = Label
+  Container = MainGroup
+  Height = 13
+  Left = 16
+  Top = 520
+  Width = 72
+  Caption = Select settings:
+
+Name = Label6
+  Type = Label
+  Container = MainGroup
+  Height = 13
+  Left = 16
+  Top = 280
+  Width = 141
+  Caption = plus included Child waypoints:
+
+Name = TotCachePlusWpts
+  Type = Label
+  Container = MainGroup
+  Height = 20
+  Left = 159
+  Size = 12
+  Top = 277
+  Width = 130
+  Caption = 150
+
+<enddata>
+
+<Data> VarName=$Exportform 
+#********************************************************************
+# Form generated by GSAK form designer on Fri 01-Jan-2010 18:12:54
+#********************************************************************
+
+Name = ExportForm
+  Type = Form
+  Caption = DeLormeTile Export
+  Height = 452
+  Width = 762
+
+Name = OptionsGroup
+  Type = Groupbox
+  Caption = Export Options
+  Height = 65
+  Left = 8
+  Top = 136
+  Visible = Yes
+  Width = 737
+  Taborder = 1
+
+Name = ExportGroup
+  Type = Groupbox
+  Caption = Export actions
+  Height = 204
+  Left = 5
+  Top = 205
+  Visible = Yes
+  Width = 745
+  Taborder = 0
+
+Name = Label3
+  Type = Label
+  Container = OptionsGroup
+  Height = 13
+  Left = 8
+  Top = 24
+  Width = 96
+  Caption = Maximum Nr of Logs
+
+Name = MaxLogNrEdit
+  Type = Edit
+  Container = OptionsGroup
+  Height = 21
+  Left = 110
+  Top = 24
+  Width = 33
+  Taborder = 0
+
+Name = Memo2
+  Type = Memo
+  Height = 113
+  Left = 8
+  Readonly = Yes
+  Scrollbars = Vertical
+  Size = 10
+  Top = 16
+  Visible = Yes
+  Width = 745
+  Wrap = Yes
+  Taborder = 2
+
+Name = SetNameEdit
+  Type = Edit
+  Container = OptionsGroup
+  Height = 21
+  Left = 306
+  Top = 26
+  Width = 87
+  Taborder = 1
+
+Name = Label6
+  Type = Label
+  Container = OptionsGroup
+  Height = 13
+  Left = 176
+  Top = 24
+  Width = 126
+  Caption = Base of filename for Export
+
+Name = KMLButton
+  Type = Button
+  Container = ExportGroup
+  Height = 26
+  Left = 590
+  Top = 11
+  Width = 148
+  Taborder = 0
+  Caption = Google Earth (kml)
+
+Name = KMLcheckbox
+  Type = Checkbox
+  Container = ExportGroup
+  Height = 17
+  Left = 8
+  Top = 15
+  Width = 165
+  Taborder = 1
+  Caption = Google Earth == put files here:
+
+Name = DrawLayerCreate
+  Type = Checkbox
+  Container = ExportGroup
+  Height = 17
+  Left = 8
+  Top = 42
+  Width = 153
+  Taborder = 2
+  Caption = Drawlayer for DeLormeTopo
+
+Name = KMLFolder
+  Type = Folder
+  Container = ExportGroup
+  Height = 21
+  Left = 176
+  Top = 13
+  Width = 409
+  Taborder = 3
+
+Name = DeLormeDraw_Folder
+  Type = Folder
+  Container = ExportGroup
+  Height = 21
+  Left = 176
+  Top = 44
+  Width = 409
+  Taborder = 4
+
+Name = DeLormeButton
+  Type = Button
+  Container = ExportGroup
+  Height = 26
+  Left = 590
+  Top = 67
+  Visible = Yes
+  Width = 148
+  Taborder = 5
+  Caption = Create DeLorme-specific gpx
+
+Name = DeLormeGPX_Folder
+  Type = Folder
+  Container = ExportGroup
+  Height = 21
+  Left = 176
+  Top = 71
+  Width = 410
+  Taborder = 6
+
+Name = DeLormeDrawButton
+  Type = Button
+  Container = ExportGroup
+  Height = 26
+  Left = 590
+  Top = 40
+  Width = 148
+  Taborder = 7
+
+Name = DeLormeGPXcheckbox
+  Type = Checkbox
+  Container = ExportGroup
+  Height = 17
+  Left = 8
+  Top = 72
+  Width = 161
+  Taborder = 8
+  Caption = GPX for DeLorme PN GPS
+
+Name = RegularGPXcheckbox
+  Type = Checkbox
+  Container = ExportGroup
+  Height = 17
+  Left = 8
+  Top = 100
+  Width = 169
+  Taborder = 9
+  Caption = Regular GPX - Saved Settings:
+
+Name = GPXSavedSettings
+  Type = Combobox
+  Container = ExportGroup
+  Height = 21
+  Left = 176
+  Top = 96
+  Width = 145
+  Taborder = 10
+
+Name = RegularGPX_folder
+  Type = Folder
+  Container = ExportGroup
+  Height = 21
+  Left = 322
+  Top = 97
+  Width = 335
+  Taborder = 11
+
+Name = RegularGPXbutton
+  Type = Button
+  Container = ExportGroup
+  Height = 25
+  Left = 662
+  Top = 96
+  Width = 75
+  Taborder = 12
+  Caption = Reg.GPX
+
+Name = DoAllButton
+  Type = Button
+  Container = ExportGroup
+  Height = 33
+  Left = 8
+  Top = 168
+  Width = 161
+  Taborder = 13
+  Caption = Do All selected exports
+
+Name = ExitButton
+  Type = Button
+  Container = ExportGroup
+  Height = 33
+  Left = 176
+  Top = 168
+  Width = 137
+  Taborder = 14
+  Caption = Exit
+
+Name = OtherExportComboBox
+  Type = Combobox
+  Container = ExportGroup
+  Exitonchange = Yes
+  Height = 21
+  Left = 120
+  Top = 122
+  Width = 223
+  Taborder = 15
+
+Name = Label1
+  Type = Label
+  Container = ExportGroup
+  Height = 13
+  Left = 344
+  Top = 125
+  Width = 75
+  Caption = Saved Settings:
+
+Name = OtherExportSavedSettings
+  Type = Combobox
+  Container = ExportGroup
+  Height = 21
+  Left = 430
+  Top = 119
+  Width = 227
+  Taborder = 16
+
+Name = OtherExport_Folder
+  Type = Folder
+  Container = ExportGroup
+  Height = 21
+  Left = 144
+  Top = 143
+  Width = 513
+  Taborder = 17
+
+Name = OtherExportButton
+  Type = Button
+  Container = ExportGroup
+  Height = 39
+  Left = 662
+  Top = 122
+  Width = 75
+  Taborder = 18
+  Caption = other Export
+
+Name = OtherExportCheckbox
+  Type = Checkbox
+  Container = ExportGroup
+  Height = 17
+  Left = 8
+  Top = 124
+  Width = 113
+  Taborder = 19
+  Caption = other Export -Type:
+
+Name = Label2
+  Type = Label
+  Container = ExportGroup
+  Height = 13
+  Left = 32
+  Top = 144
+  Width = 112
+  Caption = Other Export files folder:
+
+<enddata>
+
+
+Beginsub Name=VariableDeclarations
+Option Explicit=Yes
+
+Declare Var=$Addnt Type=String
+Declare Var=$AddntCount Type=Numeric
+Declare Var=$AttachedStaticManually Type=Boolean
+Declare Var=$BandBot Type=Numeric
+Declare Var=$BandNumber Type=Numeric
+Declare Var=$BandNumberEdit Type=String
+Declare Var=$BandTop Type=Numeric
+Declare Var=$BB_E Type=Numeric
+Declare Var=$BB_Eedit Type=String
+Declare Var=$BB_N Type=Numeric
+Declare Var=$BB_Nedit Type=String
+Declare Var=$BB_S Type=Numeric
+Declare Var=$BB_Sedit Type=String
+Declare Var=$BB_W Type=Numeric
+Declare Var=$BB_Wedit Type=String
+Declare Var=$bigStr Type=String
+Declare Var=$BMP_Array Type=Numeric
+Declare Var=$BMP_ArrayBack Type=Numeric
+Declare Var=$BMP_ArrayBack2 Type=Numeric
+Declare Var=$BMP_ArrayFront Type=Numeric
+Declare Var=$BMP_ArrayFront2 Type=Numeric
+Declare Var=$BMP_ArrayRow Type=Numeric
+Declare Var=$BMP_BB_E Type=Numeric
+Declare Var=$BMP_BB_N Type=Numeric
+Declare Var=$BMP_BB_S Type=Numeric
+Declare Var=$BMP_BB_W Type=Numeric
+Declare Var=$BMP_BBrectE Type=Numeric
+Declare Var=$BMP_BBrectFill Type=Boolean
+Declare Var=$BMP_BBrectLabel Type=String
+Declare Var=$BMP_BBrectN Type=Numeric
+Declare Var=$BMP_BBrectS Type=Numeric
+Declare Var=$BMP_BBrectW Type=Numeric
+Declare Var=$BMP_bias Type=Numeric
+Declare Var=$BMP_CacheNames Type=String
+Declare Var=$BMP_ColorBackground Type=Numeric
+Declare Var=$BMP_ColorGridLine Type=Numeric
+Declare Var=$BMP_ColorLine Type=Numeric
+Declare Var=$BMP_ColorNr Type=Numeric
+Declare Var=$BMP_ColorNrBlack Type=Numeric
+Declare Var=$BMP_ColorNrBlue Type=Numeric
+Declare Var=$BMP_ColorNrCyan Type=Numeric
+Declare Var=$BMP_ColorNrDarkCyan Type=Numeric
+Declare Var=$BMP_ColorNrDarkGrey Type=Numeric
+Declare Var=$BMP_ColorNrDarkYellow Type=Numeric
+Declare Var=$BMP_ColorNrGreen Type=Numeric
+Declare Var=$BMP_ColorNrGrey Type=Numeric
+Declare Var=$BMP_ColorNrLightBlue Type=Numeric
+Declare Var=$BMP_ColorNrLightGreen Type=Numeric
+Declare Var=$BMP_ColorNrLightViolet Type=Numeric
+Declare Var=$BMP_ColorNrOrange Type=Numeric
+Declare Var=$BMP_ColorNrRed Type=Numeric
+Declare Var=$BMP_ColorNrViolet Type=Numeric
+Declare Var=$BMP_ColorNrWhite Type=Numeric
+Declare Var=$BMP_ColorNrYellow Type=Numeric
+Declare Var=$BMP_ColorSymbol Type=Numeric
+Declare Var=$BMP_ColorTransparent Type=Numeric
+Declare Var=$BMP_DeltaLat Type=Numeric
+Declare Var=$BMP_DeltaLatLon Type=Numeric
+Declare Var=$BMP_DeltaLon Type=Numeric
+Declare Var=$BMP_DisplayBackCheck Type=Boolean
+Declare Var=$BMP_DisplayFrontCheck Type=Boolean
+Declare Var=$BMP_DisplayLabels Type=Boolean
+Declare Var=$BMP_DrawSymb Type=String
+Declare Var=$BMP_GridLine Type=String
+Declare Var=$BMP_icnt Type=Numeric
+Declare Var=$BMP_LabelCount Type=Numeric
+Declare Var=$BMP_labels Type=String
+Declare Var=$BMP_LabelText Type=String
+Declare Var=$BMP_lat Type=Numeric
+Declare Var=$BMP_lat1 Type=Numeric
+Declare Var=$BMP_lat2 Type=Numeric
+Declare Var=$BMP_LinePos1 Type=Numeric
+Declare Var=$BMP_LinePos2 Type=Numeric
+Declare Var=$BMP_LineThick Type=Boolean
+Declare Var=$BMP_lon Type=Numeric
+Declare Var=$BMP_lon1 Type=Numeric
+Declare Var=$BMP_lon2 Type=Numeric
+Declare Var=$BMP_MaxLatDraw Type=Numeric
+Declare Var=$BMP_MaxLonDraw Type=Numeric
+Declare Var=$BMP_MinLatDraw Type=Numeric
+Declare Var=$BMP_MinLonDraw Type=Numeric
+Declare Var=$BMP_NrPixels Type=Numeric
+Declare Var=$BMP_PixDelta Type=Numeric
+Declare Var=$BMP_pixdifx Type=Numeric
+Declare Var=$BMP_pixdify Type=Numeric
+Declare Var=$BMP_PixMax Type=Numeric
+Declare Var=$BMP_Segment Type=String
+Declare Var=$BMP_ShowGridLines Type=Boolean
+Declare Var=$BMP_TMPint Type=Numeric
+Declare Var=$BMP_TMPstr Type=String
+Declare Var=$BMP_TMPStrBack Type=String
+Declare Var=$BMP_x Type=Numeric
+Declare Var=$BMP_y Type=Numeric
+Declare Var=$BMP620HeadMime Type=String
+Declare Var=$BMP620square Type=String
+Declare Var=$BMPkeeprunning Type=Boolean
+Declare Var=$BMPlabelNE Type=String
+Declare Var=$BMPlabelNW Type=String
+Declare Var=$BMPlabelSE Type=String
+Declare Var=$BMPlabelSW Type=String
+Declare Var=$CacheCount Type=Numeric
+Declare Var=$CenterLat Type=Numeric
+Declare Var=$CenterLon Type=Numeric
+Declare Var=$CurrentCount Type=Numeric
+Declare Var=$DeLormeDraw_Folder Type=String
+Declare Var=$DeLormeDrawCode Type=String
+Declare Var=$DeLormeGPX_Filename Type=String
+Declare Var=$DeLormeGPX_Folder Type=String
+Declare Var=$DeLormeGPX_Footer Type=String
+Declare Var=$DeLormeGPX_Header Type=String
+Declare Var=$DeLormeGPX_String Type=String
+Declare Var=$DeltaOnThisSide Type=Numeric
+Declare Var=$ExportForm Type=String
+Declare Var=$FileOut Type=String
+Declare Var=$FormExit Type=String
+Declare Var=$FromStr Type=String
+Declare Var=$GCcode Type=String
+Declare Var=$GraphAreaBack Type=String
+Declare Var=$GraphAreaFront Type=String
+Declare Var=$GT_KeepRunning Type=Boolean
+Declare Var=$GT_MagicNumber Type=Numeric
+Declare Var=$GT_MaximumNumber Type=Numeric
+Declare Var=$GTinstructions Type=String
+Declare Var=$GTpreamble Type=String
+Declare Var=$HardMaxEdit Type=String
+Declare Var=$iBand Type=Numeric
+Declare Var=$iCacheGroup Type=Numeric
+Declare Var=$iCount Type=Numeric
+Declare Var=$IncludeAddtnl Type=Boolean
+Declare Var=$iTile Type=Numeric
+Declare Var=$iTileMax Type=Numeric
+Declare Var=$KMLFolder Type=String
+Declare Var=$KMLpolygonsFoot Type=String
+Declare Var=$KMLpolygonsHead Type=String
+Declare Var=$KMLStr Type=String
+Declare Var=$KMLtilePrefix Type=String
+Declare Var=$KMLtileSuffix Type=String
+Declare Var=$LabelColor Type=String
+Declare Var=$Limit Type=Numeric
+Declare Var=$LineFeed Type=String
+Declare Var=$MainForm Type=String
+Declare Var=$MainFormWithLabels Type=String
+Declare Var=$MaxLat Type=Numeric
+Declare Var=$MaxLogNr Type=Numeric
+Declare Var=$MaxLogNrEdit Type=String
+Declare Var=$MaxLon Type=Numeric
+Declare Var=$memo2 Type=String
+Declare Var=$MinLat Type=Numeric
+Declare Var=$MinLon Type=Numeric
+Declare Var=$Offset Type=Numeric
+Declare Var=$OtherExportSavedSettings Type=String
+Declare Var=$OtherExport_Filename Type=String
+Declare Var=$OtherExport_Folder Type=String
+Declare Var=$OtherExportComboBox Type=String
+Declare Var=$OtherExportType Type=String
+Declare Var=$OtherExportCheckbox Type=Boolean
+Declare Var=$PauseForm Type=String
+Declare Var=$PauseForm_Memo Type=String
+Declare Var=$PauseForm_Prompt Type=String
+Declare Var=$PauseForm_Response Type=String
+Declare Var=$PauseForm_YesNo Type=Boolean
+Declare Var=$Referencelon Type=String
+Declare Var=$RefLongitude Type=Numeric
+Declare Var=$RegionName Type=String
+Declare Var=$RegularGPX_Filename Type=String
+Declare Var=$RegularGPX_Folder Type=String
+Declare Var=$Remaining Type=Numeric
+Declare Var=$RowNr Type=Numeric
+Declare Var=$SaniString Type=String
+Declare Var=$SavedFilter Type=String
+Declare Var=$SetNameEdit Type=String
+Declare Var=$SIDE Type=String
+Declare Var=$SoftMaxEdit Type=String
+Declare Var=$SQLdatabase Type=String
+Declare Var=$SQLfields Type=String
+Declare Var=$SQLqueryA Type=String
+Declare Var=$SQLqueryB Type=String
+Declare Var=$SQLresstr Type=String
+Declare Var=$SQLresult Type=String
+Declare Var=$StatusMessage Type=String
+Declare Var=$TheLogs Type=String
+Declare Var=$TileGCcodes Type=String
+Declare Var=$TileGCcodesNR Type=Numeric
+Declare Var=$TileSpecs Type=String
+Declare Var=$TMPkml Type=String
+Declare Var=$TmpLonMax Type=String
+Declare Var=$TmpLonMin Type=String
+Declare Var=$TmpStr Type=String
+Declare Var=$TopoDrawLayerInstruction Type=String
+Declare Var=$TotalCacheCount Type=Numeric
+Declare Var=$TotalCacheCountStr Type=String
+Declare Var=$TotalCurrent Type=Numeric
+Declare Var=$TotalNrCaches Type=Numeric
+Declare Var=$TotalNrTiles Type=Numeric
+Declare Var=$Version Type=String
+Declare Var=$WhichWay Type=String
+Declare Var=$xold Type=Numeric
+Declare Var=$yold Type=Numeric
+
+endsub

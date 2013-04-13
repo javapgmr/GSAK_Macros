@@ -1,0 +1,730 @@
+#***************************************
+# HTMLName=Select Images
+# SplitScreen=Yes
+# Export=No
+# Offline=No
+#***************************************
+
+# MacVersion = 1.8
+# MacDescription = Select Images for Export
+# MacAuthor = Lignumaqua
+# MacFileName = HTML_SelectImages.gsk
+
+#***************************************
+#   Select Images Split Screen
+#   1-23-12  V0.1
+#   1-24-12  V0.2
+#   1-25-12  V0.3
+#   1-26-12  V0.4 Check for correct running. Button style. Clickable header rows. Ignore non jpg.
+#   1-26-12  V0.5 Support for png, regex for cr in <img> tags, silent, flag included by keywords, user note images
+#   1-27-12  V0.6 Fix table, declare keywords, sticky hide/show, fix for $_DbPath, notes remote images
+#   2-1-12   V0.7 Accept png in attached images as well, regex in user notes remote images
+#   2-6-12   V0.8 Silent mode for all images, check for duplicates in cache images, check for *error* images
+#   2-9-12   V0.9 Fix for distinction betwewen 'not grabbed' and duplicates.
+#   2-9-12   V1.0 Include, Exclude, Toggle All of a section. CSS.
+#   2-10-12  V1.1 Bug for user notes images
+#   2-10-12  V1.2 Workaround for IE problem with long URLs, editable image names for Attached and Included images, AddStr()
+#   2-12-12  V1.3 Editable image names for User Notes images, all pages remember scroll position
+#   2-13-12  V1.4 Added images in Short Description, support file:// tags in user notes, show ungrabbed cache page images, option to grab cache
+#   2-26-12  V1.5 Support .jpeg, fix select all in User Note local images.
+#   7-24-12  V1.6 Remove deprecated HTML() function
+#   8-12-12  V1.7 Add support for DualScreen
+#		11-3-12  V1.8 Support $_Appdata in file path in user notes
+#   Mike Wood (Lignumaqua)
+#***************************************
+Option Explicit=Yes
+
+VERCHECK Version=8.0.1.62
+
+IF $_HtmlFormat <> "SplitScreen" AND $_HtmlFormat <> "DualScreen"
+	MSGOK msg="This macro is a split screen macro and cannot be run directly.$_CrLf $_CrLf Choose 'Select Images' from the 'Split screen format' menu above the grid."
+	CANCEL
+ENDIF
+
+$keywords=""
+# Get settings from SendImagesToGarmin macro
+MACSETTINGS Type=R File=SendImagesToGarmin.xml FileCheck=N
+
+# Create and open main sqlite database file
+$sqlfile = $_Install + "\macros\GrabbedImagesToInclude.db3"
+IF NOT(FileExists($sqlfile))
+	$status = Sqlite("create",$sqlfile,"Active=No")
+ENDIF
+
+$sqlinputfile = SqlQuote($sqlfile)
+$_sql = "ATTACH $sqlinputfile AS ImagesToInclude"
+$status = Sqlite("sql",$_sql)
+
+$Data = "xCode text, xname text"
+$_sql = "CREATE TABLE IF NOT EXISTS ImagesToInclude.imagestoinclude ($Data)"
+$status = Sqlite("sql",$_sql)
+
+
+$Data ="yname text UNIQUE, correctedname text"
+$_sql = "CREATE TABLE IF NOT EXISTS ImagesToInclude.CorrectedNames ($Data)"
+$status = Sqlite("sql",$_sql)
+
+
+# Write out toggle include macro
+$tmpS = PutFile($_Install + "\macros\toggleincludeimage.gsk", $ToggleIncludeImage)
+
+# Write out Corrected name macro
+$tmpS = PutFile($_Install + "\macros\savecorrectedname.gsk", $SaveCorrectedName)
+
+# Write out Grab current macro
+$tmpS = PutFile($_Install + "\macros\grabcurrent.gsk", $GrabCurrent)
+
+GOSUB name=GetIgnoreLinks
+
+# Build search string
+$count = RegExCount(",",$keywords) + 1
+
+$searchstring = "iname like '%spoil%' or idescription like '%spoil%'"
+WHILE $count > 0 AND Len($keywords) > 0
+	$searchstring = $searchstring + " or iname like '%" + AllTrim(Extract($keywords,",",$count)) + "%' or idescription like '%" + AllTrim(Extract($keywords,",",$count)) + "%'"
+	$count = $count - 1
+ENDWHILE
+
+$script = Replace("!!code!!",$d_Code,$script)
+
+# Start Output
+$html = AddStr(1,"clear")
+$html = $Header
+
+$newstyle = "body{font-family:Verdana,Arial; font-size:12px;}" + $_CrLf
+$newstyle = $newstyle + ".input{border: 1px solid black; background: #84c6e6; cursor:pointer; width: 100px; font: 12px;}" + $_CrLf
+$newstyle = $newstyle + ".include{cursor:pointer; width: 180px; font: 12px; color:white; background-color:#E41B17;}" + $_CrLf
+$newstyle = $newstyle + ".exclude{cursor:pointer; width: 180px; font: 12px; color:white; background-color:#008000;}" + $_CrLf
+$newstyle = $newstyle + ".headerdiv{background-color:#4486A6; cursor:pointer; font-size:16px;color:white;font-weight:bold;}</Style>"
+
+$html = Replace("</Style>",$newstyle + $script,$html)
+
+$html = $html + "</td></tr></table>" + $_CrLf
+
+$html = AddStr(1,"add",$html)
+
+$GrabbedImagePreamble = "<img src='file:///" + $_DbPath + "/GrabbedImages/"
+$ImageSuffix = "' style='max-width:250px; max-height:300px;'>"
+
+$GrabbedDatabase = SqlQuote($_DbPath + "\GrabbedImages\files.db3")
+$_sql = "ATTACH $GrabbedDatabase AS grabbedimages"
+$status = Sqlite("sql",$_sql)
+
+$icounter = 0
+
+GOSUB name=AttachedImages
+
+GOSUB name=CachePageImages
+
+GOSUB name=NoteLocalImages
+
+GOSUB name=NoteRemoteImages
+
+# Add footer and close output
+$html = AddStr(1,"add",$Footer)
+$html = AddStr(1,"get")
+$_HTML = $html
+
+####################################
+
+
+
+BEGINSUB name=AttachedImages
+	#####################################
+	# Find attached images in CacheImages
+	#####################################
+
+	$_sql = "select count(fname) from cacheimages join files on iImage=link where iCode = '$d_code'"
+	$imagecount = Sqlite("sql",$_sql)
+
+	$_sql = "select fname, iname, icode, idescription, coalesce((select '1' from imagestoinclude where fname=xname),'0') as included, (select correctedname from correctednames where fname=yname) as correctedname from cacheimages join files on iImage=link where iCode = '$d_code'"
+	$status = Sqlite("sql",$_sql, "sqlget=yes")
+	IF $_SQLEol
+		$html = AddStr(1,"add","<table width='100%'><tr><td colspan='4'>")
+		$html = AddStr(1,"add","<center> $d_code has no Attached images </center>" + "</td></tr><tr><td>" + $_CrLf)
+	ELSE
+		$html = AddStr(1,"add","<div align='center' class='headerdiv' onclick='togglecookie(" + $_Quote + "selectimagesattached" + $_Quote + "); popup(" + $_Quote + "attached" + $_Quote + ");'>")
+		$html = AddStr(1,"add","$d_code - $d_name: Attached images ($imagecount)" + "</div><table id='attached' width='100%' style='border:1px solid #4486A6'><tr><td>" + $_CrLf)
+		$html = AddStr(1,"add","<tr><td colspan='4'><center><input type='button' class='input' value='Include all' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "i;" + "allimages1" + $_Quote + "'>&nbsp;" + $_CrLf)
+		$html = AddStr(1,"add","<input type='button' class='input' value='Exclude all' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "e;" + "allimages1" + $_Quote + "'>&nbsp;" + $_CrLf)
+		$html = AddStr(1,"add","<input type='button' class='input' value='Toggle all' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "t;" + "allimages1" + $_Quote + "'></center></td></tr><tr><td>" + $_CrLf)
+	ENDIF
+
+		
+	$linecounter = 0
+	$p_allimages1 = ""
+	WHILE Not($_SQLEol)
+		IF SqlGet("correctedname")<> ""
+			$name = SqlGet("correctedname")
+		ELSE
+			$name = SqlGet("iname")
+		ENDIF
+		$escapedfname = Replace("\","\\",SqlGet("fname"))
+		
+		$html = AddStr(1,"add","<center>")
+		$html = AddStr(1,"add",$GrabbedImagePreamble + SqlGet("fname") + $ImageSuffix + "</br><div id='editBox$icounter' onclick='edit(" + $_Quote + "editBox$icounter" + $_Quote + "," + $_Quote + $escapedfname + $_Quote + ");'>" + $name + "</div></br>" + SqlGet("idescription") + "</br>" + $_CrLf)
+
+		$searchstring2 = Replace("iname",SqlQuote(SqlGet("iname")),$searchstring)
+		$searchstring2 = Replace("idescription",SqlQuote(SqlGet("idescription")),$searchstring2)
+		$_sql = "select " + $searchstring2
+		$infilter = Sqlite("sql",$_sql)
+
+		IF RegExCount("(?i)\.(jpg|png)",SqlGet("fname")) > 0  AND $fname <> "*error*"
+			IF $infilter = "1"
+				$html = AddStr(1,"add","<font color='#008000'><b>Included by keywords filter</b></font>" + $_CrLf)
+			ELSE
+				IF SqlGet("included") = "0"
+					$html = AddStr(1,"add","<input type='button' class='include' value='Excluded (click to include)' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "t;" + SqlGet("icode") + "," + SqlGet("fname") + $_Quote + "'>" + $_CrLf)
+				ELSE
+					$html = AddStr(1,"add","<input type='button' class='exclude' value='Included (click to exclude)' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "t;" + SqlGet("icode") + "," + SqlGet("fname") + $_Quote + "'>" + $_CrLf)
+				ENDIF
+			ENDIF
+			$p_allimages1 = $p_allimages1 + SqlGet("icode") + "," + SqlGet("fname") + ";"
+		ELSE
+			IF $fname = "*error*"
+					$html = AddStr(1,"add","<i>(Image Grab Failed)</i>")
+			ENDIF
+			IF RegExCount("(?i)\.(jpg|png)",SqlGet("fname")) = 0
+				$html = AddStr(1,"add","<i>(Not a jpg or png image)</i>")
+			ENDIF
+		ENDIF
+
+		$html = AddStr(1,"add","</center></td><td><center>" + $_CrLf)
+		SQLNEXT
+		$linecounter = $linecounter + 1
+		$icounter = $icounter + 1
+		IF $linecounter = 4
+			$html = AddStr(1,"add","</br>" + "</td></tr><tr><td>" + $_CrLf)
+			$linecounter = 0
+		ENDIF
+	ENDWHILE
+
+	$html = AddStr(1,"add","</td></tr></table>" + $_CrLf)
+		
+ENDSUB #AttachedImages
+
+BEGINSUB name=CachePageImages
+	#####################################
+	# Find cache page images
+	#####################################
+
+	$html = AddStr(1,"add","<br>" + $_CrLf)
+	$regex = "(?s)(?i)<img.*?src\s*?=\s*?('|" + $_Quote + ")(.*?)(" + $_Quote + "|')"
+	$includedimage = ""
+	$count = RegExCount($regex, $d_LongDescription + $d_ShortDescription)
+	$linecounter = 0
+	$p_allimages2 = ""
+
+	IF $count=0
+		$html = AddStr(1,"add","<table width='100%'><tr><td colspan='4'>")
+		$html = AddStr(1,"add","<center> $d_code has no Cache Page images </center>" + "</td></tr><tr><td>" + $_CrLf)
+	ELSE
+		$html = AddStr(1,"add","<div align='center' class='headerdiv' onclick='togglecookie(" + $_Quote + "selectimagescachepage" + $_Quote + "); popup(" + $_Quote + "cachepage" + $_Quote + ");'>")
+		$html = AddStr(1,"add","$d_code - $d_name: Cache page images ($count)" + "</div><table id='cachepage' width='100%' style='border:1px solid #4486A6'><tr><td>" + $_CrLf)
+		$html = AddStr(1,"add","<tr><td colspan='4'><center><input type='button' class='input' value='Include all' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "i;" + "allimages2" + $_Quote + "'>&nbsp;" + $_CrLf)
+		$html = AddStr(1,"add","<input type='button' class='input' value='Exclude all' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "e;" + "allimages2" + $_Quote + "'>&nbsp;" + $_CrLf)
+		$html = AddStr(1,"add","<input type='button' class='input' value='Toggle all' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "t;" + "allimages2" + $_Quote + "'>&nbsp;" + $_CrLf)
+		$html = AddStr(1,"add","<input type='button' class='input' value='Grab this cache' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/grabcurrent" + $_Quote + "'></center></td></tr><tr><td>" + $_CrLf)
+	ENDIF
+
+	WHILE $count > 0
+		$includedimage = AllTrim(RegExSub($regex,$d_LongDescription + $d_ShortDescription,$count,2))
+		$_sql = "select fname from files where link like '$includedimage' limit 1"
+		$fname = Sqlite("sql",$_sql)
+
+		$_sql = "select fname from files where link like '$includedimage' and fname not in (select fname from cacheimages join files on iImage=link where iCode = '$d_code') limit 1"
+		$status = Sqlite("sql",$_sql)
+
+		$html = AddStr(1,"add","<center>" + $_CrLf)
+
+		IF $fname <> "" # Check if grabbed
+			IF  $status <> "" # Check if already shown in attached images
+				
+				# Check if corrected name is available
+				$_sql = "select correctedname from correctednames where yname = '$fname'"
+				$correctedname = Sqlite("sql",$_sql)
+				IF $correctedname <> ""
+					$name = $correctedname
+				ELSE
+					$name = $d_Code + " image"
+				ENDIF
+				$escapedfname = Replace("\","\\",$fname)
+				$html = AddStr(1,"add",$GrabbedImagePreamble + $fname + $ImageSuffix + "</br><div id='editBox$icounter' onclick='edit(" + $_Quote + "editBox$icounter" + $_Quote + "," + $_Quote + $escapedfname + $_Quote + ");'>" + $name + "</div></br>" + $_CrLf)
+
+				$_sql = "select xname from imagestoinclude where xname= '$fname' and xCode = '$d_code'"
+
+				$suffix = Lower(RegExSub("(.*)\.(.*)",$fname,1,2))
+				IF ($suffix = "jpg" OR $suffix = "png") AND $fname <> "*error*"
+					IF Len(Sqlite("sql",$_sql)) = 0
+						$html = AddStr(1,"add","<input type='button' class='include' value='Excluded (click to include)' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "t;" + $d_Code + "," + $fname + $_Quote + "'>" + $_CrLf)
+					ELSE
+						$html = AddStr(1,"add","<input type='button' class='exclude' value='Included (click to exclude)' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "t;" + $d_Code + "," + $fname + $_Quote + "'>" + $_CrLf)
+					ENDIF
+					$p_allimages2 = $p_allimages2 + $d_Code + "," + $fname + ";"
+				ELSE
+					IF $fname = "*error*"
+						$html = AddStr(1,"add","<i>(Image Grab Failed)</i>")
+					ENDIF
+					IF $suffix <> "jpg" AND $suffix <> "png"
+						$html = AddStr(1,"add","<i>(Not a jpg or png image)</i>")
+					ENDIF
+				ENDIF
+			ELSE
+				$html = AddStr(1,"add","<i>(Already shown above)</i>")
+				$p_allimages2 = $p_allimages2 + $d_Code + "," + $fname + ";"
+			ENDIF
+		ELSE
+			$html = AddStr(1,"add","<img src='" + $includedimage + $imagesuffix + "<br><i>(Not grabbed)</i>")
+		ENDIF
+		$html = AddStr(1,"add","</br>" + "</center></td><td><center>" + $_CrLf)
+
+		#MSGOK msg=$fname
+		$count = $count - 1
+		$linecounter = $linecounter + 1
+		$icounter = $icounter + 1
+		IF $linecounter = 4
+			$html = AddStr(1,"add","</td></tr><tr><td>" + $_CrLf)
+			$linecounter = 0
+		ENDIF
+	ENDWHILE
+
+	$html = AddStr(1,"add","</td></tr></table>" + $_CrLf)
+ENDSUB # name=CachePageImages
+
+
+BEGINSUB name=NoteLocalImages
+	#####################################
+	# Find user note local images
+	#####################################
+	$html = AddStr(1,"add","<br>" + $_CrLf)
+	$regex = "(?s)(?i)<img[^>]*?src\s*?=\s*?('|" + $_Quote + ")file:/{2,3}(.*?)(" + $_Quote + "|')"
+	$includedimage = ""
+	$count = RegExCount($regex, $d_UserNote)
+	$linecounter = 0
+	$p_allimages3 = ""
+
+	IF $count=0
+		$html = AddStr(1,"add","<table width='100%'><tr><td colspan='4'>")
+		$html = AddStr(1,"add","<center> $d_code has no Local User Note images </center>" + "</td></tr><tr><td>" + $_CrLf)
+	ELSE
+		$html = AddStr(1,"add","<div align='center' class='headerdiv' onclick='togglecookie(" + $_Quote + "selectimagesnotes" + $_Quote + "); popup(" + $_Quote + "notes" + $_Quote + ");'>")
+		$html = AddStr(1,"add","$d_code - $d_name: Local User Note images ($count)" + "</div><table id='notes' width='100%' style='border:1px solid #4486A6'><tr><td>" + $_CrLf)
+		$html = AddStr(1,"add","<tr><td colspan='4'><center><input type='button' class='input' value='Include all' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "i;" + "allimages3" + $_Quote + "'>&nbsp;" + $_CrLf)
+		$html = AddStr(1,"add","<input type='button' class='input' value='Exclude all' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "e;" + "allimages3" + $_Quote + "'>&nbsp;" + $_CrLf)
+		$html = AddStr(1,"add","<input type='button' class='input' value='Toggle all' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "t;" + "allimages3" + $_Quote + "'></center></td></tr><tr><td>" + $_CrLf)
+	ENDIF
+
+	WHILE $count > 0
+		$fname = AllTrim(RegExSub($regex,$d_UserNote,$count,2))
+		
+		# Substitute for system variable if present
+		$fname = Replace("$" + "_Appdata",$_AppData,$fname)
+		
+		# Check if corrected name is available
+		$_sql = "select correctedname from correctednames where yname = '$fname'"
+		$correctedname = Sqlite("sql",$_sql)
+		IF $correctedname <> ""
+			$name = $correctedname
+		ELSE
+			$name = $d_Code + " notes"
+		ENDIF
+		
+		$escapedfname = Replace("\","\\",$fname)
+
+		$html = AddStr(1,"add","<center>" + $_CrLf)
+		#$html = AddStr(1,"add","<img src='file:///" + $fname + $ImageSuffix + "</br>" + $d_Code + " notes" + "</br>" + $_CrLf)
+		$html = AddStr(1,"add","<img src='file:///" + $fname + $ImageSuffix + "</br><div id='editBox$icounter' onclick='tempname = encodeURIComponent(" + $_Quote + "$escapedfname" + $_Quote + "); edit(" + $_Quote + "editBox$icounter" + $_Quote + ",tempname);'>" + $name + "</div></br>" + $_CrLf)
+
+		$_sql = "select xname from imagestoinclude where xname= '$fname' and xCode = '$d_code'"
+
+		$suffix = Lower(RegExSub("(.*)\.(.*)",$fname,1,2))
+		IF $suffix = "jpg" OR $suffix = "png" OR $suffix = "jpeg"
+			IF Len(Sqlite("sql",$_sql)) = 0
+				$html = AddStr(1,"add","<input type='button' class='include' value='Excluded (click to include)' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "t;" + $d_Code + "," + HttpEncode($fname) + $_Quote + "'>" + $_CrLf)
+			ELSE
+				$html = AddStr(1,"add","<input type='button' class='exclude' value='Included (click to exclude)' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "t;" + $d_Code + "," + HttpEncode($fname) + $_Quote + "'>" + $_CrLf)
+			ENDIF
+			$p_allimages3 = $p_allimages3 + $d_Code + "," + $fname + ";"
+		ELSE
+			$html = AddStr(1,"add","<i>(Not a jpg or png image)</i>")
+		ENDIF
+		$html = AddStr(1,"add","</br>" + "</center></td><td><center>" + $_CrLf)
+
+		#MSGOK msg=$fname
+		$count = $count - 1
+		$linecounter = $linecounter + 1
+		$icounter = $icounter + 1
+		IF $linecounter = 4
+			$html = AddStr(1,"add","</td></tr><tr><td>" + $_CrLf)
+			$linecounter = 0
+		ENDIF
+	ENDWHILE
+
+	$html = AddStr(1,"add","</td></tr></table>" + $_CrLf)
+
+ENDSUB # name=NoteLocalImages
+
+BEGINSUB name=NoteRemoteImages
+	#####################################
+	# Find user note remote images
+	#####################################
+	$html = AddStr(1,"add","<br>" + $_CrLf)
+	$regex = "(?s)(?i)<img[^>]*?src\s*?=\s*?('|" + $_Quote + ")(http://.*?)(" + $_Quote + "|')"
+	$includedimage = ""
+	$count = RegExCount($regex, $d_UserNote)
+	$linecounter = 0
+	$p_allimages4 = ""
+
+	IF $count=0
+		$html = AddStr(1,"add","<table width='100%'><tr><td colspan='4'>")
+		$html = AddStr(1,"add","<center> $d_code has no Remote User Note images </center>" + "</td></tr><tr><td>" + $_CrLf)
+	ELSE
+		$html = AddStr(1,"add","<div align='center' class='headerdiv' onclick='togglecookie(" + $_Quote + "selectimagesnotesrremote" + $_Quote + "); popup(" + $_Quote + "notesremote" + $_Quote + ");'>")
+		$html = AddStr(1,"add","$d_code - $d_name: Remote user note images ($count)" + "</div><table id='notesremote' width='100%' style='border:1px solid #4486A6'><tr><td>" + $_CrLf)
+		$html = AddStr(1,"add","<tr><td colspan='4'><center><input type='button' class='input' value='Include all' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "i;" + "allimages4" + $_Quote + "'>&nbsp;" + $_CrLf)
+		$html = AddStr(1,"add","<input type='button' class='input' value='Exclude all' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "e;" + "allimages4" + $_Quote + "'>&nbsp;" + $_CrLf)
+		$html = AddStr(1,"add","<input type='button' class='input' value='Toggle all' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "t;" + "allimages4" + $_Quote + "'></center></td></tr><tr><td>" + $_CrLf)
+	ENDIF
+
+	WHILE $count > 0
+		$includedimage = AllTrim(RegExSub($regex,$d_UserNote,$count,2))
+		$_sql = "select fname from files where link like '$includedimage' limit 1"
+		$fname = Sqlite("sql",$_sql)
+		
+		# Check if corrected name is available
+		$_sql = "select correctedname from correctednames where yname = '$fname'"
+		$correctedname = Sqlite("sql",$_sql)
+		IF $correctedname <> ""
+			$name = $correctedname
+		ELSE
+			$name = $d_Code + " image"
+		ENDIF
+		
+		$escapedfname = Replace("\","\\",$fname)
+
+		$html = AddStr(1,"add","<center>" + $_CrLf)
+		#$html = AddStr(1,"add",$GrabbedImagePreamble + $fname + $ImageSuffix + "</br>" + $d_Code + " image" + "</br>" + $_CrLf)
+		$html = AddStr(1,"add",$GrabbedImagePreamble + $fname + $ImageSuffix + "</br><div id='editBox$icounter' onclick='tempname = encodeURIComponent(" + $_Quote + "$escapedfname" + $_Quote + "); edit(" + $_Quote + "editBox$icounter" + $_Quote + ",tempname);'>" + $name + "</div></br>" + $_CrLf)
+
+		$_sql = "select xname from imagestoinclude where xname= '$fname' and xCode = '$d_code'"
+
+		$suffix = Lower(RegExSub("(.*)\.(.*)",$fname,1,2))
+		IF $suffix = "jpg" OR $suffix = "png" OR $suffix = "jpeg"
+			IF Len(Sqlite("sql",$_sql)) = 0
+				$html = AddStr(1,"add","<input type='button' class='include' value='Excluded (click to include)' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "t;" + $d_Code + "," + $fname + $_Quote + "'>" + $_CrLf)
+			ELSE
+				$html = AddStr(1,"add","<input type='button' class='exclude' value='Included (click to exclude)' onclick='parent.location=" + $_Quote + "gsak://%FF/macro:silent/toggleincludeimage?" + "t;" + $d_Code + "," + $fname + $_Quote + "'>" + $_CrLf)
+			ENDIF
+			$p_allimages4 = $p_allimages4 + $d_Code + "," + $fname + ";"
+		ELSE
+			$html = AddStr(1,"add","<i>(Not a jpg or png image)</i>")
+		ENDIF
+		$html = AddStr(1,"add","</br>" + "</center></td><td><center>" + $_CrLf)
+
+		#MSGOK msg=$fname
+		$count = $count - 1
+		$linecounter = $linecounter + 1
+		$icounter = $icounter + 1
+		IF $linecounter = 4
+			$html = AddStr(1,"add","</td></tr><tr><td>" + $_CrLf)
+			$linecounter = 0
+		ENDIF
+	ENDWHILE
+
+ENDSUB #name=NoteRemoteImages
+
+BEGINSUB name=GetIgnoreLinks
+	$linkcount = Val(SysInfo("gsakini;GrabbedImages.memLinks.Lines;Count")) - 1
+	$ignorelinks = ""
+	WHILE $linkcount >= 0
+		$linkstring = "gsakini;GrabbedImages.memLinks.Lines;Item" + "$linkcount"
+		$ignorelinks = $ignorelinks + SysInfo($linkstring)
+		IF $linkcount <> 0
+			$ignorelinks = $ignorelinks + ";"
+		ENDIF
+		$linkcount = $linkcount - 1
+	ENDWHILE
+ENDSUB
+
+
+<data> VarName=$GrabCurrent
+$_sql = "SELECT code from cachesall WHERE $_Where"
+$status = Sqlite("sql",$_sql)
+$current = $d_Code
+$_sql = "code='$d_code'"
+MFILTER where=$_sql
+GRABIMAGES Type=New DELETE=N Purge=N LinkIgnore=$ignorelinks
+CANCELFILTER
+MACROFLAG Type=Clear range=all
+$result = CodeMatch($status,$_NewLine,"M")
+MFILTER Expression=$d_MacroFlag
+$dummy = Seek($current)
+<enddata>
+
+<data> VarName=$SaveCorrectedName
+#savecorrected
+$test=$_macroparms
+$sqlfile = $_Install + "\macros\GrabbedImagesToInclude.db3"
+$sqlinputfile = SqlQuote($sqlfile)
+$_sql = "ATTACH $sqlinputfile AS ImagesToInclude"
+$status = Sqlite("sql",$_sql)
+$correctedname = EXTRACT($_MacroParms,"*;*",1)
+$fname =  EXTRACT($_MacroParms,"*;*",2)
+
+IF $correctedname = ""
+	$_sql = "delete from correctednames where yname = '$fname'"
+ELSE
+	$_sql = "replace into correctednames (yname, correctedname) VALUES ('$fname','$correctedname')"
+ENDIF
+$status = Sqlite("sql",$_sql)
+
+Declare Var=$correctedname Type=String
+Declare Var=$fname Type=String
+DECLARE Var=$sqlfile Type=String
+Declare Var=$sqlinputfile Type=String
+Declare Var=$status Type=String
+<enddata>
+
+<data> VarName=$ToggleIncludeImage
+#toggleincludeimage
+$sqlfile = $_Install + "\macros\GrabbedImagesToInclude.db3"
+$sqlinputfile = SqlQuote($sqlfile)
+$_sql = "ATTACH $sqlinputfile AS ImagesToInclude"
+$status = Sqlite("sql",$_sql)
+$action = EXTRACT($_MacroParms,";",1)
+$scope =  EXTRACT($_MacroParms,";",2)
+IF Left($scope,9) = "allimages"
+	BEGINCASE
+		CASE Right($scope,1) = "1"
+			$_MacroParms = $p_allimages1
+		CASE Right($scope,1) = "2"
+			$_MacroParms = $p_allimages2
+		CASE Right($scope,1) = "3"
+			$_MacroParms = $p_allimages3
+		CASE Right($scope,1) = "4"
+			$_MacroParms = $p_allimages4
+	ENDCASE
+	$count = 1
+ELSE
+	$count = 2
+ENDIF
+$line = EXTRACT($_MacroParms,";",$count)
+WHILE $line <> ""
+$code = Extract($line,",",1)
+$fname = Extract($line,",",2)
+
+$_sql = "SELECT coalesce(xcode ,'') from ImagesToInclude where xname = '$fname' and xcode = '$code'"
+$status = Sqlite("sql",$_sql)
+
+BEGINCASE
+ CASE $action = "e" OR ($action = "t" AND Len($status)>0)
+ 	$_sql = "DELETE FROM ImagesToInclude  where xname = '$fname' and xcode = '$code'"
+ CASE $action = "i" OR ($action = "t" AND Len($status)=0)
+ 	$_sql = "INSERT INTO ImagesToInclude (xcode, xname) SELECT '$code','$fname' WHERE NOT EXISTS (SELECT 1 FROM ImagesToInclude WHERE xname = '$fname' AND xcode = '$code')"
+ENDCASE
+
+$status = Sqlite("sql",$_sql)
+$count = $count + 1
+$line = EXTRACT($_MacroParms,";",$count)
+ENDWHILE
+
+
+Declare Var=$count Type=Numeric
+Declare Var=$code Type=String
+Declare Var=$fname Type=String
+Declare Var=$action Type=String
+Declare Var=$line Type=String
+Declare Var=$scope Type=String
+Declare Var=$sqlfile Type=String
+Declare Var=$sqlinputfile Type=String
+Declare Var=$status Type=String
+
+<enddata>
+
+<data> VarName=$script
+
+<script type='text/javascript' src='http://gsak.net/stats/recoverscroll/recoverscroll.js'></script>
+
+<script type="text/javascript">
+
+function writecookie(cookiename,k) { document.cookie=cookiename+'='+k+'; expires=Fri, 31 Dec 2020 00:00:00 UTC' };
+
+function clearcookie(cookiename,k) { document.cookie=cookiename+'='+k+'; expires=Fri, 31 Dec 2000 00:00:00 UTC' };
+
+function readCookie(cookieName){
+	var searchName = cookieName + "="
+	var cookies = document.cookie
+	var start = cookies.indexOf(cookieName)
+	if (start == -1){ // cookie not found
+		return "-1"
+	}
+	start += searchName.length //start of the cookie data
+	var end = cookies.indexOf(";", start)
+	if (end == -1){
+		end = cookies.length
+	}
+	return cookies.substring(start, end)
+}
+
+function togglecookie(cookiename) {
+var c = readCookie(cookiename);
+if (c == 'hidden') {
+	c = 'unhidden';
+	} else {
+	c = 'hidden';
+	}
+	writecookie(cookiename,c);
+}
+
+window.onload = function () {
+	var c = readCookie('selectimagesattached');
+	if (c != '') {
+		var item = document.getElementById('attached');
+		if (item) {
+			item.className=c;
+		}
+	}
+	c = readCookie('selectimagescachepage');
+	if (c != '') {
+		var item = document.getElementById('cachepage');
+		if (item) {
+			item.className=c;
+		}
+	}
+	var c = readCookie('selectimagesnotes');
+	if (c != '') {
+		var item = document.getElementById('notes');
+		if (item) {
+			item.className=c;
+		}
+	}
+	var c = readCookie('selectimagesnotesremote');
+	if (c != '') {
+		var item = document.getElementById('notesremote');
+		if (item) {
+			item.className=c;
+		}
+	}
+
+}
+
+function edit(boxname,fname)
+	{
+		if(document.getElementById("editName")==undefined)
+		{
+			editValue=document.getElementById(boxname).innerHTML;
+			strLength=document.getElementById(boxname).innerHTML.length;
+			document.getElementById(boxname).innerHTML="<input type='text' id='editName' onblur='save(\"" + boxname + "\", \"" + fname + "\")'>";
+			document.getElementById('editName').value = editValue;
+			document.getElementById('editName').size = strLength;
+			document.getElementById('editName').focus();
+		}
+	}
+
+
+function save(boxname,fname)
+	{
+		if(document.getElementById('editName')!=undefined)
+		{
+			editValue=document.getElementById('editName').value;
+			removeIllegal = /\\|\/|\.|\:|\*|\?|"|<|>|\|/ig;
+			editValue = editValue.replace(removeIllegal,"");
+			document.getElementById(boxname).innerHTML=editValue;
+			parent.location="gsak://%FF/macro:silent/savecorrectedname?" + editValue + "*;*" + fname;
+		}
+	}
+
+RecoverScroll.start('!!code!!');
+
+</script>
+<enddata>
+
+
+<data> VarName=$header
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<!-- saved from url=(0014)about:internet -->
+<title>Select Images</title>
+<style type='text/css'>
+.FullText { font-weight: bold; color: #F00; background-color: #FF0 } 
+.gsak { font-family: Arial, Times, serif }
+.hidden { display: none; }
+.unhidden { display: block; }
+</Style>
+
+<script type="text/javascript">
+function popup(divID) {
+var item = document.getElementById(divID);
+if (item) {
+item.className=(item.className=='hidden')?'unhidden':'hidden';
+  }
+}
+</script>
+</head>
+<body text="#000000">
+<table align=center bgcolor="white" border=0 width=95% summary="GSAK"><tr><td>
+<enddata>
+
+<data> VarName=$footer
+</td></tr></table></body></html>
+<enddata>
+
+
+#*******************************************************
+#   Variable declarations for
+#   C:\Users\Mike\AppData\Roaming\gsak\Macros\HTML_SelectImages.gsk
+#
+#   Generated 2/13/2012 on GSAKVariables.gsk Rev V0.31
+#
+#*******************************************************
+
+
+Option Explicit=Yes
+
+Declare Var=$_HTML Type=String
+Declare Var=$action Type=String
+Declare Var=$code Type=String
+Declare Var=$correctedname Type=String
+Declare Var=$count Type=Numeric
+Declare Var=$current Type=String
+Declare Var=$Data Type=String
+Declare Var=$dummy Type=Boolean
+Declare Var=$escapedfname Type=String
+Declare Var=$fname Type=String
+Declare Var=$GrabbedDatabase Type=String
+Declare Var=$GrabbedImagePreamble Type=String
+Declare Var=$GrabCurrent Type=String
+Declare Var=$html Type=String
+Declare Var=$icounter Type=Numeric
+Declare Var=$ignorelinks Type=String
+Declare Var=$imagecount Type=String
+Declare Var=$ImageSuffix Type=String
+Declare Var=$includedimage Type=String
+Declare Var=$infilter Type=String
+Declare Var=$keywords Type=String
+Declare Var=$line Type=String
+Declare Var=$linecounter Type=Numeric
+Declare Var=$linkcount Type=Numeric
+Declare Var=$linkstring Type=String
+Declare Var=$name Type=String
+Declare Var=$newstyle Type=String
+Declare Var=$p_allimages1 Type=String
+Declare Var=$p_allimages2 Type=String
+Declare Var=$p_allimages3 Type=String
+Declare Var=$p_allimages4 Type=String
+Declare Var=$regex Type=String
+Declare Var=$result Type=String
+Declare Var=$SaveCorrectedName Type=String
+Declare Var=$scope Type=String
+Declare Var=$script Type=String
+Declare Var=$searchstring Type=String
+Declare Var=$searchstring2 Type=String
+Declare Var=$sqlfile Type=String
+Declare Var=$sqlinputfile Type=String
+Declare Var=$status Type=String
+Declare Var=$suffix Type=String
+Declare Var=$test Type=String
+Declare Var=$tmpS Type=String
+Declare Var=$ToggleIncludeImage Type=String
+

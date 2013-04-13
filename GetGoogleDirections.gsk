@@ -1,0 +1,16 @@
+################################################################################
+# MacVersion = 1.00
+# MacDescription = Get Google Direction Coordinates ($_Special)
+# MacAuthor = Bushman4
+# MacFileName = GetGoogleDirections.gsk
+################################################################################
+$Start = "&saddr=" + allTrim(Sysinfo("gsakini;LastCenter;Lat")) + "," + allTrim(Sysinfo("gsakini;LastCenter;Lon"))
+$End = "&daddr=" + allTrim($d_Latitude) + "," + allTrim($d_Longitude)
+Table Active=Waypoints Scope=Parent
+While Not($_EOL)
+	If $d_cType="Parking Area"
+		$End = "&daddr=" + allTrim($d_cLat) + "," + allTrim($d_cLon)
+	EndIf
+	Goto Position=Next
+EndWhile
+Set $_Special = "http://maps.google.com/maps?f=d&hl=en" + $Start + $End

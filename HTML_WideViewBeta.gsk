@@ -1,0 +1,1898 @@
+#***************************************
+# HTMLName=Wide View Beta
+# SplitScreen=Yes
+# Export=Yes
+# Offline=Yes
+# Condensed=No
+# MacDescription=Wide View Split Screen Viewer Beta
+# MacFileName=HTML_WideViewBeta.gsk
+# MacAuthor=NashTech, Inc.
+# MacVersion=3.4b
+# MacUrl=http://gsak.net/board/index.php?showtopic=8114
+#***************************************
+
+# Declare variables
+GOSUB Name=DeclareVariables
+GOSUB Name=Initialize
+
+# Block Selections
+$blockSelections = "--None--;Descriptions;Google Map;Hints;Logs;Title;Trackables;User Data;User Notes;Additional Waypoints;Cache Attributes"
+
+# Set Default Variables
+$coordinatesS=True
+$decryptHint=False
+$colorActive="006633"
+$colorInactive="990000"
+$colorFound="FEFE00"
+$colorOwned="C0C0C0"
+$colorText="333333"
+$colorLeft="F8F8F8"
+$colorRight="FFFFCC"
+$colorBorder="990000"
+
+# Set Default Display Blocks
+$displayL1 = "Title"
+$displayL2 = "Descriptions"
+$displayL3 = "Trackables"
+$displayL4 = "Hints"
+$displayL5 = "User Data"
+$displayL6 = "Additional Waypoints"
+$displayR1 = "Google Map"
+$displayR2 = "User Notes"
+$displayR3 = "Logs"
+
+# Read Configuration From File
+$configFilePath = Sysinfo("MacroPath")
+$configFile = $configFilePath + "\HTML_WideView.dat"
+
+If (FileExists($configFile))
+	$variables = GetFile($configFile)
+        $coordinatesS = StrtoBool(Extract($variables,";",1))
+        $decryptHint = StrtoBool(Extract($variables,";",2))
+        If (Extract($variables,";",3) <> "")
+          $colorActive = Extract($variables,";",3)
+        EndIf
+        If (Extract($variables,";",4) <> "")
+          $colorInactive =  Extract($variables,";",4)
+        EndIf
+        If (Extract($variables,";",5) <> "")
+          $colorFound =  Extract($variables,";",5)
+        EndIf
+        If (Extract($variables,";",6) <> "")
+          $colorOwned =  Extract($variables,";",6)
+        EndIf
+        If (Extract($variables,";",7) <> "")
+          $displayL1 =  Extract($variables,";",7)
+        EndIf
+        If (Extract($variables,";",8) <> "")
+          $displayL2 =  Extract($variables,";",8)
+        EndIf
+        If (Extract($variables,";",9) <> "")
+          $displayL3 =  Extract($variables,";",9)
+        EndIf
+        If (Extract($variables,";",10) <> "")
+          $displayL4 =  Extract($variables,";",10)
+        EndIf
+        If (Extract($variables,";",11) <> "")
+          $displayL5 =  Extract($variables,";",11)
+        EndIf
+        If (Extract($variables,";",12) <> "")
+          $displayL6 =  Extract($variables,";",12)
+        EndIf
+        If (Extract($variables,";",13) <> "")
+          $displayL7 =  Extract($variables,";",13)
+        EndIf
+        If (Extract($variables,";",14) <> "")
+          $displayL8 =  Extract($variables,";",14)
+        EndIf
+        If (Extract($variables,";",15) <> "")
+          $displayL9 =  Extract($variables,";",15)
+        EndIf
+        If (Extract($variables,";",16) <> "")
+          $displayR1 =  Extract($variables,";",16)
+        EndIf
+        If (Extract($variables,";",17) <> "")
+          $displayR2 =  Extract($variables,";",17)
+        EndIf
+        If (Extract($variables,";",18) <> "")
+          $displayR3 =  Extract($variables,";",18)
+        EndIf
+        If (Extract($variables,";",19) <> "")
+          $displayR4 =  Extract($variables,";",19)
+        EndIf
+        If (Extract($variables,";",20) <> "")
+          $displayR5 =  Extract($variables,";",20)
+        EndIf
+        If (Extract($variables,";",21) <> "")
+          $displayR6 =  Extract($variables,";",21)
+        EndIf
+        If (Extract($variables,";",22) <> "")
+          $displayR7 =  Extract($variables,";",22)
+        EndIf
+        If (Extract($variables,";",23) <> "")
+          $displayR8 =  Extract($variables,";",23)
+        EndIf
+        If (Extract($variables,";",24) <> "")
+          $displayR9 =  Extract($variables,";",24)
+        EndIf
+        If (Extract($variables,";",25) <> "")
+          $colorText =  Extract($variables,";",25)
+        EndIf
+        If (Extract($variables,";",26) <> "")
+          $colorLeft =  Extract($variables,";",26)
+        EndIf
+        If (Extract($variables,";",27) <> "")
+          $colorRight =  Extract($variables,";",27)
+        EndIf
+        If (Extract($variables,";",28) <> "")
+          $colorBorder =  Extract($variables,";",28)
+        EndIf
+EndIf
+
+# Show Edit Form
+PREPROCESS Shift=$editConfig
+
+# Show Form
+if ($editConfig)
+WHILE TRUE
+$result = Form($form,"")
+# Reset the screen position of the menu form to where the user left it
+$Form = EditForm($Form,"Form1","Top",$_FormTop)
+$Form = EditForm($Form,"Form1","Left",$_FormLeft)
+
+# Save Form
+BEGINCASE #Buttons
+
+  CASE $Save
+    $variables = "$coordinatesS;$decryptHint;$colorActive;$colorInactive;$colorFound;$colorOwned;$displayL1;$displayL2;$displayL3;$displayL4;$displayL5;$displayL6;$displayL7;$displayL8;$displayL9;$displayR1;$displayR2;$displayR3;$displayR4;$displayR5;$displayR6;$displayR7;$displayR8;$displayR9;$colorText;$colorLeft;$colorRight;$colorBorder"
+    $result = PutFile($configFile, $variables)
+    If Left($result, 7) = "*Error*"
+    # If theres any error abort the macro
+    CANCEL Msg="Unable to write to $configFile!"
+    EndIf
+  BREAK
+    OTHERWISE 
+      BREAK
+  ENDCASE	
+  	
+ENDWHILE # Form Loop
+EndIf
+
+# GSAK images for cache and log types are stored here
+$images = "file://" + $_exePath + "\images"
+
+# HTML expects the path to contain forward slashes, so convert the path to all forward slashes.
+$images = replace("\","/",$images,false)
+
+# Background Color
+$backgroundColor = $colorActive
+If ($d_TempDisabled or $d_Archived)
+  $backgroundColor = $colorInactive
+EndIf
+If ($d_Found)
+  $backgroundColor = $colorFound
+EndIf
+If IsOwner()
+   $backgroundColor = $colorOwned
+EndIf
+
+# Display Header
+$h = "<!DOCTYPE HTML PUBLIC '-//W3C//DTD HTML 4.01 Transitional//EN' 'http://www.w3.org/TR/html4/loose.dtd'><html><head>"
+$h = $h + $_NewLine
+$h = $h + "<!-- saved from url=(0014)about:internet -->" + $_NewLine
+$h = $h + "<title>Cache Information Page</title>"
+$h = $h + "<style type='text/css'>"
+$h = $h + "body,td,th {font-family: Verdana, Arial, Helvetica, sans-serif; font-size: 12px; color: #" + $colorText + ";}"
+$h = $h + "body {background-color: #" + $backgroundColor + "; margin-top:1; margin-bottom:2; margin-left:2; margin-right:2;}"
+$h = $h + ".style1 {font-size: 18px; font-weight: bold;}"
+$h = $h + ".style2 {font-size: 14px;}"
+$h = $h + ".style3 {color: #FFFFFF; font-weight: bold;}"
+$h = $h + ".style4 {color: #990000; font-size: 12px; font-weight: bold;}"
+$h = $h + ".style5 {color: #009900; font-size: 12px; font-weight: bold;}"
+$h = $h + ".style6 {color: #005913; font-size: 12px; font-weight: bold;}"
+$h = $h + ".style7 {color: #009900; font-size: 10px; font-weight: normal;}"
+$h = $h + "</style>"
+
+# Begin Body
+$h = $h + "<body>"
+
+# Begin main table
+$h = $h + "<table align='center' bgcolor='white' border='0' cellpadding='2' cellspacing='0' width='100%'><tr><td>"
+$h = $h + "<table align='center' bgcolor='#" + $colorBorder + "' border='0'  cellspacing='2' cellpadding='10' width='100%'>"
+$h = $h + "<tr><td width='50%' valign='top' bgcolor='#" + $colorLeft + "'>"
+
+# Display Left Block
+If ($displayL1<>"" And $displayL1<>"--None--")
+  GoSub Name=$displayL1
+EndIf
+If ($displayL2<>"" And $displayL2<>"--None--")
+  GoSub Name=$displayL2
+EndIf
+If ($displayL3<>"" And $displayL3<>"--None--")
+  GoSub Name=$displayL3
+EndIf
+If ($displayL4<>"" And $displayL4<>"--None--")
+  GoSub Name=$displayL4
+EndIf
+If ($displayL5<>"" And $displayL5<>"--None--")
+  GoSub Name=$displayL5
+EndIf
+If ($displayL6<>"" And $displayL6<>"--None--")
+  GoSub Name=$displayL6
+EndIf
+If ($displayL7<>"" And $displayL7<>"--None--")
+  GoSub Name=$displayL7
+EndIf
+If ($displayL8<>"" And $displayL8<>"--None--")
+  GoSub Name=$displayL8
+EndIf
+If ($displayL9<>"" And $displayL9<>"--None--")
+  GoSub Name=$displayL9
+EndIf
+
+# Close left table column
+$h = $h + "</td>"
+
+# Start right table column
+$h = $h + "<td align='left' valign='top' bgcolor='#" + $colorRight + "'>"
+
+# Display Left Block
+If ($displayR1<>"" And $displayR1<>"--None--")
+  GoSub Name=$displayR1
+EndIf
+If ($displayR2<>"" And $displayR2<>"--None--")
+  GoSub Name=$displayR2
+EndIf
+If ($displayR3<>"" And $displayR3<>"--None--")
+  GoSub Name=$displayR3
+EndIf
+If ($displayR4<>"" And $displayR4<>"--None--")
+  GoSub Name=$displayR4
+EndIf
+If ($displayR5<>"" And $displayR5<>"--None--")
+  GoSub Name=$displayR5
+EndIf
+If ($displayR6<>"" And $displayR6<>"--None--")
+  GoSub Name=$displayR6
+EndIf
+If ($displayR7<>"" And $displayR7<>"--None--")
+  GoSub Name=$displayR7
+EndIf
+If ($displayR8<>"" And $displayR8<>"--None--")
+  GoSub Name=$displayR8
+EndIf
+If ($displayR9<>"" And $displayR9<>"--None--")
+  GoSub Name=$displayR9
+EndIf
+
+# CLOSE TABLES
+$h = $h + "</td></tr></table>"
+$h = $h + "</td></tr></table>"
+
+# SHOW CONFIGURE INSTRUCTIONS
+$h = $h + "<br /><center><font color=white size=1>To change the settings of the Wide View display, press and hold SHIFT while selecting a new cache.</font></center>"
+
+# END HTML
+$h = $h + "</body></html>"
+
+$_HTML = $h
+
+#*****--Block Subroutines--*****#
+
+# Title and image
+BeginSub Name="Title"
+  $h = $h + "<div align='center'>"
+  $h = $h + "<img src=" + quote($images + "\cache" + $d_CacheType + ".gif") 
+  $h = $h + "alt="  + quote($d_CacheType) + " align='absmiddle'>" 
+  $h = $h + "<span class='style1'>" + HTML("Clean",$d_name) + "</span>"
+
+# Type
+$type =CacheType($d_CacheType)
+$h = $h + "<br />Type: <strong>" + $type + "</strong>"
+
+# Size
+$sizeImage = "<img src=" + quote($images + "\con_" + Replace(" ","",$d_container,true) + ".gif")
+$sizeImage = $sizeImage + "alt="  + "$d_container" + " align='absmiddle'>"
+$h = $h + " | Size: <strong>" + $d_container + "</strong> " + $sizeImage
+
+# Difficulty Stars
+$Diff = Replace(".","_", NumToStr($d_difficulty), false)
+$Diff = Replace(",","_", $Diff, false)
+$h = $h + " | Difficulty: <img src=" + quote($images + "\stars" + $Diff + ".gif") 
+$h = $h + "alt="  + "$d_difficulty" + " align='absmiddle'>" 
+
+# Terrain Stars
+$Terr = Replace(".","_", NumToStr($d_Terrain), false)
+$Terr = Replace(",","_", $Terr, false)
+$h = $h + " | Terrain: <img src=" + quote($images + "\stars" + $Terr + ".gif") 
+$h = $h + "alt="  + "$d_Terrain" + " align='absmiddle'>" 
+
+# Cache Owner
+$ownerLink = "http://www.geocaching.com/profile/?id=$d_OwnerId"
+$h = $h + "<br />By: <strong><a href='" + $ownerLink + "'>" + $d_PlacedBy + "</a></strong>"
+
+# Hidden Date
+$h = $h + " | Hidden: <strong>" + DateFormat($d_PlacedDate) + "</strong>"
+
+# Waypoint code and link
+$h = $h + " | Waypoint: <a href='" + $d_Url + "'>" + $d_Code + "</a>"
+
+# Status
+$cacheStatus = "<span class='style6'>Active</span>"
+If ($d_TempDisabled)
+  $cacheStatus = "<span class='style4'>Disabled</span>"
+EndIf
+If ($d_Archived)
+  $cacheStatus = "<span class='style4'>Archived</span>"
+EndIf
+If ($d_Found)
+  $cacheStatus = "<span class='style5'>Found</span>"
+EndIf
+$h = $h + " | Status: <strong>" + $cacheStatus + "</strong>"
+
+# Display Coordinates
+If ($coordinatesS)
+  $temp = GeoCalc($d_Latitude + ";" + $d_Longitude, "FormatMinutes")
+  $h = $h + "<br />Coordinates: <strong>" +  extract($temp,";",1) + " " + extract($temp,";",2) + "</strong> (WGS84)"
+  If $d_HasCorrected
+    $h=$h+"<span class='style7'> (Corrected)</span>"
+  EndIf
+EndIf
+
+# End Title Block
+$h = $h + "</div><hr />"
+EndSub
+
+# DISPLAY SHORT DESCRIPTION
+BeginSub Name="Descriptions"
+If not (IsEmpty($d_ShortDescription))
+  $HtmlText = $d_ShortDescription
+  # make plain text if not HTML encoded
+  If not ($d_ShortHtm)
+    GoSub Name=HtmlText
+  EndIf
+  $h = $h + "<i>" + $HtmlText + "</i><hr />"
+EndIf
+
+# DISPLAY LONG DESCRIPTION
+If not (IsEmpty($d_LongDescription))
+  $temp = $d_LongDescription
+  # Remove Aditional Waypoints text if present
+  if at("Additional Waypoints",$temp) > 0
+    $temp = Extract($temp,"Additional Waypoints",1)
+  EndIf
+  # make plain text if not HTML encoded
+  $HtmlText = $temp
+  If not ($d_LongHtm)
+    GoSub Name=HtmlText
+  EndIf
+  $h = $h + $HtmlText + "<br /><br />"
+EndIf
+EndSub
+
+# Trackable Items
+BeginSub Name="Trackables"
+If not (IsEmpty($d_TravelBugs))
+  $h = $h + "<table width='100%' border='0' cellpadding='1' cellspacing='1' bgcolor='#FF9900'>"
+  $h = $h + "<tr><td bgcolor='#654030'><span class='style3'>&nbsp;Trackables</span></td></tr></table><br />"
+  GoSub Name=TravelBugs
+  $h = $h + $TravelBugs + "<br />"
+EndIf
+EndSub
+
+BEGINSUB name="Cache Attributes"
+	GOSUB name=GetAttributes
+	GOSUB name=ExtractAttributes
+	IF $Attributes <> ""
+		$h = $h + "<table width='100%' border='0' cellpadding='1' cellspacing='1' bgcolor='#FF9900'>"
+  	$h = $h + "<tr><td bgcolor='#654030'><span class='style3'>&nbsp;Cache Attributes</span></td></tr></table><br />"
+  	$h = $h + $Attributes + "<br />"
+  ENDIF
+ENDSUB
+
+# Show hints
+BeginSub Name="Hints"
+If not (IsEmpty($d_Hints))
+  $h = $h + "<table width='100%' border='0' cellpadding='1' cellspacing='1' bgcolor='#FF9900'>"
+  $h = $h + "<tr><td bgcolor='#22670E'><span class='style3'>&nbsp;Hints</span>"
+  $h = $h + "</td></tr></table><br />"
+  If ($decryptHint)
+    $h = $h + HTML("Hints","D") + "<br /><br />"
+  else
+    $decodedHint = $d_Hints
+    $decodedHint = Replace("'","'+ String.fromCharCode(39) + '",$decodedHint,false)
+    $decodedHint = Replace($_quote, "'+ String.fromCharCode(34) + '", $decodedHint, false)
+    $decodedHint = Replace($_Newline," ",$decodedHint,false)
+    $decodedHint = Replace("<br>"," ",$decodedHint,false)
+    $decodedHint = Replace("&", "&amp;", $decodedHint, false)
+    $h = $h + HTML("Hints","E")
+    $h = $h + "<br /><br /><a href='#' onclick=" + $_quote + "alert('" + $decodedHint + "');" + $_quote + ">[Decode]</a>"
+    $h = $h + "<br /><small><font Face=Courier new, Courier>Decryption key <br />A|B|C|D|E|F|G|H|I|J|K|L|M <br />N|O|P|Q|R|S|T|U|V|W|X|Y|Z </font></small><br /><br />"
+  EndIf
+EndIf
+EndSub
+
+# User Data Fields
+BeginSub Name="User Data"
+If not (IsEmpty($d_UserData) and IsEmpty($d_User2))
+  $h = $h + "<table width='100%' border='0' cellpadding='1' cellspacing='1' bgcolor='#FF9900'>"
+  $h = $h + "  <tr><td bgcolor='#224353'><span class='style3'>&nbsp;User Data</span>"
+  $h = $h + "</td></tr></table><br />"
+
+  If not (IsEmpty($d_UserData))
+    $h = $h + $d_UserData + "<br /><br />"
+  EndIf
+  If not (IsEmpty($d_User2))
+    $h = $h + $d_User2 + "<br /><br />"
+  EndIf
+EndIf
+EndSub
+
+# Additional waypoints
+BeginSub Name="Additional Waypoints"
+Table Active=WayPoints scope=Parent
+If $_count > 0
+  $h = $h + "<table width='100%' border='0' cellpadding='1' cellspacing='1' bgcolor='#FF9900'>"
+  $h = $h + "  <tr><td bgcolor='#3B93FF'><span class='style3'>&nbsp;Additional Waypoints (" + NumToStr($_count) + ")</span>"
+  $h = $h + "</td></tr></table><br />"
+
+  $temp = ""
+  $temp = $temp + "<table width='100%' border='0' cellpadding='2' cellspacing='1' bgcolor='#778899'>"
+  $temp = $temp + "<tr align='center' bgcolor='#DFDFDF'><td><b>Code</b></td><td><b>Name</b></td><td><b>Type</b></td>"
+  $temp = $temp + "<td><b>Comments</b></td><td><b>Date</b></td><td><b>Coordinates</b></td></tr>"
+  While not($_eol)
+    $temp = $temp + "<tr bgcolor='#FFFFFF'>"
+    If not (IsEmpty($d_cUrl))
+      $temp = $temp + "<td><a href='" + $d_cUrl + "'>" + $d_cCode + "</a></td>"
+    Else
+      $temp = $temp + "<td>" + $d_cCode + "</td>"
+    EndIf
+    $temp = $temp + "<td>" + $d_cName + "&nbsp;</td>"
+    $temp = $temp + "<td>" + $d_cType + "&nbsp;</td>"
+    $temp = $temp + "<td>" + $d_cComment + "&nbsp;</td>"
+    $temp = $temp + "<td>" + DateFormat($d_cDate) + "&nbsp;</td>"
+    $temp2 = GeoCalc($d_cLat + ";" + $d_cLon, "FormatMinutes")
+    $temp2 = extract($temp2,";",1) + " " + extract($temp2,";",2) 
+    $temp = $temp + "<td><a href='http://maps.google.com/maps?q=" + $d_cLat + "+" + $d_cLon + "+(" + $d_cCode + ")&hl=en'>" + $temp2 + "</a></td>"
+    $temp = $temp + "</tr>"
+    Goto Position=Next
+  EndWhile
+
+  $h = $h + $temp + "</table><br />"
+EndIf
+EndSub
+
+# Google Map
+BeginSub name="Google Map"
+$h = $h + "<table width='100%' border='0' cellpadding='1' cellspacing='0'><tr><td>"
+$h = $h + html("GoogleMap","Y")
+$h = $h + "</td></tr></table><br />"
+EndSub
+
+# User Notes
+BeginSub name="User Notes"
+If not (IsEmpty($d_UserNote))
+  $h = $h + HTML("GSAKNotes","")
+EndIf
+EndSub
+
+# DISPLAY LOGS
+BeginSub name="Logs"
+$h = $h + HTML("Logs","") + "<br /><br />"
+EndSub
+
+#*****--End Block Subroutines--*****#
+
+# Other Subroutines
+
+BeginSub name=HtmlText
+  $HtmlText = Replace("<br>", "~.~", $HtmlText, true) # exception, do not replace <br>
+  $HtmlText = Replace("&", "&amp;", $HtmlText, false)
+  $HtmlText = Replace("<","&lt;", $HtmlText, false)
+  $HtmlText = Replace(">", "&gt;", $HtmlText, false)
+  $HtmlText = Replace($_quote, "&quot;", $HtmlText, false)
+  $HtmlText = Replace("~.~", "<br>", $HtmlText, false)
+  $HtmlText = Replace($_Newline,"<br>",$HtmlText,false) 
+  $HtmlText = Replace("'","&#039;",$HtmlText,false)
+EndSub
+
+BeginSub Name=TravelBugs
+  $TravelBugs = ""
+  $temp = ""
+  If $d_HasTravelBug
+    $TotalBugs = RegExCount("\r\n",$d_TravelBugs) #\r\n counts the line terminators
+    $x = 0
+    While $x < $TotalBugs
+      $x = $x + 1
+      $tb = RegExData(".+\r\n",$d_TravelBugs,$x) # this regex gets all the data for that line
+      $tbName = Extract($tb,"(id =",1)
+      $tbName = Replace("<br>","",$tbName,true) # this removes the <br> in the name
+      $tbId = Extract($tb,"(id = ",2)
+      $tbId = Extract($tbid,",",1)  
+      $tbRef = Extract($tb,"ref = ",2)
+      $tbRef = Extract($tbRef,")",1)
+      $temp = $temp + "<img src=" + quote($images + "\bug3.jpg") + "align='absmiddle'> "
+      $temp = $temp + $tbName + "(<a href=" + quote("http://www.geocaching.com/track/details.aspx?id=" + $tbId)
+      $temp = $temp + ">" + $tbRef + "</a>)<br />"
+    EndWhile
+    $TravelBugs = $temp
+  EndIf
+EndSub
+
+
+
+BEGINSUB Name=Initialize	
+	# Set and validate file paths
+	$Htmlfilepath = $_Install + "\Macros\CacheAttributes"
+	IF NOT(FolderExists($htmlfilepath))
+		$BatFile = $_Install + "\babel.bat"
+		$result = PutFile($BatFile, "MD " + quote($htmlfilepath))
+		FILEOPEN File="$BatFile" Wait=yes
+	ENDIF
+	$HTMLFile= $Htmlfilepath + "\Macros\CacheAttributes.html"
+	IF Not(FileExists($Htmlfilepath + "\available-no.gif"))
+		GOSUB Name=SaveIcons
+	ENDIF
+	$AttributeListY="Dogs allowed;Access or parking fee;Climbing gear;Boat;Scuba gear;Recommended for kids;Takes less than an hour;Scenic view;Significant hike;Difficult climbing;May require wading;May require swimming;Available at all times;Recommended at night;Available during winter;;Poison plants;Snakes;Ticks;Abandoned mines;Cliff / falling rocks;Hunting;Dangerous area;Wheelchair accessible;Parking available;Public transportation;Drinking water nearby;Public restrooms nearby;Telephone nearby;Picnic tables nearby;Camping available;Bicycles;Motorcycles;Quads;Off-road vehicles;Snowmobiles;Horses;Campfires;Thorns;Stealth required;Stroller accessible;Needs maintenance;Watch for livestock;Flashlight required"
+	$AttributeListN="No Dogs allowed;;;;;Not Recommended for kids;Takes more than an hour;No Scenic view;No Significant hike;No Difficult climbing;;;Not Available at all times;Not Recommended at night;Not Available during winter;;No Poison plants;;;;;;;Not Wheelchair accessible;Parking not available;;No Drinking water nearby;No Public restrooms nearby;No Telephone nearby;No Picnic tables nearby;No Camping available;No Bicycles;No Motorcycles;No Quads;No Off-road vehicles;No Snowmobiles;No Horses;No Campfires;;Stealth not required;Not Stroller accessible;;;"
+	$AttributeGif="dogs;fee;rappelling;boat;scuba;kids;onehour;scenic;hiking;climbing;wading;swimming;available;night;winter;;poisonoak;snakes;ticks;mine;cliff;hunting;danger;wheelchair;parking;public;water;restrooms;phone;picnic;camping;bicycles;motorcycles;quads;jeeps;snowmobiles;horses;campfires;thorn;stealth;stroller;firstaid;cow;flashlight"
+ENDSUB
+
+
+BEGINSUB Name=GetAttributes
+   # retrieve attributes from DB
+	$_sql="SELECT aId,aInc FROM Attributes where aCode='$d_code'"
+	$codes = Sqlite("sql",$_sql)
+ENDSUB
+
+BEGINSUB Name=ExtractAttributes
+	$attrcnt = RegExCount($_CrLf,$codes) + 1
+
+	IF Len($codes)=0	
+		$Attributes = ""
+	ELSE
+		$i = 1
+		$Attributes = ""
+		$AttributesText = ""
+		WHILE $i <= $attrcnt
+			$attr_yn = Extract($codes,$_CrLf,$i)
+			$attrID=Extract($attr_yn,";",1)
+			$attrYN=Extract($attr_yn,";",2)
+			
+			$attrGif = Extract($AttributeGif,";",Val($attrID))
+			IF (Val($attrYN)=1)
+				$attrGif = $attrGif + "-yes.gif"
+				$attrName = Extract($AttributeListY,";",Val($attrID))
+			ELSE
+				$attrGif = $attrGif + "-no.gif"
+				$attrName = Extract($AttributeListN,";",Val($attrID))
+			ENDIF
+			$attrEntry = "<img src="+$_Quote+"../macros/cacheattributes/"+$attrGif+$_Quote+" Alt="+$_Quote+$attrName+$_Quote+" title="+$_Quote+$attrName+$_Quote+" width=30 height=30>"
+
+			$Attributes = $Attributes + "&nbsp;" + $attrEntry
+						
+			$i = $i + 1
+		ENDWHILE
+	ENDIF
+ENDSUB
+
+
+
+BEGINSUB Name=DeclareVariables
+
+Option Explicit=Yes
+
+Declare Var=$_HTML Type=String
+Declare Var=$attr_yn Type=String
+Declare Var=$attrcnt Type=Numeric
+Declare Var=$attrEntry Type=String
+Declare Var=$attrGif Type=String
+Declare Var=$AttributeGif Type=String
+Declare Var=$AttributeListN Type=String
+Declare Var=$AttributeListY Type=String
+Declare Var=$Attributes Type=String
+Declare Var=$AttributesText Type=String
+Declare Var=$attrID Type=String
+Declare Var=$attrName Type=String
+Declare Var=$attrYN Type=String
+Declare Var=$available_no Type=String
+Declare Var=$available_yes Type=String
+Declare Var=$backgroundColor Type=String
+Declare Var=$BatFile Type=String
+Declare Var=$bicycles_no Type=String
+Declare Var=$bicycles_yes Type=String
+Declare Var=$blockSelections Type=String
+Declare Var=$boat_yes Type=String
+Declare Var=$cacheStatus Type=String
+Declare Var=$campfires_no Type=String
+Declare Var=$campfires_yes Type=String
+Declare Var=$camping_no Type=String
+Declare Var=$camping_yes Type=String
+Declare Var=$cliff_yes Type=String
+Declare Var=$climbing_no Type=String
+Declare Var=$climbing_yes Type=String
+Declare Var=$codes Type=String
+Declare Var=$colorActive Type=String
+Declare Var=$colorBorder Type=String
+Declare Var=$colorFound Type=String
+Declare Var=$colorInactive Type=String
+Declare Var=$colorLeft Type=String
+Declare Var=$colorOwned Type=String
+Declare Var=$colorRight Type=String
+Declare Var=$colorText Type=String
+Declare Var=$configFile Type=String
+Declare Var=$configFilePath Type=String
+Declare Var=$coordinatesS Type=Boolean
+Declare Var=$cow_yes Type=String
+Declare Var=$danger_yes Type=String
+Declare Var=$decodedHint Type=String
+Declare Var=$decryptHint Type=Boolean
+Declare Var=$Diff Type=String
+Declare Var=$displayL1 Type=String
+Declare Var=$displayL2 Type=String
+Declare Var=$displayL3 Type=String
+Declare Var=$displayL4 Type=String
+Declare Var=$displayL5 Type=String
+Declare Var=$displayL6 Type=String
+Declare Var=$displayL7 Type=String
+Declare Var=$displayL8 Type=String
+Declare Var=$displayL9 Type=String
+Declare Var=$displayR1 Type=String
+Declare Var=$displayR2 Type=String
+Declare Var=$displayR3 Type=String
+Declare Var=$displayR4 Type=String
+Declare Var=$displayR5 Type=String
+Declare Var=$displayR6 Type=String
+Declare Var=$displayR7 Type=String
+Declare Var=$displayR8 Type=String
+Declare Var=$displayR9 Type=String
+Declare Var=$dogs_no Type=String
+Declare Var=$dogs_yes Type=String
+Declare Var=$fee_yes Type=String
+Declare Var=$firstaid_yes Type=String
+Declare Var=$flashlight_yes Type=String
+Declare Var=$Form Type=String
+Declare Var=$h Type=String
+Declare Var=$hiking_no Type=String
+Declare Var=$hiking_yes Type=String
+Declare Var=$horses_no Type=String
+Declare Var=$horses_yes Type=String
+Declare Var=$HTMLFile Type=String
+Declare Var=$Htmlfilepath Type=String
+Declare Var=$HtmlText Type=String
+Declare Var=$hunting_yes Type=String
+Declare Var=$i Type=Numeric
+Declare Var=$images Type=String
+Declare Var=$jeeps_no Type=String
+Declare Var=$jeeps_yes Type=String
+Declare Var=$kids_no Type=String
+Declare Var=$kids_yes Type=String
+Declare Var=$mine_yes Type=String
+Declare Var=$motorcycles_no Type=String
+Declare Var=$motorcycles_yes Type=String
+Declare Var=$night_no Type=String
+Declare Var=$night_yes Type=String
+Declare Var=$onehour_no Type=String
+Declare Var=$onehour_yes Type=String
+Declare Var=$ownerLink Type=String
+Declare Var=$parking_no Type=String
+Declare Var=$parking_yes Type=String
+Declare Var=$phone_no Type=String
+Declare Var=$phone_yes Type=String
+Declare Var=$picnic_no Type=String
+Declare Var=$picnic_yes Type=String
+Declare Var=$poisonoak_no Type=String
+Declare Var=$poisonoak_yes Type=String
+Declare Var=$public_yes Type=String
+Declare Var=$quads_no Type=String
+Declare Var=$quads_yes Type=String
+Declare Var=$rappelling_yes Type=String
+Declare Var=$restrooms_no Type=String
+Declare Var=$restrooms_yes Type=String
+Declare Var=$result Type=String
+Declare Var=$scenic_no Type=String
+Declare Var=$scenic_yes Type=String
+Declare Var=$scuba_yes Type=String
+Declare Var=$sizeImage Type=String
+Declare Var=$snakes_yes Type=String
+Declare Var=$snowmobiles_no Type=String
+Declare Var=$snowmobiles_yes Type=String
+Declare Var=$stealth_no Type=String
+Declare Var=$stealth_yes Type=String
+Declare Var=$stroller_no Type=String
+Declare Var=$stroller_yes Type=String
+Declare Var=$swimming_yes Type=String
+Declare Var=$tb Type=String
+Declare Var=$tbId Type=String
+Declare Var=$tbName Type=String
+Declare Var=$tbRef Type=String
+Declare Var=$temp Type=String
+Declare Var=$temp2 Type=String
+Declare Var=$Terr Type=String
+Declare Var=$thorn_yes Type=String
+Declare Var=$ticks_yes Type=String
+Declare Var=$tmp Type=String
+Declare Var=$TotalBugs Type=Numeric
+Declare Var=$TravelBugs Type=String
+Declare Var=$type Type=String
+Declare Var=$variables Type=String
+Declare Var=$wading_yes Type=String
+Declare Var=$water_no Type=String
+Declare Var=$water_yes Type=String
+Declare Var=$wheelchair_no Type=String
+Declare Var=$wheelchair_yes Type=String
+Declare Var=$winter_no Type=String
+Declare Var=$winter_yes Type=String
+Declare Var=$x Type=Numeric
+
+EndSub
+
+<Data> VarName=$form
+#********************************************************************
+# Form generated by GSAK form designer on Fri 18-Apr-2008 17:10:29
+#********************************************************************
+
+Name = Form1
+  Type = Form
+  Height = 376
+  Width = 695
+
+Name = Groupbox1
+  Type = Groupbox
+  Caption = Left Column
+  Height = 265
+  Left = 18
+  Top = 54
+  Width = 169
+  Taborder = 23
+
+Name = GroupBox2
+  Type = Groupbox
+  Caption = Right Column
+  Height = 265
+  Left = 200
+  Top = 54
+  Width = 169
+  Taborder = 24
+
+Name = Groupbox3
+  Type = Groupbox
+  Caption = Status Background Color
+  Height = 155
+  Left = 382
+  Top = 54
+  Width = 133
+  Taborder = 25
+
+Name = GroupBox4
+  Type = Groupbox
+  Caption = Display Options
+  Height = 81
+  Left = 382
+  Top = 238
+  Width = 133
+  Taborder = 26
+
+Name = GroupBox5
+  Type = Groupbox
+  Caption = Layout Colors
+  Height = 155
+  Left = 528
+  Top = 54
+  Width = 133
+  Taborder = 31
+
+Name = Groupbox6
+  Type = Groupbox
+  Height = 6
+  Left = 384
+  Top = 221
+  Width = 275
+  Taborder = 32
+
+Name = save
+  Type = Button
+  Height = 25
+  Left = 555
+  Top = 256
+  Width = 75
+  Taborder = 0
+  Caption = Save
+
+Name = Label1
+  Type = Label
+  Color = 10779227
+  Font = @Arial Unicode MS
+  Height = 25
+  Left = 185
+  Size = 14
+  Style = bold
+  Top = 10
+  Width = 308
+  Caption = Wide View Display Configuration
+
+Name = Label10
+  Type = Label
+  Color = 12632256
+  Height = 13
+  Left = 527
+  Top = 300
+  Width = 143
+  Caption = Developed by NashTech, Inc.
+
+Name = colorActive
+  Type = Edit
+  Height = 21
+  Left = 400
+  Top = 82
+  Width = 48
+  Taborder = 1
+
+Name = colorInactive
+  Type = Edit
+  Height = 21
+  Left = 400
+  Top = 110
+  Width = 48
+  Taborder = 2
+
+Name = colorFound
+  Type = Edit
+  Height = 21
+  Left = 400
+  Top = 138
+  Width = 48
+  Taborder = 3
+
+Name = colorOwned
+  Type = Edit
+  Height = 21
+  Left = 400
+  Top = 168
+  Width = 48
+  Taborder = 4
+
+Name = displayL1
+  Type = Combobox
+  Height = 21
+  Left = 30
+  Top = 76
+  Values = $blockSelections
+  Width = 145
+  Taborder = 5
+
+Name = displayL2
+  Type = Combobox
+  Height = 21
+  Left = 30
+  Top = 102
+  Values = $blockSelections
+  Width = 145
+  Taborder = 6
+
+Name = displayL3
+  Type = Combobox
+  Height = 21
+  Left = 30
+  Top = 128
+  Values = $blockSelections
+  Width = 145
+  Taborder = 7
+
+Name = displayL4
+  Type = Combobox
+  Height = 21
+  Left = 30
+  Top = 154
+  Values = $blockSelections
+  Width = 145
+  Taborder = 8
+
+Name = displayL5
+  Type = Combobox
+  Height = 21
+  Left = 30
+  Top = 180
+  Values = $blockSelections
+  Width = 145
+  Taborder = 9
+
+Name = displayL6
+  Type = Combobox
+  Height = 21
+  Left = 30
+  Top = 206
+  Values = $blockSelections
+  Width = 145
+  Taborder = 10
+
+Name = displayL7
+  Type = Combobox
+  Height = 21
+  Left = 30
+  Top = 232
+  Values = $blockSelections
+  Width = 145
+  Taborder = 11
+
+Name = displayL8
+  Type = Combobox
+  Height = 21
+  Left = 30
+  Top = 258
+  Values = $blockSelections
+  Width = 145
+  Taborder = 12
+
+Name = displayL9
+  Type = Combobox
+  Height = 21
+  Left = 30
+  Top = 284
+  Values = $blockSelections
+  Width = 145
+  Taborder = 13
+
+Name = displayR9
+  Type = Combobox
+  Height = 21
+  Left = 212
+  Top = 284
+  Values = $blockSelections
+  Width = 145
+  Taborder = 14
+
+Name = displayR8
+  Type = Combobox
+  Height = 21
+  Left = 212
+  Top = 258
+  Values = $blockSelections
+  Width = 145
+  Taborder = 15
+
+Name = displayR7
+  Type = Combobox
+  Height = 21
+  Left = 212
+  Top = 232
+  Values = $blockSelections
+  Width = 145
+  Taborder = 16
+
+Name = displayR6
+  Type = Combobox
+  Height = 21
+  Left = 212
+  Top = 206
+  Values = $blockSelections
+  Width = 145
+  Taborder = 17
+
+Name = displayR5
+  Type = Combobox
+  Height = 21
+  Left = 212
+  Top = 180
+  Values = $blockSelections
+  Width = 145
+  Taborder = 18
+
+Name = displayR4
+  Type = Combobox
+  Height = 21
+  Left = 212
+  Top = 154
+  Values = $blockSelections
+  Width = 145
+  Taborder = 19
+
+Name = displayR3
+  Type = Combobox
+  Height = 21
+  Left = 212
+  Top = 128
+  Values = $blockSelections
+  Width = 145
+  Taborder = 20
+
+Name = displayR2
+  Type = Combobox
+  Height = 21
+  Left = 212
+  Top = 102
+  Values = $blockSelections
+  Width = 145
+  Taborder = 21
+
+Name = displayR1
+  Type = Combobox
+  Height = 21
+  Left = 212
+  Top = 76
+  Values = $blockSelections
+  Width = 145
+  Taborder = 22
+
+Name = Label2
+  Type = Label
+  Container = Groupbox3
+  Height = 13
+  Left = 70
+  Top = 32
+  Width = 30
+  Caption = Active
+
+Name = Label3
+  Type = Label
+  Container = Groupbox3
+  Height = 13
+  Left = 70
+  Top = 60
+  Width = 41
+  Caption = Disabled
+
+Name = Label4
+  Type = Label
+  Container = Groupbox3
+  Height = 13
+  Left = 70
+  Top = 88
+  Width = 30
+  Caption = Found
+
+Name = Label5
+  Type = Label
+  Container = Groupbox3
+  Height = 13
+  Left = 70
+  Top = 116
+  Width = 34
+  Caption = Owned
+
+Name = Label6
+  Type = Label
+  Container = GroupBox4
+  Height = 13
+  Left = 26
+  Top = 26
+  Width = 86
+  Caption = Show Coordinates
+
+Name = Label7
+  Type = Label
+  Container = GroupBox4
+  Height = 13
+  Left = 26
+  Top = 48
+  Width = 59
+  Caption = Decrypt Hint
+
+Name = colorBorder
+  Type = Edit
+  Height = 21
+  Left = 546
+  Top = 168
+  Width = 48
+  Taborder = 27
+
+Name = colorRight
+  Type = Edit
+  Height = 21
+  Left = 546
+  Top = 138
+  Width = 48
+  Taborder = 28
+
+Name = colorLeft
+  Type = Edit
+  Height = 21
+  Left = 546
+  Top = 110
+  Width = 48
+  Taborder = 29
+
+Name = colorText
+  Type = Edit
+  Height = 21
+  Left = 546
+  Top = 82
+  Width = 48
+  Taborder = 30
+
+Name = Label8
+  Type = Label
+  Container = GroupBox5
+  Height = 13
+  Left = 70
+  Top = 32
+  Width = 21
+  Caption = Text
+
+Name = Label9
+  Type = Label
+  Container = GroupBox5
+  Height = 13
+  Left = 70
+  Top = 60
+  Width = 39
+  Caption = Left Col.
+
+Name = Label11
+  Type = Label
+  Container = GroupBox5
+  Height = 13
+  Left = 70
+  Top = 88
+  Width = 46
+  Caption = Right Col.
+
+Name = Label12
+  Type = Label
+  Container = GroupBox5
+  Height = 13
+  Left = 70
+  Top = 116
+  Width = 31
+  Caption = Border
+
+Name = coordinatesS
+  Type = Checkbox
+  Container = GroupBox4
+  Height = 17
+  Left = 8
+  Top = 24
+  Width = 15
+  Taborder = 0
+
+Name = decryptHint
+  Type = Checkbox
+  Container = GroupBox4
+  Height = 17
+  Left = 8
+  Top = 46
+  Width = 15
+  Taborder = 1
+
+<enddata>
+
+BEGINSUB Name=SaveIcons
+$tmp = PutFile($Htmlfilepath + "\available-no.gif", MimeDecode($available_no))
+$tmp = PutFile($Htmlfilepath + "\available-yes.gif", MimeDecode($available_yes))
+$tmp = PutFile($Htmlfilepath + "\bicycles-no.gif", MimeDecode($bicycles_no))
+$tmp = PutFile($Htmlfilepath + "\bicycles-yes.gif", MimeDecode($bicycles_yes))
+$tmp = PutFile($Htmlfilepath + "\boat-yes.gif", MimeDecode($boat_yes))
+$tmp = PutFile($Htmlfilepath + "\campfires-no.gif", MimeDecode($campfires_no))
+$tmp = PutFile($Htmlfilepath + "\campfires-yes.gif", MimeDecode($campfires_yes))
+$tmp = PutFile($Htmlfilepath + "\camping-no.gif", MimeDecode($camping_no))
+$tmp = PutFile($Htmlfilepath + "\camping-yes.gif", MimeDecode($camping_yes))
+$tmp = PutFile($Htmlfilepath + "\cliff-yes.gif", MimeDecode($cliff_yes))
+$tmp = PutFile($Htmlfilepath + "\climbing-no.gif", MimeDecode($climbing_no))
+$tmp = PutFile($Htmlfilepath + "\climbing-yes.gif", MimeDecode($climbing_yes))
+$tmp = PutFile($Htmlfilepath + "\cow-yes.gif", MimeDecode($cow_yes))
+$tmp = PutFile($Htmlfilepath + "\danger-yes.gif", MimeDecode($danger_yes))
+$tmp = PutFile($Htmlfilepath + "\dogs-no.gif", MimeDecode($dogs_no))
+$tmp = PutFile($Htmlfilepath + "\dogs-yes.gif", MimeDecode($dogs_yes))
+$tmp = PutFile($Htmlfilepath + "\fee-yes.gif", MimeDecode($fee_yes))
+$tmp = PutFile($Htmlfilepath + "\firstaid-yes.gif", MimeDecode($firstaid_yes))
+$tmp = PutFile($Htmlfilepath + "\flashlight-yes.gif", MimeDecode($flashlight_yes))
+$tmp = PutFile($Htmlfilepath + "\hiking-no.gif", MimeDecode($hiking_no))
+$tmp = PutFile($Htmlfilepath + "\hiking-yes.gif", MimeDecode($hiking_yes))
+$tmp = PutFile($Htmlfilepath + "\horses-no.gif", MimeDecode($horses_no))
+$tmp = PutFile($Htmlfilepath + "\horses-yes.gif", MimeDecode($horses_yes))
+$tmp = PutFile($Htmlfilepath + "\hunting-yes.gif", MimeDecode($hunting_yes))
+$tmp = PutFile($Htmlfilepath + "\jeeps-no.gif", MimeDecode($jeeps_no))
+$tmp = PutFile($Htmlfilepath + "\jeeps-yes.gif", MimeDecode($jeeps_yes))
+$tmp = PutFile($Htmlfilepath + "\kids-no.gif", MimeDecode($kids_no))
+$tmp = PutFile($Htmlfilepath + "\kids-yes.gif", MimeDecode($kids_yes))
+$tmp = PutFile($Htmlfilepath + "\mine-yes.gif", MimeDecode($mine_yes))
+$tmp = PutFile($Htmlfilepath + "\motorcycles-no.gif", MimeDecode($motorcycles_no))
+$tmp = PutFile($Htmlfilepath + "\motorcycles-yes.gif", MimeDecode($motorcycles_yes))
+$tmp = PutFile($Htmlfilepath + "\night-no.gif", MimeDecode($night_no))
+$tmp = PutFile($Htmlfilepath + "\night-yes.gif", MimeDecode($night_yes))
+$tmp = PutFile($Htmlfilepath + "\onehour-no.gif", MimeDecode($onehour_no))
+$tmp = PutFile($Htmlfilepath + "\onehour-yes.gif", MimeDecode($onehour_yes))
+$tmp = PutFile($Htmlfilepath + "\parking-no.gif", MimeDecode($parking_no))
+$tmp = PutFile($Htmlfilepath + "\parking-yes.gif", MimeDecode($parking_yes))
+$tmp = PutFile($Htmlfilepath + "\phone-no.gif", MimeDecode($phone_no))
+$tmp = PutFile($Htmlfilepath + "\phone-yes.gif", MimeDecode($phone_yes))
+$tmp = PutFile($Htmlfilepath + "\picnic-no.gif", MimeDecode($picnic_no))
+$tmp = PutFile($Htmlfilepath + "\picnic-yes.gif", MimeDecode($picnic_yes))
+$tmp = PutFile($Htmlfilepath + "\poisonoak-no.gif", MimeDecode($poisonoak_no))
+$tmp = PutFile($Htmlfilepath + "\poisonoak-yes.gif", MimeDecode($poisonoak_yes))
+$tmp = PutFile($Htmlfilepath + "\public-yes.gif", MimeDecode($public_yes))
+$tmp = PutFile($Htmlfilepath + "\quads-no.gif", MimeDecode($quads_no))
+$tmp = PutFile($Htmlfilepath + "\quads-yes.gif", MimeDecode($quads_yes))
+$tmp = PutFile($Htmlfilepath + "\rappelling-yes.gif", MimeDecode($rappelling_yes))
+$tmp = PutFile($Htmlfilepath + "\restrooms-no.gif", MimeDecode($restrooms_no))
+$tmp = PutFile($Htmlfilepath + "\restrooms-yes.gif", MimeDecode($restrooms_yes))
+$tmp = PutFile($Htmlfilepath + "\scenic-no.gif", MimeDecode($scenic_no))
+$tmp = PutFile($Htmlfilepath + "\scenic-yes.gif", MimeDecode($scenic_yes))
+$tmp = PutFile($Htmlfilepath + "\scuba-yes.gif", MimeDecode($scuba_yes))
+$tmp = PutFile($Htmlfilepath + "\snakes-yes.gif", MimeDecode($snakes_yes))
+$tmp = PutFile($Htmlfilepath + "\snowmobiles-no.gif", MimeDecode($snowmobiles_no))
+$tmp = PutFile($Htmlfilepath + "\snowmobiles-yes.gif", MimeDecode($snowmobiles_yes))
+$tmp = PutFile($Htmlfilepath + "\stealth-no.gif", MimeDecode($stealth_no))
+$tmp = PutFile($Htmlfilepath + "\stealth-yes.gif", MimeDecode($stealth_yes))
+$tmp = PutFile($Htmlfilepath + "\stroller-no.gif", MimeDecode($stroller_no))
+$tmp = PutFile($Htmlfilepath + "\stroller-yes.gif", MimeDecode($stroller_yes))
+$tmp = PutFile($Htmlfilepath + "\swimming-yes.gif", MimeDecode($swimming_yes))
+$tmp = PutFile($Htmlfilepath + "\thorn-yes.gif", MimeDecode($thorn_yes))
+$tmp = PutFile($Htmlfilepath + "\ticks-yes.gif", MimeDecode($ticks_yes))
+$tmp = PutFile($Htmlfilepath + "\wading-yes.gif", MimeDecode($wading_yes))
+$tmp = PutFile($Htmlfilepath + "\water-no.gif", MimeDecode($water_no))
+$tmp = PutFile($Htmlfilepath + "\water-yes.gif", MimeDecode($water_yes))
+$tmp = PutFile($Htmlfilepath + "\wheelchair-no.gif", MimeDecode($wheelchair_no))
+$tmp = PutFile($Htmlfilepath + "\wheelchair-yes.gif", MimeDecode($wheelchair_yes))
+$tmp = PutFile($Htmlfilepath + "\winter-no.gif", MimeDecode($winter_no))
+$tmp = PutFile($Htmlfilepath + "\winter-yes.gif", MimeDecode($winter_yes))
+ENDSUB
+
+##############################
+<data> VarName=$available_no
+R0lGODlhHgAeALMAANTU1HBwcENDQwAAAJqamuVSUv///yoqKpMAAL29va6urq0ZGeYAAO/v72BgYH9/
+fyH5BAAAAAAALAAAAAAeAB4AAAT/0CRGq734Kpm7t4qFDGRpnujQjWmLihXrztaAxDMpCG9F3hRZ6mAA
+9CglIEN4ehgIR4ZJySwBDLxTbYo7ERupreDwqyxODoNicNi5LYeGoVimnEsbxyAx71sADQIEBgEkC10D
+cmQODw+DBBYBegIGD2wGBTiURiYJRlsDG2QACg+ZQYOWJZQ8W4N6D2BOhxQFBmRWnDWvJAYNnkW0DAUm
+RKqRTzsHCcxXAAdUJU5ZFnJ9qgPTJKdLJBslFo3iWQMCD7iYOIzgPjkDaQnRJqAzg4XyJPQuinXd+e0z
+iHDqx0JfCnPkCKoA6A4FFYMNk3SI2EIJgwkfMmLgg1GjRj4RAQAAOw==
+<enddata>
+
+<data> VarName=$available_yes
+R0lGODlhHgAeAMQAAM/PzzAwML+/v+/v7xAQECAgIJ+fn2BgYDMzM7u7u3BwcFBQUN/f36+vr4+Pj6qq
+qiIiIn9/f0BAQP///wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAAAAAAALAAA
+AAAeAB4AAAXT4JQgVGmeaGoij6i+8PmQcZ1Cdq7vfCxJvVhgwgjCIhOH8QWYAJeowmRgI0gCKCvhdJg0
+KIGf+BQYTCaAbUngPDUmBwr7fD4BBgvDRFFSnJ8lZgUUBxERDhMGJwpxEhMRYGhtJQtoKAIAL2+DAA1I
+gIiQJpWAJ3pxEQMEnyYME1gmAJkppyVEAq4AWFJUJkOii4k/BQLFuVh+iiasJwRmdMDMbAtuEykFhtmA
+EhGDBGdqJYVLlQJQtHvnKILqvkTtJtzU8PRQNPQICfUUCSL39v1CAAA7
+<enddata>
+
+<data> VarName=$bicycles_no
+R0lGODlhHgAeALMAAGxsbI2Nje5cXEhISCoqKpQBAd3d3bMcHM08PAAAAMzMzBEREeYAAP///7e3t+7u
+7iH5BAAAAAAALAAAAAAeAB4AAAT9sDlGq734Opm7t1NVJGRpnmjSjWmLWoXozqSVxBRLp/Yt769KCccQ
+NBoD0uaY5AmHFUQAhWz1oBQEtRmkoIjGoxhgfZ6IugThsXB6SYMAgBA4/BILxZQwIJRsBApiDWx2OQkD
+BgGEYg5+FmsKSQsPBg4JCFEPcYQAAwAGDwQgBm0JAI4NcwIiAxIOZHiWFqolBnwGoQqGDAgNBASlJAAN
+tE0ADwoOygkBBrwCcFNqxRW1aqbMWAwsfojVFA7CJa6x22kBD5DJk8jTZz/EAIAGg+8ovAgPDVNXcXM0
+iCBocgXIuRpmDB4sqJAEGoYNfWSICK9CiA8YNXDIyHFDBAA7
+<enddata>
+
+<data> VarName=$bicycles_yes
+R0lGODlhHgAeALMAAN3d3URERO7u7hERESIiIoiIiHd3d8zMzFVVVZmZmaqqqru7u2ZmZjMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAATi0K32qr0426ak/uClUGGZEWaqrmzrvtfizEEl0/BSZE796jyf6zYr
+OhgvggOQaQgGKkTB0EgwFsjL4LBrBFCaxsH4DDAt5oJDUFyAN4JDbSAALB7YSkEgXTMCBgACb3gAUA9X
+SgwEAgsACgMBDgp5DwN2FooWAAQIAIIHCAIVCQ4NBIYVDA6Hkj4McQoHdwkAWTIVUhVKPpoPDYcHChky
+h2CSJIWHFZJZFwYOOxcJo3BylgYCCRqXRxbQBhgNAEbSYeR2bOYYUgaE3AYLCwlCMPb3+PklyfoNd/o2
+JPCD4c9BBAA7
+<enddata>
+
+<data> VarName=$boat_yes
+R0lGODlhHgAeALMAAIiIiO7u7qqqqkRERFVVVRERESIiInd3d8zMzN3d3ZmZmWZmZru7uzMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAASH0LH2qr042yak/uAlUGGZGWaqrmzrvnAsX0xtM0IR24jEOIBZJRFU
+OFCzQcBQCDCED8Xz4CBcGgOSYTAgAL7gL89BLpurFcN5zWYHLb+2/JzQWQjzPJl06TkCZIB/gYSDZAca
+BQcDBgIAilkCCxw5AAwEBI5Qm5ydnp+gL3xQDU+cPxNCpQ4RADs=
+<enddata>
+
+<data> VarName=$campfires_no
+R0lGODlhHgAeALMAAOxaWm9vbwAAAP///y0tLUtLS5QBAe7t7d3d3awXF6SkpL0oKMzMzOYAAIiIiLu7
+uyH5BAAAAAAALAAAAAAeAB4AAAT/cLxGq734Kpm7t4plCGRpEoSpCt24kg7ymmLlrlswk5Zg2K/DQLbr
++YCmwGCZmhmPlBtBuHQUK6ZfVDBdLh9XikrbMCC8y4Og8HqWyAD0UEBUud+VuFdRGDRpWCsBCXleBUpW
+doEnAwVwA2obYIpiKg4DOgB5DgRpK3cClwoCAZpRGxKfiyV9AyQIpg16iYCVlgOjfQubbasFTQQBKSm7
+FAkKCH8sq2cPOiuPaiVuaAi0BAoHsXHPy7ZrDHIKD2ixN94NKwWocksKhFs8q0lU1cJkLncB7O1eDMVl
+0JXgt4SBsAIx5Jgz0smLNWUkgoVbEusClwMPdyTJVnHCh48YB8h5BAmSXAQAOw==
+<enddata>
+
+<data> VarName=$campfires_yes
+R0lGODlhHgAeALMAAN3d3e7u7oiIiHd3d7u7uyIiIhEREURERKqqqszMzFVVVZmZmWZmZjMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAATV0JH2qr0424ak/uCFUOFGhkV5CYDqWt3wuoHTziHj7CeONbWdwJcB
+7nYEIgZw3AUeCuWj0dy1bj7DoepYbHuuwWFbVQwcw1nBcVg3n53kTOBgPBJNgfs57z50TgYdHjNkBg9M
+DmZHaX0ID1sMgAGNKm0VBQMUDQZiFAcLAGAaTAR2GQYMeIElTQACh1MLQU2nIAqrRwsEXAADsZYLXEcI
+UVkDtEe+KS+pg8NHCQPMIM/R0wosXNLUF1TKekUDuTu2JwUBr6OoDAgBBLENclIZvBP0G7wRADs=
+<enddata>
+
+<data> VarName=$camping_no
+R0lGODlhHgAeALMAAIuLi7m5udnZ2edTU5UAAGtqaisrKwAAAERERMo4OKsZGeYAAP///xEREe9fX+7u
+7iH5BAAAAAAALAAAAAAeAB4AAATYkIVFq734Bpm7t1NFHGRpnujRjWmLWoSYGo1bWkdMsSYA2CRcTlZq
+PB41m3C4KwEYjJ+yYtItRkYocko5WQlPaJS7QFkHYsa2taxWHGlpqu2mDB7a5IuaKgwqCWJyJ3QlAgx/
+FHBqeiaFBwhiiQuLBXN8JxtQAFZwApddJ5FiBkyUDJaEmCWaDJ8kna+OqwcGcXWUqTe0YVClJgkVA6oU
+o2nHxw5vYggWxsjQDMqKUM0Vz9HI06fWFA0I4OHi4+IKFQoNj0AlX+rrsB3vLlYLIR/3Ghz4+xsRADs=
+<enddata>
+
+<data> VarName=$camping_yes
+R0lGODlhHgAeALMAABEREbu7u4iIiN3d3e7u7mZmZpmZmSIiInd3d1VVVczMzKqqqkRERDMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAASU0IX2qr042xak/uA1haRGlWh6HYCKGoJLAgTRyp/gODGe0TubD6Pb
+8YaXgdEhRBaWu95Q6RgQgjfcM2owSmUKY+NgbLoYxkGls0Pg2MdHIi1Diy1UR8G1oFsQfihkXhdAO3sv
+SycWXTtqH3ZQkpNLDBeRlJmVl5qdRpYWAAyjpKWmp6RZSKsui6wVCQGvIhKuQxwOEQA7
+<enddata>
+
+<data> VarName=$cliff_yes
+R0lGODlhHgAeALMAACIiInd3d0RERO7u7mZmZlVVVYiIiJmZmREREaqqqt3d3czMzLu7uzMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAASp0LH2qr0428ak/uA1haRGlWiqrhbDsGHgOAWsAYOj2FrnGA8AgFeR
+zQSPhWNow80ciEcgQPTNMEiW8SkoJACyRDTlfEoEDIIvi7KamQfHQrU1Ow6WMapsnzEJBClufXgAHgUM
+VB91fTOBDQ0ET0AZfI1cDwV2PZeED4NsRZ19O5pmoQQ5o3ZIVgNMFaqrZkANBgYBsBUJs3aBRMDBFSfC
+FYjFLRLERBwOEQA7
+<enddata>
+
+<data> VarName=$climbing_no
+R0lGODlhHgAeALMAAJCQkNfX15kEBEpKSgAAAHFxcS4uLu5YWLu7u848PKqqquYAAP///+9fX//8/O7u
+7iH5BAAAAAAALAAAAAAeAB4AAAT/kKFFq734Kpm7t4olEGRJAExgmCzajabBzApbDjMjVjAp0zYSImch
+CHgmgEPFWuGIFdKR0jMNAIDALPDI6aLSSgJAuGpziqt3VixNFw3DkLEslFDrtpvXTbUceWAmbw0zCC1r
+XxQ2AwcVhTUmc156NwwJj2SSiZU+Em8JLJNQi4xljlSbgaVBAw6oCwkFK6Nsgox0sA1ktYoLQSQFgAqg
+BIm+wCczYVTHnSZdmgSYFIWrv0E/AyUIutfABX4lAa+PlLebdiR45dWk2DYzK8o57XC2rFYMkXhe9oXP
+lA0w0G+NgwaPng3QcubYjIMdShRo6NAgwgoTPmjEMCTjxo1DAiIAADs=
+<enddata>
+
+<data> VarName=$climbing_yes
+R0lGODlhHgAeALMAAIiIiERERKqqqt3d3REREe7u7lVVVSIiIszMzGZmZnd3d7u7u5mZmTMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAATi0K32qr042yak/uABAIRAgQ/gDKfGOI5woE8Dx19wO3R9C5/Frpda
+tSoUw45HrBACAAYCNigsUQLAIyDdCQyqJfMDawhhCAWhEr6CYATrCtMefmy824IuHmd0eTBAF2duGjoI
+DzdahH0gNhOLGIV2HwZPi2sWlDc9gHoKM5wwnn1ao34fCYIBAVYJio40Lw6aQgGxYj1WDJsOuH2pGXi4
+FUIEdZUfCnMWU3KyIEIKFrTBpCgwMw/W18IXSoPd3igqBgfj5DkDK95ie0cPCezuwQBmFwzQ9VQLC7BC
+JjRBYcZBBAA7
+<enddata>
+
+<data> VarName=$cow_yes
+R0lGODlhHgAeAMZ9AEJCQiUlJS0tLT4+PjU1NQ4ODjw8PBoaGhISEh0dHRQUFAUFBQEBATMzM7u7u/j4
++G5ubuTk5FZWVv7+/nR0dPv7+9zc3PX19YODgwoKCjIyMuPj4/Ly8iEhIXNzc6qqqjk5Oe7u7tTU1KKi
+olBQUHh4eERERM3Nzevr69fX15KSkpaWlk9PT35+fnZ2dmdnZ1JSUhYWFigoKKCgoJGRkff398/Pz+3t
+7UlJSWVlZebm5ry8vISEhMjIyJubm1tbW/39/b+/v4qKip2dnY+Pj5eXl5ycnHp6evHx8fn5+eHh4a6u
+rt3d3bOzs7S0tLe3t3BwcKioqDY2Nt/f37Gxsfr6+sXFxdXV1aampsrKyp6enlNTU11dXY2Njbm5ua2t
+rUdHR4mJiezs7Orq6pmZmdbW1mBgYM7OzkBAQFhYWPz8/G9vb9DQ0NHR0b29vbKysn19faysrFVVVaSk
+pKWlpWZmZo6OjmRkZPPz84uLi3t7e9PT02JiYv///wAAAP///yH+FUNyZWF0ZWQgd2l0aCBUaGUgR0lN
+UAAh+QQBAAB/ACwAAAAAHgAeAAAH/oB/Dg1+hYaHiImGDR+Cio+Qhx+EkZWJHZaZmpucnZ6foI8FAQqI
+CwcJqaqrqwUMhxpeKiC0LF0+T266u7y8PK+GBUUPY8UhQH3JysvMdFkCsEzM09TKK11ShhlhSdXey9fZ
+hSAh3+Z94YYEGxtCQjQW58zphQupCwsZAGfI8ugzGApAkiKN2gMLQcoos0LEhoxILMYoi/BkhAcTGhLc
+4aAsB5QElSD06YGkByIGLCJscFClhaUFcPq48NEHzaECTvpAGWDBZaUCWPo0MLGhyQJDP6qMQCDAhs9I
+ApgoyeBnhxWBheqEYLFgywYIlmLgIPCKhLhCHeS4kgLhQKi3FHDjyn1EaW4DB3MLORBUN9TdP4EAADs=
+<enddata>
+
+<data> VarName=$danger_yes
+R0lGODlhHgAeALMAAERERO7u7qqqqiIiIt3d3VVVVREREXd3d5mZmczMzIiIiLu7u2ZmZjMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAATX0K32qr042yakvgMgip8lUKXirGyCakP5IGztBK+MHbYd6JpOrxYD
+XhbDGsB4TLKWzApPAVA5CIUCwWGIVgy/ykpRUQi8loQA0FEEDowAGf2oEQy1BX3GEii2Nwx7DwUBNgJF
+gwo8CwsIgxcEAAUMAHCQFYY1c5BWKwGJXgWJBQqLoV4LAQUpZ1FIElAWA1aPTAcECkgLSwVCLHsAW5oO
+CCI5UQaeDpx0AwiGCwwNSAhdoh1yoXEEjbIlA8OCGgZC4xfIDwwO5x8EAtcbehkN8akS6XTUDhEAOw==
+<enddata>
+
+<data> VarName=$dogs_no
+R0lGODlhHgAeALMAAJMBAe9bW3JyckdHRysrK93d3QAAAMc0NBEREeYAAP///4iIiLa2tu7u7pmZmczM
+zCH5BAAAAAAALAAAAAAeAB4AAAT/ULFEq734Mpm7t1MFGGRpnqjRjWmKLAxRWoDYnkShCKZl1BTWDfFQ
+SHoVgwCYEKKIRqNjliz8bClBNMrg+QoyprP02hqtvsX0GjQJCgMDgfFwNHaqJOJuDFQOCws6RjEmMnkU
+JEVRfhQBZkYIKD4DkI0Jj2ZxJz5alhWZUZtIiQSQfaBbC5NJBoNcqI5Rq5ytDls8CG+XmYekCSQLW6O6
+B6BWrIkGwlEpxhQHKT4GG4QpA5djiMCmotcK2bWJwncPLd3hVIl3lQw3UWLqwDrUCpIpovHbywoDprQo
+ojxAEM/HPwMO1qC4paDBKjHTEPi6gYLJBYoY2VAI8aGjBg4eBENuiAAAOw==
+<enddata>
+
+<data> VarName=$dogs_yes
+R0lGODlhHgAeALMAAIiIiLu7u0RERBEREd3d3Xd3d5mZmSIiIszMzKqqqu7u7lVVVWZmZjMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAATF0IX2qr0425ak/uCVUGGZHSY4AAGalg3hFG85II6TgHR65znDh/Aq
+AIEBRobgsgGOOSIGIAwVCItHI4AwKGaZwfcYCBgAAFmudSFlcND4cVASyO85QcmIl+tDDX1yACZqSH2E
+JQZHSgMMhkduIE9Afw8DBXBRKZQ5GgtAiSUBQDsZdjk9IQdHlheoDq4fT18IH6x5Jl92ASCVhQ4PHXQa
+QFklTwKsohhACMQggYQGVRmLDgrMHwOSNRjd3hpb4aMS4ORbDhEAOw==
+<enddata>
+
+<data> VarName=$fee_yes
+R0lGODlhHgAeALMAAIiIiERERLu7u+7u7hEREZmZmSIiIqqqqlVVVczMzGZmZt3d3Xd3dzMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAASo0In2qr0423ak/uB1UOETAKhRquUDOHDQtkQHM3OIDHAvsLmLokd0
+DEhBU7E4ICQfNlgBkCACnjzYtTKELZ5EmaUgKIN7hedHQEwwxGruUuuMV+fHOOG+HACfCAULS2lxGwBZ
+RkkEAY0YXTBJAT1wSj1JDT4iPQlYPggIUQ5bQQVzPU1PBIlFC0iYbEQLAHWGCGGGF5OULa8aBigpJQ0C
+uRpsE8YVxA4RADs=
+<enddata>
+
+<data> VarName=$firstaid_yes
+R0lGODlhHgAeAKIEAKxcX7h+gP///44wM8DAwAAAAAAAAAAAACH5BAEAAAQALAAAAAAeAB4AAANPSDDc
+/vABFat16+rNu/+WII4i+JCk6aCj2rClO8CCPMM23QV0z0I8n7D2CA57wKMvqdQVm06HEZriRFVXUxa0
+/XQ9307YRgZlyozJmTxJAAA7
+<enddata>
+
+<data> VarName=$flashlight_yes
+R0lGODlhHgAeAPeqAAEBAQICAru7uwQEBAgICBsbG+rq6gYGBv39/TMzM19fXwMDA2FhYfv7+/r6+hcX
+F/j4+AUFBdra2uLi4oqKipeXl6qqqomJiVJSUn19fVNTU0dHRykpKYKCgiEhIR0dHfHx8TExMQkJCeHh
+4SoqKhQUFAcHB56enjg4OAoKCllZWUZGRri4uPLy8vb29kxMTOTk5HNzc87OzouLi8DAwGJiYra2tufn
+5/7+/jQ0NJ2dnaKioq2trZiYmLS0tJGRkWxsbNzc3NLS0u3t7XFxcd3d3cfHxzAwMA8PD/Dw8E9PTxUV
+FeXl5dvb27e3t0RERBgYGMrKysTExGZmZs3NzQ0NDQwMDBAQEDo6Ouvr65WVlY+Pj/z8/BEREQ4ODlhY
+WIiIiMzMzN7e3ktLS39/fy4uLkJCQjY2NqioqLCwsMHBwVRUVPPz8yMjI3l5eR8fH6ysrEBAQOnp6Vxc
+XM/Pz+zs7JmZmXx8fKurqy0tLdPT08nJyfn5+Wtra4SEhIeHhzw8PJKSkjs7O1dXV35+fnd3d3t7exMT
+E8XFxQsLC8LCwltbW+7u7mlpaZycnDc3N25ubisrK/f39yUlJT8/P4ODg7GxsRYWFq6urqenp0pKSoGB
+gTIyMlFRUY6OjtfX142NjUNDQycnJ+/v75SUlMjIyEhISHZ2dv///wAAAP///wAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+ACH5BAEAAKoALAAAAAAeAB4AAAj/AFUJSJCqoMGDCBMaJGFBIKAuASIQOGBiQAAAGA8CCLBgwcWLCwYQ
+SGWBoMKTCAE8KBApQMEPKGMWTOGoQZQWWxLJ3DmjAZAHpxwo2IkSQIYGMVwyQBWDqMIAd7j8GZAqjgE4
+JZwijEAIAgURqTjo2fNG68EImxyAGrnE0gQUZg0uIIPqwoFUBEjhcBO3IABIEGZQTUXERaYMWbUeEGUI
+gZ27qcYMOfHlxxWiKY4wCIQoy44qBctMkDCowhmiWCx8aoHKRigvBQuUMsBjxwuiOYSg2o1KzYZUAJCg
+GaXJjAaij+jw3o3gRo1UCpL0OTn4IAcZdXzIgLB8BIYKRgqcxIRscECHtwQKdKKBgHmQEZ5MUDf4YMUL
+HSxSkfCjwkOP9rvx0YhMDNSQBggCZCBBAQSsUAEYH/DAGwy/xWQAb00wYAAFBVmhRSGCMLJbETnItJwD
+HVzggikFHdJDHjrs5sQlJi4nxhqYgDBHQZOIUAkqYXCy03K70fDECZLggYEHizBBRQhEEbmbFBoooAgM
+EtzAApRRSonKhpQooQAGUGjl5W44yOHDDyqYdSaRU2iVgAAXvIkKG21oJYBAdtrg1JyqBAQAOw==
+<enddata>
+
+<data> VarName=$hiking_no
+R0lGODlhHgAeALMAAOdUVGtra////ygoKJMAAEZGRre3twAAAL8qKpmZmagUFOYAAIiIiO7u7tbW1hER
+ESH5BAAAAAAALAAAAAAeAB4AAAT8UJhFq734Gpm7t1NFHGRpnujRjSnJGEyrimIbCHjQWgdRm4MDAyfQ
+pXi93yFhOAwaAsdjVyn5KKPbIAA1Uimm60IhYBSIQRnSWgEMHMSYunoSI4gS2QyMQrSJTXN8KGIAOA1p
+R3QpAG0JAg1eJ2soAo1YDwwNDpIklCc4lwsjDw4GnZ8lA0SiBAVSKKkkj6xtBYqDJ1AOQwIKSiayZwK3
+cAm/WLGLJo8OJDcSfsnByyVdJXDOYiye1QdnDSZDgdslqUNyJBvhJOV7Cygbia8bYTWpUWmlBUN1NN5Q
+AjFIcOBGgURJMqAYkCbAlAdQBExhUyHEh4saOGDcuCECADs=
+<enddata>
+
+<data> VarName=$hiking_yes
+R0lGODlhHgAeALMAALu7u4iIiO7u7hEREURERCIiIt3d3ZmZmczMzHd3d6qqqlVVVTMzM2ZmZv///wAA
+ACH5BAAAAAAALAAAAAAeAB4AAATA0AH2qr04W6ak/uClUGGZFeYVAEGaNk7cuCAVxE5CawfwFAIHYrDD
+JByFRnBWvDAcAQKO1KwABAUDrlV9SBs3nK+bCAyC4q4FhnNg1Q8EDnFw67rt2SAgMDCLbQQWAwgKfy4F
+eRYEBkRFdWkPAwaCTUEIYYIBB1ULMYJaBwwCjo8OBhVsAIc7SxZaCF1SAioeVTdcFR20VQBIiwa+eAgo
+kpQ3XUFjmw8wBFQa0BcFJAlEZzGlGAxjcBe+E94P3A4RADs=
+<enddata>
+
+<data> VarName=$horses_no
+R0lGODlhHgAeALMAAP///wEBAXFxcUhISJMAACwsLO7u7u9cXKqqqtE9PeYAALu7u4iIiMzMzN3d3ZmZ
+mSH5BAAAAAAALAAAAAAeAB4AAAT/ECxFq734Ipm7t4hFBGQZCIOpmt1oPgBQrLRYuSRs0HUVEDcTI8VT
+WUhAigthmBVZPmTQAGA8oRRTUkGINXiFxaN01FYOMauKEROQo2YKGuBwBwqNWJtUJg1SWwcPDFYCVHox
+KWVsegYJFQkDAg6IADAAO0cLlTEHZ5x2AlYWBZx6nnKICCsWA6annzFOWAoBr7CpakY+VIemqAoHPJoN
+Aoh5iMA4tAELCwbQVX4MD3nKrD7PAIYLK8YG18wCDV8AREJVAI9KzAEIVg66JWwFDghbOGULVgirKs8B
+Hjj4ESSAvhTjVixYZUwKuzIOUpRaUeeOOYdcynwh0USFDBIVFjFeuHKnxIBZBCtM+MASw6aVLVtuigAA
+Ow==
+<enddata>
+
+<data> VarName=$horses_yes
+R0lGODlhHgAeALMAAO7u7kRERBEREXd3d93d3aqqqpmZmWZmZiIiIlVVVYiIiLu7u8zMzDMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAATY0K32qr0421ak/uBVUKAwBCGGpIbjkGn8tIAgy4KC3nEBrLwUwKEI
+plyMT2NhCLqIGYVrEGQ8CYcKwvrMggIB22PhMiiKg+HTlcjk1oAFwbUIHObrlgOQIa//gC5ZJkUXDYGI
+TwUhAYmJQCCOgYUhQ2qSNTELDANrXICUIQsLAKVQAgEKBp8wokNpCxkHew5tMQMMDAIOOxdSvzcFRQSh
+FVINBIsyC0UFyhekMwQ3C224fYuzYikEKIcZBFQIvDJJFQCtDy8V4SDp7hYJkBhLRilkE/YZSw4RADs=
+<enddata>
+
+<data> VarName=$hunting_yes
+R0lGODlhHgAeANUAAAoKCo+Pj7u7u7Ozs4aGhnx8fExMTFZWVqqqql9fX0RERDAwMN3d3To6OiYmJszM
+zCIiIh0dHWlpae7u7hERERMTE3d3d2ZmZkNDQ1VVVYSEhJWVldnZ2ezs7OXl5X19fYmJiTExMUlJSYqK
+ihoaGm5ubrKyso6OjpaWlpOTk35+foiIiHNzczMzM////5mZmQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAAAAAAALAAAAAAeAB4AAAb/QJegBSsaI4fCa8lkYSpG
+YwshjBYXyiXr8CIksi9JyApDEI0AyVKyML5YRUCDtTRYIdEI4Q2NvqMQJidvAGQwEQEvdmR/RisPIgkv
+BYVRAEoNhjCNRS0vRZIJVlwHmptwRhYTKystdG1FDl2mp1EtEy6rEAEElZKZppydLsQTFi+ZALO0wkXE
+DAIjkzANirS1tsQURWoVkhHXzSvERhjIdFYXAgKsrC8b7S8Cz0ayXAVR48T7Lh4d/PtWoHnDpKDBFx6I
+PTjI8EUAFhA1DJhIccA/FxwqDtAAsaPDAPiK6APo4gEHgAKjVHiDrhMEki5eDODHgIwsA1wcSHGBgAqC
+uwtLNswjloEMlwULXpQq0hOGhQduWCgISGZPIV5FLjDYhiDlqakIJkywIktCEQPIYDBQUOSF1zdTFWRw
+cSHKqzgBApCoWSQD1LZSXbQVUG+aEbQqCBthgOer4haCYQBIBM7uixT5LABegWCxgksvMJABgCJMJQp/
+37By9GGPKEMgNDgE9oKIaraSS9SxcgbGNgOJCBxogecNBQALEgTXaUuxSuVMlPBiQsBApSjzhhhacIDO
+kocGKvOeFwQAOw==
+<enddata>
+
+<data> VarName=$jeeps_no
+R0lGODlhHgAeALMAAP///+1aWmhoaEVFRZMAACgoKAAAAIiIiMs2NqsZGeYAALy8vO7u7hEREaqqqpmZ
+mSH5BAAAAAAALAAAAAAeAB4AAATeECxFq734Opm7t45FGGRpnqjRjWmLihXrzpZBxDNdkTcl56caDwcM
+7ko9xa8oRBJNi0ar6fSdHIfp8ZT8DRjSV0VwKJsPiKeBkRVTFoC4PB4gCgCMhf5RLljgc3NpPneBcgd/
+cQsDBgUHcnUUAXEMjEZvAA8GDQMFBoUAkQqTAiScnioVB5oCDHFZG3QVASStr6kUpq5yA5wDvwkxDbtx
+A0IDgW0mSQnJQgWBqFyzcwJNj4ouSZMSuAomAwelM0kI41RFQ1be6Shd7O3TPujxNh318m8f+xlwE/wA
+4UQAADs=
+<enddata>
+
+<data> VarName=$jeeps_yes
+R0lGODlhHgAeALMAAERERLu7u+7u7mZmZiIiIhEREaqqqpmZmd3d3czMzHd3d1VVVYiIiDMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAASa0IX2qr0422ak/uBlUGGZEWaqrmzrvnAsl0ExYwZzX4tghwOGcCgE
+aAS6UMDBbDIFqMvAIQhYD0JSZel0BqRdZ3LLDBgJjLBTYAQtD48CAKVQMwcVefTCgA8ETDodYQgVf4Ea
+BYBNAHIAj5AUik5tFwBdYxqXYiddWhoEXXgZaWUmpQ4JIAAMoyasrjuys7QrnzcNX7NLE7hLEQA7
+<enddata>
+
+<data> VarName=$kids_no
+R0lGODlhHgAeALMAAI6OjnFxcUtLS5QCAgUFBSsrK+vr69ra2ulVVf///8vKyqampru6uvT09LUiIuYA
+ACH5BAAAAAAALAAAAAAeAB4AAAT/MLFHq734Lpm7t4s1EGRpnijRjWXhCrDgFqlaDXcsBAHgAzwZ7WQh
+4CgOwGLBODQSUIMCKCNWCAVHBQFNLAIxwCExrZaKO0TFERieAgbDwmyjFAILhRZZwyoMAGYWdwcMAWoU
+LDUNB20kgwGNS0cPigInAl5VgwAGAgYHCoiVJAEoTY6QoTAJBpQjAFhuAQmBdQ93CgmmVa8GBDvAbZoF
+qgkFmXIAew8IAmIGEgSgbRbPDb+ZXQev2tIbcxYBurEFXVAArwzoBLQHABbrBkNjTwcko1y7JLoKFvNu
+AJxTMCbfrxb+KiRAoQuKghjMHJyYUKHBJRMForUqAWCUIgIJaywoYICiwLoE7wQaYMaikwUADUyZuFQA
+AAMGX4C9MkeRAp4GAGjUbBWUBCEJzBAoCABpwRgo2Aw86RL1ySgHAoog67HARw8lS7oC8bGAZRFZOl7o
+EIIMBrMLGEtiOTGE0oOeH/LG46C377oIADs=
+<enddata>
+
+<data> VarName=$kids_yes
+R0lGODlhHgAeANUAAJ2dnWJiYgwMDMPDw4GBgbi4uKqqqk1NTXp6eq6urtTU1PLy8kFBQba2tqampklJ
+SS0tLTY2NlVVVcrKyjo6On9/f5SUlD09PZCQkPb29vT09EZGRoqKiunp6QQEBOTk5CEhIY2NjREREVxc
+XBwcHCQkJPz8/BUVFc7OznNzcxkZGaKiolJSUoeHhzAwMG9vb2lpaSgoKFdXV93d3Xd3d+bm5u7u7ru7
+u4iIiERERJmZmczMzGZmZjMzM////wAAACH5BAAAAAAALAAAAAAeAB4AAAb/QN+t9ysaj8iksWcQKp/Q
+o4H49HgEApFWYIWCjtas6EQquSi5DSMSU3GjP4+IBEEfJAEazqLDVHgHLiRvSnIxDzAEGAAGAzMZPpEd
+AwAvGzEiHkoCJQctNx8mkT4GNDk5EjgzPhMhMhCZSB4nDBUoODm4NF9JPDY1ACMxhEUeJSMJOxI+OD4S
+XjsdFgcgmkYCLikKNzzMMzRRIjYKCBGxRQIRFR88BgY/zeBGOUg5Pg4sJNY/6esSNjN27JhBzwiPJDcU
+pHAh4BoEbcqW2UiC40cPXj94mMDAQIQRDzFgTPBBQ4QEjEYm5gAngUcPHwkk6IuDTZuPHvZsGMB1yp4E
+/x0zbDgZt5CLABIHLCxQOcrHDBEgZuj4YS/SjR9NVkgoIUAFBQQ7fEwF0ZQZPBvPbkSa2m0Ghw0gIAQo
+4MMGr1WQnv64MVVcpIM/wk5IEeECgQ4XjTQbNdCq0Loef4josUPHAQYYfCARETbSjp7d/iK5YUDCBQ4a
+nh3p8dhG5MVTj4i4F+gFiqtIQKh1ikNHXcBHcNjAcQGpjgXy5k3GcYM0D5NIXjYIgEmugQw4voDwPZwK
+CB6rbtATQcPGBAQXTszqwQPAqkgZatSANMpEhw8LRnUogABuw1kusECDBQDowEEFBITAiAErYEBABS0Q
+qAMBAVwAAiFygBBBDg9scDJBBIU9wAILl4GIRocUtPEGFVcIcMKLImAxhgoqnBCjjDAS0gNucPRohFpD
++AjHjj4EAQA7
+<enddata>
+
+<data> VarName=$mine_yes
+R0lGODlhHgAeAMQAAIiIiO7u7hERESIiIru7u2ZmZnd3d8zMzDMzM93d3ZmZmaqqqlVVVURERA4ODp+f
+nyUlJaKiohsbGxQUFB8fHxISEv///wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAAAAAAALAAA
+AAAeAB4AAAXEoBU5V2meaGpOj6i+8PmQcZ1Wdg43QA8YDV2Ml7AYLQuGEIZQBI6JwvIlADyNhMFUNSAc
+A4ZtqnDEasUXxLUMFguKxkPZAtgujlLA9yzUGxUmCHJhSwxHBwIoUksDVwF8aAJyRkpoJgpHdZYlBkcL
+MAWQTFCJKFVPAZUwAo4IKphHBGkwkxaLpmsWBGQJhCd+FoCmAp1zV7IoA3IHKQMWcGxlohdVpScDPQYA
+BAsFAAID3kGb5FMS5ScQyOgXXgQU5eoWIQA7
+<enddata>
+
+<data> VarName=$motorcycles_no
+R0lGODlhHgAeALMAANPT0wEBAZQAAP///01NTW9ubu1ZWSsrK9hGRu7u7oiIiJmZmcEuLuYAALu7u6qq
+qiH5BAAAAAAALAAAAAAeAB4AAAT/cLxGq734Opm7t44lBGRpnmjQjejiLOkpVmy5DPgRl1Yg0KbNQLHj
+VUg/So0wABSNlFKyIVAACIfCk9STVgw4wpZ7NE3BjrGqbGJ8h4q4+KDQmbqmhOGNG6QfQzJsJAc4exQM
+JApNCQNid2wHBDc4CBUIjTgJAQVEUA2KfaKHDWA4AAAOnmRRBQ5aAYt9pKYDsJBRAQRygKMVDAlWGwCe
+PQ7EVglZQ4a/Nw8EBA9OFgoPJQ4JMH6UtAWbJAsLFgMHBwnohYXMOG5Kx0SF5LF9G0KiB1MIOFoD80xD
+mPTqAyOAJQpg+ll4AMNcrDS6oj3idLBBInE9AECbpKzIgooII6iVUeBA1RgFFUfgUWOGxkqWXjLARDGl
+wYQPODEA4JCz584IADs=
+<enddata>
+
+<data> VarName=$motorcycles_yes
+R0lGODlhHgAeALMAAKqqqhEREVVVVe7u7kRERN3d3SIiImZmZnd3d7u7u4iIiDMzM8zMzJmZmf///wAA
+ACH5BAAAAAAALAAAAAAeAB4AAAT/0IH1qr0425Wk/uCVGGGpEWbQJE1gvo0jU2/ZOUptCk6hhwoGYYH4
+fRQyh8CoWSQdCWYm9lRYFcuFgvYaPL9RAK5mSA4EB4ULyfAuSwYBtYciALyywSMN/CYLfgUFCTkfCAkI
+a34MDE8HO1Z2fg4MDwgDQR0FahgBCZsKBQMGCDiOAHISBHYMLhYKABYJAw0PUHOxAgUHA64NtRYOBgsD
+xWVlpjI5AEUJDDllGw4PSDIdN08kCSiNDkXTwQE8ODxiT8AJj90HAeAVALULFApRD6urFgcFAQsAOb8X
+AjBAJWcAFw0NGAgwwMqVhQD0CDkEEcoBrYlSMmYkoTGDgFgdCDE0mhDSXqMIADs=
+<enddata>
+
+<data> VarName=$night_no
+R0lGODlhHgAeALMAAO1aWv7+/pUCAkhISNfX13RzcywrKwAAAIiIiMErK5mYmKoaGuYAALu7u6qqqhER
+ESH5BAAAAAAALAAAAAAeAB4AAATTMDRGq734Opm7t44lHGRpnujRjWmLitX4uLR1CHHjInNq3xUAYpBC
+EHqn3yERDBhQiIDDVzExKYtiIEBMVksFQAy1kb6+pMEAR2GVCNvAmZJiM9yDuNNLr48PCnpdJUoodgJ5
+ek8mhYZNenMMNEAUAHFTfJI0A2KVWwWRLgMNW50MADqhYAgIpHoBpm6MaAcGr6+xqiUPgbcBCocIs30n
+BgUODQ0OBYt2AIsqtJMlV6cET43TtaYJJNnaCLnf06wLMeOTPXYX2i7rEx/xGKTw8vKkEQA7
+<enddata>
+
+<data> VarName=$night_yes
+R0lGODlhHgAeALMAAIiIiLu7u0RERO7u7iIiIqqqqhEREXd3d5mZmVVVVczMzN3d3WZmZjMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAASl0IX2qr0421ak/uBVUGGZEWaaGqpKBCDAtpwDCBqgzCbg/I4B6eIr
+tA5AXMbnUJqQA0dC03EYUwlcw3lZAFshAdAxBGMQY665Ih6X14boeH0xKMZWOls+ZtATAXg/MCoHAAAB
+fHgDKCoNioJCZgZogg4IPAQALQQHBQEBBQeNFgCMehg6QAtvawR3P36opUCks4cCCFOzFTwYrbMNhLwW
+gRPEwg4RADs=
+<enddata>
+
+<data> VarName=$onehour_no
+R0lGODlhHgAeALMAAK+vr8HBwZcEBGhoaFBQUCcnJwAAAI2NjeVTU805OeYAAODg4P////Dw8EBAQKCg
+oCH5BAAAAAAALAAAAAAeAB4AAAT/kAVFq734Apm7t4AlGGRZOo6pkt1YDkDDzEwDDCtbCbtBLItBwVAY
+FgZAwspi4FESDWHp8SgdG1UTs7l7LEiF2dCweBQCAW2llNilDA7g2zEul7aEhlPhMqDBJgUNSgZbQQ97
+LmhnaWAPSDoUBkgFCw6JfkAMWXALlThMNyaJaAsNBysHAIVrDWMlewgzhCoODaySDDmxjTm6Fg4MZyuY
+KwFhBcDCvaM9KsfCTLo5PgjOKr+tr7vXJLa4Cgai1CTFJKrgk56W5Ilxn+lkA2bkXBQCj1/xedvUiYOR
+wpHwAubNiksVEtxZMyWAA4I5yhTbMiXKqz9gBjRocy+eiR8LIw6kKALnQBJ7fCiqgCGDhg0csDrUm4lS
+wYQPODEE4JCz584IADs=
+<enddata>
+
+<data> VarName=$onehour_yes
+R0lGODlhHgAeAMQAAEBAQPDw8GBgYFBQUHBwcNDQ0LCwsDMzM7u7uxAQEJCQkKqqqoCAgCIiIjAwMKCg
+oMDAwCAgIODg4P///wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAAAAAAALAAA
+AAAeAB4AAAX/4IQcVGmeaGoei6i+8LmQcQkAddnEghFMwEnAIMilBhIJwUGJRCgOQnJgpCQeAcGz9HiY
+IoSAN1coRB6SUgS4lTwiBUjtUUhAcRRAEg9gJgpjKgMBWygQck0nEQFUKhICD0yGEBGHJg4PUioCEhES
+eCcQSROBep5FKAYEMIcSAQwpCgYpAZIqEECNKAABKRMxuIgqvycAEw7Chse3DhOFecfJXxPSJhDNzxTE
+ggHVJ9smtVUpvCmq4yiyKZyeoDWmj44Eb1VnmtzZNQ6MMHR2Du6K+QE0pwCmNI4iEcyBhUAhS2rCBMqB
+RIICHA6YAFAwBV2JHj+CDEH1goZHGAcQDJyMgUCEyZUlUk4IAQA7
+<enddata>
+
+<data> VarName=$parking_no
+R0lGODlhHgAeALMAAO9bWwAAAI6OjpIAAC8vL2xsbLu7u9I/P0RERKwYGOYAAP/////8/FVVVaqqqujo
+6CH5BAAAAAAALAAAAAAeAB4AAATZcBlFq734Opm7t441BGRpnmjQDQTivrCbkmJ1LHiu5wKBWoFBBbAr
+5gonYHBoNDZMyiWF2NQ9oBXTYYg4NQy7Jy1bMgAqiRSYV4oGDIwzZeTVGdpkEjheoZcQdngUJmt8cyYF
+gWODZTkMCX2NbIsKhDoIQnMEGzo+lJY6hgpUOXeClZKhcqM5D56fqapMrkl5b02iB6+noDgFMZCHtYx6
+lyiZCn6wxTldx5G8sc7Pwiq2azjT1MnLt80zJMgjbtgL2ini5Mbg4R0lLS/sJsgKEx/3GGD2+PhgEQA7
+<enddata>
+
+<data> VarName=$parking_yes
+R0lGODlhHgAeALMAAFVVVSIiIqqqqu7u7oiIiBEREZmZmWZmZnd3d93d3bu7u0RERDMzM////wAAAAAA
+ACH5BAAAAAAALAAAAAAeAB4AAASMsCnmqr04Wyak/uAlUGGZBRmzrGy7mpjSzHRNG6Qp2zx9wLteD6AT
+ChNF2uJSAARnxNBzmXkSSlMNoKbA1qiYBder1BzG0q/GSp6BKxxb7vM00rpt+2yAytsHcyB1PQMGfUkz
+CC4LgYgNbzBrapGCk5SSZZeYbpqbj51VlpSBKiwFmgx4oJITqxepDREAOw==
+<enddata>
+
+<data> VarName=$phone_no
+R0lGODlhHgAeALMAAJMAAAEAANTU1P///4KBgXBwcCUlJUJCQq2trb29ve9aWp+fn70qKuYAAO/v72Fg
+YCH5BAAAAAAALAAAAAAeAB4AAATccKxGq734Ipm7t4gFBCRpIAaRlGzbjaYzHMXa3oFYwcIwEIcB7mYJ
+AHYE388gHLKKxgpDuQgMDM4SNEpR+FYEbDZXYR274fGzbJaq15QbY/cmbUsPBf19JwX1FDBjfSQ+gA2C
+ToQBPQNniINsLRsDD4+JRJIsBT5Vl4qaJUwDAiSfOIuMPmKnLqElnAMFJa1aryU+pbR7tnFDCz4HBwEH
+CLWpAaM+DwEOBK3IAcC5AQQOXJBkvk4ywUwE2CPRAbES0tfh4wEJSsTgph1qwg9ibRUJH/kZ7Pj6/uwR
+AAA7
+<enddata>
+
+<data> VarName=$phone_yes
+R0lGODlhHgAeAMQAAICAgBAQEEBAQCAgIJ+fnzAwMO/v72BgYM/Pz3BwcDMzM7u7u7+/v6+vr1BQUBYW
+Ft/f36qqqo+Pj6SkpAYGBiIiIpiYmP///wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAAAAAAALAAA
+AAAeAB4AAAWu4GVRWGmeaGo+0TWpqOPAafTQQzMADI1WtILhIkj0fEhMAHG5AASXJBLQdBaiUhq1ScBc
+ClnY9tKTDMKqLeCMFjcPbW0TEIcdmo26CnpB6FMBVX8pEE1ggyYNb4gmCVyMJQNNfpAYTBdsjI4XCZWB
+fZUYBE0OAgECeX+SVQcBBnR/o00QGAAGAX+uVQKSsHqbF10Et4MMVacAuCoKUqcCB4cwCguhGAsXC8yI
+0xchADs=
+<enddata>
+
+<data> VarName=$picnic_no
+R0lGODlhHgAeALMAAJYCAgAAAEZGRomJif///+pVVSUlJXFxcbu7u+7t7c07O+YAAMzMzKqqqu9gYN3d
+3SH5BAAAAAAALAAAAAAeAB4AAATekKBFq734Npm7t40FBGRpnmjQjWmLihXrzlYAxDNdkTcl56car6IY
+GI9IoyG4K/UWDoJ0SiUImJTTM4p8EBpK7AL1LJgGhEFLqMWRBITHumIQ2K8BQcFtkC7zdyp0CIQIJBt7
+PiQMBAd5hYY1d3cJBAlPAAIIBAyTdoIUcFVUDhVRo1KgCwaQCIychApEUg+tqihoBCZlXy9NJowNbRRR
+vlknUo7DUHglbG9+KU8KYidoDC6YJs8BXsot2iTPfQR/LokLLNxATjjr7EM+7/A2HfTSFhMf+xib+vz8
+NkUAADs=
+<enddata>
+
+<data> VarName=$picnic_yes
+R0lGODlhHgAeALMAACIiIt3d3czMzKqqqhEREe7u7lVVVZmZmWZmZnd3d4iIiERERLu7uzMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAASp0LH2qr042zak/uA1UGGZAWaqrmzrvhagzHRdo+ni7HzfLyqZ4rCr
+BRyDGW6lcBQuTQXsOLgYHAETYMEFPq4OxIWwQxG63hhjzagQHcuKwJF4NNjtMZpbcO4XDA4Cfxg6PoeI
+Phh3eHOCeGw7AZAlTQ4EGlQsc1UalitkYR8NO2klYHEYR1IpTQIhTXkmR3UgpA4pAGUlR6Ywv8DBGSTC
+FXfFFoETwncOEQA7
+<enddata>
+
+<data> VarName=$poisonoak_no
+R0lGODlhHgAeALMAAGpqari4uJQBAQEAANbW1uBNTYGBgcnIyOTk5KWlpUpKSpKSkh8fH/z7+78uLuYA
+ACH5BAAAAAAALAAAAAAeAB4AAAT/sIVHq734Jpm7t4klDGRpnujQjWmLihW7NAbgvtUgxPPcMLcBUJXT
+VQoJQwChuBkaJEtpR3EsAo3F0MRgGBKHaJFEfRRqhG0JwX4ypaay49lokhgABGBhuDbgJgUVDgcEBiQB
+CQEBAAF9CAeAJQaCVQhACghYV0kNNJKIBw5HXY0AX3oAjX9jk4aVZgpKqg0JqgCFoEILBwGwBVcAG6pY
+BAqSXQsEtgu/jJAABJ5pcHgJBAjXAbyjVTM1qk8MUgwKtQsLpwEHer8Et3lQFgzrjLwEBFg0ALAO4QgN
+bFjgpc5WuAXQfA3aYEwMBUbh9iRQEKCcBGndHjhQY6EBgQOFRrAssbOhwYEEGVk4fDBgxqKKFUsw8NjF
+CAWV5ACoObFhSxkWulLMtEMmBhEKQUpoOfEzaNIpHZ66KPNgwoerGERi3Vq1QQQAOw==
+<enddata>
+
+<data> VarName=$poisonoak_yes
+R0lGODlhHgAeANUAADExMUJCQry8vMbGxtXV1eXl5d/f38/Pz4ODg/T09BMTE9DQ0KSkpHBwcBkZGba2
+tsPDw3l5eVZWVgkJCfLy8qqqqgICAm1tbbm5ubGxsZ6eniAgIJKSko+Pj4qKioCAgIWFhTw8PHV1dWpq
+ajQ0NPb29rOzs6CgoIyMjNnZ2ZaWlru7u6mpqePj4+Li4uHh4bKysuzs7NjY2L6+vpubm0pKSlpaWurq
+6nx8fM3NzVBQUHNzc9vb2////2ZmZgAAACH5BAAAAAAALAAAAAAeAB4AAAb/wN6K9Csaj8ikkVQRKp9H
+i0VZIUKvzw1UKsV6ixNPD3GZfK8WWoLW6zmmUO11AtEgBK6Q+fnpoRUaESomJSoKSRsKCAwQcE8ABicm
+CA0yJI4WEy0FBTg9BRJQIQYIAz4IPQkBRRYOIi4XHggeMD2OSBMJESYqJwMLID8WGBUCJj6TKDEHe0kW
+ES6+Pg03ABY6BgI9KAIsCCU9Is1IwxARPbsZiTswpycxPtMmCeNIEQYRCykDKQ81H8calDgRr8EAHvVY
+WVDQYQGhEiZGZBjk40SJBg0IpZBwC4wCEhxksPCh4mILARB9tDC1oI2MDbcW2mBwIAaLFAJUDPjWIB4K
+sHTxfJwDEMVBgB4sUKBogMDEgBY+BAiIlyJF0AYvKGDagOGAiQYo+C1AOUYgCosI4kV40cNHFA45GkQQ
+cKKnjw8cDByIWqJEWh8MEhBYdWSCgAvT0qrQIGGG0R4CFpRIysDUG2c9CBzgV2vGiwBSmiSAwIJDgwkd
+C3NI8OBBlQxEi2zI7EABai8KRiiwnfpEDzlnhMXpQTg4lg6xjStXYmX5ExIrnENZIaS59B/QewQBADs=
+<enddata>
+
+<data> VarName=$public_yes
+R0lGODlhHgAeALMAAIiIiKqqqszMzDMzM2ZmZpmZmREREVVVVSIiIu7u7t3d3Xd3d7u7u0RERP///wAA
+ACH5BAAAAAAALAAAAAAeAB4AAASq0IXxqr0428Gk/uDFIGGpNWaqrmzrvnDsHgFj33iuoxcANIJDY0gI
+DIcMwvGQGNIuBkZF2quKLEpLAzDFcC1fC7VS0BaGAkrlKeY9EAmDJV1pOO74vH6v59n5gIEOfngAcg0J
+gncFJAMCg3WLAwoKBAOKDAYBDoxNkYOJdwiPgQQFeAtnGXluIB13YRivAikEeK1QBAtyKVu4MsDBwsPE
+FSTEbMOPE8FADhEAOw==
+<enddata>
+
+<data> VarName=$quads_no
+R0lGODlhHgAeALMAAGtra0tLS////wEBAS0tLZUBAe9XV9tJSe7u7oiIiOYAAMDAwN3d3ZmZme9gYKqq
+qiH5BAAAAAAALAAAAAAeAB4AAAT/UDxFq734Lpm7t4tVDGRpnujQjWmLihVbLkjgmtZQxCXADIRbKafj
+ARmLhJBELFJGBAIguGw6FQWGYNuoVk47imPLFVpJYcVYgExuUmd0ZcxoLAKJ6OubSjsYSglaAgAnZwQP
+SQZzAggJW0qGXwB4AQhkAotimJE4XwkNmJiaapgNCQFUOQGsAA+imYwCCzQIAIU5BKB5ALCkdA0ACQu4
+FZZktr0CeAkIaSMBtwO3FghImAShj4QBaQeFA48I1SQElwIJj4PBBAdzC+FbIKkDoei9qHgDG+5iqPIV
+EDRAoGsLJRslCEi4cmDALAuJEvhgk0KhxCsFlFggsGHLnRZIKiL1w6KCDwF6LgIIaCBFgIMYcW4oawQg
+zYUlJ1BeUTDhg08MG3r+/LkhAgA7
+<enddata>
+
+<data> VarName=$quads_yes
+R0lGODlhHgAeALMAALu7u+7u7t3d3SIiIlVVVXd3dxEREaqqqkRERIiIiMzMzJmZmTMzM2ZmZv///wAA
+ACH5BAAAAAAALAAAAAAeAB4AAAT/0B32qr04Wwak/uAFDGGpIWaqVgYQEGvZCA8Vg4MAJDfONLZeRuAo
+LoQYRHG5MCAryqVu1xHmpAsAITEIxohFAS8BbqgYh91yGUgUE05QY0sIrO9rXiixwPvXCwkIJBkIhg0H
+f3cKLgEFBRkMfAk/ilgFCQpmF3VsDQ1FCAkJAQYLkFCfDw2oDwMBOmsMfW4OcwwDmAebbgGEpE4Mdg6j
+DmALDVdLAAa1MA8JWhR9xAXEhnAdjEuCoRV1CwGSRQ2GFwweq0UKDw4AFwcKCTPGGgPVFQoOAdBxFQMd
+1qHIYECAvHwO2H1gQMBLBgIOFuTy9kRdEUcZCMUwgMDhtwMVCjPomxDyAQJ9EQAAOw==
+<enddata>
+
+<data> VarName=$rappelling_yes
+R0lGODlhHgAeALMAAO7u7kRERBEREaqqqpmZmczMzN3d3Xd3d2ZmZiIiIlVVVYiIiLu7uzMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAAT90LH2qr042zak1ggjOmQJDMEzUB+2lHCcJO0TLEq1FEQcL7UXifBY
+MGwMH+nYggGNloKS+UkuHwWqNUbVCABDgYNY2cK6mgCDIOgBy9PWAcBYBDoO1sNcQlcEeD8XfFcYAlJg
+JQV6cD5oCVILQg4AAhkHcRhJdyVvGQ1SZxkCBgaJeQkLpggXk4UYDacAPTBkRVwfrkoFlnx+OkoLBwYk
+ALoeGpgwACkVCMSZo6dhg9EZRtMArA8NSsgadgKqMCmBuLnND88kBuLevzrpD4AkAwrvLXbX7PjoINPn
+wMm7EErJAG4CvQCEcaDBLwSMLhwQQZHigT0SItZo4dBBBAA7
+<enddata>
+
+<data> VarName=$restrooms_no
+R0lGODlhHgAeALMAAP///9nY2JQBAQEBAUlISGlpaSwsLO9cXIiIiMIvL7u7u9dERKqqqpmZmeYAAO7u
+7iH5BAAAAAAALAAAAAAeAB4AAAT/EChHq734Mpm7t4wlDGQ5GAVJEGbbjWWhSCQCBIjRkmIlGI0HYKio
+DYeMlMkyEFQOR6IxCng0dANm4+ArHIsD2zBlEN4IzCGXIvhOAaXZEJFWP6XhI2JAiNIrA0cBCXdgCDgI
+iYozfxSBY01PhmAtNo0Ojw8lThQLNZQmlnUNJpwOIwigJaKAQwYrfASmAqk7eZeBAQOURQsVCapGuAAF
+BXskxgS+nXwxt2kMD1gkD6mzpDUGrI5D2Ks0pp41iQDDACwmBjQDhGw1DwHladXHYYeGa6d5c3VDLOp4
+bOSjpaffOT5u9i1zkKBgKz0DvAQ8YgqKvIdz9q0TA6edAyjmL6RsmDhkAAOPB0JSIVkugIKFHjEpmqlI
+CQGaiWIyscVzhykHEz4IxTAj6NChMyIAADs=
+<enddata>
+
+<data> VarName=$restrooms_yes
+R0lGODlhHgAeALMAAERERO7u7hEREd3d3SIiIqqqqlVVVZmZmczMzHd3d7u7u4iIiGZmZjMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAAT/0Kn2qr0421ak/uBVUCHBVAAQPgQoMIr3LM6wtOvVHIHjKxWaz1E4
+hV6I4RA4U/oCBxLmMDwxlsHqo9FzIFQXpQXb9FlivgVGqRbK3GoAe+2zLRbJt/3Oj6nDPkYPBj9BTBg0
+f2MOAQIXA2+HF4l0B4iRGpSADSkPAAYEmBmaYwgPCo6nAgVMC5IPjqQVDgwJigwLBq1ABhYnsg9EATiw
+Aa6GD5ZBDcA+yhY0uw2HfA6Ksw5gFqGtAQjUAZDXwcYLqXcDrYVZaXQ+Kg1kQkAUcO4OvXLrQgMPv0Pj
+5iSQN2QGAXuA2rlRZ2YBAISLCnXYV7CAAYjYnBBMkw6NNUR8GELeMfJQZEgwUnKonKay5SkJKV1imOYg
+AgA7
+<enddata>
+
+<data> VarName=$scenic_no
+R0lGODlhHgAeALMAANPT05UBAQAAAHFxce5WVomIiCsrK0RERMQxMeYAAP///+9gYP/8/O7u7ru7u9ZG
+RiH5BAAAAAAALAAAAAAeAB4AAATvUKlEq734Apm7t4AVCIJxnAepCui5dqMjSek6028V6PJcqzfFT2AR
+7CiP21AQHBaNlYVvxVTmKKQDIXojFYKzAul5YGwpUokXLBETK1mFmatYs91kyRxdF3zvY3AsM3sJC3Zg
+eIIHN4Ujf4mBWINKRwkBJieQCoqTjF1QFCOInJIJcaChl6Sdp35BAyqWmA03AKYktUEGshVJsG9YA2y3
+vXy2waebqSSWaTPJr2xUAgh0akXL0FQFZ4bQ2Wx9KwWFadHaatxy3lLRBwXx8vHU8PHWFAjR1Pz8s0/9
+AhrDILCgqgQTPijEMGOhQ4QKIgAAOw==
+<enddata>
+
+<data> VarName=$scenic_yes
+R0lGODlhHgAeALMAALu7u3d3dxERESIiIszMzO7u7t3d3TMzM2ZmZlVVVZmZmURERIiIiP///wAAAAAA
+ACH5BAAAAAAALAAAAAAeAB4AAASwsLXgqr0420Xk0mBYCQSTHUu6CJiastcyZIDkYfYtVrX9XbnGb9fT
+WYJDUVGIyyUzi2CuwpBKTJqotUHdYqFbrqNq/bbC3TJIa01LzTH02LtGqioDlSIH3wRFZFd1UyGBDX1u
+EhQaAwU5BhoCjkEHGksSCBkBVgQZCFaQGIaEF6M2GaYSqFurbaKsr66lsLOyFqliMQy7vLtQvb07wiIJ
+w8Y8x8ObCskibADFzRcDZBEAOw==
+<enddata>
+
+<data> VarName=$scuba_yes
+R0lGODlhHgAeALMAABERESIiIoiIiHd3d0RERFVVVaqqqt3d3ZmZmbu7u+7u7mZmZszMzDMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAASn0Jn2qr0425ak/uCVBGEIDBlRhoNDrXAsW4AAzGUw4vzTvL3G7VJw
+LHoPAQnTWjUUh0QCUWAFhp+nY7t9AAhYmoIBDDUIKoYjoQEwFKhLYFAtCO6FKzdMM0huBX5bBGpcLgJb
+CCAIDgcHhg4DAQKPWwxeCHxMkA4MWA2UDgIxC50IC0sZLSpIGggHmq1uo60ZAQqstRcNcbq+v8DBv6m/
+gcJqE76EDhEAOw==
+<enddata>
+
+<data> VarName=$snakes_yes
+R0lGODlhHgAeANUAANHR0fLy8pOSk0dGRv79/pubnHt6e+Hh4WxrbPb29igoJ8rJy+rp6omJibKxsqqq
+q8LBwYKBgtra2zMzM/r6+1tbXObl5u7u7tbW1mRkZHV0dby8vNzc3KWjpbq3uePj5c3NzsfHx1FRUTo6
+Om9ub7u7u/z6+4aGiEFAQNjY2Nzb3KanqN7g3u3q7Ly6vevr8Ovr7MG+wS4uL/Ht8t/d3r++vtPT0/f3
++OXi5vr2+3FxcIiGiF5eXtfa2P///wAAACH5BAAAAAAALAAAAAAeAB4AAAb/QF9p8isaj8ikcfIQKp/Q
+44MYrSYV1qw2q6BuoaLGglMSVL7JSCohaDgWnw7amLGEMAaSIdLgzYshEgUjMjIKWH8/Mj0HJIlKNRQG
+j0krPg6JEwMjIzw8KAY+AQ1oKA00PioUPiYEFj4WG186GAEPDhg+PjYwJj4ACw+IUQgQPhcJFB8PMCkc
+BwnHABSyUBk1Pi0YEScgPgyjDA0BARw3NgsiTwLRBKI2rgUMDLo2KbowAAEISgg5ODYQFPABw4ADFhss
+BNCVIACABCEIDFDSwccHLBMI0NjhQwAECBcOlMBQoMQBH46UDIRgRMQNHxI0YIAQYMGCAwN9THpSYQaB
+SJSKBHij8MKijwQYBKCo4oDhgxMkKogQoePECQMVJgyLokBHBw8uPMSgwQAEUEpFJmRwkAFtEi9u58B1
+O6FEXCMlhMz9U9dHEAA7
+<enddata>
+
+<data> VarName=$snowmobiles_no
+R0lGODlhHgAeALMAAP///5UAANLS0gAAAElISGlpae1ZWYiIiCQkJLu7u9lJSbkmJuYAAO9gYKSkpO7u
+7iH5BAAAAAAALAAAAAAeAB4AAATlECRGq734Opm7t44VDGRpnujQjWmLihVbIkfhmtYQxPMDAI4bKafj
+DQ4/gAAhJBYpo8LvIBxWTDvoIAGgVp2kLGORZDavJ3HjZztTUuruF41aVBreG9h0MFQMBCRLKXslG34U
+DQ4EP4EnhSRcAIgMBklyOFcFeZFJdomXAo4qV0ickl1xl0Gkb0gPCbEJPkkHnwxrl1Q5G5e+SZS5U60M
+jL/Hk3e1xALIyMESVhTOzpQLJZBCBJQjCBYEB+Hi4m1Hss2UCiEVCLQCsrGjB/CxCjHZVWEd+S5iDBMf
+AmLgAlCgQC4RAAA7
+<enddata>
+
+<data> VarName=$snowmobiles_yes
+R0lGODlhHgAeALMAAERERO7u7iIiIjMzM6qqqszMzGZmZpmZmREREVVVVd3d3Xd3d4iIiLu7u////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAASx0LXxqr0420Gk/uBFUGGZCWaqWgJjrKUQOM4BgwztFOidGTSGD9Rw
+CIeZHK2HtMxoi6YFoDNKK0DdUaqkBRKVAunWqToIVAfAV6QpGIdnMGTYVtrWh8CsWGtydnhHBWY0BwhJ
+DgENjA1yRgmFWhkHkpaSdg9pl5xzFwqdnQ2IU6GWAQd+V1QNF0yaDLGysi8VDI2Ei4wFBK5PBY2MYLbB
+xQSkVxpjyQ8Drcx3EstIzg4RADs=
+<enddata>
+
+<data> VarName=$stealth_no
+R0lGODlhHgAeALMPAO1aWgEBAZeXl3p6elZWVjQ0NJMAALy8vKwZGe/v7+YAAP/////8/M/Pz9/f3///
+/yH5BAEAAA8ALAAAAAAeAB4AAAT/8B1Fq734Hpm7t1NlBGSxnGi6HGQbdGNgqmfSrG5rGaKcHgJCgYQr
+CV+VAI9iMDWGucDCMTgkTgQkhbRUIBZR2e3UEAygllYXYBQcFrZFI5xuISqABAN4lLKiaQMOJwAVCGFF
+OWkEB2cBd0xRiS51LgWFkS6TOkk5BQxdMUR/ip2WYKEtmySVMgM3XD1SDI6USQQCgwwnaj0oDA5BrBU0
+vL1MxSsWA1fJCwyYCgAqCQNaCiQEg8nQeCcOWcNbJc7P0QBztuMBY87dFADWnOMCu+XmeFDXPve/5/PY
+tvU78U6aOAUCBqooeMiCQhoMHT5cGO3CRIogPmjMsCHExo0bAiIAADs=
+<enddata>
+
+<data> VarName=$stealth_yes
+R0lGODlhHgAeAMQWALy8vD8/P8/Pzw8PDy8vL+/v77u7u09PT39/f9/f329vbx8fH4+Pj19fX5+fnzMz
+MyUlJe3t7ZCQkFBQUP///wAAAP///wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAABYALAAA
+AAAeAB4AAAXOoGVUZGme6GmIaVBRcByn5djKOAzQEB3ksIKAsqP5ZADGYUEilggNprHyExBSlAQCUIAd
+plRKijCECRyKK/hHWkwkAIqQIhiASYMDYiiIEJVSTmAICTFdVlhFUw0ACAEDbDSCdyWRiZQmliiTmJon
+nGAECkNGMGlTBw6FM5IxCQ5fJnFApUCKAwhdQLs4BQh2JgMNq7w5CQ3AY8U5AndlyzIIUwzQQC431TkF
+ySUDxNlIKA7guwomB+S8ahW66cx2D+68DA8j8rQrNphTKyEAOw==
+<enddata>
+
+<data> VarName=$stroller_no
+R0lGODlhHgAeAOYAALA7O8XFxXUAAB0dHby8vAMDAxQUFAoKCiAgIBERET09PW5ubhoaGnR0dDQ0NA4O
+Dj8/Py8uLvj4+Orq6vX19fOIiPJ6ev7+/jk5OSUlJfLy8qmpqbNISIODg9/f37xERONtbfv7+3Nzc19f
+X0JCQn19fXZ2djIyMlBQUNTU1NfX1+Tk5FNTU+7u7qCgoO3t7WZmZkNDQ2dnZ8/Pz+Rvb/Dw8Nzc3FZW
+VmNjY39/f8TExLQ/P4WFhdBbW/Pz8yYmJpmZmdPT07Ozs5KSkrKyspGRkblERJ2dnVhYWFtbW7m5ueHh
+4XBwcCIiIre3t0lJSbGxsevr6+Pj44qKisrKyv39/Xt7e7+/v6amptplZezs7E5OTtvb2zY2Nn5+fs3N
+zebm5sjIyM7Ozt3d3b29vYeHh9HR0cHBwZaWllVVVXp6esPDw0VFRXh4eNbW1sdSUigoKJeXl9xnZ0dH
+R62trYSEhImJidXV1SsrK7hDQ+Li4vr6+v///wAAAOYAAAAAACH5BAAAAAAALAAAAAAeAB4AAAf/gHwE
+foSFhoeIhxuCiY2OhhuGAn2UlZaXmH2Nk5mdlRAlPJKFnJcDDR0xmCYXTmWGfQKFABGWDEF8fBI3lQ8u
+ezCUsLGFHAiVC7m5AQV9cGIrGJXDBwDFeJQNynwpfXMtZAOVCcN9Dh+zB30nFMoNMiFDzeOGBpUI6IQA
+6gpCSh0u+NTJZOhYpQjW9Knrk4EAHw0MCBYyWMlAQj/7WEjJRaeToQyYBlx840ZZEo+FOoksVCFXlIgS
+CVF6MIJFk09ZWPLB4gmWgy+5NBApgGKCHgssmfQstKWFMjA41IRQhpTQDnsx/QRQdgUCkG25qmLEesnQ
+Vj5HFMwAq4zGLHFlrQsFoLCAhBYoaJawnQDibVxCORQU8FCEUgIUcVQoE6Gjh99pKRm+6DJv5hMrbPrI
+4JLnsabIGCi8SCFi4SUHEjzIeQzLgBk+F3JNwfSASq4abvXZg4WDT5gTMCT4gFnpBp8ZDkbwJfVZpgk+
+XijZ4PPjUjI7lO7UMEIKFgY+KtKUuDAmwSUSfGwgaVNlRQRZiQo0CED/jIJMC+gHWKOKWKFBjwSIiEMA
+CiigQ4EAADs=
+<enddata>
+
+<data> VarName=$stroller_yes
+R0lGODlhHgAeAOZ/AEJCQiUlJS0tLT4+PjU1NQ4ODjw8PBoaGhISEh0dHRQUFAUFBQEBATMzM7u7u/j4
++G5ubuTk5FZWVv7+/nR0dPv7+9zc3PX19YODgwoKCjIyMuPj4/Ly8iEhIXNzc6qqqjk5Oe7u7tTU1KKi
+olBQUHh4eERERM3Nzevr69fX15KSkpaWlk9PT35+fnZ2dmdnZ1JSUhYWFigoKKCgoJGRkff398/Pz+3t
+7UlJSWVlZebm5ry8vISEhMjIyJubm1tbW/39/b+/v4qKip2dnY+Pj5eXl5ycnHp6evHx8fn5+eHh4a6u
+rt3d3bOzs7S0tLe3t3BwcKioqDY2Nt/f37Gxsfr6+sXFxdXV1aampsrKyp6enlNTU11dXY2Njbm5ua2t
+rUdHR4mJiezs7Orq6pmZmdbW1mBgYM7OzkBAQFhYWPz8/G9vb9DQ0NHR0b29vbKysn19faysrFVVVaSk
+pKWlpWZmZo6OjmRkZPPz84uLi3t7e9PT02JiYv///wAAAMDAwCH5BAEAAH8ALAAAAAAeAB4AAAf/gH8O
+DX6FhoeIiYYNH4KKj5CHH4SRlYkdlpkDI3EmmYUJFBgAiS4TT0sPZpkHe319DxKGBSNVdYV5FpkQr69W
+DH4yZxEghj8bmRS9fSJ+YCFuCYYKEVGZGhe9FC8VKguHMRgInwNNXhgzfTyflQE7fRwH7JBbG69fwPOJ
+UBW9P/qIFNBZhkJepgJcYGAqJIDNsj5YPhE48YrDmwUkxjzswyJTjhC9dNw50u9hhHGRMtBYFmQAmY2v
+Zlji1WvIABswXznJB2nNqwsQAIihskLJxgk1NFTK0GKOgQVTaBRCQKJIil4eTmhhF+CGFJ5+CuDQ4+kF
+ChnfLIG4cEMEhbSIdwg8QFKmRIZICtr0mfBKSKICWZapAIuIT58eGnI8wGPQkIQ+NgiYqfFgoSIXfVoU
+stAnACJeYQpd6SMAEo4+KeTAmcAEpSEAfSykKQEkQoxElBis6JWkIyIGdnqpkYWogYNDEox0QQMJhg8i
+nhI5EEQJ4CHjfwIBADs=
+<enddata>
+
+<data> VarName=$swimming_yes
+R0lGODlhHgAeALMAABEREd3d3aqqqiIiInd3d0RERFVVVZmZme7u7ru7u4iIiGZmZszMzDMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAATZ0KX2qr042yak/uAlUGGZDWaqrmw1KAHQasXh3Mp8GckdBDfUbAFk
+KCiLW6IFUBwWQgviVsBwEoaWwndpTG8LVuPmIFhs5ICq+XUgZI8e2WFiz3GVLZkRst/JKAAMNwgkGX5/
+ZEsPAAQKUReIiXNVIJKTc2oggzcdnYpknm8gV1kECTkKCKkJYQoJlTqysx+xORVmeRUNuY0WkA8MMgcB
+YQUBZgbFAAEIrgyuhnkBDMIIDIXUCAPXAdwMCd+LGAoCMhxhHFUNEw8GAigc0rQf8/Ts9Bg97fc9EQA7
+<enddata>
+
+<data> VarName=$thorn_yes
+R0lGODlhHgAeALMAAI+Pj////8bGxtjY2FJSUuvr63BwcCYmJqqqqhUVFeTk5PX19Tc3NwAAAPr6+goK
+CiH5BAAAAAAALAAAAAAeAB4AAAS3MIDTqrVHrSXS/QcifeRRBEFHfoi3Ymfqvg1FVyYaDABzPCvgrRbT
+7QjBIdGo6M0uwlsuUDBEk8Op4IqVxlQ37ifBMDhQYJq4QgAIzrr0a91giIyyIb2SMAziT100BwtogSR7
+MIZ6SlqHH4k4X49QjTEDNmqWOlUMmllFOgBrkUsoDgMGDKSbVEhhSgyFKZF7CQQIf4uwLwCzgIw0uEZy
+gi8EcMWImS+OWQiguzQiCMwgGhyUNSIRADs=
+<enddata>
+
+<data> VarName=$ticks_yes
+R0lGODlhHgAeANUAAKOjo56eniMjI9vb28/Pz8nJyXl5eVhYWObm5uLi4t7e3tzc3C0tLdXV1Tg4OJmZ
+mY6OjjMzMwkJCRsbGwQEBBUVFQ4ODgEBAfr6+v7+/vb29vz8/P39/fj4+PX19bu7u/f39/Ly8vPz8/T0
+9PHx8e/v7+np6fDw8K+vr+vr69jY2Orq6u3t7dnZ2cLCwqqqquzs7LS0tLa2tmBgYOjo6O7u7j4+PmRk
+ZJKSksfHx4uLi8zMzPn5+fv7+////wAAACH5BAAAAAAALAAAAAAeAB4AAAb/QN8n8isaj8ikMfISKp/Q
+44topBUvRqzkR/ltfwJjwRg2Uny+Ypf7Q/u2l3U7EEV7ia1BaHVSWLI+JRVPgz88aAkiaByHaAFuJlFq
+DgMDCz49PIcdGmgmJAmSElhePysePT4YHBiZaT8Mkj8XWB+YPRkePh09qRi7srQ/Dz4qPjytPB0bmhi/
+PqRPcQlpAr/IuBjLGRoXaHJJFyOvaB483BqtuRk6Z69PPEUcPhwjPBw9GxsYuhk9WD52QJnwQ4GPEIc2
+8OKgIcMyXW8kEFQioYuPFj409OrAQ2EPEBn0+Wggy4eLGwfTgejBIQMIHx42cDDgg8KXJBY6pCGg6pg9
+tQ0aWHE4kcYYuCMQ0khokFLDOY0Y7P2yMMFHjicEHvxw4QNEio8cRKBaiTDVLBJQuqRAgQYGAkYiRGwY
+ISIDTxk/Cj2xkcZBBh8sSHTwYKIGi0M/CpBM+6PEK4M+EDjeZ4dLzZtKfKBYgiYVGhxqDkCL4s1AkhkA
+1Pzh4iFauDYQ2Mw6gmWNgzRHj0gAoMHMbCNwfsRYLMlHrJIHklApMshCGShYCrj+EeGDrOtGbA3BHqW6
+jyAAOw==
+<enddata>
+
+<data> VarName=$wading_yes
+R0lGODlhHgAeALMAAO7u7oiIiFVVVbu7uyIiIkRERGZmZt3d3ZmZmXd3d6qqqhEREczMzDMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAAS/0I32qr0426ak/uClUGGZEWaqfkSxmg3gIG8YOHgNxrOeFYFCy3cR
+HHAOwIL4WAyQSAPz9oQGmINDA+ohDgI3nGEAIOkGAgYO8CAAAAJfYIEcVAiBQ8JXQB4wKDp9SGZMWw5q
+NEwVfUoygUx9NDdXizdxDwcMiw8CbBUGfylLTRWkC0uBgaemGAUIngEGAAkNB7AACrG7AAECChlqBgxw
+agnCxsgOacsZCyjPTdAU0Q/U0xeFnNZ22xZPE9sNTxEAOw==
+<enddata>
+
+<data> VarName=$water_no
+R0lGODlhHgAeALMAANXV1QEAAG5ubkhISO9ZWf///ysrK5MAAMs6OoiIiKoXF7kkJOYAALu7u+7u7qSk
+pCH5BAAAAAAALAAAAAAeAB4AAAT7sDRGq734Ppm7t491BGRpnmjQIUbqBkYykGKFvKlQCHQVHJURzpQo
+zFS+gCIYELRIhmPg2CiULCVCZVFwPAFemINUAFyTAYCWgqg2HI5N1WwoPM6U0mYRFDQeLQ9xLToJeAwl
+RQlAFEIpG1JYJAMSP0wpAFaHJgWajAyOnGabJQ4FT5+hU3YmkiRVUqkmha1oAYomsiSQtXklOne5l5kn
+rjBlKLLIvYicmiefCqzMJ5lSwhQEhtQmGzwp0cW2twXb4Jc9viWUDS8Ga6Ckzi+UCJfGJKZPKIqy+AFz
+GggcKNDUjFT//BBcKLDEpwtDhjyc8KEiBjcWMzKoEgEAOw==
+<enddata>
+
+<data> VarName=$water_yes
+R0lGODlhHgAeALMAAIiIiERERBEREaqqqu7u7mZmZiIiIt3d3czMzJmZmXd3d1VVVbu7uzMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAATM0LH2qr042zak/uA1UGGZGVcBoKZlAMEHOEBrFY7y4YNdzTFNw4G4
+kR6GhSXIcAhADkcFR6AIENVHg1BxHEIIR8AgaTIIhE7zO+yBEo7CoyZQMBIGQSJNwdVAM38mcEEfAR4t
+YU8gAlE2XiYEDiwhh24hTUolCjQmgSYdhSA8JgdOJkNfIY2qJo6VDpclYaIZny1wOiBNtYCdIJKLJocM
+IGStJo1SHwuxPg+SlBi3Nk0IDNjZ2JK9IQXa4NnCGEfPIA3F5pgS5eoV6A4RADs=
+<enddata>
+
+<data> VarName=$wheelchair_no
+R0lGODlhHgAeALMAAO5cXAAAAEtKSv///ysrK3BwcJQAAMo4OKsXF7u7u9fX14iIiOYAAO7u7qqqqpmZ
+mSH5BAAAAAAALAAAAAAeAB4AAATycCRGq734Opm7t45lBGRpnmjQjaaQJESKihVLDrgin1Zg1CQBDhfb
+kXo+oDBnLCGTFMNSUWw+oQwELtF0Vk4/CkDSPX7BFQC3fCUtDumXfNdOSBDp4YB+Jj1wBQIAFQcLhnwU
+JUsCN4MUhYaMM30KAwslOI4MYwMNKUgEOCZDmpySJkhCOooCrXhiAw6TiTdrKWGbezx9A6syuAAFu7QB
+REavDAfDDCWVsjIECrgHCmtPSw8ylQTIYzFXf7FVAQUNnTGaCGbEfkPVdjgNRW9AbeTmehLjWLjMKQIL
+HiwosK9EP3tlDFqY8KEhBjsMHTq0EwEAOw==
+<enddata>
+
+<data> VarName=$wheelchair_yes
+R0lGODlhHgAeALMAAERERIiIiN3d3aqqqlVVVSIiIpmZmREREe7u7szMzHd3d2ZmZru7uzMzM////wAA
+ACH5BAAAAAAALAAAAAAeAB4AAAS60LH2qr042zak/uA1UGGZFSXBTGZ7OLDQmgAMozNYx3m4C6SeZscQ
+6mBF4xCpxAQGv5VUeGBIdjab0ABT/AJgcI8AA1Ri4bC5lXAELNk4otWAHeDxLMFETlwAgIEAZA4DLR4l
+HQ53JQ4yJQswCyY3IQ0viIwabYYfBTKKAQJJGoQGGgdtDYQ2OBpchUEPCwgOCBS1DgayrzajVjC3FQEG
+riUKuVkMxkYExAEKzCC8TRuk1RdWLNgPDVYRADs=
+<enddata>
+
+<data> VarName=$winter_no
+R0lGODlhHgAeALMAAOVRUZYDA2xsbP///yoqKktLS8g0NO7u7t3d3czMzIiIiJmZmQAAABEREeYAALS0
+tCH5BAAAAAAALAAAAAAeAB4AAAT/cDxHq734Ppm7t1MVMGRJFs9TmCzTjawyzIPSmlYgxvRh3yQLQ0eB
+lRozIK5CIjpghEdilngQlEIGwbBrKA6JhK9REvhK2cMAsGMsUgtStFGYPYJM5IxdFDwUCg9kDAgJCzRX
+QnUDU3wOAD4KCAMFCwgHkzMrWSoEAwdcRVUEAggIAjJRA4lMJV+HoY93DwtRUwINVy6tJAIEBJKOABsJ
+lwQLcWi8JjINTgYMDac3WSZeNQqOBjLJLNUEByiXfgvaCH8ECEsU0VdTB1aADAmxAQ+Xd4NCG6USC8UC
+/CR4dkiBAEq72G2gge0gtjUVINGwsY/KQQEkGvxJ4ayCARqbT5iAY8QgoKtAd4ZE/MSKXbQ31r48OHBg
+ARknAHRVa6FRzAAECgY5gbETyAxdJYYmdKCEwZeJLIYW5QE1aoemKFQAceIgxIevF6Z4Bft1SgQAOw==
+<enddata>
+
+<data> VarName=$winter_yes
+R0lGODlhHgAeALMAAERERFVVVXd3dyIiIhEREaqqqt3d3e7u7ru7u4iIiGZmZjMzM5mZmczMzP///wAA
+ACH5BAAAAAAALAAAAAAeAB4AAAT/0JX1qr0424Wk/uCFDGEFIAhQPmqZOLCTrOsLHzNdErCeAaTKoNCA
+NQpB2qDDsBASh0YDR7AocKADLLA4tBio5mNJCMAQGh7M4DAQBgpEIoGoPgwNRixpARgdUw0vOAlsAAwG
+B2wwLRgFXA4HCogKCw0ICwIGBgIvCwUOfBhQoAkDMygPBQxLRQoEFCCVC4WbCLaAiQsMYjQvVTZNBAYK
+PhVPMlA3cw69JQMHAbcHAggMDQal2QkLBiCwD0UHI3PhaLxDiQUPdo4Omg7W2ArVDbQIOHoJCg4BGR0x
+kgmAwaxfgQ5aCGYABYhfMXZyUNgpgCOGPwxdAD1Q8PDBHATrOyrYG3BD1DEGIY9BwXeAQbsF8Ux+I6LF
+QIJ2xjLAkJnTY0IZPTPYUPhsxYkCjUAESBk0Q5EJTS8AKBIBADs=
+<enddata>

@@ -1,0 +1,55 @@
+# MacDescription = Copy Databses From Dropbox
+# MacFileName = CopyFromDropbox.gsk
+# MacAuthor = Javapgmr
+# MacVersion=0.2aa
+# MacUrl = 
+
+#==============================================================================#
+#   GSAK Copy Databases to Dropbox
+#   Lignumaqua
+#   ONLY runs in GSAK V7.7 or above of GSAK
+#   ONLY runs in Windows 7 or later
+#
+#==============================================================================#
+#   Copy to Dropbox Version History
+# V0.1   2-18-13 First trial release
+# V0.11  2-20-13 Removed Debug statement
+
+#DEBUG Status=ON
+$CurrDB = $_CurrentDatabase
+$TempDB = "XX_TempDB_XX"
+If DataBaseExists($TempDB) 
+ Database Name=$TempDB Action=DELETE
+ENDIF
+Database Name=$TempDB Action=Create
+Database Name=$TempDB 
+
+
+
+# Get Dropbox path
+$Dropbox = GetEnvV("APPDATA") + "\Dropbox\host.db"
+$Dropboxfile = GetFile($Dropbox)
+$Dropboxpath = MimeDecode(Extract($Dropboxfile,Chr(10),RegExCount("\n",$Dropboxfile) + 1))
+$Exclude = ""
+
+$To	 = $_dbPath
+$ToMacros = $_AppData + "\macros"
+$From = $Dropboxpath + "\GSAK\data"
+$FromMacros = $Dropboxpath + "\GSAK\macros"
+
+# Comment out the line below to include the grabbed images folder
+$Exclude = $_dbPath + "\GrabbedImages"
+$ExcludeMacros = $FromMacros + "\.git"
+
+$BatFile = $_Install + "\babel.bat"
+$result = PutFile($BatFile, "ROBOCOPY " + Quote($From) + " " + Quote($To) + " *.* /XD " + Quote($Exclude) + " /S /XO")
+FILEOPEN File="$BatFile" Wait=yes
+
+$BatFile = $_Install + "\babel.bat"
+$data = "ROBOCOPY " + Quote($FromMacros) + " " + Quote($ToMacros) + " /XD " + Quote($ExcludeMacros) + " " +  " /S /XO"
+$result = PutFile($BatFile, $data)
+
+DataBase Name=$CurrDB
+Database Name=$TempDB Action=Delete
+# Uncomment next line to shut down GSAK after the macro runs
+# EXIT

@@ -1,0 +1,25 @@
+############################################
+# MacVersion = 1.1
+# MacDescription = Show cache pages for flagged caches
+# MacFileName = ShowUpdateCaches.gsk
+# MacAuthor = javapgmr
+############################################
+
+MFILTER  Where=USERFLAG OR Distance > 6000
+IF $_FilterActive
+IF $_FilterCount > 10
+  PAUSE MSG="Cache Count is greater than 10"
+  GOSUB Name=Main
+ELSE
+  GOSUB Name=Main
+ENDIF
+ELSE
+ Pause MSG="Filter was not set."
+ENDIF
+
+
+
+BEGINSUB  Name=Main
+GcRefresh Scope=Filter LogsPerCache=5 
+USERFLAG Type=Clear Range=FILTER
+ENDSUB

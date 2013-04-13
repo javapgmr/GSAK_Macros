@@ -1,0 +1,102 @@
+###########################################################
+#
+# Transfer SpoilerSync picture to GSAK user notes
+#
+# 1. Run spoiler sync (make sure you check the box "create web pages for spoilers and index"
+# 2. Run this macro, and enter the folder where you spoilersync files are
+#
+############################################################
+
+#Debug Status=on
+
+# get folder from saved settings if file exists 
+If FileExists($_Install + "\Macros\SpoilerSync.dat")
+  Set $pics = GetFile($_Install + "\Macros\SpoilerSync.dat")
+  # Just in case file permission error or something test for error
+  IF Left($Pics,7) = "*Error*"
+    Pause Msg="$Pics"
+    Cancel
+  EndIf 
+else
+  Set $pics = " "
+EndIf
+
+# get the folder where the spoilers pics are
+Input Msg="Enter the folder where the spoilder pics can be found"  Default=$Pics VarName=$pics Browse="Folder"
+If .not. FolderExists($pics)
+  Pause Msg="Error: Folder does not exist, Macro will now abort"
+  Cancel
+Endif
+
+# Save the folder so don't have to key if same next time
+Set $error = PutFile($_Install + "\Macros\SpoilerSync.dat",$pics)  
+# Just in case file permission error or something test for error
+IF Left($Error,7) = "*Error*"
+  Pause Msg="$Error"
+  Cancel
+EndIf   
+Set $ThisRecord = 0
+Set $NumberFound = 0
+Set $NumberPics = 0
+Goto Position=Top
+
+# now loop through the current subset to find corresponding spoilder HTML files
+While .not. $_EOL
+  # set up totals to show status to user
+  Set $ThisRecord = $ThisRecord + 1
+  Set $status = "Now processing: " + "$ThisRecord" + " of " + "$_Count"
+  ShowStatus msg="$status"  
+
+  Set $HtmFile = $Pics + "\" + $d_Code + ".html" 
+  If FileExists($HtmFile)
+    # we have found a matching spoiler file so interrogate the HTML for pictures 
+    Set $data = GetFile($HtmFile)
+    # get the number of pictures in the file
+    Set $Images = RegExCount("<img src=.*?>",$data)
+    Set $x = 0
+    Set $NumberFound = $NumberFound + 1
+    Set $Link = " "
+    While $Images > $x
+      Set $NumberPics = $NumberPics + 1 
+      Set $x = $x + 1
+      Set $Image = RegExData("<img src=.*?>",$data,$x)
+      # Get everthing after the =
+      Set $image = Extract($Image,"=",2)
+      # remove the terminating > tag 
+      Set $image = Extract($Image,">",1)
+      # genrate the required URL syntax to add to GSAK user notes
+      Set $image = $image + $_NewLine + "<img src='file://" + $pics + "\" + $image + "'><br><br>"  
+      Set $Link = $link + $image + $_NewLine
+    EndWhile
+    Set $Link = "*Spoiler Pictures*" + $_NewLine + $Link + "*End Spoilers*"
+    Set $UserNote = $d_UserNote
+    
+    # now if alredy spoiler pictures in user notes we must remove them and replace
+    # with he ones just found
+    if RegEx("\*Spoiler Pictures\*",$UserNote)
+      # preserve any notes before the spoilers
+      Set $Part1 = Extract($d_UserNote,"*Spoiler Pictures*",1)
+      # preserve any notes after the spoilers
+      Set $Part2 = Extract($d_UserNote,"*End Spoilers*",2)
+      # now insert then new spoiler links
+      Set $UserNote = $Part1 + $Link + $Part2
+    Else
+      # else part - No spoiler pictures, but we must put them in before the User logs
+      If RegEx("\$~",$UserNote)
+        # User losgs found, so seperate the user notes from the logs
+        Set $User = Extract($UserNote,"$~",1)
+        Set $Log = Extract($UserNote,"$~",2)
+        # now put in the spoiler links between the two
+        Set $UserNote = $User + $link + "$~" + $Log
+      else
+        # else there are no user logs, so just add the spoilers to any user notes
+        Set $UserNote =  $UserNote + $Link
+      EndIf
+    EndIf
+    Set $d_UserNote = $UserNote
+  EndIf 
+  Goto Position=Next
+EndWhile
+Goto Position=Top
+Set $Message = "$NumberFound" + " caches updated from spoiler sync folder." + $_NewLine + "$NumberPics" + " pictures found in total. "  
+Pause msg=$Message

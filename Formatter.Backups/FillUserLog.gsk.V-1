@@ -1,0 +1,45 @@
+################################################################################
+# MacVersion = 0.2
+# MacDescription = Fill the "User Logs" section with your logs
+# MacAuthor = Bushman4
+# MacFileName = FillUserLog.gsk
+# MacUrl = http://gsak.net/board/index.php?showtopic=5407&view=getlastpost
+################################################################################
+
+Option Explicit=Yes
+
+Declare Var=$Completed Type=Numeric
+Declare Var=$strLogs Type=String
+Declare Var=$strUserLog Type=String
+Declare Var=$strUserNote Type=String
+
+$Completed = 0
+MFilter Expression=$d_Found
+Goto Position=Top
+While Not($_eol)
+        $Completed = $Completed + 1
+        If Frac($Completed/10) = 0
+                SHOWSTATUS msg="Processing cache $Completed"
+        EndIF
+        $strUserNote = ""
+        $strUserLog = ""
+        If $d_UserNote <> ""
+                $strUserNote = Extract($d_UserNote, "$~", 1)
+                $strUserLog = Extract($d_UserNote, "$~", 2)
+        EndIf
+        Table Active=Logs Scope=Parent
+        $strLogs = ""
+        Goto Position=Top
+        While Not($_EOL)
+                If IsOwner()
+                        $strLogs = $strLogs + "$d_lDate" + $_NewLine + "$d_lType" + $_NewLine + $_NewLine + "$d_lText" + $_NewLine + "------------------------------------" + $_NewLine + $_NewLine
+                EndIf
+                Goto Position=Next
+        EndWhile
+        
+        Table Active=Caches
+        If $strLogs <> "" and $strLogs <> $strUserLog
+                $d_UserNote= $strUserNote + "$~" + $strLogs
+        EndIf
+        Goto Position=Next
+EndWhile

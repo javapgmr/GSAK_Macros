@@ -1,0 +1,684 @@
+#Make sure we're on a version of GSAK that can handle this macro
+VerCheck version=7.0.0.111
+
+#Set Defaults
+$quit = "No"
+$ExitSub = "No"
+$PCombo = "Feet"
+
+
+
+# Initialize a few Variables
+$Miles = "0"
+$NautMi = "0"
+$Feet = "0"
+$Yards = "0"
+$Meters = "$0"
+$Kilometers = "0"
+$TempStr = ""
+$units = "Feet;Yards;Meters;Kilometers;Statute Miles;Nautical Miles"
+
+##### DISTANCE CONVERSION FACTORS #####
+$MilesToKM = 1.609344
+$MilesToFeet = 5280
+$MilesToYards = 1760
+$MilesToMeters = 1609.344
+$MilesToNautMi = 0.86897624
+
+$KMToYards = 1093.61329834
+$KMToMiles = 0.62137119
+$KMToFeet = 3280.83989501
+$KMToNautMi = 0.5399568
+$KMToMeters = 1000
+
+# Use a while loop to keep returning to the main menu.
+while $quit="No" 
+ if ShowForm($MenuForm)
+ $ExitSub = "No"
+
+  ########################## Display Distance Form #############################
+  If $MenuDistance
+     $MenuForm = EditForm($MenuForm,"MenuForm1","Top",$_FormTop)
+     $MenuForm = EditForm($MenuForm,"MenuForm1","Left",$_FormLeft)
+    while $ExitSub="No"
+    	If ShowForm($DistanceForm)
+    		If $BtnCalc
+    		   #===========  Clean ; out of input to keep Gcalc happy ========= 
+    		   $DPoint1 = RegExReplace(";",$Dpoint1," ")
+    		   $DPoint2 = RegExReplace(";",$Dpoint2," ")
+    		   #===============================================================
+    		   
+    		   $tempstr = gcalc($DPoint2+";"+$dpoint1,"CalcBearing1")
+    		   $RevAzimuth = ALLTRIM(STR(VAL($Tempstr),10,3) )+" ("+gcalc($DPoint2+";"+$dpoint1,"CalcBearing2")+")"
+     			 $tempstr = gcalc($DPoint1+";"+$dpoint2,"CalcBearing1")
+     			 $FwdAzimuth = ALLTRIM(STR(VAL($Tempstr),10,3) )+" ("+gcalc($DPoint1+";"+$dpoint2,"CalcBearing2")+")"
+     			If sysinfo("distance") = "M"
+          # We're using miles
+            $Miles = gcalc($DPoint1+";"+$dpoint2,"CalcDistance")
+            $NautMi = ALLTRIM(STR(val($Miles)*$MilesToNautMi,15,3))
+            $Kilometers = ALLTRIM(STR(val($Miles)*$MilesToKM,15,3))
+            $Meters = ALLTRIM(STR(val($Miles)*$MilesToMeters,15,2))
+            $Yards =  ALLTRIM(STR(val($Miles)*$MilesToYards,15,2))
+            $Feet = ALLTRIM(STR(val($Miles)*$MilesToFeet,15,2))
+            $Miles = ALLTRIM(STR(val($Miles),15,3))
+            $Tempstr = "Feet       : "+$Feet+$_Newline+"Yards      : "+$Yards+$_Newline+"Meters     : "+$Meters+$_Newline+"Kilometers : "+$Kilometers 
+            $DMemo = $Tempstr+$_Newline+"Miles          : "+$Miles+$_Newline+"Nautical Miles : "+$NautMi
+          else
+          # We're using KMs
+            $Kilometers = gcalc($DPoint1+";"+$dpoint2,"CalcDistance")
+            $NautMi = ALLTRIM(STR(val($Kilometers)*$KMToNautMi,15,3))
+            $Miles = ALLTRIM(STR(val($Kilometers)*$KMToMiles,15,3))
+            $Meters = ALLTRIM(STR(val($Kilometers)*$KMToMeters,15,2))
+            $Yards =  ALLTRIM(STR(val($Kilometers)*$KMToYards,15,2))
+            $Feet = ALLTRIM(STR(val($Kilometers)*$KMToFeet,15,2))
+            $Kilometers = ALLTRIM(STR(val($Kilometers),15,3))
+            $Tempstr = "Feet       : "+$Feet+$_Newline+"Yards      : "+$Yards+$_Newline+"Meters     : "+$Meters+$_Newline+"Kilometers : "+$Kilometers 
+            $DMemo = $Tempstr+$_Newline+"Miles          : "+$Miles+$_Newline+"Nautical Miles : "+$NautMi
+          Endif
+     			
+    		endif
+        $DistanceForm = EditForm($DistanceForm,"DistanceForm1","Top",$_FormTop)
+    	  $DistanceForm = EditForm($DistanceForm,"DistanceForm1","Left",$_FormLeft)
+    		If $BtnClose
+     			break
+    		endif 
+    	else
+    	  $DistanceForm = EditForm($DistanceForm,"DistanceForm1","Top",$_FormTop)
+    	  $DistanceForm = EditForm($DistanceForm,"DistanceForm1","Left",$_FormLeft)
+    	  break
+    	endif
+  	endwhile
+  endif    	
+  ##############################################################################	
+
+ 
+  ########################## Display Coord Convert Form ########################  	
+  If $MenuCoord
+    $MenuForm = EditForm($MenuForm,"MenuForm1","Top",$_FormTop)
+    $MenuForm = EditForm($MenuForm,"MenuForm1","Left",$_FormLeft)
+    while $ExitSub="No"  	
+    	If ShowForm($CoordForm)
+    		If $BtnCoordCalc
+    		  $CedtCoord1 = RegExReplace(";",$CedtCoord1," ")
+    		  $Tempstr = gcalc($CedtCoord1,"FormatDegrees")
+    		  #Extract(sInputString, sDelimiter, nFieldNumber) : string
+
+     			$CDLat = Extract($Tempstr,";",1)
+     			$CDLon = Extract($Tempstr,";",2)
+     			$CDBoth = $CDLat +", "+$CDLon
+     			
+     			$Tempstr = gcalc($CedtCoord1,"FormatMinutes")
+    		  If $ChkNoSym = True 
+    		    $Tempstr = RegExReplace("°",$Tempstr,"")
+    		    $Tempstr = RegExReplace("'",$Tempstr,"")
+    		  Endif
+     			$CMLat = Extract($Tempstr,";",1)
+     			$CMLon = Extract($Tempstr,";",2)
+     			$CMBoth = $CMLat +", "+ $CMLon
+     			
+     			$Tempstr = gcalc($CedtCoord1,"FormatSeconds")
+    		  If $ChkNoSym = True 
+    		    $Tempstr = RegExReplace("°",$Tempstr,"")
+    		    $Tempstr = RegExReplace("'",$Tempstr,"")
+    		  Endif
+     			$CSLat = Extract($Tempstr,";",1)
+     			$CSLon = Extract($Tempstr,";",2)
+     			$CSBoth = $CSLat +", "+ $CSLon 
+     			   			
+     			$TempStr = gcalc($CedtCoord1,"FormatUTM") 
+     			$CoordEditUTM = RegExReplace(";",$TempStr," ")
+    		endif
+    	  $CoordForm = EditForm($CoordForm,"CoordForm1","Top",$_FormTop)
+    	  $CoordForm = EditForm($CoordForm,"CoordForm1","Left",$_FormLeft)
+    		If $BtnCoordClose
+     			break
+    		endif
+    	else
+    	  $CoordForm = EditForm($CoordForm,"CoordForm1","Top",$_FormTop)
+    	  $CoordForm = EditForm($CoordForm,"CoordForm1","Left",$_FormLeft)
+    	  break 
+    	endif       
+  	endwhile
+  endif	    
+ ##############################################################################     	
+  	
+ ########################## Display Projection Form #############################
+ #For units K = Kilometers, N = Nautical miles, M = miles, T = Meters, Y = Yards, F = Feet.
+  If $MenuProjection
+    $MenuForm = EditForm($MenuForm,"MenuForm1","Top",$_FormTop)
+    $MenuForm = EditForm($MenuForm,"MenuForm1","Left",$_FormLeft)
+    while $ExitSub="No"
+    	If ShowForm($ProjectionForm)
+    		If $PCalcBtn
+    		   # "Feet;Yards;Meters;Kilometers;Statute Miles;Nautical Miles"
+    		   if $PCombo = "Feet"
+    		     $ProjectionUnit = "F"
+    		   endif
+     		   if $PCombo = "Yards"
+    		     $ProjectionUnit = "Y"
+    		   endif
+    		   if $PCombo = "Meters"
+    		     $ProjectionUnit = "T"
+    		   endif
+    		   if $PCombo = "Kilometers"
+    		     $ProjectionUnit = "K"
+    		   endif
+    		   if $PCombo = "Statute Miles"
+    		     $ProjectionUnit = "M" 
+    		   endif    		          		   
+    		   if $PCombo = "Nautical Miles"
+    		     $ProjectionUnit = "N"
+    		   endif
+    		   $PPoint = RegExReplace(";",$PPoint," ")
+     			 $tempstr = gcalc($PPoint+";"+$PBearing+";"+$PDistance+";"+$ProjectionUnit,"Project")
+     			 # Line below is needed due to a GCALC input issue with ; and decimal degree format
+					 $tempstr = RegExReplace(";",$Tempstr," ")
+     			 $tempstr = gcalc($Tempstr,"FormatMinutes")
+     			 $PResult = RegExReplace(";",$tempstr,"  ")
+
+    		endif
+    	  $ProjectionForm = EditForm($ProjectionForm,"ProjectionForm1","Top",$_FormTop)
+    	  $ProjectionForm = EditForm($ProjectionForm,"ProjectionForm1","Left",$_FormLeft)
+    		If $PCloseBtn
+     			break
+    		endif 
+    	else
+    	  $ProjectionForm = EditForm($ProjectionForm,"ProjectionForm1","Top",$_FormTop)
+    	  $ProjectionForm = EditForm($ProjectionForm,"ProjectionForm1","Left",$_FormLeft)
+    	  break
+    	endif
+  	endwhile
+  endif    	
+  ############################################################################## 	
+else
+ $quit="Yes"
+Endif 
+# If they click the close button, set $quit to something other than "No" to close the form  
+  If $MenuClose
+   $quit="yes" 
+  endif
+EndWhile
+
+
+ ##############################################################################
+ ##############################################################################
+ #  																																					#
+ # 											     F O R M    D A T A																#
+ #  																																					#  											
+ ##############################################################################
+ ##############################################################################  						
+
+<Data> Varname=$CoordForm
+#********************************************************************
+#                  COORDINATE CONVERSION FORM
+#********************************************************************
+
+Name = CoordForm1
+  type = form
+  left = 400
+  top = 236
+  height = 295
+  width = 636
+  caption = G-Calc Coordinate Conversion
+  
+Name = BtnCoordCalc
+  type = Button
+  left = 404
+  top = 193
+  height = 25
+  width = 75
+  caption = Calc   
+
+Name = BtnCoordClose
+  type = Button
+  left = 490
+  top = 193
+  height = 25
+  width = 75
+  caption = Close
+
+Name = CEdtCoord1
+  type = Edit
+  left = 115
+  top = 34
+  height = 22
+  width = 493
+  
+
+Name = CDLat
+  type = Edit
+  left = 116
+  top = 89
+  height = 21
+  width = 135
+
+Name = CMLat
+  type = Edit
+  left = 115
+  top = 113
+  height = 21
+  width = 136
+
+Name = CSLat
+  type = Edit
+  left = 115
+  top = 137
+  height = 21
+  width = 137
+
+Name = CoordEditUTM
+  type = Edit
+  left = 114
+  top = 169
+  height = 20
+  width = 210
+  
+
+Name = CDLon
+  type = Edit
+  left = 256
+  top = 89
+  height = 21
+  width = 134
+
+Name = CMLon
+  type = Edit
+  left = 256
+  top = 113
+  height = 21
+  width = 134
+
+Name = CSLon
+  type = Edit
+  left = 256
+  top = 137
+  height = 21
+  width = 133
+
+Name = CDBoth
+  type = Edit
+  left = 395
+  top = 89
+  height = 21
+  width = 215
+
+Name = CMBoth
+  type = Edit
+  left = 395
+  top = 113
+  height = 21
+  width = 215
+
+Name = CSBoth
+  type = Edit
+  left = 394
+  top = 137
+  height = 21
+  width = 216
+
+Name = CoordLBLPoint1
+  type = Label
+  left = 15
+  top = 37
+  height = 22
+  width = 96
+  Caption = Coordinate String
+
+Name = CLabelDec
+  type = Label
+  left = 50
+  top = 93
+  height = 13
+  width = 51
+  caption = DD.DDDD
+
+Name = CLabelMin
+  type = Label
+  left = 34
+  top = 117
+  height = 13
+  width = 67
+  caption = DD MM.MMM
+
+Name = CLabelSec
+  type = Label
+  left = 31
+  top = 141
+  height = 13
+  width = 71
+  caption = DD MM SS.SS
+
+Name = LbLCLat
+  type = Label
+  left = 158
+  top = 67
+  height = 13
+  width = 38
+  Caption = Latitude
+
+Name = LblCLon
+  type = Label
+  left = 297
+  top = 69
+  height = 13
+  width = 47
+  caption = Longitude
+
+Name = LblCBoth
+  type = Label
+  left = 480
+  top = 68
+  height = 13
+  width = 22
+  caption = Both
+
+Name = CLblUTM
+  type = Label
+  left = 57
+  top = 173
+  height = 13
+  width = 43
+  caption = UTM
+
+Name = ChkNoSym
+  type = CheckBox
+  left = 406
+  top = 221
+  height = 28
+  width = 10
+  
+Name = CLblCBox
+  type = Label
+  left = 421
+  top = 228
+  height = 28
+  width = 600
+  Caption = Provide symbol free results (No ° or ' or '')
+
+<EndData>
+
+
+
+
+<Data> Varname=$DistanceForm
+#********************************************************************
+#                   DISTANCE CONVERSION FORM
+#********************************************************************
+
+Name = DistanceForm1
+  type = form
+  left = 400
+  top = 108
+  height = 297
+  width = 485
+  caption = G-Calc Distance Calculator
+
+Name = BtnClose
+  type = Button
+  left = 377
+  top = 216
+  height = 25
+  width = 75
+  caption = Close
+
+Name = BtnCalc
+  type = Button
+  left = 297
+  top = 216
+  height = 25
+  width = 75
+  caption = Calc 
+  
+Name = FwdAzimuth
+  type = Edit
+  left = 115
+  top = 180
+  height = 21
+  width = 103
+
+Name = RevAzimuth
+  type = Edit
+  left = 115
+  top = 205
+  height = 21
+  width = 104
+
+Name = LblPoint1
+  type = Label
+  left = 67
+  top = 27
+  height = 13
+  width = 33
+  Caption = Point 1
+
+Name = LblPoint2
+  type = Label
+  left = 67
+  top = 51
+  height = 13
+  width = 33
+  caption = Point 2
+
+Name = LblDegDec
+  type = Label
+  left = 55
+  top = 107
+  height = 13
+  width = 81
+  caption = Distance
+
+Name = LblMinDec
+  type = Label
+  left = 22
+  top = 183
+  height = 13
+  width = 78
+  caption = Forward Azimuth
+
+Name = FrmLbl13
+  type = Label
+  left = 22
+  top = 209
+  height = 13
+  width = 43
+  caption = Reverse Azimuth
+
+Name = DPoint1
+  type = Edit
+  left = 115
+  top = 22
+  height = 21
+  width = 339
+
+Name = DPoint2
+  type = Edit
+  left = 115
+  top = 47
+  height = 21
+  width = 339
+  
+
+Name = DMemo
+  type = Memo
+  left = 115
+  top = 71
+  height = 100
+  width = 340
+
+<EndData>
+
+
+
+<Data> Varname=$MenuForm
+#********************************************************************
+# Form generated by GSAK form designer on Wed 10-Jan-2007 23:10:48
+#********************************************************************
+
+
+#********************************************************************
+#                            MAIN MENU FORM
+#********************************************************************
+
+Name = MenuForm1
+  type = form
+  left = 500
+  top = 95
+  height = 203
+  width = 228
+  Caption = G-Calc Main Menu
+
+Name = MenuCoord
+  type = Button
+  left = 11
+  top = 15
+  height = 25
+  width = 200
+  caption = Coordinate Conversion
+
+Name = MenuDistance
+  type = Button
+  left = 11
+  top = 46
+  height = 25
+  width = 200
+  caption = Distance
+
+Name = MenuProjection
+  type = Button
+  left = 11
+  top = 78
+  height = 25
+  width = 200
+  caption = Projection
+
+Name = MenuClose
+  type = Button
+  left = 11
+  top = 111
+  height = 25
+  width = 200
+  caption = Exit
+
+Name = FrmLbl1
+  type = Label
+  left = 5
+  top = 152
+  height = 13
+  width = 98
+  caption = Coded by DocDiTTo
+
+Name = FrmLbl2
+  type = Label
+  left = 186
+  top = 152
+  height = 13
+  width = 27
+  caption = v1.00
+
+<EndData>
+
+
+<Data> Varname=$ProjectionForm
+#********************************************************************
+# Form generated by GSAK form designer on Wed 10-Jan-2007 14:15:49
+#********************************************************************
+
+
+#********************************************************************
+#                     WAYPOINT PROJECTION FORM
+#********************************************************************
+
+Name = ProjectionForm1
+  type = form
+  left = 400
+  top = 158
+  height = 277
+  width = 448
+  Caption = G-Calc Projection
+
+Name = LblPPoint
+  type = Label
+  left = 39
+  top = 31
+  height = 13
+  width = 24
+  caption = Starting Point
+
+Name = LblPDist
+  type = Label
+  left = 52
+  top = 58
+  height = 13
+  width = 42
+  Caption = Distance
+
+Name = FrmLbl6
+  type = Label
+  left = 59
+  top = 83
+  height = 13
+  width = 36
+  caption = Bearing
+
+Name = FrmLbl10
+  type = Label
+  left = 27
+  top = 154
+  height = 13
+  width = 72
+  caption = Projected Point
+
+Name = PPoint
+  type = Edit
+  left = 125
+  top = 29
+  height = 21
+  width = 284
+
+Name = PDistance
+  type = Edit
+  left = 125
+  top = 55
+  height = 21
+  width = 142
+
+Name = PBearing
+  type = Edit
+  left = 125
+  top = 80
+  height = 21
+  width = 284
+
+Name = PCombo
+  type = ComboBox
+  left = 274
+  top = 55
+  height = 21
+  width = 135
+  values = $units
+
+Name = PResult
+  type = Edit
+  left = 125
+  top = 151
+  height = 21
+  width = 284
+
+Name = PCalcBtn
+  type = Button
+  left = 241
+  top = 193
+  height = 25
+  width = 75
+  caption = Calcuate
+
+Name = PCloseBtn
+  type = Button
+  left = 333
+  top = 193
+  height = 25
+  width = 75
+  caption = Close
+
+<EndData>
+

@@ -1,0 +1,21 @@
+#Produce a chronological list of all finds and DNF's, sorted by date first hunted.
+
+# cancel any user filters and current sort
+CANCELFILTER
+Sort by=natural
+
+#Filter for all Found or DNF caches
+MFilter IF=$d_found .or. $d_DNFdate>[20000101]
+
+#Place days since find in UserSort, then sort by UserSort
+GoTo Position=Top
+While not($_EoL)
+  IF $d_DNFDate>[20000101] 
+      $d_UserSort = DateDiff($d_DNFdate, $_Today)
+  else
+     $d_UserSort = DateDiff($d_FoundByMeDate,$_Today)
+  EndIf
+  Goto Position=Next
+EndWhile
+Sort By=UserSort Sequence=D
+GoTo Position=Top
